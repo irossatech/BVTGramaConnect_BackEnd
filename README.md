@@ -79,7 +79,7 @@ Register the recurring jobs once, and again after each deploy (safe to repeat):
 python manage.py ensure_schedules
 ```
 
-This creates the review-escalation job, which runs every 15 minutes and alerts the next level up about posts pending longer than `REVIEW_ESCALATION_HOURS`.
+This creates the review-escalation job, which runs every 15 minutes and alerts the next level up about posts pending longer than `REVIEW_ESCALATION_HOURS`, and a daily housekeeping job that deletes old failed jobs, expired login tokens and expired console sessions.
 
 ### URLs
 

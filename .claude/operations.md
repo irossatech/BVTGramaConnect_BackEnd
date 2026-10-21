@@ -30,7 +30,7 @@ Linux or macOS: the same with `python3 -m venv .venv` and `source .venv/bin/acti
 | Tests | `python -m pytest -q -p no:logging` |
 | Missing migrations | `python manage.py makemigrations --check --dry-run` |
 | Background worker | `python manage.py qcluster` |
-| Escalation schedule | `python manage.py ensure_schedules` (once per database; deploy runs it) |
+| Escalation and housekeeping schedules | `python manage.py ensure_schedules` (once per database; deploy runs it) |
 | Role groups and permissions | `python manage.py sync_role_permissions` (also runs after every `migrate`; safe to repeat) |
 | Unlock a username | `python manage.py axes_reset_username <username>`, or Unlock in the console |
 | New sample passwords | `python manage.py seed_sample_data --reset-passwords` |
@@ -40,7 +40,7 @@ Linux or macOS: the same with `python3 -m venv .venv` and `source .venv/bin/acti
 
 ## Environment variables
 
-`.env.example` lists every variable with a comment. Required in production: SECRET_KEY, ALLOWED_HOSTS, DATABASE_URL, MEDIA_ROOT, STATIC_ROOT. Also set for production: CSRF_TRUSTED_ORIGINS (the console's session login needs it), FCM_CREDENTIALS_FILE and FCM_PROJECT_ID, PLAY_STORE_URL and APP_STORE_URL once the apps are published. The platform rules (ADMIN_POSTS_AUTO_PUBLISH and the rest) and the login settings (LOGIN_MAX_FAILURES, LOGIN_LOCKOUT_MINUTES, CONSOLE_SESSION_IDLE_MINUTES) can be overridden too; keep SESSION_COOKIE_SECURE and CSRF_COOKIE_SECURE on.
+`.env.example` lists every variable with a comment. Required in production: SECRET_KEY, ALLOWED_HOSTS, DATABASE_URL, MEDIA_ROOT, STATIC_ROOT. Also set for production: CSRF_TRUSTED_ORIGINS (the console's session login needs it), FCM_CREDENTIALS_FILE and FCM_PROJECT_ID, PLAY_STORE_URL and APP_STORE_URL once the apps are published. The platform rules (ADMIN_POSTS_AUTO_PUBLISH and the rest) and the login settings (LOGIN_MAX_FAILURES, LOGIN_LOCKOUT_MINUTES, CONSOLE_SESSION_IDLE_MINUTES) can be overridden too, and so can HOUSEKEEPING_KEEP_DAYS (30, how long failed background jobs are kept); keep SESSION_COOKIE_SECURE and CSRF_COOKIE_SECURE on.
 
 ## Load test
 

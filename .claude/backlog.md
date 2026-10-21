@@ -9,4 +9,3 @@ Open work for the Backend team, most important first. Update this file as items 
 5. **Load test at the real size.** Run `deploy/loadtest/locustfile.py` against staging with Gunicorn once the owner gives [EXPECTED USERS].
 6. **Video on a real server.** Upload a real 60-second phone video on staging with ffmpeg installed. Check the poster, seeking over 3G (Nginx range requests on `/media/`) and the 50 MB limit end to end. Without ffmpeg the phone must send `duration_s` and a poster.
 7. **Video metadata.** Videos are stored as sent, so a phone's GPS tag stays in the file. Ask the owner whether to re-encode with ffmpeg to strip it.
-8. **Housekeeping.** django-axes `AccessAttempt` rows and django-q task rows grow forever; add a scheduled cleanup job.
