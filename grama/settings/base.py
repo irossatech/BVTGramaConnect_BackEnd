@@ -295,6 +295,8 @@ MAX_VIDEO_UPLOAD_MB = env.int("MAX_VIDEO_UPLOAD_MB", default=50)
 VIDEO_MAX_SECONDS = env.int("VIDEO_MAX_SECONDS", default=60)
 # How often the escalation job runs (django-q2 schedule, see `ensure_schedules`).
 ESCALATION_CHECK_MINUTES = env.int("ESCALATION_CHECK_MINUTES", default=15)
+# Failed background jobs older than this are deleted by the daily housekeeping job (grama/housekeeping.py).
+HOUSEKEEPING_KEEP_DAYS = env.int("HOUSEKEEPING_KEEP_DAYS", default=30)
 
 # --- Public website (web_public: /api/v1/public/site-config/) -------------------
 
