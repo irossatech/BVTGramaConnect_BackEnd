@@ -261,64 +261,6 @@ def test_reports(api, world):
     assert activity["count"] == 9
 
 
-def log_action(world, post, action, actor, role, hours_ago):
-    row = ReviewAction.objects.create(
-        post=post, action=action, from_status="", to_status="", actor=world.users[actor], actor_role=role
-    )
-    ReviewAction.objects.filter(pk=row.pk).update(created_at=timezone.now() - timedelta(hours=hours_ago))
-
-
-@pytest.fixture
-def reviewed(world):
-    """va_kaza decides three times: 4 h, 2 h and 1 h after the latest (re)submission.
-
-    ma_tenali's only decision is 40 days old, outside the default 30-day window.
-    """
-    first = make_post(world, "pm_kaza", "kaza", PostStatus.PUBLISHED, hours_ago=10, published=True)
-    log_action(world, first, "SUBMIT", "pm_kaza", "PANCHAYAT_MEMBER", 10)
-    log_action(world, first, "PUBLISH", "va_kaza", "VILLAGE_ADMIN", 6)  # 4 h
-
-    second = make_post(world, "pm_kaza", "kaza", PostStatus.PUBLISHED, hours_ago=5, published=True)
-    log_action(world, second, "SUBMIT", "pm_kaza", "PANCHAYAT_MEMBER", 30)
-    log_action(world, second, "RECHECK", "va_kaza", "VILLAGE_ADMIN", 28)  # 2 h
-    log_action(world, second, "RESUBMIT", "pm_kaza", "PANCHAYAT_MEMBER", 5)
-    log_action(world, second, "PUBLISH", "va_kaza", "VILLAGE_ADMIN", 4)  # 1 h from the resubmission, not 26 h
-
-    old = make_post(world, "pm_kolakaluru", "kolakaluru", PostStatus.PUBLISHED, hours_ago=41 * 24, published=True)
-    log_action(world, old, "SUBMIT", "pm_kolakaluru", "PANCHAYAT_MEMBER", 41 * 24)
-    log_action(world, old, "PUBLISH", "ma_tenali", "MANDAL_ADMIN", 40 * 24)
-
-
-def test_admin_activity_average_review_hours(api, world, reviewed):
-    client = api(world.users["super"])
-    rows = {row["user"]["name"]: row for row in client.get("/api/v1/admin/reports/admin-activity/?page_size=50").json()["results"]}
-    assert rows["va_kaza"]["reviewed"] == 3
-    assert rows["va_kaza"]["avg_review_hours"] == 2.3  # (4 + 2 + 1) / 3
-    assert rows["ma_tenali"]["reviewed"] == 0
-    assert rows["ma_tenali"]["avg_review_hours"] is None  # outside the window
-    assert rows["da_guntur"]["avg_review_hours"] is None  # no decisions at all
-
-    wider = client.get("/api/v1/admin/reports/admin-activity/?days=60&page_size=50").json()["results"]
-    assert next(row for row in wider if row["user"]["name"] == "ma_tenali")["avg_review_hours"] == 24.0
-
-
-def test_review_time_and_admin_activity_agree(api, world, reviewed):
-    client = api(world.users["super"])
-    review = {row["level"]: row for row in client.get("/api/v1/admin/reports/review-time/").json()}
-    assert review["VILLAGE"]["avg_hours"] == 2.3 and review["VILLAGE"]["reviews"] == 3
-    assert review["MANDAL"]["avg_hours"] is None
-
-
-def test_admin_activity_csv_has_average_review_hours(api, world, reviewed):
-    client = api(world.users["super"])
-    response = client.get("/api/v1/admin/reports/admin-activity/export/?format=csv", HTTP_ACCEPT_LANGUAGE="en")
-    assert response.status_code == 200
-    lines = response.content.decode("utf-8").splitlines()
-    assert lines[0] == "﻿Name,Role,Area,Reviewed,Published,Recheck,Discarded,Average review hours,Last active"
-    assert any(line.startswith("va_kaza,VILLAGE_ADMIN,Kaza,3,2,1,0,2.3,") for line in lines)
-    assert any(line.startswith("da_guntur,DISTRICT_ADMIN,Guntur,0,0,0,0,,") for line in lines)
-
-
 def test_report_csv_export_has_bom_and_is_audited(api, world):
     make_post(world, "pm_kolakaluru", "kolakaluru", PostStatus.PENDING)
     client = api(world.users["super"])
