@@ -9,6 +9,8 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.geography.areas import AreaDescriber
+from apps.posts.models import MediaKind
+from apps.posts.serializers import EventSerializer
 
 
 class AreaSlimSerializer(serializers.Serializer):
@@ -17,18 +19,30 @@ class AreaSlimSerializer(serializers.Serializer):
     name = serializers.CharField()
 
 
+class FeedVideoSerializer(serializers.Serializer):
+    url = serializers.CharField()
+    poster_url = serializers.CharField()
+    duration_s = serializers.IntegerField(allow_null=True)
+
+
 class FeedMediaSerializer(serializers.Serializer):
     id = serializers.UUIDField()
+    kind = serializers.CharField()
     url = serializers.SerializerMethodField()
     thumb_url = serializers.SerializerMethodField()
+    poster_url = serializers.SerializerMethodField()
     width = serializers.IntegerField()
     height = serializers.IntegerField()
+    duration_s = serializers.IntegerField(allow_null=True)
 
     def get_url(self, obj) -> str:
-        return obj.image.url
+        return obj.video.url if obj.kind == MediaKind.VIDEO else obj.image.url
 
     def get_thumb_url(self, obj) -> str:
         return obj.thumbnail.url
+
+    def get_poster_url(self, obj) -> str | None:
+        return obj.image.url if obj.kind == MediaKind.VIDEO else None
 
 
 class FeedItemSerializer(serializers.Serializer):
@@ -42,6 +56,9 @@ class FeedItemSerializer(serializers.Serializer):
     thumbnail_url = serializers.SerializerMethodField()
     media_count = serializers.SerializerMethodField()
     source_role = serializers.CharField(source="posted_as_role")
+    event = serializers.SerializerMethodField()
+    is_urgent = serializers.BooleanField()
+    video = serializers.SerializerMethodField()
 
     def _describer(self) -> AreaDescriber:
         describer = self.context.get("describer")
@@ -63,6 +80,21 @@ class FeedItemSerializer(serializers.Serializer):
     def get_media_count(self, obj) -> int:
         count = getattr(obj, "media_count", None)
         return count if count is not None else obj.media.count()
+
+    @extend_schema_field(EventSerializer(allow_null=True))
+    def get_event(self, obj):
+        return obj.event
+
+    @extend_schema_field(FeedVideoSerializer(allow_null=True))
+    def get_video(self, obj):
+        name = getattr(obj, "video_name", None)
+        if not name:
+            return None
+        return {
+            "url": default_storage.url(name),
+            "poster_url": default_storage.url(obj.video_poster_name),
+            "duration_s": obj.video_duration,
+        }
 
 
 class FeedPostSerializer(FeedItemSerializer):

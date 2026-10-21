@@ -42,6 +42,16 @@ class Category(models.Model):
         return self.name_te if telugu else self.name_en
 
 
+class EventKind(models.TextChoices):
+    """What a post's optional date is about (owner decision Q7)."""
+
+    DEADLINE = "deadline", _("Deadline")
+    CAMP = "camp", _("Camp")
+    DISTRIBUTION = "distribution", _("Distribution")
+    CLOSURE = "closure", _("Closure")
+    MEETING = "meeting", _("Meeting")
+
+
 class PostStatus(models.TextChoices):
     DRAFT = "DRAFT", _("Draft")
     PENDING = "PENDING", _("Pending")
@@ -75,6 +85,12 @@ class Post(models.Model):
     decided_by_role = models.CharField(max_length=20, blank=True)
     escalated_at = models.DateTimeField(null=True, blank=True)
     escalation_level = models.CharField(max_length=10, choices=AreaLevel.choices, blank=True)
+    # Optional event date (owner decision Q7): kind plus a start and an optional end date.
+    event_kind = models.CharField(max_length=12, choices=EventKind.choices, blank=True)
+    event_start = models.DateField(null=True, blank=True)
+    event_end = models.DateField(null=True, blank=True)
+    # Admins flag time-critical posts (owner decision Q19): pinned in the app, high-priority push.
+    is_urgent = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["-created_at"]
@@ -82,6 +98,14 @@ class Post(models.Model):
             models.Index(fields=["status", "target_level", "target_area_id", "published_at"]),
             models.Index(fields=["status", "submitted_at"]),
             models.Index(fields=["author", "status"]),
+            models.Index(fields=["status", "event_start"]),
+            models.Index(fields=["status", "is_urgent", "published_at"]),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(event_end__isnull=True) | models.Q(event_end__gte=models.F("event_start")),
+                name="post_event_end_after_start",
+            ),
         ]
 
     def __str__(self):
@@ -95,17 +119,39 @@ class Post(models.Model):
     def posted_as(self) -> AreaRef:
         return AreaRef(self.posted_as_level, self.posted_as_area_id)
 
+    @property
+    def event(self) -> dict | None:
+        if not self.event_kind or self.event_start is None:
+            return None
+        return {
+            "kind": self.event_kind,
+            "start_date": self.event_start.isoformat(),
+            "end_date": self.event_end.isoformat() if self.event_end else None,
+        }
+
 
 def media_upload_path(instance, filename):
     return f"posts/{instance.post.created_at:%Y/%m}/{filename}"
 
 
+class MediaKind(models.TextChoices):
+    IMAGE = "image", _("Photo")
+    VIDEO = "video", _("Video")
+
+
 class PostMedia(models.Model):
-    """One photo, stored as WebP at most 1280 px on the long side, plus a 320 px thumbnail."""
+    """A photo, or a video (owner decision Q8).
+
+    Photo: `image` is the WebP at most 1280 px on the long side, `thumbnail` 320 px.
+    Video: `video` is the MP4 as uploaded; `image` and `thumbnail` hold its poster frame.
+    """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="media")
+    kind = models.CharField(max_length=5, choices=MediaKind.choices, default=MediaKind.IMAGE)
     image = models.FileField(upload_to=media_upload_path, max_length=200)
+    video = models.FileField(upload_to=media_upload_path, max_length=200, blank=True)
+    duration_s = models.PositiveSmallIntegerField(null=True, blank=True)
     thumbnail = models.FileField(upload_to=media_upload_path, max_length=200)
     width = models.PositiveIntegerField()
     height = models.PositiveIntegerField()
@@ -117,9 +163,9 @@ class PostMedia(models.Model):
         ordering = ["order", "created_at"]
 
     def delete(self, *args, **kwargs):
-        image, thumbnail = self.image, self.thumbnail
+        image, thumbnail, video = self.image, self.thumbnail, self.video
         result = super().delete(*args, **kwargs)
-        for field in (image, thumbnail):
+        for field in (image, thumbnail, video):
             if field:
                 field.storage.delete(field.name)
         return result

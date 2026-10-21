@@ -90,6 +90,7 @@ def _push_data(post, kind: str) -> dict:
         "post_id": str(post.id),
         "area_level": post.target_level,
         "area_id": post.target_area_id,
+        "urgent": "1" if post.is_urgent else "0",
     }
 
 
@@ -122,7 +123,10 @@ def notify_users(users, *, post, kind: str, template_key: str, **extra) -> list[
 
 
 def announce_to_citizens(post) -> None:
-    """Queue one topic push for the post's target area, in the post's language."""
+    """Queue one topic push for the post's target area, in the post's language.
+
+    Urgent posts go out at high priority, everything else at normal (owner decision Q19).
+    """
     title = render("post_published", post.language, **_values(post, post.language))
     async_task(
         "apps.notifications.tasks.send_push_to_topic",
@@ -130,6 +134,7 @@ def announce_to_citizens(post) -> None:
         title[:255],
         post.title,
         _push_data(post, NotificationKind.POST_PUBLISHED),
+        "high" if post.is_urgent else "normal",
         group="push",
     )
 

@@ -5,7 +5,7 @@ For the person who runs the BVT Grama Connect server. Commands run on the server
 ## After the first setup
 
 1. **Store the backup passphrase offline.** Print `/etc/gramaconnect/backup.passphrase` or put it in the team's password manager. Without it no backup can be restored.
-2. **Create the first Super Admin.** Django admin is at `https://<domain>/django-admin/`.
+2. **Create the first Super Admin.** Django admin is at `https://<domain>/django-admin/` and opens only from the office IPs in `OFFICE_IPS` (owner decision). With `OFFICE_IPS` empty, Nginx answers 403 to everyone: add the office address to `/etc/gramaconnect/deploy.env` and re-run `setup.sh`.
 
    ```
    cd /srv/gramaconnect/backend
@@ -46,7 +46,9 @@ gc showmigrations
 Common problems:
 - **502 Bad Gateway:** Gunicorn is down or still starting. Check its log; `deploy.sh` prints the cause of a failed start.
 - **Telugu shows as `????`:** the database or the connection is not utf8mb4. `setup.sh` creates the database with utf8mb4 and Django adds `charset=utf8mb4`; check `SHOW CREATE DATABASE grama;`.
-- **413 Request Entity Too Large:** uploads over 12 MB are refused by Nginx (`client_max_body_size` in `templates/nginx-locations.conf`).
+- **413 Request Entity Too Large:** uploads over 60 MB are refused by Nginx (`client_max_body_size` in `templates/nginx-locations.conf`). Django then limits photos to `MAX_IMAGE_UPLOAD_MB` and videos to `MAX_VIDEO_UPLOAD_MB` (50).
+- **403 on `/django-admin/`:** the address is not in `OFFICE_IPS`. Check `grep allow /etc/nginx/snippets/gramaconnect-locations.conf`.
+- **Video uploads ask for `duration_s` or a `poster`:** ffmpeg is missing, so the server cannot measure the video or make its poster. `sudo apt-get install ffmpeg`, then restart Gunicorn.
 - **429 on login:** Nginx allows 10 login or password-change requests a minute per IP (zone `gc_login`). Django adds its own limits: 5 failed tries per username in 15 minutes and 30 per IP an hour (`LOGIN_*` settings).
 - **Someone forgot their password:** an admin above them uses "Reset password" in the console or the app. The person gets their role's default password by email and must change it at first login.
 

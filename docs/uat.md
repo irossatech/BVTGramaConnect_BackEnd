@@ -4,7 +4,7 @@ For the QA engineer and the client's testers during user acceptance testing. Wor
 
 ## Before you start
 
-1. Load the sample data on the UAT server: `python manage.py seed_sample_data`. It creates 2 districts with 2 mandals each and 3 villages per mandal, one official per role, and posts in every state.
+1. Load the sample data on the UAT server: `python manage.py seed_sample_data`. It creates 2 districts with 2 mandals each and 3 villages per mandal, one official per role, posts in every state, four posts with upcoming event dates, and one urgent post for Tenali mandal. It also prints a media check: whether uploads can be stored and whether ffmpeg is installed for video posts.
 2. Note the usernames and temporary passwords it prints for each role. Each official must choose a new password at first login. Invite and reset emails need SMTP on the UAT server; with the console email backend, ask the developer for the email from the server log.
 3. Test the app on a low-cost Android phone (2 GB RAM) on mobile data, and once with the network set to 3G or slower.
 4. Test the website on a phone (375 px wide) and a laptop (1280 px wide).
@@ -23,8 +23,13 @@ For the QA engineer and the client's testers during user acceptance testing. Wor
 | C7 | Post detail | Photos load in low-data size, then full size on tap. Telugu text is correct. |
 | C8 | Change village | The feed switches. Push alerts now come for the new village only. |
 | C9 | Push alert | When an admin publishes a post for your village, an alert arrives. Tapping it opens the post. |
-| C10 | Save, share, listen | Saved posts stay on the phone. Share opens WhatsApp and others. Listen reads the post aloud. |
+| C10 | Save, share, listen | Saved posts stay on the phone. Share opens WhatsApp and others and sends the post text plus the website link. Listen reads the post aloud. |
 | C11 | No login needed | At no point does the app ask a citizen to log in. |
+| C12 | News search | Searching a word from a title or description finds the post, in Telugu and in English, whatever the letter case. One letter asks for at least two. |
+| C13 | Video post | A video post shows its poster picture. It plays on tap, can be paused and moved forward or back, and is at most 60 seconds. |
+| C14 | "Don't miss" | Posts with an event date from today on show soonest first: at most 10. Events that ended yesterday are gone. |
+| C15 | Urgent banner | An urgent post from the last 7 days shows at the top. Its push alert arrives even when the phone is idle. |
+| C16 | Help lines | The help-line screen lists 112, 108, 1930, 181, 1098 and 1912 with Telugu names. Tapping one opens the dialler. |
 
 ## Panchayat Member (mobile app)
 
@@ -40,6 +45,8 @@ For the QA engineer and the client's testers during user acceptance testing. Wor
 | P7 | Discarded | The reason shows. The post cannot be edited. |
 | P8 | Other villages | The member can post only to their own village. |
 | P9 | No admin screens | No review queue, no user management. |
+| P10 | Event date and video | An optional event (deadline, camp, distribution, closure or meeting) with a start and optional end date can be added. A video of at most 60 seconds can be attached instead of photos, never both. |
+| P11 | No "urgent" | A Panchayat member cannot mark a post as urgent; the option is not offered. |
 
 ## Village Admin (mobile app)
 
@@ -54,6 +61,8 @@ For the QA engineer and the client's testers during user acceptance testing. Wor
 | V7 | Take down | A published post disappears from the feed. A reason is required. |
 | V8 | Users | Can add, block and unblock Panchayat members of this village only. Cannot see members of other villages. |
 | V9 | Block | The blocked member is logged out at once on their phone and cannot log in again. |
+| V10 | Mark as urgent | The Village Admin can mark their own post or a pending or published post from the village as urgent, and clear it again. Both show in the audit log. |
+| V11 | Visible to | Only the village is offered. |
 
 ## Mandal Admin (mobile app)
 
@@ -65,6 +74,7 @@ For the QA engineer and the client's testers during user acceptance testing. Wor
 | M4 | Reverse a Village Admin's decision | Allowed (higher level). A Village Admin cannot reverse a Mandal Admin's decision. |
 | M5 | Users | Can manage Village Admins and Panchayat members in the mandal; not other mandals, not other Mandal Admins. |
 | M6 | Escalation alert | A post pending longer than the escalation time (24 hours by default) triggers an alert to the Mandal Admin. |
+| M7 | Visible to | The mandal and each of its villages are offered; never the district or the state. |
 
 ## District Admin (mobile app)
 
@@ -74,6 +84,7 @@ For the QA engineer and the client's testers during user acceptance testing. Wor
 | D2 | Review queue | Everything pending in the district. |
 | D3 | Users | Can manage Mandal Admins, Village Admins and Panchayat members in the district only. |
 | D4 | Other district | Nothing from the other district is visible: posts, users or queue. |
+| D5 | Visible to | The district, its mandals, and a village picked through the mandal are offered; never the state. |
 
 ## Super Admin (web console at /console/ and the app)
 
@@ -92,6 +103,9 @@ For the QA engineer and the client's testers during user acceptance testing. Wor
 | S10 | Reports | Numbers match the posts. CSV export works. |
 | S11 | Settings | Escalation hours, the English switch and push texts save. |
 | S12 | Look | Every screen looks like the approved prototype. |
+| S13 | Contact messages | Messages from the website show newest first, with New and Handled filters and a search. Marking one handled records who and when; opening it again clears that. Both show in the audit log. |
+| S14 | Second roles | A second role for an official is added and removed in the console; the app has no screen for it. |
+| S15 | Django admin | `/django-admin/` opens from the office network only. From any other network it answers 403. |
 
 ## Public website
 
@@ -100,10 +114,12 @@ For the QA engineer and the client's testers during user acceptance testing. Wor
 | W1 | Pages | Home, How it works, For officials, FAQ, Contact and Admin login open from the menu on phone and laptop. |
 | W2 | Language | The EN / తెలుగు switch changes every text on the page. |
 | W3 | Store buttons | Open the store pages once the app is published; before that a "coming soon" message shows. |
-| W4 | Contact form | Name, 10-digit mobile and message are required. A sent message shows the thank-you panel and appears in Django admin. |
+| W4 | Contact form | Name, 10-digit mobile and message are required. A sent message shows the thank-you panel and appears in the console's Contact messages page. |
 | W5 | Office details | Address, phone, email and hours are correct. |
 | W6 | Admin login link | Opens the console login. |
 | W7 | Look | Matches the approved prototype at 375 px and 1280 px. |
+| W8 | Phone picture | The home page's phone shows real published posts: a featured one with a photo and two more. |
+| W9 | Page links | Each page has its own address. Opening it directly, or reloading, shows that page. |
 
 ## Across the platform
 
@@ -112,4 +128,4 @@ For the QA engineer and the client's testers during user acceptance testing. Wor
 | X1 | Telugu | Names, posts, invite emails and CSV exports keep Telugu correctly everywhere. |
 | X2 | Speed on 2G/3G | The feed's first page appears within a few seconds; photos are small. |
 | X3 | Blocked user | Is logged out on every device within one request. |
-| X4 | Data privacy | Passwords never appear in logs, the audit log or web addresses, and searches by email or mobile do not appear in the Nginx access log. |
+| X4 | Data privacy | Passwords never appear in logs, the audit log or web addresses, and searches by email or mobile do not appear in the Nginx access log. The audit row for a contact message never shows the sender's name or number. |

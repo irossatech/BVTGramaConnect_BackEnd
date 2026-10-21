@@ -76,8 +76,9 @@ def test_publishing_pushes_to_the_village_topic_and_tells_the_author(world, devi
     assert topic_pushes[0].body == "గ్రామ సభ"
     assert topic_pushes[0].data == {
         "type": "POST_PUBLISHED", "post_id": str(post.id), "area_level": "VILLAGE",
-        "area_id": str(world.areas["kolakaluru"].id),
+        "area_id": str(world.areas["kolakaluru"].id), "urgent": "0",
     }
+    assert topic_pushes[0].priority == "normal"  # ordinary post; urgent ones go out "high"
     author_note = inbox(world.users["pm_kolakaluru"], NotificationKind.POST_PUBLISHED).get()
     assert "ప్రచురించబడింది" in author_note.title
     assert "tok-pm_kolakaluru" in {m.token for m in push_outbox}
@@ -167,3 +168,46 @@ def test_reviewers_for_a_mandal_post_skip_village_admins(world):
 
     names = {u.name for u in admins_over(AreaRef("MANDAL", world.areas["tenali"].id))}
     assert names == {"ma_tenali", "da_guntur"}
+
+
+def test_urgent_posts_push_at_high_priority(world, devices, push_outbox, django_capture_on_commit_callbacks):
+    with django_capture_on_commit_callbacks(execute=True):
+        post = create_post(
+            world.users["ma_tenali"],
+            PostInput(
+                category=Category.objects.get(key="announce"), language="te", title="వరద హెచ్చరిక",
+                body="నది ఒడ్డుకు వెళ్లవద్దు.", target=world.ref("tenali"), is_urgent=True,
+            ),
+        )
+    [message] = [m for m in push_outbox if m.topic]
+    assert message.priority == "high"
+    assert message.data["urgent"] == "1" and message.data["post_id"] == str(post.id)
+
+
+def test_fcm_payload_carries_the_priority():
+    from apps.notifications.push import PushMessage
+
+    with pytest.raises(ValueError):
+        PushMessage(title="t", body="b", data={}, topic="village_1", priority="urgent")
+    assert PushMessage(title="t", body="b", data={}, topic="village_1").priority == "high"
+
+
+@pytest.mark.parametrize("priority, android, apns", [("high", "high", "10"), ("normal", "normal", "5")])
+def test_fcm_request_sets_android_and_apns_priority(priority, android, apns):
+    import json
+
+    from apps.notifications.push import FcmGateway, PushMessage
+
+    sent = {}
+
+    class Session:
+        def post(self, url, data, headers, timeout):
+            sent["payload"] = json.loads(data.decode("utf-8"))
+            return type("Response", (), {"status_code": 200, "text": ""})()
+
+    gateway = FcmGateway.__new__(FcmGateway)
+    gateway.enabled, gateway._session, gateway.project_id = True, Session(), "demo"
+    gateway.send(PushMessage(title="t", body="b", data={"urgent": "1"}, topic="village_1", priority=priority))
+    message = sent["payload"]["message"]
+    assert message["android"] == {"priority": android}
+    assert message["apns"] == {"headers": {"apns-priority": apns}}

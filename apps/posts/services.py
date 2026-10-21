@@ -31,8 +31,8 @@ from rest_framework import status as http
 from apps.accounts.roles import POSTING_ROLES, REVIEW_ROLES, Role
 from apps.accounts.scope import RoleArea, is_within, user_areas
 from apps.audit.services import record
-from apps.geography.areas import AreaRef, area_exists, within_q
-from apps.geography.models import AreaLevel
+from apps.geography.areas import AreaDescriber, AreaRef, area_exists, within_q
+from apps.geography.models import AreaLevel, District, Mandal, State
 from grama.exceptions import ApiError, out_of_area, permission_denied
 
 from . import signals
@@ -65,6 +65,8 @@ AUDIT_ACTIONS = {
     ReviewAction.Action.UNPUBLISH: "post.unpublished",
     ReviewAction.Action.REVERSE: "post.reversed",
 }
+#: Levels from the widest down, for the "Visible to" picker.
+LEVEL_ORDER = [AreaLevel.STATE, AreaLevel.DISTRICT, AreaLevel.MANDAL, AreaLevel.VILLAGE]
 
 
 # --- Runtime settings (database value over the Django setting) -----------------------
@@ -192,6 +194,8 @@ def allowed_actions(user, post: Post) -> list[str]:
             actions.append("unpublish")
         if can_reverse(reviewer, post):
             actions.append("reverse")
+        if post.status != PostStatus.DRAFT:
+            actions.append("set_urgent")
     return actions
 
 
@@ -293,11 +297,31 @@ class PostInput:
     title: str
     body: str
     target: AreaRef
+    #: {"kind", "start_date", "end_date"} with date objects, or None (owner decision Q7).
+    event: dict | None = None
+    is_urgent: bool = False
+
+
+def _event_values(event: dict | None) -> dict:
+    if not event:
+        return {"event_kind": "", "event_start": None, "event_end": None}
+    return {
+        "event_kind": event["kind"],
+        "event_start": event["start_date"],
+        "event_end": event.get("end_date"),
+    }
+
+
+def _check_urgent_allowed(role: str, wants_urgent: bool) -> None:
+    """Only admins mark their own posts urgent (owner decision Q19)."""
+    if wants_urgent and role == Role.PANCHAYAT_MEMBER:
+        raise permission_denied(_("Only admins can mark a post as urgent."))
 
 
 def create_post(user, data: PostInput, *, submit: bool = True) -> Post:
     _check_target(data.target)
     assignment = _posting_or_raise(user, data.target)
+    _check_urgent_allowed(assignment.role, data.is_urgent)
     with transaction.atomic():
         post = Post.objects.create(
             author=user,
@@ -311,6 +335,8 @@ def create_post(user, data: PostInput, *, submit: bool = True) -> Post:
             target_level=data.target.level,
             target_area_id=data.target.id,
             status=PostStatus.DRAFT,
+            is_urgent=data.is_urgent,
+            **_event_values(data.event),
         )
         record("post.created", actor=user, actor_role=assignment.role, target=post, target_label=post.title, area=post.target)
         if submit:
@@ -331,10 +357,12 @@ def update_post(user, post: Post, changes: dict) -> Post:
     for name in ("title", "body", "language", "category"):
         if name in changes:
             values[name] = changes[name]
+    role = post.posted_as_role
     if "target" in changes:
         target = changes["target"]
         _check_target(target)
         assignment = _posting_or_raise(user, target)
+        role = assignment.role
         values.update(
             target_level=target.level,
             target_area_id=target.id,
@@ -342,6 +370,11 @@ def update_post(user, post: Post, changes: dict) -> Post:
             posted_as_level=assignment.area.level,
             posted_as_area_id=assignment.area.id,
         )
+    if "event" in changes:
+        values.update(_event_values(changes["event"]))
+    if "is_urgent" in changes:
+        _check_urgent_allowed(role, changes["is_urgent"])
+        values["is_urgent"] = changes["is_urgent"]
     if values:
         values["updated_at"] = timezone.now()
         with transaction.atomic():
@@ -476,6 +509,88 @@ def _reverse(user, reviewer: RoleArea, post: Post, comment: str, to_status: str 
 
 
 # --- Escalation ---------------------------------------------------------------------------------------------
+
+
+def set_urgent(user, post: Post, is_urgent: bool) -> Post:
+    """A reviewer whose area contains the post marks or clears "urgent" (owner decision Q19)."""
+    reviewer = reviewer_assignment(user, post)
+    if reviewer is None:
+        if user_areas(user, REVIEW_ROLES):
+            raise out_of_area(_("This post is outside your area."))
+        raise permission_denied(_("Only admins can mark a post as urgent."))
+    if post.status == PostStatus.DRAFT:
+        raise invalid_transition(post, "marked urgent")
+    if post.is_urgent == is_urgent:
+        return _reload(post)
+    with transaction.atomic():
+        Post.objects.filter(pk=post.pk).update(is_urgent=is_urgent, updated_at=timezone.now())
+        post = _reload(post)
+        record(
+            "post.urgent_set" if is_urgent else "post.urgent_cleared",
+            actor=user,
+            actor_role=reviewer.role,
+            target=post,
+            target_label=post.title,
+            area=post.target,
+        )
+    return post
+
+
+# --- "Visible to" choices for compose (owner decision Q5) ------------------------------
+
+
+def _children(area: AreaRef) -> list[AreaRef]:
+    if area.level == AreaLevel.STATE:
+        return [AreaRef(AreaLevel.DISTRICT, i) for i in District.objects.active().filter(state_id=area.id).values_list("id", flat=True)]
+    if area.level == AreaLevel.DISTRICT:
+        return [AreaRef(AreaLevel.MANDAL, i) for i in Mandal.objects.active().filter(district_id=area.id).values_list("id", flat=True)]
+    if area.level == AreaLevel.MANDAL:
+        from apps.geography.models import Village
+
+        return [AreaRef(AreaLevel.VILLAGE, i) for i in Village.objects.active().filter(mandal_id=area.id).values_list("id", flat=True)]
+    return []
+
+
+def posting_targets(user) -> dict:
+    """Levels and areas this official may pick as "Visible to", widest first.
+
+    Own area at own level, and the areas one level below it. Two or more levels
+    below would be too long a list, so those say pick_via="geo": the app walks
+    down from the level above with the geography lists.
+    """
+    choices: dict[str, list[AreaRef]] = {}
+    via_geo: set[str] = set()
+    for item in user_areas(user, posting_roles()):
+        if item.role == Role.SUPER_ADMIN:
+            states = [AreaRef(AreaLevel.STATE, i) for i in State.objects.active().values_list("id", flat=True)]
+            choices.setdefault(AreaLevel.STATE, []).extend(states)
+            for state in states:
+                choices.setdefault(AreaLevel.DISTRICT, []).extend(_children(state))
+            via_geo.update({AreaLevel.MANDAL, AreaLevel.VILLAGE})
+            continue
+        if not area_exists(item.area, active_only=True):
+            continue
+        choices.setdefault(item.area.level, []).append(item.area)
+        if item.role == Role.PANCHAYAT_MEMBER:
+            continue
+        below = _children(item.area)
+        if below:
+            choices.setdefault(below[0].level, []).extend(below)
+        depth = LEVEL_ORDER.index(item.area.level)
+        via_geo.update(LEVEL_ORDER[depth + 2:])
+    describer = AreaDescriber()
+    describer.prime([ref for refs in choices.values() for ref in refs])
+    levels = []
+    for level in LEVEL_ORDER:
+        refs = sorted(set(choices.get(level, [])), key=lambda ref: ref.id)
+        if refs:
+            entry = {"level": level, "areas": [a for a in (describer.describe(r) for r in refs) if a]}
+            if level in via_geo:
+                entry["pick_via"] = "geo"
+            levels.append(entry)
+        elif level in via_geo:
+            levels.append({"level": level, "areas": [], "pick_via": "geo"})
+    return {"levels": levels}
 
 
 def escalate_overdue(now=None) -> int:

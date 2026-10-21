@@ -42,7 +42,7 @@ Contents:
 - `Accept-Language: te` or `en`. Telugu is the default when the header is missing.
 - It picks the language of server-made text: category names, area names, error messages, notification text.
 - Area and category objects return `name` in the requested language. Admin endpoints also return `name_te` and `name_en` so both can be edited.
-- A post is written in one language, stored in `language`. An optional `translation` holds the same post in the other language. **Pending Q3.**
+- A post is written in one language, Telugu or English, stored in `language` (owner decision Q3). `translation` is always `null`; it stays in the shape so a later version can fill it without renaming.
 
 ### Authentication
 Officials log in with a username (or their email) and a password. Citizens never log in; every citizen read endpoint is public. There is no SMS anywhere in the platform: an admin invites an official, and the official gets an email with their username and their role's default password, which they must change at first login (`FORCE_PASSWORD_CHANGE_ON_FIRST_LOGIN`, default on).
@@ -122,8 +122,8 @@ All errors share one shape:
 | `review_action.action` | `SUBMIT`, `RESUBMIT`, `PUBLISH`, `AUTO_PUBLISH`, `RECHECK`, `DISCARD`, `UNPUBLISH`, `ESCALATE`, `REVERSE` |
 | `user.status` | `ACTIVE`, `BLOCKED` |
 | `category.key` | `announce`, `schemes`, `news`, `updates`. The design-system CSS variables `--cat-<key>` depend on these keys. |
-| `event.kind` | `deadline`, `camp`, `distribution`, `closure`, `meeting` (Pending Q7) |
-| `media.kind` | `image`, `video` (video Pending Q8) |
+| `event.kind` | `deadline`, `camp`, `distribution`, `closure`, `meeting` (owner decision Q7) |
+| `media.kind` | `image`, `video` (video posts in version 1, owner decision Q8) |
 | `language` | `te`, `en` |
 
 ---
@@ -147,7 +147,7 @@ Admin endpoints add `id`, `name_te`, `name_en`, `short_name_te`, `short_name_en`
 {"id": "6f1c…", "kind": "image", "url": "https://<site>/media/posts/2026/10/6f1c-1280.webp", "thumb_url": "https://<site>/media/posts/2026/10/6f1c-320.webp", "width": 1280, "height": 853, "bytes": 84213}
 ```
 - Images: the server checks type and size, turns the photo upright, strips EXIF, converts to WebP and keeps two sizes: at most 1280 px and at most 320 px on the long side. The original is not kept. URLs are absolute.
-- Video (Pending Q8) adds `duration_s` and `poster_url`; `url` is an MP4.
+- Video: `{"id", "kind": "video", "url", "poster_url", "thumb_url", "width", "height", "duration_s", "bytes"}`. `url` is the MP4, `poster_url` the poster frame as WebP (at most 1280 px), `thumb_url` its 320 px thumbnail, `width` and `height` the poster's size, `bytes` the video's size. Photo media carry `"poster_url": null` and `"duration_s": null`.
 - `focus_y` (0 to 1) is the crop focus the prototypes use for cover images. Optional.
 
 ### RoleAssignment
@@ -220,6 +220,7 @@ Returned by `GET /me` and inside the login response.
   "target_level": "VILLAGE",
   "target_area": Area,
   "event": {"kind": "meeting", "start_date": "2026-10-20", "end_date": null},
+  "is_urgent": false,
   "media": [Media],
   "author": {"id": "…", "name": "Ravi Kumar", "role": "PANCHAYAT_MEMBER"},
   "posted_as": {"role": "PANCHAYAT_MEMBER", "area": Area},
@@ -233,10 +234,11 @@ Returned by `GET /me` and inside the login response.
   "allowed_actions": ["publish", "recheck", "discard"]
 }
 ```
-- `translation`: `null` or `{"language": "en", "title": "…", "body": "…"}`. **Pending Q3.**
-- `event`: `null` or the object above; `end_date` is `null` for one-day events. **Pending Q7.**
+- `translation` is always `null`: a post is written in one language (owner decision Q3).
+- `event`: `null` or `{"kind", "start_date", "end_date"}`. `kind` is one of `deadline`, `camp`, `distribution`, `closure`, `meeting`; dates are `YYYY-MM-DD`; `end_date` is `null` for one-day events and never before `start_date` (owner decision Q7).
+- `is_urgent`: set by admins; urgent posts are pinned in the app and their push goes out at high priority (owner decision Q19).
 - `posted_as` is the role assignment the author used, so admin posts show under the official role, as the website FAQ promises.
-- `allowed_actions` values: `edit`, `submit`, `delete`, `add_media`, `publish`, `recheck`, `discard`, `unpublish`, `reverse`.
+- `allowed_actions` values: `edit`, `submit`, `delete`, `add_media`, `publish`, `recheck`, `discard`, `unpublish`, `reverse`, `set_urgent`.
 
 ### FeedPost (public view)
 Lean on purpose, for 2G.
@@ -251,12 +253,12 @@ Lean on purpose, for 2G.
   "area": Area,
   "published_at": "2026-10-14T05:02:00Z",
   "event": null,
+  "is_urgent": false,
   "media": [Media],
-  "source": {"role": "VILLAGE_ADMIN", "office": "కొలకలూరు గ్రామ పంచాయతీ"},
-  "share_url": "https://<site>/p/c2d4…"
+  "source": {"role": "VILLAGE_ADMIN", "office": "కొలకలూరు గ్రామ పంచాయతీ"}
 }
 ```
-`category` is the key only; the app has the category list cached. `share_url` is **Pending Q17**.
+`category` is the key only; the app has the category list cached. There is no public post page: a shared post carries its text plus `website_url` from `GET /public/site-config/` (owner decision Q17). Section 6 has the exact feed shapes.
 
 ### ReviewAction (post history)
 ```json
@@ -320,7 +322,7 @@ Passwords:
 | `POST /users/{id}/reset-password` | admins | — | `User`. Password back to the role default, `must_change_password` set, every session ended, email sent. Audited as `user.password_reset`. |
 | `POST /users/{id}/block` | admins | `{"reason"?}` | `User`. Revokes all sessions at once. |
 | `POST /users/{id}/unblock` | admins | — | `User` |
-| `POST /users/{id}/role-assignments` | admins | `{"role", "area": {"level", "id"}}` | `201 RoleAssignment` (Pending Q9) |
+| `POST /users/{id}/role-assignments` | admins | `{"role", "area": {"level", "id"}}` | `201 RoleAssignment`. Second roles are added and removed in the console only (owner decision Q9); the app has no screen for it. |
 | `PATCH /users/{id}/role-assignments/{ra_id}` | admins | `{"area": {"level", "id"}}` | `RoleAssignment`. This is "Reassign area". Pending reviews stay with the old area, as the console says. |
 | `DELETE /users/{id}/role-assignments/{ra_id}` | admins | — | `204`. A user with no assignment left cannot log in. |
 
@@ -391,19 +393,34 @@ A disabled category disappears from the compose form and from feed filters. Its 
 | Method and path | Who | Request | Response |
 |---|---|---|---|
 | `GET /posts` | officials | Query: `status` (comma list), `mine=1`, `author`, `category`, `district`, `level` + `area_id`, `target_level`, `escalated=1`, `q` (title and body), `page` | Page of `Post`, plus `"status_counts": {"ALL": 15, "PENDING": 5, …}` over the same filters except `status`. `ALL` excludes drafts. |
-| `POST /posts` | posting roles | `{"category": "announce", "language": "te", "title", "body", "translation"?, "target": {"level", "id"}, "event"?, "submit": true}` | `201 Post` |
+| `POST /posts` | posting roles | `{"category": "announce", "language": "te", "title", "body", "target": {"level", "id"}, "event"?: {"kind", "start_date", "end_date"?}, "is_urgent"?: false, "submit": true}` | `201 Post` |
 | `GET /posts/{id}` | officials | — | `Post` |
 | `PATCH /posts/{id}` | author | same fields as create, all optional | `Post`. Only in `DRAFT` or `RECHECK`. |
 | `DELETE /posts/{id}` | author | — | `204`. Only in `DRAFT`. |
 | `POST /posts/{id}/submit` | author | — | `Post`. `DRAFT` to `PENDING` (action `SUBMIT`), or `RECHECK` to `PENDING` (action `RESUBMIT`). |
 | `GET /posts/{id}/history` | officials | — | `[ReviewAction]`, newest first |
+| `GET /posts/targets/` | posting roles | — | The "Visible to" choices for this official (below) |
+| `POST /posts/{id}/urgent/` | reviewers whose area contains the post | `{"is_urgent": true\|false}` | `Post`. Panchayat members: `403 permission_denied`; outside the area: `404`. Audited as `post.urgent_set` or `post.urgent_cleared`. |
 
 What `POST /posts` does:
 - `submit` defaults to `true`, so the prototype flow, which has no draft step, works unchanged. With `submit: false` the post stays `DRAFT` (Pending Q4).
 - Panchayat members post only to their own village. The post goes to `PENDING`.
 - District, Mandal and Village Admins post to their own area or any area inside it. With `ADMIN_POSTS_AUTO_PUBLISH=True` the post goes straight to `PUBLISHED` with action `AUTO_PUBLISH`. Otherwise it goes to `PENDING` and someone else must review it; nobody reviews their own post.
 - Super Admins may post only when `SUPER_ADMIN_CAN_POST=True`; otherwise `403 permission_denied`.
-- "Selected areas" in the app posts once per selected area by calling `POST /posts` once each (Pending Q5). The server enforces each call separately.
+- **Visibility (owner decision Q5):** the author picks "Visible to" (village, mandal, district or state) and one area at that level, up to their own level. Panchayat members and Village Admins: their village. Mandal Admins: their mandal or a village in it. District Admins: their district, a mandal or a village in it. State: Super Admins only, and only with `SUPER_ADMIN_CAN_POST`. Anything wider answers `403 out_of_area`. One target per post.
+- `event` and `is_urgent` are optional on create and `PATCH`. Only admins may set `is_urgent: true`; from a Panchayat member it answers `403 permission_denied`.
+
+`GET /posts/targets/` answers, for example for a District Admin of Guntur:
+```json
+{"levels": [
+  {"level": "DISTRICT", "areas": [{"level": "DISTRICT", "id": 3, "name": "గుంటూరు", "path": "గుంటూరు"}]},
+  {"level": "MANDAL", "areas": [{"level": "MANDAL", "id": 12, "name": "తెనాలి", "path": "తెనాలి · గుంటూరు"}]},
+  {"level": "VILLAGE", "areas": [], "pick_via": "geo"}
+]}
+```
+- Levels come highest first. Each level lists the areas the official may pick directly: their own area at their own level, and the areas one level below it.
+- `"pick_via": "geo"` means the list would be too long: the app lists the official's mandals from the level above and loads each mandal's villages from `GET /geo/villages/?mandal=`.
+- `STATE` appears only for Super Admins when `SUPER_ADMIN_CAN_POST` is on. Officials who cannot post get `{"levels": []}`.
 - Every transition writes a `ReviewAction` and an `AuditLog` entry in the same transaction, per CLAUDE.md.
 
 ### Media
@@ -415,7 +432,10 @@ What `POST /posts` does:
 
 - Allowed while the post is `DRAFT` or `RECHECK`. Because `POST /posts` submits by default, the app creates the post with `submit: false`, uploads media, then calls `/submit`.
 - Images: JPEG, PNG, WebP or HEIC, at most `MAX_IMAGE_UPLOAD_MB` (default 10) and `MAX_PHOTOS_PER_POST` (default 5) per post. Stored as WebP at most 1280 px, with a 320 px thumbnail. Too large: `413 file_too_large`. Not a photo: `415 unsupported_media`.
-- Video (Pending Q8): MP4 or MOV, at most 60 seconds and `MAX_VIDEO_UPLOAD_MB`; one per post; not allowed together with photos.
+- **Video (owner decision Q8):** multipart `file` (MP4 or MOV), `kind=video`, optional `duration_s`, optional `poster` image. At most `MAX_VIDEO_UPLOAD_MB` (default 50; larger: `413 file_too_large`) and `VIDEO_MAX_SECONDS` (60; longer: `400 video_too_long`). Other files: `415 unsupported_media`. One video per post, never together with photos: `409 media_conflict`.
+  - Duration: measured with `ffprobe` when it is installed (the server has it). Without `ffprobe` the client's `duration_s` is required and still checked.
+  - Poster: made with `ffmpeg` from the first second when it is installed. Otherwise `poster` (a photo) is required and processed like photos.
+  - The video is stored as uploaded; the app compresses it before upload.
 
 ### Review
 
@@ -460,7 +480,9 @@ No login. These views ignore any `Authorization` header, so a stale token on a c
 
 | Method and path | Request | Response |
 |---|---|---|
-| `GET /feed/?village_id=` | `village_id` (required), `category` (comma list of keys, e.g. `news,updates`), `cursor` | Cursor page of `FeedItem`, newest first, 20 per page: `{"next": "<url>\|null", "previous": "<url>\|null", "results": [FeedItem]}`. `400` without `village_id`; `404` for an unknown or inactive village. |
+| `GET /feed/?village_id=` | `village_id` (required), `category` (comma list of keys, e.g. `news,updates`), `q` (search, 2+ characters, title and body, any case), `has_video=1`, `cursor` | Cursor page of `FeedItem`, newest first, 20 per page: `{"next": "<url>\|null", "previous": "<url>\|null", "results": [FeedItem]}`. `400` without `village_id` or with a 1-character `q`; `404` for an unknown or inactive village. |
+| `GET /feed/upcoming/?village_id=` | `village_id` | `[FeedItem]`, at most 10 published posts from the same feed whose event starts today or later, soonest first. For "Don't miss". |
+| `GET /feed/urgent/?village_id=` | `village_id` | `[FeedItem]`, at most 5 published urgent posts from the same feed, published in the last 7 days, newest first. For the red alert at the top of Home and News. |
 | `GET /feed/posts/{id}/` | — | `FeedPost`; `404 not_found` unless `PUBLISHED` |
 | `GET /feed/posts/?ids=a,b,c` | 1 to 50 post ids | `[FeedItem]` for the ones still published, in the order asked. Used for posts saved on the phone. |
 
@@ -476,14 +498,18 @@ No login. These views ignore any `Authorization` header, so a stale token on a c
   "published_at": "2026-10-14T05:02:00Z",
   "thumbnail_url": "/media/posts/2026/10/…-320.webp",
   "media_count": 3,
-  "source_role": "VILLAGE_ADMIN"
+  "source_role": "VILLAGE_ADMIN",
+  "event": {"kind": "meeting", "start_date": "2026-10-20", "end_date": null},
+  "is_urgent": false,
+  "video": null
 }
 ```
+- `event` and `is_urgent` as on Post. `video`: `null`, or for a video post `{"url", "poster_url", "duration_s"}`, so the reels screen needs no extra call; `thumbnail_url` is then the poster's thumbnail.
 - The list carries the full `body`, not an excerpt. The app's news deck shows the body on the card, and one larger page costs less on 2G than a request per card.
 - `thumbnail_url` is the first photo's 320 px WebP, or `null`. URLs are relative to the server.
 - `category` is the key only; the app caches `GET /categories`.
 
-`FeedPost` (detail) is `FeedItem` plus `"path": "కొలకలూరు · తెనాలి · గుంటూరు"` and `"media": [{"id", "url", "thumb_url", "width", "height"}]`.
+`FeedPost` (detail) is `FeedItem` plus `"path": "కొలకలూరు · తెనాలి · గుంటూరు"` and `"media": [{"id", "kind", "url", "thumb_url", "poster_url", "width", "height", "duration_s"}]`.
 
 Caching: every feed response sends `Cache-Control: public, max-age=60` and an `ETag`; a repeat request with `If-None-Match` gets `304` with an empty body.
 
@@ -525,7 +551,8 @@ Citizens have no account. Their alert list is built on the device from the feed,
 - **Topics, without a language suffix:** `village_{id}`, `mandal_{id}`, `district_{id}`, `state_{id}`. A citizen's app subscribes to all four for its village and moves the subscriptions when the village changes.
 - **Publishing** sends one message to the topic of the post's target level. A district post reaches every village in the district with one message.
 - **Language:** a post exists only in the language it was written in, so the topic push is in the post's language: title from template `post_published` (e.g. "కొలకలూరు: కొత్త గ్రామ చాటింపులు"), body = post title. Pushes to officials use each official's preferred language.
-- **Payload:** notification `{"title", "body"}` plus data `{"type": "POST_PUBLISHED"|"REVIEW_PENDING"|…, "post_id", "area_level", "area_id"}`, all strings. The app opens the post on tap.
+- **Payload:** notification `{"title", "body"}` plus data `{"type": "POST_PUBLISHED"|"REVIEW_PENDING"|…, "post_id", "area_level", "area_id", "urgent": "1"|"0"}`, all strings. The app opens the post on tap.
+- **Priority:** topic pushes for ordinary posts go out at normal priority; an urgent post's push goes out at high priority (Android `priority: high`, APNs `apns-priority: 10`). Pushes to officials are high priority.
 - **Delivery:** django-q2 jobs. Each send retries with backoff: `DELIVERY_RETRY_ATTEMPTS` tries (default 3), waiting `DELIVERY_RETRY_BASE_SECONDS` × 1, × 4 (1 s, 4 s). After the last failure an audit entry `push.failed` is written (`via: system`, target = topic or device id, no personal data). An unregistered token deletes the device without retrying.
 - **No credentials, no push:** without `FCM_CREDENTIALS_FILE` the gateway logs "FCM disabled: no credentials" once and skips sends, so development needs no Firebase project.
 
@@ -581,7 +608,7 @@ Built (web_admin app). `days` is 1 to 366, default 30, and counts posts created 
 | `GET /admin/reports/posts-by-area?days=30` | `[{"district": Area, "total", "published", "pending", "rejected", "mandals": [{"mandal": Area, "total", "published", "pending", "rejected"}]}]`. Mandals with no posts are left out. |
 | `GET /admin/reports/review-time?days=30` | `[{"level": "VILLAGE"\|"MANDAL"\|"DISTRICT"\|"STATE", "avg_hours": 3.4 or null, "reviews": 42, "escalation_hours": 24}]`. Hours from the latest (re)submission to the reviewer's decision. |
 | `GET /admin/reports/admin-activity?days=30&page=` | Page of `{"user": {"id", "name", "role"}, "area": Area, "reviewed", "published", "recheck", "discarded", "last_active_at"}`, most decisions first. `avg_review_hours` is not computed yet. |
-| `GET /admin/reports/{report}/export/?format=csv&days=` | `report` is one of the four above. CSV with a UTF-8 BOM so Excel shows Telugu; area names follow `Accept-Language`. Errors still come back as JSON. `format=pdf` answers 404 (Pending Q14). Writes `report.exported`. |
+| `GET /admin/reports/{report}/export/?format=csv&days=` | `report` is one of the four above. CSV with a UTF-8 BOM so Excel shows Telugu; area names follow `Accept-Language`. Errors still come back as JSON. `format=pdf` answers 404: exports are CSV only (owner decision Q14). Writes `report.exported`. |
 
 ---
 
@@ -589,13 +616,18 @@ Built (web_admin app). `days` is 1 to 366, default 30, and counts posts created 
 
 | Method and path | Auth | Request | Response |
 |---|---|---|---|
-| `GET /public/site-config/` | public | — | `{"office_address_te", "office_address_en", "phone", "email", "hours_te", "hours_en", "play_store_url", "app_store_url"}`. Addresses use `\n` between the two lines the page shows. Empty store URLs keep the website's "coming soon" toast. Cacheable for 5 minutes. |
+| `GET /public/site-config/` | public | — | `{"office_address_te", "office_address_en", "phone", "email", "hours_te", "hours_en", "play_store_url", "app_store_url", "website_url", "helplines": [{"number": "112", "label_te": "అత్యవసరం", "label_en": "Emergency"}, …]}`. Addresses use `\n` between the two lines the page shows. Empty store URLs keep the website's "coming soon" toast. Cacheable for 5 minutes. |
+| `GET /public/showcase/` | public | — | `{"location": Area\|null, "featured": FeedItem\|null, "items": [FeedItem, FeedItem]}` for the home page's phone picture. Cacheable for 60 s. |
+| `GET /admin/contact-messages/` | Super Admin | Query: `status=new\|handled`, `q` (name, mobile, village, message), `page` | Page of `{"id", "name", "mobile", "village_text", "message", "language", "created_at", "handled", "handled_at", "handled_by": {"id", "name"}\|null}`, newest first |
+| `PATCH /admin/contact-messages/{id}/` | Super Admin | `{"handled": true\|false}` | The message. Sets or clears `handled_at` and `handled_by`; audited as `contact.handled` or `contact.reopened`. |
 | `POST /public/contact-messages/` | public | `{"name", "mobile", "village_text"?, "message", "language", "website"?}` | `201 {"id", "created_at"}` |
 
 - Built. Values come from settings, each overridable by env: `SITE_OFFICE_ADDRESS_TE`, `SITE_OFFICE_ADDRESS_EN`, `SITE_PHONE`, `SITE_EMAIL`, `SITE_HOURS_TE`, `SITE_HOURS_EN`, `PLAY_STORE_URL`, `APP_STORE_URL`. Defaults are the prototype's values.
 - Contact form validation matches the website: name and message required after trimming, mobile 10 digits (`+91` and spaces are accepted and stripped). `website` is a honeypot: when filled, the server answers `201` with `id` 0 and stores nothing. At most `CONTACT_MESSAGES_PER_IP_PER_HOUR` (default 5) per IP, then `429 throttled` with `Retry-After`.
-- Contact messages are read and marked handled in Django admin until the console gets a page for them (Pending Q16).
-- `GET /public/showcase` is not built. The home page's phone mockup stays the prototype's static illustration (Pending Q16).
+- `website_url` (`SITE_WEBSITE_URL`) is the link the app adds to shared posts and invites (owner decision Q17).
+- `helplines` (owner decision Q19): defaults 112 Emergency, 108 Ambulance, 1930 Cyber fraud, 181 Women helpline, 1098 Child helpline, 1912 Electricity, with the prototype's Telugu labels. Override with `SITE_HELPLINES` (a JSON list in the env).
+- **Showcase (owner decision Q16):** `location` is the village in `SITE_SHOWCASE_VILLAGE_ID` and the posts come from its feed: `featured` is the newest post with a photo (or the newest post), `items` the next two. When the setting is empty or that feed has no posts, the newest published posts anywhere are used and `location` is the featured post's area.
+- **Contact messages (owner decision Q16)** are read and marked handled in the console. Others get `403 permission_denied`.
 
 ---
 
@@ -616,7 +648,7 @@ Built (web_admin app). `days` is 1 to 366, default 30, and counts posts created 
 
 Any other move returns `409 invalid_transition`. Each row writes one `ReviewAction` and one `AuditLog` entry in the same database transaction as the status change.
 
-Escalation runs as a django-q2 scheduled job every `ESCALATION_CHECK_MINUTES` (15); `manage.py ensure_schedules` registers it. It does not hide the post from lower reviewers. It marks `escalated`, writes `ESCALATE`, and notifies the admins one level above the target area. Whether the console's per-level limits (24, 24 and 48 hours) replace the single setting is Pending Q1.
+Escalation runs as a django-q2 scheduled job every `ESCALATION_CHECK_MINUTES` (15); `manage.py ensure_schedules` registers it. It does not hide the post from lower reviewers. It marks `escalated`, writes `ESCALATE`, and notifies the admins one level above the target area. There is one escalation time for every level, `REVIEW_ESCALATION_HOURS` (24 by default); the console's per-level limits are not used (owner decision Q1).
 
 ---
 
@@ -627,7 +659,7 @@ Escalation runs as a django-q2 scheduled job every `ESCALATION_CHECK_MINUTES` (1
 | Action | Super Admin | District Admin | Mandal Admin | Village Admin | Panchayat member | Citizen |
 |---|---|---|---|---|---|---|
 | Read feed, categories, geography | yes | yes | yes | yes | yes | yes |
-| Create post | only if `SUPER_ADMIN_CAN_POST`; any area | district, or a mandal inside it (villages Pending Q5) | mandal, or a village inside it | own village | own village | no |
+| Create post | only if `SUPER_ADMIN_CAN_POST`; any area, the only role that may target the state | district, a mandal or a village inside it | mandal, or a village inside it | own village | own village | no |
 | Edit, submit, delete own post | in `DRAFT` or `RECHECK` | same | same | same | same | no |
 | Review queue, publish, recheck, discard | any post | posts targeted inside the district | inside the mandal | inside the village | no | no |
 | Take down a published post | any | inside the district | inside the mandal | inside the village | no | no |
@@ -635,7 +667,7 @@ Escalation runs as a django-q2 scheduled job every `ESCALATION_CHECK_MINUTES` (1
 | Create or block users | District, Mandal, Village Admins and Panchayat members anywhere | Mandal Admins, Village Admins, Panchayat members inside the district | Village Admins, Panchayat members inside the mandal | Panchayat members in the village | no | no |
 | Reassign or add assignments | same as create | same as create | same as create | same as create | no | no |
 | Area stats | any area | inside the district | inside the mandal | the village | no | no |
-| Geography writes | yes | no (Pending Q13) | no | no | no | no |
+| Geography writes | yes | no (owner decision Q13) | no | no | no | no |
 | Dashboard, reports, audit, settings, templates, categories | yes | no | no | no | no | no |
 | Web console login | yes | no | no | no | no | no |
 
@@ -687,13 +719,14 @@ Every row needs a test against SQLite, per CLAUDE.md. That includes the "outside
 | Reports | `GET /admin/reports/*` and their exports |
 | Audit log | `GET /audit`, `GET /audit/export` |
 | Settings | `/admin/settings`, `/admin/categories`, `/admin/notification-templates` |
+| Contact messages | `GET /admin/contact-messages`, `PATCH /admin/contact-messages/{id}` |
 
 ### Public website
 
 | Page | Endpoints |
 |---|---|
 | All pages | `GET /public/site-config` once |
-| Home phone mockup | `GET /public/showcase` (optional) |
+| Home phone mockup | `GET /public/showcase` |
 | Contact | `POST /public/contact-messages` |
 
 ---
@@ -710,5 +743,5 @@ Every row needs a test against SQLite, per CLAUDE.md. That includes the "outside
 | Review comment | 500 characters |
 | Photos per post | `MAX_PHOTOS_PER_POST`, default 5 |
 | Image upload | `MAX_IMAGE_UPLOAD_MB`, default 10 |
-| Video | 60 s, `MAX_VIDEO_UPLOAD_MB` (Pending Q8) |
+| Video | one per post, `VIDEO_MAX_SECONDS` 60, `MAX_VIDEO_UPLOAD_MB` default 50 |
 | Page size | feed 20, admin lists 100 |

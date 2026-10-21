@@ -37,6 +37,8 @@ from .serializers import (
     ReviewActionSerializer,
     ReviewSerializer,
     SettingsSerializer,
+    TargetsSerializer,
+    UrgentSerializer,
     prime_posts,
 )
 
@@ -194,6 +196,7 @@ class PostViewSet(viewsets.GenericViewSet):
             services.PostInput(
                 category=values["category"], language=values["language"], title=values["title"],
                 body=values["body"], target=values["target"],
+                event=values.get("event"), is_urgent=values["is_urgent"],
             ),
             submit=values["submit"],
         )
@@ -243,16 +246,35 @@ class PostViewSet(viewsets.GenericViewSet):
             raise already_decided_error(current, context) from None
         return self._out(post)
 
-    @extend_schema(summary="Add a photo", request={"multipart/form-data": MediaUploadSerializer}, responses={201: MediaSerializer})
+    @extend_schema(summary="Add a photo or the video", request={"multipart/form-data": MediaUploadSerializer}, responses={201: MediaSerializer})
     @action(detail=True, methods=["post"], url_path="media", parser_classes=[MultiPartParser, FormParser])
     def add_media(self, request, pk=None):
         post = self.get_object()
         data = MediaUploadSerializer(data=request.data)
         data.is_valid(raise_exception=True)
-        media = media_service.add_photo(request.user, post, data.validated_data["file"])
+        values = data.validated_data
+        if values["kind"] == "video":
+            media = media_service.add_video(
+                request.user, post, values["file"], duration_s=values.get("duration_s"), poster=values.get("poster")
+            )
+        else:
+            media = media_service.add_photo(request.user, post, values["file"])
         return Response(MediaSerializer(media, context=self.get_serializer_context()).data, status=status.HTTP_201_CREATED)
 
-    @extend_schema(summary="Remove a photo", responses={204: None})
+    @extend_schema(summary="Mark or clear urgent (owner decision Q19)", request=UrgentSerializer, responses=PostSerializer)
+    @action(detail=True, methods=["post"], url_path="urgent")
+    def urgent(self, request, pk=None):
+        post = self.get_object()
+        data = UrgentSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        return self._out(services.set_urgent(request.user, post, data.validated_data["is_urgent"]))
+
+    @extend_schema(summary='"Visible to" choices for compose (owner decision Q5)', responses=TargetsSerializer)
+    @action(detail=False, methods=["get"], url_path="targets")
+    def targets(self, request):
+        return Response(services.posting_targets(request.user))
+
+    @extend_schema(summary="Remove a photo or the video", responses={204: None})
     @action(detail=True, methods=["delete"], url_path=r"media/(?P<media_id>[0-9a-f-]+)")
     def remove_media(self, request, pk=None, media_id=None):
         post = self.get_object()

@@ -7,7 +7,7 @@ from rest_framework import serializers
 
 from apps.accounts.serializers import AreaInputSerializer, AreaOutputSerializer, describer_from
 
-from .models import Category, Post, PostMedia, PostStatus, ReviewAction
+from .models import Category, EventKind, MediaKind, Post, PostMedia, PostStatus, ReviewAction
 from .services import REVERSE_TARGETS, allowed_actions
 
 DECISION_ACTIONS = {
@@ -60,23 +60,25 @@ def person(user, role: str) -> dict:
 
 
 class MediaSerializer(serializers.ModelSerializer):
-    kind = serializers.SerializerMethodField()
+    """A photo, or a video with its poster (owner decision Q8)."""
+
     url = serializers.SerializerMethodField()
+    poster_url = serializers.SerializerMethodField()
     thumb_url = serializers.SerializerMethodField()
 
     class Meta:
         model = PostMedia
-        fields = ["id", "kind", "url", "thumb_url", "width", "height", "bytes"]
-
-    def get_kind(self, obj) -> str:
-        return "image"
+        fields = ["id", "kind", "url", "poster_url", "thumb_url", "width", "height", "duration_s", "bytes"]
 
     def _absolute(self, field) -> str:
         request = self.context.get("request")
         return request.build_absolute_uri(field.url) if request else field.url
 
     def get_url(self, obj) -> str:
-        return self._absolute(obj.image)
+        return self._absolute(obj.video if obj.kind == MediaKind.VIDEO else obj.image)
+
+    def get_poster_url(self, obj) -> str | None:
+        return self._absolute(obj.image) if obj.kind == MediaKind.VIDEO else None
 
     def get_thumb_url(self, obj) -> str:
         return self._absolute(obj.thumbnail)
@@ -107,6 +109,19 @@ class PostedAsSerializer(serializers.Serializer):
     area = AreaOutputSerializer()
 
 
+class EventSerializer(serializers.Serializer):
+    """Optional event date on a post (owner decision Q7)."""
+
+    kind = serializers.ChoiceField(choices=EventKind.choices)
+    start_date = serializers.DateField()
+    end_date = serializers.DateField(required=False, allow_null=True, default=None)
+
+    def validate(self, attrs):
+        if attrs.get("end_date") and attrs["end_date"] < attrs["start_date"]:
+            raise serializers.ValidationError({"end_date": [_("The end date cannot be before the start date.")]})
+        return attrs
+
+
 class PostSerializer(serializers.ModelSerializer):
     category = CategorySerializer()
     translation = serializers.SerializerMethodField()
@@ -124,17 +139,18 @@ class PostSerializer(serializers.ModelSerializer):
         model = Post
         fields = [
             "id", "status", "category", "language", "title", "body", "translation",
-            "target_level", "target_area", "event", "media", "author", "posted_as",
+            "target_level", "target_area", "event", "is_urgent", "media", "author", "posted_as",
             "created_at", "updated_at", "submitted_at", "published_at",
             "escalated", "escalated_at", "escalation_level",
             "decided_by", "decided_at", "last_review", "allowed_actions",
         ]
 
     def get_translation(self, obj) -> None:
-        return None  # Pending Q3: posts are single-language for now.
+        return None  # Owner decision Q3: a post is written in one language.
 
-    def get_event(self, obj) -> None:
-        return None  # Pending Q7: no event dates yet.
+    @extend_schema_field(EventSerializer(allow_null=True))
+    def get_event(self, obj):
+        return obj.event
 
     @extend_schema_field(AreaOutputSerializer)
     def get_target_area(self, obj):
@@ -191,6 +207,8 @@ class PostWriteSerializer(serializers.Serializer):
     title = serializers.CharField(max_length=150)
     body = serializers.CharField(max_length=5000)
     target = AreaInputSerializer()
+    event = EventSerializer(required=False, allow_null=True, default=None)
+    is_urgent = serializers.BooleanField(default=False)
     submit = serializers.BooleanField(default=True)
 
     def validate_title(self, value):
@@ -207,6 +225,8 @@ class PostWriteSerializer(serializers.Serializer):
 
 class PostUpdateSerializer(PostWriteSerializer):
     submit = None
+    event = EventSerializer(required=False, allow_null=True)
+    is_urgent = serializers.BooleanField(required=False)
 
     def __init__(self, *args, **kwargs):
         kwargs["partial"] = True
@@ -221,6 +241,25 @@ class ReviewSerializer(serializers.Serializer):
 
 class MediaUploadSerializer(serializers.Serializer):
     file = serializers.FileField()
+    kind = serializers.ChoiceField(choices=MediaKind.choices, default=MediaKind.IMAGE)
+    #: Video only: the length when the server cannot measure it, and a poster photo
+    #: when it cannot cut one (no ffprobe or ffmpeg on the machine).
+    duration_s = serializers.FloatField(required=False, min_value=0.1)
+    poster = serializers.FileField(required=False)
+
+
+class UrgentSerializer(serializers.Serializer):
+    is_urgent = serializers.BooleanField()
+
+
+class TargetLevelSerializer(serializers.Serializer):
+    level = serializers.CharField()
+    areas = AreaOutputSerializer(many=True)
+    pick_via = serializers.CharField(required=False)
+
+
+class TargetsSerializer(serializers.Serializer):
+    levels = TargetLevelSerializer(many=True)
 
 
 class SettingsSerializer(serializers.Serializer):

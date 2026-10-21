@@ -24,7 +24,7 @@ def test_site_config_has_every_field_and_the_prototype_defaults(api):
     data = response.json()
     assert set(data) == {
         "office_address_te", "office_address_en", "phone", "email",
-        "hours_te", "hours_en", "play_store_url", "app_store_url",
+        "hours_te", "hours_en", "play_store_url", "app_store_url", "website_url", "helplines",
     }
     assert data["phone"] == "+91 863 223 4567"
     assert data["email"] == "help@bvtgramaconnect.in"
@@ -34,7 +34,19 @@ def test_site_config_has_every_field_and_the_prototype_defaults(api):
         "Guntur – 522004, Andhra Pradesh",
     ]
     assert data["play_store_url"] == ""
+    assert data["website_url"] == "https://example.in/"
+    assert [line["number"] for line in data["helplines"]] == ["112", "108", "1930", "181", "1098", "1912"]
+    assert data["helplines"][0] == {"number": "112", "label_te": "అత్యవసరం", "label_en": "Emergency"}
+    assert data["helplines"][3]["label_te"] == "మహిళా హెల్ప్‌లైన్"
     assert "public" in response["Cache-Control"]
+
+
+def test_website_link_and_help_lines_come_from_settings(api, settings):
+    settings.SITE_WEBSITE_URL = "https://gramaconnect.example.in/"
+    settings.SITE_HELPLINES = [{"number": "100", "label_te": "పోలీస్", "label_en": "Police"}]
+    data = api().get("/api/v1/public/site-config/").json()
+    assert data["website_url"] == "https://gramaconnect.example.in/"
+    assert data["helplines"] == [{"number": "100", "label_te": "పోలీస్", "label_en": "Police"}]
 
 
 def test_store_links_come_from_settings(api, settings):

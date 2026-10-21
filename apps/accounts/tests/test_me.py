@@ -29,7 +29,7 @@ def test_me_describes_roles_capabilities_and_rules(api, world):
         "admin_posts_auto_publish": True,
         "super_admin_can_post": False,
         "max_photos_per_post": 5,
-        "video_enabled": False,
+        "video_enabled": True,  # video posts are in version 1 (owner decision Q8)
     }
 
 

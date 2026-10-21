@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
@@ -6,7 +7,8 @@ class ContactMessage(models.Model):
     """A message from the public website's Contact page.
 
     People use it to ask for their village to be added, to ask for a login,
-    or to report a problem. Staff read and close them in Django admin.
+    or to report a problem. Super Admins read and close them in the console
+    (owner decision Q16); Django admin shows them too.
     """
 
     name = models.CharField(_("name"), max_length=120)
@@ -18,6 +20,10 @@ class ContactMessage(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     handled = models.BooleanField(_("handled"), default=False)
     handled_note = models.TextField(_("note"), blank=True)
+    handled_at = models.DateTimeField(_("handled at"), null=True, blank=True)
+    handled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
 
     class Meta:
         verbose_name = _("contact message")

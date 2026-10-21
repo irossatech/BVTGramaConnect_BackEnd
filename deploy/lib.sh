@@ -55,6 +55,8 @@ load_config() {
   WEB_API_BASE="${WEB_API_BASE:-/api/v1}"
   CSP_SCRIPT_EXTRA="${CSP_SCRIPT_EXTRA:-}"
   STRICT_CHECKS="${STRICT_CHECKS:-0}"
+  OFFICE_IPS="${OFFICE_IPS:-}"
+  django_admin_access
 
   case "$DB_ENGINE" in
     mysql|postgresql) ;;
@@ -93,6 +95,21 @@ set_env() {
 get_env() {
   local file="$1" key="$2"
   grep -m1 "^${key}=" "$file" 2>/dev/null | cut -d= -f2- || true
+}
+
+# django_admin_access: turn OFFICE_IPS into the Nginx lines that guard /django-admin/
+# (owner decision: office IPs only). Empty OFFICE_IPS leaves only "deny all".
+# Sets DJANGO_ADMIN_ACCESS, which nginx-locations.conf reads through render.
+django_admin_access() {
+  local ip ipv4 ipv6
+  ipv4='^([0-9]{1,3}\.){3}[0-9]{1,3}(/[0-9]{1,2})?$'
+  ipv6='^[0-9A-Fa-f]*:[0-9A-Fa-f:.]*(/[0-9]{1,3})?$'
+  DJANGO_ADMIN_ACCESS=""
+  for ip in ${OFFICE_IPS//,/ }; do
+    [[ $ip =~ $ipv4 || $ip =~ $ipv6 ]] || die "OFFICE_IPS: '$ip' is not an IP address or CIDR range."
+    DJANGO_ADMIN_ACCESS+="    allow $ip;"$'\n'
+  done
+  DJANGO_ADMIN_ACCESS+="    deny all;"
 }
 
 # render TEMPLATE DEST: copy TEMPLATE to DEST, replacing every @NAME@ with the

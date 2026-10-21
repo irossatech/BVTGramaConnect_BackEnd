@@ -28,11 +28,11 @@ def _audit_failure(target: str, error: Exception) -> None:
     )
 
 
-def send_push_to_topic(topic: str, title: str, body: str, data: dict) -> bool:
+def send_push_to_topic(topic: str, title: str, body: str, data: dict, priority: str = "high") -> bool:
     gateway = get_push_gateway()
     if not gateway.enabled:
         return False
-    message = PushMessage(title=title, body=body, data=data, topic=topic)
+    message = PushMessage(title=title, body=body, data=data, topic=topic, priority=priority)
     try:
         with_retries(lambda: gateway.send(message))
     except Exception as exc:

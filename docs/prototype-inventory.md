@@ -479,26 +479,26 @@ These are not open questions. Change them by editing this file and CLAUDE.md.
 
 ## 8. Open questions
 
-Numbers match the "Pending Qn" marks in `api-contract.md`.
+Numbers match the "Pending Qn" marks in `api-contract.md`. The owner decided Q1, Q3, Q5, Q7, Q8, Q9, Q10, Q13, Q14, Q16, Q17 and Q19 on 2026-10-21 (see `.claude/project.md`, "Owner decisions"). Q2, Q4, Q6, Q11, Q12, Q15 and Q18 are still open and run on their defaults.
 
-| Q | Question | Default if no answer |
+| Q | Question | Answer, or the default until there is one |
 |---|---|---|
-| Q1 | Do all admins in the area see a pending post at once with the first decision winning, as CLAUDE.md says? Or is review tiered, village first and then escalated, as the website and console suggest? Is there one escalation time, or per-level limits of 24, 24 and 48 hours? | Shared queue, one escalation time |
+| Q1 | Do all admins in the area see a pending post at once with the first decision winning, as CLAUDE.md says? Or is review tiered, village first and then escalated, as the website and console suggest? Is there one escalation time, or per-level limits of 24, 24 and 48 hours? | **Decided 2026-10-21:** shared queue, first decision wins, one escalation time for every level (`REVIEW_ESCALATION_HOURS`, 24). |
 | Q2 | May the Super Admin override a decision, for example republish a discarded or taken-down post? Should other higher admins be able to? | Not built until confirmed |
-| Q3 | Is a post written in one language, or must it have both Telugu and English? | One language, optional translation |
+| Q3 | Is a post written in one language, or must it have both Telugu and English? | **Decided 2026-10-21:** one language per post, Telugu or English. `translation` is always null. |
 | Q4 | Should panchayat members be able to save drafts, or submit straight to review as the prototype does? | Submit straight away; drafts supported by the API |
-| Q5 | "Selected areas": one post per area, or one post with several targets? May a District Admin target single villages? | One post per area; District Admins pick mandals only |
+| Q5 | "Selected areas": one post per area, or one post with several targets? May a District Admin target single villages? | **Decided 2026-10-21:** one target per post, "Visible to" up to the author's own level. District Admins: the district, a mandal or a village. Mandal Admins: the mandal or a village in it. Village Admins and Panchayat members: their village. State: Super Admin only, with `SUPER_ADMIN_CAN_POST`. Choices come from `GET /posts/targets/`. |
 | Q6 | May the Super Admin change escalation hours, switch categories and languages, add categories, and edit notification texts at runtime? SMS texts would stay fixed because DLT registration requires it. | Yes, stored in the database over env defaults; SMS read-only |
-| Q7 | Add an event date field (deadline, camp, distribution, closure, meeting) to compose, so "Don't miss" works? | Yes, optional |
-| Q8 | Keep 60-second video posts in version 1? If yes, what size and quality limits suit 2G/3G? | Out of version 1 |
-| Q9 | How do users with several role assignments switch between them, and is there a screen to add one? | API supports it; no screen in version 1 |
-| Q10 | Do village coordinates come only from the master-data import, or should the app's village form get latitude and longitude fields? | Required in both forms and the import |
+| Q7 | Add an event date field (deadline, camp, distribution, closure, meeting) to compose, so "Don't miss" works? | **Decided 2026-10-21:** yes, optional: kind, start date, optional end date. "Don't miss" reads `GET /feed/upcoming/`. |
+| Q8 | Keep 60-second video posts in version 1? If yes, what size and quality limits suit 2G/3G? | **Decided 2026-10-21:** in version 1. MP4 or MOV, at most 60 s and 50 MB, one video per post and never with photos. `VIDEO_POSTS_ENABLED` switches it off. |
+| Q9 | How do users with several role assignments switch between them, and is there a screen to add one? | **Decided 2026-10-21:** second roles are added and removed in the console only. The app has no screen for it. |
+| Q10 | Do village coordinates come only from the master-data import, or should the app's village form get latitude and longitude fields? | **Decided 2026-10-21:** coordinates come from the console's village form and the CSV import. |
 | Q11 | May the console get a small pager or "Load more" on Users, Posts and Audit? The design has none. | Yes, minimal pager |
 | Q12 | How are Super Admin accounts created? | `createsuperuser` and a management command |
-| Q13 | Does anyone besides the Super Admin maintain master data? The website FAQ says District Admins add villages. | Super Admin only |
-| Q14 | Is PDF export needed in version 1, or CSV only? | CSV only |
+| Q13 | Does anyone besides the Super Admin maintain master data? The website FAQ says District Admins add villages. | **Decided 2026-10-21:** Super Admin only. |
+| Q14 | Is PDF export needed in version 1, or CSV only? | **Decided 2026-10-21:** CSV only. |
 | Q15 | Should the console get a CSV import for villages? The delivery plan asks for an import tool with validation. | Yes, in the console Geography page |
-| Q16 | Public website: should the phone mockup show live posts? Where should staff read contact messages? Should each page get its own URL, for example `#faq`? | Static mockup; Django admin; hash URLs |
-| Q17 | Which public URL do shared posts and app invites link to? The website has no post page. | A post page on the public site, `/p/{id}`, which needs a design |
+| Q16 | Public website: should the phone mockup show live posts? Where should staff read contact messages? Should each page get its own URL, for example `#faq`? | **Decided 2026-10-21:** live posts in the phone picture (`GET /public/showcase/`), a URL per page, contact messages read in the console (`GET /admin/contact-messages/`). |
+| Q17 | Which public URL do shared posts and app invites link to? The website has no post page. | **Decided 2026-10-21:** sharing sends the post text plus the website link (`website_url` in site-config). There is no public post page. |
 | Q18 | Who may take down a published post? | Any reviewer whose area contains the post |
-| Q19 | Are the help-line numbers, news search and "Mark as urgent" strings in scope for version 1? They have no screens. | Out of version 1 |
+| Q19 | Are the help-line numbers, news search and "Mark as urgent" strings in scope for version 1? They have no screens. | **Decided 2026-10-21:** all three in version 1. Help lines come from site-config, search is `q` on the feed, urgent is `POST /posts/{id}/urgent/` and `GET /feed/urgent/`. |

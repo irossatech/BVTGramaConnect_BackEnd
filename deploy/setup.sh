@@ -47,9 +47,10 @@ apt-get update -y
 apt-get install -y --no-install-recommends \
   ca-certificates curl git gnupg rsync rclone sudo jq openssl \
   ufw fail2ban unattended-upgrades \
-  nginx certbot \
+  nginx certbot ffmpeg \
   python3 python3-venv python3-dev python3-pip build-essential pkg-config \
   default-libmysqlclient-dev
+# ffmpeg gives ffprobe (video length) and the poster frame for video posts.
 # default-libmysqlclient-dev is needed on every server: requirements.txt always
 # builds mysqlclient, whichever database this server uses.
 if [[ "$DB_ENGINE" == "mysql" ]]; then
@@ -296,6 +297,8 @@ fi
 set_env "$GC_APP_ENV" EMAIL_USE_TLS "${SMTP_USE_TLS:-True}"
 set_env "$GC_APP_ENV" DEFAULT_FROM_EMAIL "${MAIL_FROM:-BVT Grama Connect <no-reply@$DOMAIN>}"
 set_env "$GC_APP_ENV" CONSOLE_LOGIN_URL "https://$DOMAIN/console/"
+# Link added to shared posts and invites (owner decision Q17).
+set_env "$GC_APP_ENV" SITE_WEBSITE_URL "https://$DOMAIN/" --if-missing
 # Placeholder the owner replaces (kept once edited):
 #   FCM_CREDENTIALS_FILE: Firebase service-account JSON. Missing file = pushes off.
 set_env "$GC_APP_ENV" FCM_CREDENTIALS_FILE "$GC_ETC/fcm-service-account.json" --if-missing

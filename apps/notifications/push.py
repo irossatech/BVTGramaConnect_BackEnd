@@ -42,10 +42,15 @@ class PushMessage:
     data: dict = field(default_factory=dict)
     topic: str | None = None
     token: str | None = None
+    #: "high" wakes the phone at once; "normal" may wait for the phone to be awake.
+    #: Urgent posts and messages to officials are high (owner decision Q19).
+    priority: str = "high"
 
     def __post_init__(self):
         if bool(self.topic) == bool(self.token):
             raise ValueError("A push message goes to exactly one topic or one device token.")
+        if self.priority not in ("high", "normal"):
+            raise ValueError("Push priority is high or normal.")
         # FCM data values must be strings.
         self.data = {key: str(value) for key, value in self.data.items() if value is not None}
 
@@ -106,7 +111,8 @@ class FcmGateway(PushGateway):
             "message": {
                 "notification": {"title": message.title, "body": message.body},
                 "data": message.data,
-                "android": {"priority": "high"},
+                "android": {"priority": message.priority},
+                "apns": {"headers": {"apns-priority": "10" if message.priority == "high" else "5"}},
             }
         }
         if message.topic:

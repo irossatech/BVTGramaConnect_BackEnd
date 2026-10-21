@@ -9,5 +9,7 @@ app_name = "feed"
 urlpatterns = [
     path("feed/", views.FeedView.as_view(), name="feed"),
     path("feed/posts/", views.FeedPostsByIdView.as_view(), name="posts-by-id"),
+    path("feed/upcoming/", views.UpcomingView.as_view(), name="upcoming"),
+    path("feed/urgent/", views.UrgentView.as_view(), name="urgent"),
     path("feed/posts/<uuid:pk>/", views.FeedPostDetailView.as_view(), name="post"),
 ]

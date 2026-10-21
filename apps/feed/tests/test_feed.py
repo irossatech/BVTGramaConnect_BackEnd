@@ -70,8 +70,9 @@ def test_slim_shape_with_thumbnail(world, make_post):
     first, second = rows
     assert set(first) == {
         "id", "category", "language", "title", "body", "area", "published_at",
-        "thumbnail_url", "media_count", "source_role",
+        "thumbnail_url", "media_count", "source_role", "event", "is_urgent", "video",
     }
+    assert first["event"] is None and first["is_urgent"] is False and first["video"] is None
     assert first["id"] == str(post.id)
     assert first["category"] == "announce"
     assert first["area"] == {"level": "MANDAL", "id": world.areas["tenali"].id, "name": "తెనాలి"}

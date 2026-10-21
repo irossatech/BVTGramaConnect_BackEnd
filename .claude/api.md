@@ -15,9 +15,9 @@ The live schema is at `/api/schema/` and Swagger UI at `/api/docs/` on any runni
 
 | Client | Endpoints |
 |---|---|
-| Public website (BVTGramaConnect, `src/`) | `public/site-config/`, `public/contact-messages/` |
-| Super Admin console (BVTGramaConnect, `console/`) | `auth/login/`, `auth/refresh/`, `auth/logout/`, `auth/password/change/`, `me/`, `admin/dashboard/`, `admin/reports/*`, `geo/*` including writes, `geo/tree/` and `geo/villages/import/`, `users/*` including reset-password and role-assignments, `posts/*` and review, `categories/`, `admin/categories/`, `admin/settings/`, `admin/role-passwords/`, `admin/notification-templates/`, `audit/`, `audit/export/` |
-| Mobile app (BVTGramaConnect_Mobile) | `auth/*`, `me/`, `geo/states/`, `geo/districts/`, `geo/mandals/`, `geo/villages/`, `geo/nearest/`, `feed/`, `feed/posts/*`, `categories/`, `posts/*` and media, `review/queue/`, `posts/{id}/review/`, `stats/`, `users/*`, `devices/`, `notifications/*`; Super Admin screens also use `admin/dashboard/` and `audit/` |
+| Public website (BVTGramaConnect, `src/`) | `public/site-config/`, `public/showcase/` (live posts in the phone picture), `public/contact-messages/` |
+| Super Admin console (BVTGramaConnect, `console/`) | `auth/login/`, `auth/refresh/`, `auth/logout/`, `auth/password/change/`, `me/`, `admin/dashboard/`, `admin/reports/*`, `geo/*` including writes, `geo/tree/` and `geo/villages/import/`, `users/*` including reset-password and role-assignments, `posts/*` and review, `categories/`, `admin/categories/`, `admin/settings/`, `admin/role-passwords/`, `admin/notification-templates/`, `admin/contact-messages/` (list and mark handled), `audit/`, `audit/export/` |
+| Mobile app (BVTGramaConnect_Mobile) | `auth/*`, `me/`, `geo/states/`, `geo/districts/`, `geo/mandals/`, `geo/villages/`, `geo/nearest/`, `feed/` (with `q` and `has_video`), `feed/posts/*`, `feed/upcoming/`, `feed/urgent/`, `public/site-config/` (help lines and the website link for sharing), `categories/`, `posts/*` and media (photos or one video), `posts/targets/`, `posts/{id}/urgent/`, `review/queue/`, `posts/{id}/review/`, `stats/`, `users/*`, `devices/`, `notifications/*`; Super Admin screens also use `admin/dashboard/` and `audit/` |
 
 All paths are under `/api/v1/`. The console is served from the same origin, so it needs no CORS; the mobile app calls the absolute URL.
 

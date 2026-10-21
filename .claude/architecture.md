@@ -10,11 +10,11 @@ Top level of the repo: `apps/`, `grama/` (settings, URLs, shared helpers, projec
 |---|---|
 | `accounts` | User, RoleAssignment, RoleDefaultPassword, LoginAttempt. Login, refresh, logout, password change, `/me`, users and role-assignment API, default passwords per role. Invite and reset emails (`tasks.py`). Area scope helpers (`scope.py`). JWT with a token version (`tokens.py`, `authentication.py`). `seed_sample_data` command. |
 | `geography` | State, District, Mandal, Village. Public cascading lists, nearest village (`nearest.py`), Super Admin writes and tree (`views_admin.py`), CSV import (`importer.py`, `import_geography` command), area references and containment (`areas.py`). |
-| `posts` | Category, Post, PostMedia, ReviewAction, SettingOverride. Post API, review queue, stats, runtime settings. Photo processing (`media.py`). Escalation job (`tasks.py`, `ensure_schedules` command). |
+| `posts` | Category, Post (with optional event date and the urgent flag), PostMedia (photo or video), ReviewAction, SettingOverride. Post API, review queue, stats, runtime settings, "Visible to" choices (`posting_targets`). Photo and video processing (`media.py`; ffprobe and ffmpeg when installed, else the phone sends the length and a poster). Escalation job (`tasks.py`, `ensure_schedules` command). |
 | `audit` | AuditLog. Audit list and CSV export. |
-| `feed` | Public citizen feed. No models of its own; reads Post. |
+| `feed` | Public citizen feed with news search and a video filter, "Don't miss" (upcoming events) and the urgent list. No models of its own; reads Post. |
 | `notifications` | Device, Notification, NotificationTemplate. Push gateways (`push.py`), signal receivers (`receivers.py`), inbox and push logic (`services.py`), delivery jobs (`tasks.py`). |
-| `web_public` | ContactMessage. Site-config and contact API. Serves the website files while DEBUG is on. |
+| `web_public` | ContactMessage. Site-config (with help lines and the website link), showcase and contact API, and the Super Admin's contact-messages API for the console. Serves the website files while DEBUG is on. |
 | `web_admin` | Console-only dashboard and reports API (`api.py`). Serves the console files while DEBUG is on. |
 | `grama` | Project package: settings, URLs, error shape (`exceptions.py`), pagination, retry with backoff (`retry.py`), client IP (`http.py`), web file serving (`sitefiles.py`), health check. |
 
@@ -27,6 +27,8 @@ Top level of the repo: `apps/`, `grama/` (settings, URLs, shared helpers, projec
 - **Passwords**: defaults, invites, resets, login checks and throttling are in `apps/accounts/credentials.py`.
 - **Sessions**: `apps/accounts/tokens.py` issues JWTs carrying the user's `token_version` ("tv" claim). `apps/accounts/authentication.py` checks it on every request and blocks everything except `/me`, password change, refresh and logout while `must_change_password` is set.
 - **Runtime settings**: `apps.posts.services.runtime(name)` reads a SettingOverride row first, then the Django setting.
+- **Urgent** is set at create or edit by admins, or later by a reviewer through `apps.posts.services.set_urgent`, which audits it. Urgent posts push at high priority; others at normal.
+- **"Visible to"**: what an author may target is checked in `posting_assignment`; the choices the app shows come from `posting_targets`. Both live in `apps/posts/services.py`.
 
 ## Settings
 
@@ -43,7 +45,7 @@ Top level of the repo: `apps/`, `grama/` (settings, URLs, shared helpers, projec
 |---|---|
 | `/api/v1/` | REST API, every app's `urls.py` plus `apps/web_public/api_urls.py` and `apps/web_admin/api_urls.py` |
 | `/api/schema/`, `/api/docs/` | OpenAPI schema and Swagger UI |
-| `/django-admin/` | Django admin, developers only |
+| `/django-admin/` | Django admin, developers only. In production Nginx allows only `OFFICE_IPS` from the deploy config, and nobody when it is empty. |
 | `/console/` | Console files from `WEB_ADMIN_DIR` (default `../BVTGramaConnect/dist/console`), DEBUG only |
 | `/media/` | Uploaded files, DEBUG only |
 | `/` | Website files from `WEB_PUBLIC_DIR` (default `../BVTGramaConnect/dist`), DEBUG only; must stay last |
@@ -54,6 +56,6 @@ In production Nginx serves `/`, `/console/`, `/static/` and `/media/` directly; 
 
 django-q2 with the Django ORM as broker (no Redis). Start the worker with `python manage.py qcluster`.
 - Invite and reset emails: `apps.accounts.tasks.send_credentials_email`.
-- Push to topics and to officials' devices: `apps.notifications.tasks`.
+- Push to topics and to officials' devices: `apps.notifications.tasks`. Topic pushes for urgent posts go at high priority, the rest at normal.
 - Escalation of overdue pending posts: a schedule created by `python manage.py ensure_schedules`, every ESCALATION_CHECK_MINUTES.
 - Email and push retry with backoff (`grama/retry.py`, DELIVERY_RETRY_*). A final failure is audited as `email.failed` or `push.failed`.

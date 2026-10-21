@@ -219,7 +219,8 @@ SUPER_ADMIN_CAN_POST = env.bool("SUPER_ADMIN_CAN_POST", default=False)
 
 # Limits shown to the apps through /me (docs/api-contract.md).
 MAX_PHOTOS_PER_POST = env.int("MAX_PHOTOS_PER_POST", default=5)
-VIDEO_POSTS_ENABLED = env.bool("VIDEO_POSTS_ENABLED", default=False)
+# Owner decision Q8: 60-second video posts are in version 1.
+VIDEO_POSTS_ENABLED = env.bool("VIDEO_POSTS_ENABLED", default=True)
 
 # --- Password login and email ------------------------------------------------------
 
@@ -266,6 +267,11 @@ MAX_IMAGE_UPLOAD_MB = env.int("MAX_IMAGE_UPLOAD_MB", default=10)
 POST_IMAGE_MAX_PX = 1280
 POST_THUMB_PX = 320
 POST_IMAGE_QUALITY = 80
+# Video posts (owner decision Q8): MP4 or MOV, one per post, never with photos.
+# ffprobe and ffmpeg (installed by deploy/setup.sh) measure the length and make
+# the poster; without them the app must send duration_s and a poster image.
+MAX_VIDEO_UPLOAD_MB = env.int("MAX_VIDEO_UPLOAD_MB", default=50)
+VIDEO_MAX_SECONDS = env.int("VIDEO_MAX_SECONDS", default=60)
 # How often the escalation job runs (django-q2 schedule, see `ensure_schedules`).
 ESCALATION_CHECK_MINUTES = env.int("ESCALATION_CHECK_MINUTES", default=15)
 
@@ -288,11 +294,35 @@ SITE_HOURS_EN = env.str("SITE_HOURS_EN", default="Mon–Sat 10:00–18:00")
 PLAY_STORE_URL = env.str("PLAY_STORE_URL", default="")
 APP_STORE_URL = env.str("APP_STORE_URL", default="")
 CONTACT_MESSAGES_PER_IP_PER_HOUR = env.int("CONTACT_MESSAGES_PER_IP_PER_HOUR", default=5)
+# Link added to shared posts and invites (owner decision Q17). Placeholder until the domain is known.
+SITE_WEBSITE_URL = env.str("SITE_WEBSITE_URL", default="https://example.in/")
+# Village whose feed fills the home page's phone picture (owner decision Q16).
+# Empty: the newest published posts anywhere.
+SITE_SHOWCASE_VILLAGE_ID = env.int("SITE_SHOWCASE_VILLAGE_ID", default=0) or None
+# Help-line numbers for the app (owner decision Q19), labels from the approved prototype.
+# Override with SITE_HELPLINES as a JSON list of {"number", "label_te", "label_en"}.
+SITE_HELPLINES = env.json(
+    "SITE_HELPLINES",
+    default=[
+        {"number": "112", "label_te": "అత్యవసరం", "label_en": "Emergency"},
+        {"number": "108", "label_te": "అంబులెన్స్", "label_en": "Ambulance"},
+        {"number": "1930", "label_te": "సైబర్ మోసం", "label_en": "Cyber fraud"},
+        {"number": "181", "label_te": "మహిళా హెల్ప్‌లైన్", "label_en": "Women helpline"},
+        {"number": "1098", "label_te": "బాలల హెల్ప్‌లైన్", "label_en": "Child helpline"},
+        {"number": "1912", "label_te": "విద్యుత్", "label_en": "Electricity"},
+    ],
+)
 
 # --- Feed, push and notifications ----------------------------------------------
 
 # Citizen feed: posts per cursor page.
 FEED_PAGE_SIZE = 20
+# "Don't miss" (events from today on) and the urgent banner (owner decisions Q7, Q19).
+FEED_UPCOMING_LIMIT = 10
+FEED_URGENT_LIMIT = 5
+FEED_URGENT_DAYS = 7
+# News search needs at least this many characters.
+FEED_SEARCH_MIN_CHARS = 2
 
 # Dotted path to a notifications.push.PushGateway subclass. FcmGateway sends
 # nothing (and logs once) until FCM_CREDENTIALS_FILE points at a Firebase

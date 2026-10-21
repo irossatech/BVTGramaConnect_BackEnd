@@ -4,14 +4,27 @@
 state: DRAFT, PENDING, PUBLISHED, RECHECK, DISCARDED, UNPUBLISHED. Posts are
 made through posts.services, so they carry real review history and audit rows.
 
+Owner decisions add three things: posts with an event date (Q7) for "Don't
+miss", an urgent post (Q19) for the banner, and a media check that says
+whether uploads can be stored and whether ffprobe and ffmpeg are installed
+for video posts (Q8). Event dates are relative to today, so "Don't miss" is
+never empty.
+
 Safe to run again: geography goes through the idempotent importer, officials
-are matched by username, and posts are only added once. Each official starts
-with their role's default password (printed at the end), as an invite would.
+are matched by username, and posts are only added once (each extra post is
+matched by author and title). Each official starts with their role's default
+password (printed at the end), as an invite would.
 """
+
+import shutil
+import tempfile
+from datetime import timedelta
+from pathlib import Path
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db import transaction
+from django.utils import timezone
 
 from apps.accounts.credentials import give_default_password, role_default
 from apps.accounts.models import RoleAssignment, User
@@ -88,6 +101,12 @@ class Command(BaseCommand):
 
         made = self._posts(users)
         self.stdout.write(self.style.SUCCESS(f"Posts: {made} created." if made else "Posts: already present."))
+        extra = self._event_and_urgent_posts(users)
+        self.stdout.write(
+            self.style.SUCCESS(f"Event and urgent posts: {extra} created.") if extra
+            else "Event and urgent posts: already present."
+        )
+        self._media_check()
         self.stdout.write(
             "Officials. New ones start with their role's default password"
             + (" and must change it at first login:" if settings.FORCE_PASSWORD_CHANGE_ON_FIRST_LOGIN else ":")
@@ -156,3 +175,71 @@ class Command(BaseCommand):
         post(member, "schemes", "పింఛన్ దరఖాస్తులు", "వివరాలు త్వరలో.", kolakaluru, submit=False)
         count += 1
         return count
+
+    def _event_and_urgent_posts(self, users) -> int:
+        """Posts with an event date (owner decision Q7) and an urgent one (Q19)."""
+        from apps.posts.models import Category, Post
+        from apps.posts.services import PostInput, create_post
+
+        today = timezone.localdate()
+        kolakaluru = area_ref("VILLAGE", "Kolakaluru")
+        tenali = area_ref("MANDAL", "Tenali")
+        guntur = area_ref("DISTRICT", "Guntur")
+        village_admin, mandal_admin = users[Role.VILLAGE_ADMIN], users[Role.MANDAL_ADMIN]
+        district_admin = users[Role.DISTRICT_ADMIN]
+
+        def event(kind, start_in_days, end_in_days=None):
+            return {
+                "kind": kind,
+                "start_date": today + timedelta(days=start_in_days),
+                "end_date": today + timedelta(days=end_in_days) if end_in_days is not None else None,
+            }
+
+        wanted = [
+            (village_admin, "announce", "గ్రామ సభ – పంచాయతీ కార్యాలయం",
+             "ఉదయం 10 గంటలకు గ్రామ సభ. అందరూ హాజరు కావాలి.", kolakaluru, event("meeting", 3), False),
+            (district_admin, "schemes", "ఆధార్ నమోదు శిబిరం",
+             "కొత్త ఆధార్ నమోదు మరియు మార్పుల కోసం రెండు రోజుల శిబిరం.", guntur, event("camp", 5, 6), False),
+            (mandal_admin, "schemes", "రేషన్ పంపిణీ – ఈ నెల చివరి తేదీ",
+             "ఈ నెల రేషన్ తీసుకోవడానికి చివరి తేదీ.", tenali, event("deadline", 10), False),
+            (village_admin, "announce", "పాఠశాలకు సెలవు",
+             "భారీ వర్షాల కారణంగా పాఠశాలకు సెలవు.", kolakaluru, event("closure", 1), False),
+            (mandal_admin, "announce", "వరద హెచ్చరిక – కాలువ గట్ల దగ్గరకు వెళ్లవద్దు",
+             "కృష్ణా కాలువలో నీటి మట్టం పెరుగుతోంది. పిల్లలను, పశువులను గట్ల దగ్గరకు పంపవద్దు.", tenali, None, True),
+        ]
+        made = 0
+        for user, key, title, body, target, when, urgent in wanted:
+            if Post.objects.filter(author=user, title=title).exists():
+                continue
+            create_post(
+                user,
+                PostInput(
+                    category=Category.objects.get(key=key), language="te", title=title, body=body,
+                    target=target, event=when, is_urgent=urgent,
+                ),
+            )
+            made += 1
+        return made
+
+    def _media_check(self) -> None:
+        """Say whether uploads can be stored and whether video posts get server-side help (Q8)."""
+        media_root = Path(settings.MEDIA_ROOT)
+        try:
+            media_root.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(dir=media_root, prefix=".write-check-"):
+                pass
+            self.stdout.write(f"Media: {media_root} is writable.")
+        except OSError as error:
+            self.stdout.write(self.style.ERROR(f"Media: {media_root} is not writable ({error}). Photo and video uploads will fail."))
+        if not settings.VIDEO_POSTS_ENABLED:
+            self.stdout.write("Video posts: switched off (VIDEO_POSTS_ENABLED=False).")
+            return
+        missing = [tool for tool in ("ffprobe", "ffmpeg") if not shutil.which(tool)]
+        if missing:
+            self.stdout.write(self.style.WARNING(
+                f"Video posts: {' and '.join(missing)} not found. Phones must send duration_s and a poster photo."
+            ))
+        else:
+            self.stdout.write(
+                f"Video posts: on, up to {settings.VIDEO_MAX_SECONDS} s and {settings.MAX_VIDEO_UPLOAD_MB} MB; ffprobe and ffmpeg found."
+            )

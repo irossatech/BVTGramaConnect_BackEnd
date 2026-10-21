@@ -5,12 +5,17 @@ GET /api/v1/feed/?village_id=12&cursor=&category=news,updates
     state, newest first, 20 per cursor page.
 GET /api/v1/feed/posts/<id>/      one published post with all its photos
 GET /api/v1/feed/posts/?ids=a,b   published posts saved on the phone
+GET /api/v1/feed/upcoming/?village_id=12   events from today on ("Don't miss")
+GET /api/v1/feed/urgent/?village_id=12     urgent posts of the last 7 days
+The feed also takes q= (news search) and has_video=1.
 """
 
 import uuid
+from datetime import timedelta
 
 from django.conf import settings
-from django.db.models import Count, OuterRef, Q, Subquery
+from django.db.models import Count, Exists, OuterRef, Q, Subquery
+from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import cache_control
 from drf_spectacular.types import OpenApiTypes
@@ -24,7 +29,7 @@ from rest_framework.views import APIView
 from apps.geography.areas import AreaDescriber, AreaRef, ancestry
 from apps.geography.models import AreaLevel, Village
 from grama.exceptions import ApiError
-from apps.posts.models import Post, PostMedia, PostStatus
+from apps.posts.models import MediaKind, Post, PostMedia, PostStatus
 
 from .serializers import FeedItemSerializer, FeedPostSerializer
 
@@ -41,12 +46,39 @@ class FeedCursorPagination(CursorPagination):
 
 
 def published_posts():
-    first_thumb = PostMedia.objects.filter(post=OuterRef("pk")).order_by("order", "created_at").values("thumbnail")[:1]
+    media = PostMedia.objects.filter(post=OuterRef("pk"))
+    first_thumb = media.order_by("order", "created_at").values("thumbnail")[:1]
+    video = media.filter(kind=MediaKind.VIDEO)
     return (
         Post.objects.filter(status=PostStatus.PUBLISHED)
         .select_related("category")
-        .annotate(thumbnail_name=Subquery(first_thumb), media_count=Count("media"))
+        .annotate(
+            thumbnail_name=Subquery(first_thumb),
+            media_count=Count("media"),
+            video_name=Subquery(video.values("video")[:1]),
+            video_poster_name=Subquery(video.values("image")[:1]),
+            video_duration=Subquery(video.values("duration_s")[:1]),
+        )
     )
+
+
+def village_from(request) -> int:
+    raw = request.query_params.get("village_id", "").strip()
+    if not raw.isdigit():
+        raise ApiError(
+            "validation_error",
+            "The 'village_id' query parameter is required.",
+            fields={"village_id": ["Give a village id."]},
+        )
+    village_id = int(raw)
+    if not Village.objects.active().filter(id=village_id).exists():
+        raise ApiError("not_found", "No such village.", status=404)
+    return village_id
+
+
+def village_feed(village_id: int):
+    """Published posts a citizen of this village sees."""
+    return published_posts().filter(targets_for_village(village_id))
 
 
 def targets_for_village(village_id: int) -> Q:
@@ -75,6 +107,8 @@ def describer_with(posts) -> AreaDescriber:
     parameters=[
         OpenApiParameter("village_id", OpenApiTypes.INT, required=True),
         OpenApiParameter("category", OpenApiTypes.STR, description="Category keys, comma separated"),
+        OpenApiParameter("q", OpenApiTypes.STR, description="News search in title and body, 2+ characters"),
+        OpenApiParameter("has_video", OpenApiTypes.BOOL, description="1: video posts only"),
         OpenApiParameter("cursor", OpenApiTypes.STR),
     ],
 )
@@ -83,20 +117,24 @@ class FeedView(PublicView, generics.ListAPIView):
     pagination_class = FeedCursorPagination
 
     def get_queryset(self):
-        raw = self.request.query_params.get("village_id", "").strip()
-        if not raw.isdigit():
-            raise ApiError(
-                "validation_error",
-                "The 'village_id' query parameter is required.",
-                fields={"village_id": ["Give a village id."]},
-            )
-        village_id = int(raw)
-        if not Village.objects.active().filter(id=village_id).exists():
-            raise ApiError("not_found", "No such village.", status=404)
-        queryset = published_posts().filter(targets_for_village(village_id))
-        categories = [key for key in self.request.query_params.get("category", "").split(",") if key.strip()]
+        params = self.request.query_params
+        queryset = village_feed(village_from(self.request))
+        categories = [key for key in params.get("category", "").split(",") if key.strip()]
         if categories:
             queryset = queryset.filter(category__key__in=[key.strip() for key in categories])
+        query = " ".join(params.get("q", "").split())
+        if query:
+            if len(query) < settings.FEED_SEARCH_MIN_CHARS:
+                raise ApiError(
+                    "validation_error",
+                    f"Search with at least {settings.FEED_SEARCH_MIN_CHARS} characters.",
+                    fields={"q": [f"At least {settings.FEED_SEARCH_MIN_CHARS} characters."]},
+                )
+            queryset = queryset.filter(Q(title__icontains=query) | Q(body__icontains=query))
+        if params.get("has_video") in ("1", "true", "True"):
+            queryset = queryset.filter(
+                Exists(PostMedia.objects.filter(post=OuterRef("pk"), kind=MediaKind.VIDEO))
+            )
         return queryset
 
     def list(self, request, *args, **kwargs):
@@ -140,3 +178,39 @@ class FeedPostsByIdView(PublicView, APIView):
         ordered = [posts[pk] for pk in ids if pk in posts]
         context = {"request": request, "describer": describer_with(ordered)}
         return Response(FeedItemSerializer(ordered, many=True, context=context).data)
+
+
+def _short_list(request, queryset):
+    posts = list(queryset)
+    context = {"request": request, "describer": describer_with(posts)}
+    return Response(FeedItemSerializer(posts, many=True, context=context).data)
+
+
+VILLAGE_PARAM = [OpenApiParameter("village_id", OpenApiTypes.INT, required=True)]
+
+
+@public_cache
+class UpcomingView(PublicView, APIView):
+    @extend_schema(summary='Events from today on, soonest first ("Don\'t miss")', parameters=VILLAGE_PARAM, responses=FeedItemSerializer(many=True))
+    def get(self, request):
+        today = timezone.localdate()
+        queryset = (
+            village_feed(village_from(request))
+            .filter(event_start__isnull=False)
+            .filter(Q(event_start__gte=today) | Q(event_end__gte=today))
+            .order_by("event_start", "published_at", "id")[: settings.FEED_UPCOMING_LIMIT]
+        )
+        return _short_list(request, queryset)
+
+
+@public_cache
+class UrgentView(PublicView, APIView):
+    @extend_schema(summary="Urgent posts of the last 7 days, newest first", parameters=VILLAGE_PARAM, responses=FeedItemSerializer(many=True))
+    def get(self, request):
+        since = timezone.now() - timedelta(days=settings.FEED_URGENT_DAYS)
+        queryset = (
+            village_feed(village_from(request))
+            .filter(is_urgent=True, published_at__gte=since)
+            .order_by("-published_at", "-id")[: settings.FEED_URGENT_LIMIT]
+        )
+        return _short_list(request, queryset)
