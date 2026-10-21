@@ -630,8 +630,8 @@ Built (web_admin app). `days` is 1 to 366, default 30, and counts posts created 
 | `GET /admin/reports/summary?days=30` | `{"total", "published", "pending", "rejected", "days"}`. `rejected` counts `DISCARDED` and `UNPUBLISHED`. |
 | `GET /admin/reports/posts-by-area?days=30` | `[{"district": Area, "total", "published", "pending", "rejected", "mandals": [{"mandal": Area, "total", "published", "pending", "rejected"}]}]`. Mandals with no posts are left out. |
 | `GET /admin/reports/review-time?days=30` | `[{"level": "VILLAGE"\|"MANDAL"\|"DISTRICT"\|"STATE", "avg_hours": 3.4 or null, "reviews": 42, "escalation_hours": 24}]`. Hours from the latest (re)submission to the reviewer's decision. |
-| `GET /admin/reports/admin-activity?days=30&page=` | Page of `{"user": {"id", "name", "role"}, "area": Area, "reviewed", "published", "recheck", "discarded", "last_active_at"}`, most decisions first. `avg_review_hours` is not computed yet. |
-| `GET /admin/reports/{report}/export/?format=csv&days=` | `report` is one of the four above. CSV with a UTF-8 BOM so Excel shows Telugu; area names follow `Accept-Language`. Errors still come back as JSON. `format=pdf` answers 404: exports are CSV only (owner decision Q14). Writes `report.exported`. |
+| `GET /admin/reports/admin-activity?days=30&page=` | Page of `{"user": {"id", "name", "role"}, "area": Area, "reviewed", "published", "recheck", "discarded", "avg_review_hours", "last_active_at"}`, most decisions first. `avg_review_hours` is the admin's average, over their publish, recheck and discard decisions in the window, of the hours from the post's latest (re)submission to the decision, the same measure as `review-time`; one decimal, `null` when they made no such decision. |
+| `GET /admin/reports/{report}/export/?format=csv&days=` | `report` is one of the four above. CSV with a UTF-8 BOM so Excel shows Telugu; area names follow `Accept-Language`. The admin-activity CSV has an "Average review hours" column, empty when `avg_review_hours` is `null`. Errors still come back as JSON. `format=pdf` answers 404: exports are CSV only (owner decision Q14). Writes `report.exported`. |
 
 ---
 
