@@ -6,7 +6,7 @@ import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
 
-from apps.accounts.models import User, UserStatus
+from apps.accounts.models import User
 from apps.audit.models import AuditLog
 from apps.geography.models import District, Mandal, Village
 from apps.posts.models import Category, Post, PostStatus, ReviewAction
@@ -210,7 +210,7 @@ def test_dashboard_numbers(api, world):
         posted_as_area_id=world.ref("kaza").id, category=Category.objects.get(key="news"),
         title="draft", body="b", target_level="VILLAGE", target_area_id=world.ref("kaza").id, status=PostStatus.DRAFT,
     )
-    User.objects.filter(pk=world.users["pm_kaza"].pk).update(status=UserStatus.BLOCKED)
+    User.objects.filter(pk=world.users["pm_kaza"].pk).update(is_active=False)
 
     data = api(world.users["super"]).get("/api/v1/admin/dashboard/").json()
     kpis = data["kpis"]

@@ -2,9 +2,11 @@
 
 ## Permissions
 
-- Every write and every non-public read checks two things on the server: one of the actor's role assignments allows the action, and the target sits inside that assignment's area. Use `apps/accounts/scope.py` and `apps/geography/areas.py`; never trust a client filter.
-- Lists filter to the actor's areas in SQL (`within_q`, `manageable_users`, `apps.posts.services.visible_posts`). A query parameter can narrow a list, never widen it.
-- An object outside the actor's reach answers **404** (`not_found`), so its existence stays hidden. Creating something in an area outside the actor's reach answers **403** `out_of_area`. A role that cannot do the action at all answers **403** `permission_denied`.
+- Every write and every non-public read checks two things on the server: one of the actor's active role assignments has a group that grants the permission, and the target sits inside that assignment's area. Use `HasPerm("app_label.codename")` on views and `authz.can(user, perm, area)` in code (`apps/accounts/permissions.py`, `apps/accounts/authz.py`); never trust a client filter.
+- Never test a group's name or key: ask for a permission. Only `apps/accounts/role_matrix.py`, data migrations and the sync name groups. To add a permission, follow `docs/authorization.md`, section 10.
+- User actions (give, move or remove a role, block, reset, unlock) also need a group ranked strictly below the actor's: `authz.can_act_on` and `authz.can_assign`.
+- Lists filter to the actor's areas in SQL (`authz.area_q`, `authz.manageable_users`, `apps.posts.services.visible_posts`). A query parameter can narrow a list, never widen it.
+- An object outside the actor's reach answers **404** (`not_found`), so its existence stays hidden. Creating something in an area outside the actor's reach answers **403** `out_of_area`. An actor without the permission answers **403** `permission_denied`.
 - Super Admin reach is platform-wide whatever area the assignment names.
 
 ## Repo structure
@@ -34,15 +36,15 @@
 
 ## Privacy and secrets
 
-- Never write passwords, tokens or full email addresses or mobile numbers to logs, audit `data`, or django-q task arguments. Mask them (see `apps/notifications/tasks.py` and `apps/accounts/tasks.py`).
+- Never write passwords, tokens or full email addresses or mobile numbers to logs, audit `data`, or django-q task arguments. A temporary password appears once, in the API response that set it, and nowhere else.
 - Personal data never goes in a URL path.
 
 ## Tests
 
 - pytest on SQLite: `python -m pytest -q -p no:logging`. Every pull request keeps the whole suite green.
-- Every permission rule gets a test, including the "outside the area" case. Follow the matrix style in `apps/accounts/tests/test_user_permissions.py` and `apps/posts/tests/test_access.py`: work out the expected answer in the test from the rules, not by calling the code under test.
+- Every permission rule gets a test, including the "outside the area" case. Follow the matrix style in `apps/accounts/tests/test_matrix.py` (every group × every permission × the same area, the parent, a sibling and another district) and `apps/posts/tests/test_access.py`: work out the expected answer in the test from the rules, not by calling the code under test.
 - Shared fixtures are in the root `conftest.py`: a small map (2 districts, 4 mandals, 8 villages) and one official per role and area (`world`, `api`). Put app-only fixtures in that app's `tests/conftest.py`.
-- Email is checked with pytest-django's `mailoutbox`; push with the `push_outbox` fixture in `apps/notifications/tests/conftest.py`.
+- Push is checked with the `push_outbox` fixture in `apps/notifications/tests/conftest.py`.
 
 ## API changes
 

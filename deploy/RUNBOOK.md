@@ -5,18 +5,18 @@ For the person who runs the BVT Grama Connect server. Commands run on the server
 ## After the first setup
 
 1. **Store the backup passphrase offline.** Print `/etc/gramaconnect/backup.passphrase` or put it in the team's password manager. Without it no backup can be restored.
-2. **Create the first Super Admin.** Django admin is at `https://<domain>/django-admin/` and opens only from the office IPs in `OFFICE_IPS` (owner decision). With `OFFICE_IPS` empty, Nginx answers 403 to everyone: add the office address to `/etc/gramaconnect/deploy.env` and re-run `setup.sh`.
+2. **Load master data** (at least the state): see [DATA_MOVE.md](DATA_MOVE.md).
+3. **Create the first Super Admin** (after the shortcut below is defined):
 
    ```
-   cd /srv/gramaconnect/backend
-   sudo -u deploy bash -c 'set -a; . /etc/gramaconnect/gramaconnect.env; set +a; ../venv/bin/python manage.py createsuperuser'
+   gc create_super_admin --username sita.admin --name Sita
    ```
 
-   It asks for a username, an email, a name and a password. Log in to Django admin, open the new user, and add a role assignment: role `SUPER_ADMIN`, area level `STATE`, area id of Andhra Pradesh. That account can then log in to `/console/` with the same username and password. Everyone else is invited from the console or the app and gets an email.
-3. **Load master data**: see [DATA_MOVE.md](DATA_MOVE.md).
-4. **Configure email** (SMTP) and **push** (Firebase) below. Until email works, invites and password resets are not delivered and pushes are off.
-5. **Set the default passwords** in the console (Settings, "Default passwords by role"). Each role starts with a random one; new officials receive it by email and must change it at first login.
-6. Set `STRICT_CHECKS=1` in `/etc/gramaconnect/deploy.env` once `manage.py check --deploy` is clean.
+   It prints a temporary password once. Give it to the person in person or by phone; they log in at `/console/` and must choose their own password first. Every other official is added from the console or the app by an admin above them, who sets or generates the temporary password and passes it on the same way. Nothing is emailed.
+4. **Configure push** (Firebase) below. Until then pushes are off.
+5. Set `STRICT_CHECKS=1` in `/etc/gramaconnect/deploy.env` once `manage.py check --deploy` is clean.
+
+Django admin (`https://<domain>/django-admin/`) opens only from the office IPs in `OFFICE_IPS`. Only Super Admins (staff accounts that also hold the Super Admin role) may edit groups and role assignments there; every group permission change is audit-logged, and `gc sync_role_permissions` puts the role matrix back.
 
 ## Shortcut used below
 
@@ -49,8 +49,9 @@ Common problems:
 - **413 Request Entity Too Large:** uploads over 60 MB are refused by Nginx (`client_max_body_size` in `templates/nginx-locations.conf`). Django then limits photos to `MAX_IMAGE_UPLOAD_MB` and videos to `MAX_VIDEO_UPLOAD_MB` (50).
 - **403 on `/django-admin/`:** the address is not in `OFFICE_IPS`. Check `grep allow /etc/nginx/snippets/gramaconnect-locations.conf`.
 - **Video uploads ask for `duration_s` or a `poster`:** ffmpeg is missing, so the server cannot measure the video or make its poster. `sudo apt-get install ffmpeg`, then restart Gunicorn.
-- **429 on login:** Nginx allows 10 login or password-change requests a minute per IP (zone `gc_login`). Django adds its own limits: 5 failed tries per username in 15 minutes and 30 per IP an hour (`LOGIN_*` settings).
-- **Someone forgot their password:** an admin above them uses "Reset password" in the console or the app. The person gets their role's default password by email and must change it at first login.
+- **429 on login:** Nginx allows 10 login or password-change requests a minute per IP (zone `gc_login`). Django (django-axes) also locks a username for 15 minutes after 5 failed tries from one IP (`locked_out`). An admin above the person can unlock them early ("Unlock" in the console or the app), or from the shell: `gc axes_reset_username <username>`.
+- **Someone forgot their password:** an admin above them uses "Reset password" in the console or the app, which shows a new temporary password once (or lets the admin type one). The person must change it at first login; their other sessions end.
+- **Role permissions look wrong:** `gc sync_role_permissions --check` lists differences from `apps/accounts/role_matrix.py`; `gc sync_role_permissions` fixes them. `migrate` runs the same sync on every deploy.
 
 ## Deploying a release
 
@@ -103,22 +104,14 @@ Proves the backups work. Do it on a spare server, never on production.
 | `SECRET_KEY` | Delete the `SECRET_KEY=` line from `/etc/gramaconnect/gramaconnect.env`, run `setup.sh` (it generates a new one), then `deploy.sh` | Every JWT is signed with it: all officials must log in again |
 | Database password | `sudo rm /etc/gramaconnect/db.password`, run `setup.sh`, then restart the app | `setup.sh` sets a new password in the database, `DATABASE_URL` and the backup credentials |
 | Backup passphrase | Replace `/etc/gramaconnect/backup.passphrase` | Old backups still need the old passphrase: keep it until they expire |
-| SMTP password | Change it at the mail provider, update `EMAIL_HOST_PASSWORD` in the env file, restart both services | The old password stops working at the provider |
 | Firebase key | Replace the JSON file (below), restart | Revoke the old key in the Firebase console |
-
-## Email (SMTP)
-
-Invites and password resets go out by email; there is no SMS.
-1. Get SMTP credentials from the mail provider (any provider with SMTP and TLS on port 587 works). Use a sender address on the site's domain and set up SPF and DKIM for it, or the mail will land in spam.
-2. Put the values in `config.env` (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_USE_TLS`, `MAIL_FROM`) and re-run `setup.sh`, or edit `EMAIL_*` in `/etc/gramaconnect/gramaconnect.env` directly. Set `EMAIL_HOST_PASSWORD` by hand in the env file so the password is not kept in `config.env`.
-3. Restart both services: `sudo systemctl restart gramaconnect-gunicorn gramaconnect-qcluster`.
-4. `gc check --deploy` no longer reports `accounts.E001`. Invite a test official and check the email arrives; a failed send shows in the audit log as `email.failed`.
 
 ## Security notes
 
-- **Login rate limit in Nginx:** `templates/nginx-locations.conf` limits `/api/v1/auth/login/` and `/api/v1/auth/password/change/` to 10 requests a minute per IP (zone `gc_login`, burst 5), before Django's own per-username and per-IP limits.
+- **Login rate limit in Nginx:** `templates/nginx-locations.conf` limits `/api/v1/auth/login/`, `/api/v1/auth/session/login/` and `/api/v1/auth/password/change/` to 10 requests a minute per IP (zone `gc_login`, burst 5), before Django's lockout per username and IP.
+- **Console sessions:** the session cookie is HttpOnly, Secure and SameSite=Lax, every write needs the CSRF token, and a session ends after `CONSOLE_SESSION_IDLE_MINUTES` (30) idle minutes. Blocking a user or resetting their password ends their sessions at once.
 - **No personal data in access logs:** the site logs with the `gc_noquery` format (`templates/nginx-site-*.conf`), which records the path without the query string. Searches such as `/api/v1/users/?q=<email or mobile>` or `/api/v1/audit/?q=…` therefore never reach `/var/log/nginx`. Keep this format if you change the logging.
-- **Temporary passwords** appear only in the invite or reset email and in the console's Settings page for Super Admins. They are never logged or written to the audit log.
+- **Temporary passwords** appear once, in the API answer that created or reset them (shown to the admin on screen). They are never emailed, logged or written to the audit log.
 
 ## Push notifications (Firebase Cloud Messaging)
 

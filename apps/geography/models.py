@@ -99,6 +99,7 @@ class State(Area):
     class Meta(Area.Meta):
         verbose_name = _("state")
         verbose_name_plural = _("states")
+        permissions = [("manage_master_data", "Add, edit and import districts, mandals and villages")]
 
 
 class DistrictQuerySet(AreaQuerySet):

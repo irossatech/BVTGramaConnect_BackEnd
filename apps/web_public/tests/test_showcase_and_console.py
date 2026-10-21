@@ -140,9 +140,9 @@ def test_contact_messages_are_paged(world, api):
     assert len(client.get(f"{INBOX}?page=2").json()["results"]) == 5
 
 
-def test_marking_handled_and_reopening_is_recorded(world, api):
+def test_marking_handled_and_reopening_is_recorded(world, console):
     item = message()
-    client = api(world.users["super"])
+    client = console(world.users["super"])
     response = client.patch(f"{INBOX}{item.id}/", {"handled": True}, format="json")
     assert response.status_code == 200
     body = response.json()

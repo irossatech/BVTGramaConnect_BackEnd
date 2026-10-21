@@ -10,7 +10,7 @@ Scripts for one Ubuntu LTS server (22.04 or 24.04) in India. The database is MyS
 | `backup.sh` | Encrypted database + media backup; runs nightly from a systemd timer |
 | `restore.sh` | Restores a backup made by `backup.sh` |
 | `templates/` | systemd units, Nginx and fail2ban files that `setup.sh` fills in |
-| [RUNBOOK.md](RUNBOOK.md) | Day-to-day operation, restore drill, secrets, email, push, security notes, certificates |
+| [RUNBOOK.md](RUNBOOK.md) | Day-to-day operation, restore drill, secrets, push, security notes, certificates |
 | [DATA_MOVE.md](DATA_MOVE.md) | Moving master and seed data from a laptop's SQLite to the server |
 
 ## First setup
@@ -24,7 +24,7 @@ Scripts for one Ubuntu LTS server (22.04 or 24.04) in India. The database is MyS
    sudo bash deploy/setup.sh deploy/config.env
    ```
 
-5. Follow "After the first setup" in [RUNBOOK.md](RUNBOOK.md): create the Super Admin, store the backup passphrase offline, configure email (SMTP) and push, set the default passwords.
+5. Follow "After the first setup" in [RUNBOOK.md](RUNBOOK.md): store the backup passphrase offline, load the master data, create the first Super Admin with `create_super_admin`, configure push.
 
 ## Every release
 

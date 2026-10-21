@@ -12,8 +12,10 @@ never empty.
 
 Safe to run again: geography goes through the idempotent importer, officials
 are matched by username, and posts are only added once (each extra post is
-matched by author and title). Each official starts with their role's default
-password (printed at the end), as an invite would.
+matched by author and title). Each new official gets a generated temporary
+password, printed once at the end, and must change it at first login, as an
+account made by an admin would. --reset-passwords gives every sample official
+a new one.
 """
 
 import shutil
@@ -26,8 +28,8 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
 
-from apps.accounts.credentials import give_default_password, role_default
-from apps.accounts.models import RoleAssignment, User
+from apps.accounts.credentials import generate_password
+from apps.accounts.models import RoleAssignment, RoleGroup, User
 from apps.accounts.roles import Role
 from apps.geography.areas import AreaRef
 from apps.geography.importer import GeographyImporter
@@ -67,7 +69,13 @@ def area_ref(level: str, name: str) -> AreaRef:
 class Command(BaseCommand):
     help = "Load sample geography, one official per role and posts in every state. Safe to run again."
 
-    def handle(self, *args, **options):
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--reset-passwords", action="store_true",
+            help="Give every sample official a new temporary password and print it.",
+        )
+
+    def handle(self, *args, reset_passwords=False, **options):
         out = getattr(self.stdout, "_out", None)
         if hasattr(out, "reconfigure"):
             out.reconfigure(errors="backslashreplace")
@@ -82,6 +90,7 @@ class Command(BaseCommand):
         self.stdout.write(f"Geography: {Village.objects.count()} villages in the database.")
 
         users = {}
+        passwords = {}
         with transaction.atomic():
             for name, name_te, username, mobile, role, (level, area_name) in OFFICIALS:
                 user, created = User.objects.get_or_create(
@@ -94,9 +103,14 @@ class Command(BaseCommand):
                     },
                 )
                 ref = area_ref(level, area_name)
-                RoleAssignment.objects.get_or_create(user=user, role=role, area_level=ref.level, area_id=ref.id)
-                if created:
-                    give_default_password(user, role)
+                group = RoleGroup.objects.get(key=role).group
+                RoleAssignment.objects.get_or_create(user=user, group=group, area_level=ref.level, area_id=ref.id)
+                if created or reset_passwords:
+                    passwords[username] = generate_password()
+                    user.set_password(passwords[username])
+                    # The forced change is switched on after the sample posts are written.
+                    user.must_change_password = False
+                    user.save(update_fields=["password", "must_change_password", "updated_at"])
                 users[role] = user
 
         made = self._posts(users)
@@ -107,12 +121,14 @@ class Command(BaseCommand):
             else "Event and urgent posts: already present."
         )
         self._media_check()
+        if passwords:
+            User.objects.filter(username__in=list(passwords)).update(must_change_password=True)
         self.stdout.write(
-            "Officials. New ones start with their role's default password"
-            + (" and must change it at first login:" if settings.FORCE_PASSWORD_CHANGE_ON_FIRST_LOGIN else ":")
+            "Officials. Temporary passwords are shown once; each must be changed at first login:"
         )
         for name, _te, username, _mobile, role, (level, area_name) in OFFICIALS:
-            self.stdout.write(f"  {username:<20} {role_default(role):<14} {role:<17} {area_name}  ({name})")
+            password = passwords.get(username, "(unchanged)")
+            self.stdout.write(f"  {username:<20} {password:<14} {role:<17} {area_name}  ({name})")
 
     def _posts(self, users) -> int:
         from apps.posts.models import Category, Post

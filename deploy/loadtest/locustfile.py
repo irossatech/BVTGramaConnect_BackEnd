@@ -9,11 +9,12 @@ Replace [EXPECTED USERS] with the expected number of people using the app at
 the same time. Citizens far outnumber officials, so the user classes are
 weighted 20:1.
 
-Failed logins are rate limited per username and per IP address on purpose.
-The login users below guess wrong passwords for made-up usernames, so they get
-400 invalid_credentials and, once the IP limit is reached, 429; both count as
+Failed logins lock a username + IP pair after LOGIN_MAX_FAILURES (5) tries
+for LOGIN_LOCKOUT_MINUTES (django-axes), on purpose. The login users below
+guess wrong passwords for made-up usernames, so they get 400
+invalid_credentials and, once a pair is locked, 429 locked_out; both count as
 expected, not as failures. To measure the login path itself, raise
-LOGIN_MAX_FAILURES_PER_IP on the test server only.
+LOGIN_MAX_FAILURES on the test server only.
 """
 
 import random

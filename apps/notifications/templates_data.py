@@ -2,7 +2,7 @@
 and used as the fallback when a row is missing.
 
 Push texts come from the mobile prototype's Settings screen where it had them.
-There are no SMS texts: SMS was dropped for username/password login with email invites.
+There are no SMS texts: nothing is sent by SMS, and login is by username and password.
 """
 
 DEFAULTS = [

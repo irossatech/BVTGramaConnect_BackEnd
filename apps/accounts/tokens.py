@@ -1,9 +1,10 @@
-"""JWTs that can be revoked at once.
+"""JWTs (the mobile app) that can be revoked at once.
 
 Every token carries the user's token_version in the "tv" claim. The
 authentication class compares it with the database on every request, so
 bumping token_version ends every session immediately, which a plain JWT
 cannot do. All of the user's refresh tokens are blacklisted at the same time.
+Console sessions store the same number (authentication.py), so they end too.
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from grama.exceptions import AuthError
 
-from .models import User, UserStatus
+from .models import User
 
 TOKEN_VERSION_CLAIM = "tv"
 
@@ -40,7 +41,7 @@ def user_for_token(token) -> User:
         user = User.objects.filter(pk=token.get(api_settings.USER_ID_CLAIM)).first()
     except (ValueError, TypeError, DjangoValidationError):
         user = None
-    if user is None or user.is_blocked or token.get(TOKEN_VERSION_CLAIM) != user.token_version:
+    if user is None or not user.is_active or token.get(TOKEN_VERSION_CLAIM) != user.token_version:
         raise session_revoked()
     return user
 
@@ -82,12 +83,13 @@ def revoke_all_sessions(user: User) -> None:
 
 
 def block_user(user: User) -> None:
+    """is_active=False and a token_version bump, in one transaction: every token and session ends at once."""
     with transaction.atomic():
-        User.objects.filter(pk=user.pk).update(status=UserStatus.BLOCKED)
+        User.objects.filter(pk=user.pk).update(is_active=False)
         revoke_all_sessions(user)
-    user.refresh_from_db(fields=["status", "token_version"])
+    user.refresh_from_db(fields=["is_active", "token_version"])
 
 
 def unblock_user(user: User) -> None:
-    User.objects.filter(pk=user.pk).update(status=UserStatus.ACTIVE)
-    user.refresh_from_db(fields=["status"])
+    User.objects.filter(pk=user.pk).update(is_active=True)
+    user.refresh_from_db(fields=["is_active"])

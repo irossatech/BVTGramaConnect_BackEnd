@@ -1,4 +1,4 @@
-"""JWTs: token_version claim, immediate revocation on block, refresh, logout, console cookie."""
+"""JWTs for the mobile app: token_version claim, immediate revocation on block, refresh, logout."""
 
 from datetime import timedelta
 

@@ -1,8 +1,8 @@
-"""The user-management permission matrix (CLAUDE.md "Roles", contract section 11).
+"""The user-management permission matrix (CLAUDE.md "Roles", docs/authorization.md).
 
 Expected outcomes are worked out here from the rules as written in CLAUDE.md
 and from the map's parent links in conftest.py. They do not call the code
-under test, so a bug in accounts.scope cannot hide itself.
+under test, so a bug in accounts.authz or the role matrix cannot hide itself.
 
 Every official on the map is tried against every combination:
 - creating each role in each area (allowed, wrong role, outside the area),
@@ -14,9 +14,9 @@ import itertools
 
 import pytest
 
-from apps.accounts.models import RoleAssignment, User, UserStatus
+from apps.accounts.models import RoleAssignment, User
 from apps.accounts.roles import Role
-from conftest import OFFICIALS, inside
+from conftest import OFFICIALS, assign, inside
 
 pytestmark = pytest.mark.django_db
 
@@ -80,12 +80,12 @@ def assert_outcome(response, status: int, code: str | None):
 def test_create_user_matrix(api, world, actor, role, area):
     response = api(world.users[actor]).post(
         "/api/v1/users/",
-        {"name": "New Official", "email": "new.official@example.org", "role": role, "area": world.area_json(area)},
+        {"name": "New Official", "username": "new.official", "role": role, "area": world.area_json(area)},
         format="json",
     )
     status, code = expected_outcome(actor, role, area)
     assert_outcome(response, status, code)
-    created = User.objects.filter(email="new.official@example.org")
+    created = User.objects.filter(username="new.official")
     assert created.exists() == (status == 201)
     if status == 201:
         assignment = created.get().role_assignments.get()
@@ -130,14 +130,14 @@ def test_block_user_matrix(api, world, actor, target):
     victim.refresh_from_db()
     if not CAN_MANAGE[OFFICIALS[actor][0]]:
         assert_outcome(response, 403, "permission_denied")
-        assert victim.status == UserStatus.ACTIVE
+        assert victim.is_active
     elif may_manage(actor, target):
         assert response.status_code == 200
-        assert victim.status == UserStatus.BLOCKED
+        assert not victim.is_active
         assert victim.token_version == 1
     else:
         assert_outcome(response, 404, "not_found")
-        assert victim.status == UserStatus.ACTIVE
+        assert victim.is_active
         assert victim.token_version == 0
 
 
@@ -156,25 +156,24 @@ def test_block_user_matrix(api, world, actor, target):
 )
 def test_unblock_and_rename_follow_the_same_rule(api, world, actor, target, allowed):
     victim = world.users[target]
-    User.objects.filter(pk=victim.pk).update(status=UserStatus.BLOCKED)
+    User.objects.filter(pk=victim.pk).update(is_active=False)
     client = api(world.users[actor])
     unblock = client.post(f"/api/v1/users/{victim.id}/unblock/", {}, format="json")
     rename = client.patch(f"/api/v1/users/{victim.id}/", {"name_te": "కొత్త పేరు"}, format="json")
     victim.refresh_from_db()
     if allowed:
         assert unblock.status_code == 200 and rename.status_code == 200
-        assert victim.status == UserStatus.ACTIVE and victim.name_te == "కొత్త పేరు"
+        assert victim.is_active and victim.name_te == "కొత్త పేరు"
     else:
         assert unblock.status_code == 404 and rename.status_code == 404
-        assert victim.status == UserStatus.BLOCKED and victim.name_te != "కొత్త పేరు"
+        assert not victim.is_active and victim.name_te != "కొత్త పేరు"
 
 
 # --- Users with several assignments ---------------------------------------------------------
 
 
 def add_assignment(world, name, role, area):
-    ref = world.ref(area)
-    RoleAssignment.objects.create(user=world.users[name], role=role, area_level=ref.level, area_id=ref.id)
+    assign(world, name, role, area)
 
 
 @pytest.mark.parametrize(
@@ -208,17 +207,17 @@ def test_actor_with_two_assignments_combines_them(api, world):
     add_assignment(world, "ma_tenali", Role.VILLAGE_ADMIN, "kaza")
     client = api(world.users["ma_tenali"])
 
-    def create(email, role, area):
+    def create(username, role, area):
         return client.post(
             "/api/v1/users/",
-            {"name": "X", "email": email, "role": role, "area": world.area_json(area)},
+            {"name": "X", "username": username, "role": role, "area": world.area_json(area)},
             format="json",
         )
 
-    assert create("x1@example.org", Role.PANCHAYAT_MEMBER, "kaza").status_code == 201
-    assert create("x2@example.org", Role.VILLAGE_ADMIN, "nandivelugu").status_code == 201
-    assert_outcome(create("x3@example.org", Role.VILLAGE_ADMIN, "kaza"), 403, "out_of_area")
-    assert_outcome(create("x4@example.org", Role.PANCHAYAT_MEMBER, "chinakakani"), 403, "out_of_area")
+    assert create("new.x1", Role.PANCHAYAT_MEMBER, "kaza").status_code == 201
+    assert create("new.x2", Role.VILLAGE_ADMIN, "nandivelugu").status_code == 201
+    assert_outcome(create("new.x3", Role.VILLAGE_ADMIN, "kaza"), 403, "out_of_area")
+    assert_outcome(create("new.x4", Role.PANCHAYAT_MEMBER, "chinakakani"), 403, "out_of_area")
 
 
 # --- Role assignments -------------------------------------------------------------------------
@@ -294,23 +293,62 @@ def test_cannot_touch_an_assignment_of_another_user_through_this_one(api, world)
     assert RoleAssignment.objects.filter(pk=other.pk).exists()
 
 
-# --- Creating: validation (the invite email is tested in test_login.py) --------------------------
+# --- Creating: validation and the temporary password ------------------------------------------
 
 
 def create_as(api, world, actor, **body):
-    payload = {"name": "Lakshmi", "email": "lakshmi@example.org", "role": Role.PANCHAYAT_MEMBER, "area": world.area_json("kolakaluru")}
+    payload = {"name": "Lakshmi", "username": "lakshmi", "role": Role.PANCHAYAT_MEMBER, "area": world.area_json("kolakaluru")}
     payload.update(body)
     return api(world.users[actor]).post("/api/v1/users/", payload, format="json")
 
 
-@pytest.mark.parametrize(
-    "field, taken_from",
-    [("mobile", "mobile"), ("email", "email"), ("username", "username")],
-)
-def test_mobile_email_and_username_must_be_unique(api, world, field, taken_from):
-    response = create_as(api, world, "va_kolakaluru", **{field: getattr(world.users["pm_kaza"], taken_from)})
+@pytest.mark.parametrize("field", ["mobile", "username"])
+def test_mobile_and_username_must_be_unique(api, world, field):
+    response = create_as(api, world, "va_kolakaluru", **{field: getattr(world.users["pm_kaza"], field)})
     assert_outcome(response, 409, "duplicate")
     assert response.json()["error"]["fields"][field]
+
+
+def test_username_is_unique_without_regard_to_case(api, world):
+    assert_outcome(create_as(api, world, "va_kolakaluru", username="PM_Kaza"), 409, "duplicate")
+
+
+def test_email_is_only_a_contact_field(api, world):
+    """Two officials may share an office email; nobody logs in with it."""
+    response = create_as(api, world, "va_kolakaluru", email=world.users["pm_kaza"].email)
+    assert response.status_code == 201
+    assert response.json()["user"]["email"] == world.users["pm_kaza"].email
+
+
+def test_new_official_gets_a_generated_temporary_password_shown_once(api, world):
+    response = create_as(api, world, "va_kolakaluru", username="Lakshmi.K")
+    assert response.status_code == 201
+    body = response.json()
+    assert set(body) == {"user", "temporary_password"}
+    user = body["user"]
+    assert user["username"] == "lakshmi.k" and user["must_change_password"] is True and user["email"] is None
+    created = User.objects.get(username="lakshmi.k")
+    assert created.check_password(body["temporary_password"])
+    assert created.groups.get().role_group.key == "PANCHAYAT_MEMBER"
+    from apps.audit.models import AuditLog
+
+    entry = AuditLog.objects.get(action="user.created")
+    assert entry.data == {"role": "PANCHAYAT_MEMBER", "password": "generated"}
+    assert body["temporary_password"] not in str(entry.data)
+
+
+def test_admin_may_choose_the_temporary_password(api, world):
+    response = create_as(api, world, "va_kolakaluru", password="Kolakaluru-Start-1")
+    assert response.status_code == 201 and "temporary_password" not in response.json()
+    assert User.objects.get(username="lakshmi").check_password("Kolakaluru-Start-1")
+
+
+@pytest.mark.parametrize("password", ["short", "12345678", "password1", "lakshmi123"])
+def test_chosen_temporary_password_must_pass_the_rules(api, world, password):
+    response = create_as(api, world, "va_kolakaluru", password=password)
+    assert_outcome(response, 400, "validation_error")
+    assert response.json()["error"]["fields"]["password"]
+    assert not User.objects.filter(username="lakshmi").exists()
 
 
 def test_role_must_match_the_area_level(api, world):
@@ -340,7 +378,10 @@ def test_creating_needs_a_login(api, world):
 
 @pytest.mark.parametrize(
     "field, value",
-    [("name", "   "), ("email", "not-an-email"), ("mobile", "12345"), ("username", "a b"), ("role", "KING"), ("area", {"level": "CITY", "id": 1})],
+    [
+        ("name", "   "), ("email", "not-an-email"), ("mobile", "12345"), ("username", "a b"), ("username", ""),
+        ("role", "KING"), ("area", {"level": "CITY", "id": 1}),
+    ],
 )
 def test_create_validation(api, world, field, value):
     response = create_as(api, world, "super", **{field: value})
@@ -356,7 +397,7 @@ def listed(api, world, actor, query=""):
 
 
 def test_list_filters_and_counts(api, world):
-    User.objects.filter(pk=world.users["pm_kaza"].pk).update(status=UserStatus.BLOCKED)
+    User.objects.filter(pk=world.users["pm_kaza"].pk).update(is_active=False)
     data = listed(api, world, "da_guntur")
     assert data["counts"] == {
         "total": 8,

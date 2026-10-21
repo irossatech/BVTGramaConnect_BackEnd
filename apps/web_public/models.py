@@ -30,6 +30,7 @@ class ContactMessage(models.Model):
         verbose_name_plural = _("contact messages")
         ordering = ["-created_at"]
         indexes = [models.Index(fields=["ip_address", "created_at"])]
+        permissions = [("manage_contact_messages", "Read and close contact messages")]
 
     def __str__(self):
         return f"{self.name} ({self.mobile}) {self.created_at:%Y-%m-%d}"

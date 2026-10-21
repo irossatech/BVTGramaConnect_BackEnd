@@ -5,6 +5,7 @@ Django backend for BVT Grama Connect, the village news platform for Andhra Prade
 - Project brief: `CLAUDE.md` in the folder above this repo.
 - What the prototypes contain and how they are ported: [docs/prototype-inventory.md](docs/prototype-inventory.md).
 - Every endpoint, object and permission rule: [docs/api-contract.md](docs/api-contract.md).
+- Login, lockout, groups and permissions: [docs/authorization.md](docs/authorization.md).
 
 ## Requirements
 
@@ -30,7 +31,7 @@ py -3.13 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 python manage.py migrate
-python manage.py createsuperuser
+python manage.py seed_sample_data
 python manage.py runserver
 ```
 
@@ -44,7 +45,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
 python manage.py migrate
-python manage.py createsuperuser
+python manage.py seed_sample_data
 python manage.py runserver
 ```
 
@@ -52,19 +53,19 @@ python manage.py runserver
 
 1. **Virtual environment:** keeps this project's packages apart from the rest of the machine.
 2. **`pip install`:** installs the pinned packages in `requirements.txt`.
-3. **`migrate`:** creates `db.sqlite3` in the repo folder with every table.
-4. **`createsuperuser`:** asks for a username, an email, a name and a password. This account opens Django admin. To make it the platform's Super Admin as well, add a role assignment in Django admin (role `SUPER_ADMIN`, level `STATE`, the state's id); it can then log in to `/console/` with the same username and password.
+3. **`migrate`:** creates `db.sqlite3` in the repo folder with every table, and the five role groups with their permissions.
+4. **`seed_sample_data`:** loads sample geography and posts and one official per role, and prints each official's username and temporary password once. `--reset-passwords` prints new ones. On a real database the first Super Admin comes from `python manage.py create_super_admin --username <name> --name "<full name>"` instead (a state must be loaded), which also prints a temporary password once. Django admin needs a staff account: `python manage.py createsuperuser`.
 5. **`runserver`:** starts the development server at http://127.0.0.1:8000/.
 
 A `.env` file is optional for local work. To change a setting, copy `.env.example` to `.env` and edit it.
 
 ### Logins
 
-Officials log in with a username (or their email) and a password; there is no SMS. An admin invites someone from the console or the app, and they get an email with their username and their role's default password, which they must change at first login. The Super Admin sets each role's default password in the console. In development the email is printed in the `runserver` or `qcluster` terminal. `python manage.py seed_sample_data` creates one official per role and prints their usernames and temporary passwords.
+Officials log in with a username and a password. There is no OTP, SMS or email anywhere in login. The mobile app gets JWT tokens; the console at `/console/` uses a Django session with a CSRF token, and only Super Admins get in. An admin adds an official with a temporary password, typed in or generated and shown once, and the official must choose their own at first login. A forgotten password is reset the same way by a higher admin. Five failed logins for one username from one IP address lock it for 15 minutes; a higher admin can unlock it. Roles are Django groups; who may do what, and where, is in [docs/authorization.md](docs/authorization.md).
 
 ### Background jobs
 
-Invite and reset emails, push notifications and review escalation run as django-q2 jobs. The queue is stored in the database. To process jobs, start the worker in a second terminal, with the virtual environment active:
+Push notifications and review escalation run as django-q2 jobs. The queue is stored in the database. To process jobs, start the worker in a second terminal, with the virtual environment active:
 
 ```
 python manage.py qcluster
@@ -111,7 +112,7 @@ Tests run against a fresh in-memory SQLite database with `grama.settings.test`. 
 
 ```
 apps/                 every Django app (Python package "apps"; each keeps its short label)
-  accounts/           officials, password login, invites, role assignments, users API
+  accounts/           officials, password login and lockout, groups and permissions, role assignments, users API
   geography/          State, District, Mandal, Village; nearest village; CSV import
   posts/              posts, photos, review, categories, runtime settings, escalation
   feed/               public citizen feed
@@ -150,6 +151,7 @@ On the server, `grama.settings.prod` needs these environment variables and refus
 
 - **Database:** any engine Django supports, chosen by `DATABASE_URL`. For MySQL the settings add `utf8mb4` and strict mode automatically. Create the database with `CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci` so Telugu is stored correctly.
 - **Platform rules** from CLAUDE.md can be overridden in env: `ADMIN_POSTS_AUTO_PUBLISH`, `REVIEW_FIRST_DECISION_WINS`, `REVIEW_ESCALATION_HOURS`, `SUPER_ADMIN_CAN_POST`.
+- **Login:** `LOGIN_MAX_FAILURES` (5), `LOGIN_LOCKOUT_MINUTES` (15), `CONSOLE_SESSION_IDLE_MINUTES` (30). On the server set `CSRF_TRUSTED_ORIGINS` to the site's https address; `SESSION_COOKIE_SECURE` and `CSRF_COOKIE_SECURE` stay on.
 - `.env.example` lists every variable.
 
 ## On the server
@@ -163,7 +165,7 @@ gunicorn grama.wsgi:application --bind 127.0.0.1:8001 --workers 3
 python manage.py qcluster
 ```
 
-Nginx serves the public website at `/`, the console at `/console/`, `/static/` and `/media/`, and proxies `/api/` and `/django-admin/` to Gunicorn. Django does not serve the web parts outside development.
+`migrate` also brings the role groups and their permissions in line with `apps/accounts/role_matrix.py`. Nginx serves the public website at `/`, the console at `/console/`, `/static/` and `/media/`, and proxies `/api/` and `/django-admin/` to Gunicorn. Django does not serve the web parts outside development.
 
 ## Deployment
 

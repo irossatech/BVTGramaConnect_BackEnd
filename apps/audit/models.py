@@ -58,6 +58,10 @@ class AuditLog(models.Model):
         ordering = ["-created_at"]
         verbose_name = _("audit log entry")
         verbose_name_plural = _("audit log")
+        permissions = [
+            ("view_audit_log", "Read the audit log"),
+            ("export_audit_log", "Download the audit log as CSV"),
+        ]
         indexes = [
             models.Index(fields=["type", "created_at"]),
             models.Index(fields=["actor", "created_at"]),

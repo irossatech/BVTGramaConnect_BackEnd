@@ -14,6 +14,13 @@ SQLite, MySQL and PostgreSQL and needs no row locks.
 
 Each move writes a ReviewAction and an AuditLog entry in the same transaction,
 then sends a signal from posts.signals once the transaction commits.
+
+Who may do what comes from permissions over the post's target area
+(accounts.authz): posts.create_post and submit_post to write and send on,
+publish_post (which also auto-publishes the admin's own posts), recheck_post,
+discard_post, takedown_post, reverse_decision and mark_urgent. Posts record
+the key of the group they were written or decided under (posted_as_role,
+decided_by_role); a reversal needs a group ranked strictly higher.
 """
 
 from __future__ import annotations
@@ -28,8 +35,8 @@ from django.utils import timezone
 from django.utils.translation import gettext as _
 from rest_framework import status as http
 
-from apps.accounts.roles import POSTING_ROLES, REVIEW_ROLES, Role
-from apps.accounts.scope import RoleArea, is_within, user_areas
+from apps.accounts import authz
+from apps.accounts.authz import Grant
 from apps.audit.services import record
 from apps.geography.areas import AreaDescriber, AreaRef, area_exists, within_q
 from apps.geography.models import AreaLevel, District, Mandal, State
@@ -38,12 +45,19 @@ from grama.exceptions import ApiError, out_of_area, permission_denied
 from . import signals
 from .models import Category, Post, PostStatus, ReviewAction, SettingOverride
 
-ROLE_RANK = {
-    Role.SUPER_ADMIN: 0,
-    Role.DISTRICT_ADMIN: 1,
-    Role.MANDAL_ADMIN: 2,
-    Role.VILLAGE_ADMIN: 3,
-    Role.PANCHAYAT_MEMBER: 4,
+CREATE = "posts.create_post"
+SUBMIT = "posts.submit_post"
+REVIEW = "posts.review_post"
+PUBLISH = "posts.publish_post"
+URGENT = "posts.mark_urgent"
+QUEUE = "posts.view_review_queue"
+#: Review action -> the permission it needs over the post's target.
+DECISION_PERMISSION = {
+    "publish": "posts.publish_post",
+    "recheck": "posts.recheck_post",
+    "discard": "posts.discard_post",
+    "unpublish": "posts.takedown_post",
+    "reverse": "posts.reverse_decision",
 }
 NEXT_LEVEL_UP = {
     AreaLevel.VILLAGE: AreaLevel.MANDAL,
@@ -118,43 +132,23 @@ def comment_required() -> ApiError:
 # --- Who may do what --------------------------------------------------------------------------
 
 
-def posting_roles() -> set[str]:
-    roles = set(POSTING_ROLES)
-    if settings.SUPER_ADMIN_CAN_POST:
-        roles.add(Role.SUPER_ADMIN)
-    return roles
+def posting_assignment(user, target: AreaRef, perm: str = CREATE) -> Grant | None:
+    """The assignment `user` posts under for `target`: the highest one granting `perm` there."""
+    return authz.best_grant(user, perm, target)
 
 
-def posting_assignment(user, target: AreaRef) -> RoleArea | None:
-    """The assignment `user` posts under for `target`: the highest matching role."""
-    matches = []
-    for item in user_areas(user, posting_roles()):
-        if item.role == Role.PANCHAYAT_MEMBER:
-            if target == item.area:
-                matches.append(item)
-        elif is_within(target, item):
-            matches.append(item)
-    return min(matches, key=lambda item: ROLE_RANK[item.role], default=None)
+def reviewer_assignment(user, post: Post, perm: str = REVIEW) -> Grant | None:
+    """The highest assignment of `user` granting `perm` over the post's target."""
+    return authz.best_grant(user, perm, post.target)
 
 
-def reviewer_assignment(user, post: Post) -> RoleArea | None:
-    """The highest review role of `user` whose area contains the post's target."""
-    matches = [item for item in user_areas(user, REVIEW_ROLES) if is_within(post.target, item)]
-    return min(matches, key=lambda item: ROLE_RANK[item.role], default=None)
-
-
-def review_scope_q(user) -> Q:
-    """Posts whose target lies inside one of the user's review areas."""
-    q = Q(pk__in=[])
-    for item in user_areas(user, REVIEW_ROLES):
-        if item.is_global:
-            return Q()
-        q |= within_q(item.area, **TARGET_Q)
-    return q
+def review_scope_q(user, perm: str = REVIEW) -> Q:
+    """Posts whose target lies inside an area where the user holds `perm`."""
+    return authz.area_q(user, perm, **TARGET_Q)
 
 
 def visible_posts(user) -> QuerySet:
-    """Own posts, plus every non-draft post inside the user's review areas."""
+    """Own posts, plus every non-draft post inside the areas where the user holds review_post."""
     scope = Q(author=user) | (review_scope_q(user) & ~Q(status=PostStatus.DRAFT))
     return Post.objects.filter(scope)
 
@@ -162,21 +156,27 @@ def visible_posts(user) -> QuerySet:
 def review_queue(user) -> QuerySet:
     return (
         Post.objects.filter(status=PostStatus.PENDING)
-        .filter(review_scope_q(user))
+        .filter(review_scope_q(user, QUEUE))
         .exclude(author=user)
         .order_by("submitted_at", "created_at")
     )
 
 
-def can_reverse(reviewer: RoleArea | None, post: Post) -> bool:
+def _rank(user, key: str) -> int | None:
+    role = authz.known_roles(user).get(key)
+    return role.rank if role else None
+
+
+def can_reverse(user, reviewer: Grant | None, post: Post) -> bool:
+    """A decided post can be reversed by a group ranked strictly above the one that decided it."""
     if reviewer is None or post.status not in DECIDED:
         return False
     if not settings.REVIEW_FIRST_DECISION_WINS:
         return True
-    decided_rank = ROLE_RANK.get(post.decided_by_role)
+    decided_rank = _rank(user, post.decided_by_role)
     if decided_rank is None:
-        return reviewer.role == Role.SUPER_ADMIN
-    return ROLE_RANK[reviewer.role] < decided_rank
+        return reviewer.platform_wide
+    return reviewer.rank < decided_rank
 
 
 def allowed_actions(user, post: Post) -> list[str]:
@@ -186,16 +186,15 @@ def allowed_actions(user, post: Post) -> list[str]:
             actions += ["edit", "add_media", "submit"]
         if post.status == PostStatus.DRAFT:
             actions.append("delete")
-    reviewer = reviewer_assignment(user, post)
-    if reviewer is not None:
-        if post.status == PostStatus.PENDING and post.author_id != user.id:
-            actions += ["publish", "recheck", "discard"]
-        if post.status == PostStatus.PUBLISHED:
-            actions.append("unpublish")
-        if can_reverse(reviewer, post):
-            actions.append("reverse")
-        if post.status != PostStatus.DRAFT:
-            actions.append("set_urgent")
+    target = post.target
+    if post.status == PostStatus.PENDING and post.author_id != user.id:
+        actions += [name for name in ("publish", "recheck", "discard") if authz.can(user, DECISION_PERMISSION[name], target)]
+    if post.status == PostStatus.PUBLISHED and authz.can(user, DECISION_PERMISSION["unpublish"], target):
+        actions.append("unpublish")
+    if can_reverse(user, reviewer_assignment(user, post, DECISION_PERMISSION["reverse"]), post):
+        actions.append("reverse")
+    if post.status != PostStatus.DRAFT and authz.can(user, URGENT, target):
+        actions.append("set_urgent")
     return actions
 
 
@@ -203,6 +202,7 @@ def allowed_actions(user, post: Post) -> list[str]:
 
 
 def _log(post: Post, action: str, from_status: str, to_status: str, actor, role: str, comment: str = "") -> None:
+    """role: the key of the group the actor acted under."""
     ReviewAction.objects.create(
         post=post,
         action=action,
@@ -241,20 +241,20 @@ def _check_target(target: AreaRef) -> None:
         )
 
 
-def _posting_or_raise(user, target: AreaRef) -> RoleArea:
-    assignment = posting_assignment(user, target)
+def _posting_or_raise(user, target: AreaRef, perm: str = CREATE) -> Grant:
+    assignment = posting_assignment(user, target, perm)
     if assignment is None:
-        if user_areas(user, posting_roles()):
+        if authz.can(user, perm):
             raise out_of_area(_("You can post only to your own area."))
         raise permission_denied(_("Your role cannot post."))
     return assignment
 
 
-def _move_on_submit(post: Post, user, assignment: RoleArea, *, resubmit: bool) -> Post:
-    """DRAFT or RECHECK onward: auto-publish for admins, review for everyone else."""
+def _move_on_submit(post: Post, user, assignment: Grant, *, resubmit: bool) -> Post:
+    """DRAFT or RECHECK onward: published at once when the author may publish, else reviewed."""
     now = timezone.now()
     from_status = post.status
-    auto = assignment.role != Role.PANCHAYAT_MEMBER and settings.ADMIN_POSTS_AUTO_PUBLISH
+    auto = PUBLISH in assignment.permissions and settings.ADMIN_POSTS_AUTO_PUBLISH
     if auto:
         changed = Post.objects.filter(pk=post.pk, status__in=EDITABLE).update(
             status=PostStatus.PUBLISHED,
@@ -262,7 +262,7 @@ def _move_on_submit(post: Post, user, assignment: RoleArea, *, resubmit: bool) -
             published_at=now,
             decided_at=now,
             decided_by=user,
-            decided_by_role=assignment.role,
+            decided_by_role=assignment.key,
             updated_at=now,
         )
         action, to_status, signal = ReviewAction.Action.AUTO_PUBLISH, PostStatus.PUBLISHED, signals.post_published
@@ -282,7 +282,7 @@ def _move_on_submit(post: Post, user, assignment: RoleArea, *, resubmit: bool) -
     if not changed:
         raise invalid_transition(_reload(post), "submitted")
     post = _reload(post)
-    _log(post, action, from_status, to_status, user, assignment.role)
+    _log(post, action, from_status, to_status, user, assignment.key)
     _after_commit(signal, post=post)
     return post
 
@@ -312,20 +312,21 @@ def _event_values(event: dict | None) -> dict:
     }
 
 
-def _check_urgent_allowed(role: str, wants_urgent: bool) -> None:
-    """Only admins mark their own posts urgent (owner decision Q19)."""
-    if wants_urgent and role == Role.PANCHAYAT_MEMBER:
+def _check_urgent_allowed(assignment: Grant, wants_urgent: bool) -> None:
+    """Only groups with posts.mark_urgent mark their own posts urgent (owner decision Q19)."""
+    if wants_urgent and URGENT not in assignment.permissions:
         raise permission_denied(_("Only admins can mark a post as urgent."))
 
 
 def create_post(user, data: PostInput, *, submit: bool = True) -> Post:
     _check_target(data.target)
     assignment = _posting_or_raise(user, data.target)
-    _check_urgent_allowed(assignment.role, data.is_urgent)
+    _check_urgent_allowed(assignment, data.is_urgent)
+    sender = _posting_or_raise(user, data.target, SUBMIT) if submit else None
     with transaction.atomic():
         post = Post.objects.create(
             author=user,
-            posted_as_role=assignment.role,
+            posted_as_role=assignment.key,
             posted_as_level=assignment.area.level,
             posted_as_area_id=assignment.area.id,
             category=data.category,
@@ -338,9 +339,9 @@ def create_post(user, data: PostInput, *, submit: bool = True) -> Post:
             is_urgent=data.is_urgent,
             **_event_values(data.event),
         )
-        record("post.created", actor=user, actor_role=assignment.role, target=post, target_label=post.title, area=post.target)
+        record("post.created", actor=user, actor_role=assignment.key, target=post, target_label=post.title, area=post.target)
         if submit:
-            post = _move_on_submit(post, user, assignment, resubmit=False)
+            post = _move_on_submit(post, user, sender, resubmit=False)
     return _reload(post)
 
 
@@ -357,23 +358,23 @@ def update_post(user, post: Post, changes: dict) -> Post:
     for name in ("title", "body", "language", "category"):
         if name in changes:
             values[name] = changes[name]
-    role = post.posted_as_role
+    assignment = None
     if "target" in changes:
         target = changes["target"]
         _check_target(target)
         assignment = _posting_or_raise(user, target)
-        role = assignment.role
         values.update(
             target_level=target.level,
             target_area_id=target.id,
-            posted_as_role=assignment.role,
+            posted_as_role=assignment.key,
             posted_as_level=assignment.area.level,
             posted_as_area_id=assignment.area.id,
         )
     if "event" in changes:
         values.update(_event_values(changes["event"]))
     if "is_urgent" in changes:
-        _check_urgent_allowed(role, changes["is_urgent"])
+        if changes["is_urgent"]:
+            _check_urgent_allowed(assignment or _posting_or_raise(user, post.target), True)
         values["is_urgent"] = changes["is_urgent"]
     if values:
         values["updated_at"] = timezone.now()
@@ -402,7 +403,7 @@ def delete_post(user, post: Post) -> None:
 
 def submit_post(user, post: Post) -> Post:
     _own_editable(user, post, "submitted")
-    assignment = _posting_or_raise(user, post.target)
+    assignment = _posting_or_raise(user, post.target, SUBMIT)
     with transaction.atomic():
         return _move_on_submit(post, user, assignment, resubmit=post.status == PostStatus.RECHECK)
 
@@ -421,9 +422,10 @@ VERBS = {"publish": "published", "recheck": "sent for recheck", "discard": "disc
 
 def review(user, post: Post, action: str, comment: str = "", to_status: str | None = None) -> Post:
     comment = (comment or "").strip()
-    reviewer = reviewer_assignment(user, post)
+    perm = DECISION_PERMISSION.get(action, REVIEW)
+    reviewer = reviewer_assignment(user, post, perm)
     if reviewer is None:
-        if user_areas(user, REVIEW_ROLES):
+        if authz.can(user, perm):
             raise out_of_area(_("This post is outside your area."))
         raise permission_denied(_("Your role cannot review posts."))
 
@@ -443,7 +445,7 @@ def review(user, post: Post, action: str, comment: str = "", to_status: str | No
         "status": new_status,
         "decided_at": now,
         "decided_by": user,
-        "decided_by_role": reviewer.role,
+        "decided_by_role": reviewer.key,
         "updated_at": now,
     }
     if new_status == PostStatus.PUBLISHED:
@@ -459,14 +461,14 @@ def review(user, post: Post, action: str, comment: str = "", to_status: str | No
                 raise AlreadyDecided(current)
             raise invalid_transition(current, VERBS[action])
         post = _reload(post)
-        _log(post, logged_action, from_status, new_status, user, reviewer.role, comment)
+        _log(post, logged_action, from_status, new_status, user, reviewer.key, comment)
         _after_commit(signals.post_decided, post=post, action=action, actor=user)
         if new_status == PostStatus.PUBLISHED:
             _after_commit(signals.post_published, post=post)
     return post
 
 
-def _reverse(user, reviewer: RoleArea, post: Post, comment: str, to_status: str | None) -> Post:
+def _reverse(user, reviewer: Grant, post: Post, comment: str, to_status: str | None) -> Post:
     if not comment:
         raise comment_required()
     if to_status not in REVERSE_TARGETS or to_status == post.status:
@@ -477,7 +479,7 @@ def _reverse(user, reviewer: RoleArea, post: Post, comment: str, to_status: str 
         )
     if post.status not in DECIDED:
         raise invalid_transition(post, "reversed")
-    if not can_reverse(reviewer, post):
+    if not can_reverse(user, reviewer, post):
         raise permission_denied(_("Only a higher level can reverse this decision."))
 
     now = timezone.now()
@@ -485,7 +487,7 @@ def _reverse(user, reviewer: RoleArea, post: Post, comment: str, to_status: str 
         "status": to_status,
         "decided_at": now if to_status != PostStatus.PENDING else None,
         "decided_by": user if to_status != PostStatus.PENDING else None,
-        "decided_by_role": reviewer.role if to_status != PostStatus.PENDING else "",
+        "decided_by_role": reviewer.key if to_status != PostStatus.PENDING else "",
         "updated_at": now,
     }
     if to_status == PostStatus.PUBLISHED and not post.published_at:
@@ -499,7 +501,7 @@ def _reverse(user, reviewer: RoleArea, post: Post, comment: str, to_status: str 
             raise AlreadyDecided(_reload(post))
         from_status = post.status
         post = _reload(post)
-        _log(post, ReviewAction.Action.REVERSE, from_status, to_status, user, reviewer.role, comment)
+        _log(post, ReviewAction.Action.REVERSE, from_status, to_status, user, reviewer.key, comment)
         _after_commit(signals.post_decided, post=post, action="reverse", actor=user)
         if to_status == PostStatus.PUBLISHED:
             _after_commit(signals.post_published, post=post)
@@ -512,10 +514,10 @@ def _reverse(user, reviewer: RoleArea, post: Post, comment: str, to_status: str 
 
 
 def set_urgent(user, post: Post, is_urgent: bool) -> Post:
-    """A reviewer whose area contains the post marks or clears "urgent" (owner decision Q19)."""
-    reviewer = reviewer_assignment(user, post)
+    """Someone holding posts.mark_urgent over the post's target marks or clears "urgent" (owner decision Q19)."""
+    reviewer = reviewer_assignment(user, post, URGENT)
     if reviewer is None:
-        if user_areas(user, REVIEW_ROLES):
+        if authz.can(user, URGENT):
             raise out_of_area(_("This post is outside your area."))
         raise permission_denied(_("Only admins can mark a post as urgent."))
     if post.status == PostStatus.DRAFT:
@@ -528,7 +530,7 @@ def set_urgent(user, post: Post, is_urgent: bool) -> Post:
         record(
             "post.urgent_set" if is_urgent else "post.urgent_cleared",
             actor=user,
-            actor_role=reviewer.role,
+            actor_role=reviewer.key,
             target=post,
             target_label=post.title,
             area=post.target,
@@ -560,8 +562,8 @@ def posting_targets(user) -> dict:
     """
     choices: dict[str, list[AreaRef]] = {}
     via_geo: set[str] = set()
-    for item in user_areas(user, posting_roles()):
-        if item.role == Role.SUPER_ADMIN:
+    for item in authz.grants_for(user, CREATE):
+        if item.platform_wide:
             states = [AreaRef(AreaLevel.STATE, i) for i in State.objects.active().values_list("id", flat=True)]
             choices.setdefault(AreaLevel.STATE, []).extend(states)
             for state in states:
@@ -571,8 +573,6 @@ def posting_targets(user) -> dict:
         if not area_exists(item.area, active_only=True):
             continue
         choices.setdefault(item.area.level, []).append(item.area)
-        if item.role == Role.PANCHAYAT_MEMBER:
-            continue
         below = _children(item.area)
         if below:
             choices.setdefault(below[0].level, []).extend(below)

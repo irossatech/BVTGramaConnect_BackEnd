@@ -11,7 +11,7 @@ Read when needed: `.claude/operations.md` (setup, commands, env, deploy) and `.c
 
 ## Always
 
-- Check role AND area on the server for every action; use `apps/accounts/scope.py` and `apps/geography/areas.py`.
+- Check permission AND area on the server for every action: `HasPerm` on views, `authz.can()` and `authz.area_q()` in code (`apps/accounts/authz.py`). Never test a group's name; groups and their permissions live only in `apps/accounts/role_matrix.py`.
 - Change a post's status only through `apps/posts/services.py`; write audit entries only through `apps.audit.services.record`.
 - Portable ORM only; tests run on SQLite and must stay green.
 - Contract first: update `docs/api-contract.md` with any API change and tell the client teams.

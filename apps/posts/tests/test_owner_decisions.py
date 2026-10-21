@@ -355,8 +355,8 @@ def test_visibility_up_to_your_own_level(api, world, author, target, expected):
 
 
 @pytest.mark.parametrize("allowed, expected", [(True, 201), (False, 403)])
-def test_only_the_super_admin_posts_to_the_state(api, world, settings, allowed, expected):
-    settings.SUPER_ADMIN_CAN_POST = allowed
+def test_only_the_super_admin_posts_to_the_state(api, world, super_admin_can_post, allowed, expected):
+    super_admin_can_post(allowed)
     assert api(world.users["super"]).post(POSTS, body(world, "ap"), format="json").status_code == expected
 
 
@@ -393,10 +393,10 @@ def test_targets_for_village_officials(api, world, who):
     assert targets(api, world, who) == [("VILLAGE", ids(world, "kolakaluru"), None)]
 
 
-def test_targets_for_the_super_admin(api, world, settings):
-    settings.SUPER_ADMIN_CAN_POST = False
+def test_targets_for_the_super_admin(api, world, super_admin_can_post):
+    super_admin_can_post(False)
     assert targets(api, world, "super") == []
-    settings.SUPER_ADMIN_CAN_POST = True
+    super_admin_can_post(True)
     assert targets(api, world, "super") == [
         ("STATE", ids(world, "ap"), None),
         ("DISTRICT", ids(world, "guntur", "krishna"), None),
@@ -414,9 +414,8 @@ def test_targets_need_a_login(api, world):
     assert api().get(f"{POSTS}targets/").status_code == 401
 
 
-def test_every_offered_target_can_be_posted_to(api, world, settings):
+def test_every_offered_target_can_be_posted_to(api, world, super_admin_can_post):
     """The picker never offers an area the server would refuse."""
-    settings.SUPER_ADMIN_CAN_POST = True
     for who in ("super", "da_guntur", "ma_tenali", "va_kolakaluru", "pm_kolakaluru"):
         levels = api(world.users[who]).get(f"{POSTS}targets/").json()["levels"]
         for level in levels:

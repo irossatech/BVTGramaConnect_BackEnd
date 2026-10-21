@@ -23,8 +23,9 @@ from rest_framework.renderers import BaseRenderer, JSONRenderer
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.models import RoleAssignment, User, UserStatus
-from apps.accounts.roles import Role
+from apps.accounts import authz
+from apps.accounts.models import RoleAssignment, User
+from apps.accounts.permissions import PLATFORM, HasPerm
 from apps.audit.models import AuditLog
 from apps.audit.services import record
 from apps.geography.areas import AreaDescriber, AreaRef, within_q
@@ -33,16 +34,19 @@ from grama.exceptions import ApiError
 from grama.pagination import PageNumberPagination
 from apps.posts.models import Post, PostStatus, ReviewAction, SettingOverride
 
-from .permissions import IsSuperAdmin, client_via
+from .permissions import client_via
 
-ADMIN_ROLES = [Role.DISTRICT_ADMIN, Role.MANDAL_ADMIN, Role.VILLAGE_ADMIN]
 DECISIONS = [ReviewAction.Action.PUBLISH, ReviewAction.Action.RECHECK, ReviewAction.Action.DISCARD]
-LEVEL_OF_ROLE = {
-    Role.SUPER_ADMIN: AreaLevel.STATE,
-    Role.DISTRICT_ADMIN: AreaLevel.DISTRICT,
-    Role.MANDAL_ADMIN: AreaLevel.MANDAL,
-    Role.VILLAGE_ADMIN: AreaLevel.VILLAGE,
-}
+
+
+def area_admin_roles() -> list[str]:
+    """Keys of the groups counted as area admins: they review posts and are not platform-wide."""
+    return authz.role_keys_holding("posts.review_post", platform_wide=False)
+
+
+def level_of_roles() -> dict[str, str]:
+    """Role key -> the area level it is assigned at, from the role table."""
+    return {key: role.level for key, role in authz.roles().items()}
 REJECTED = [PostStatus.DISCARDED, PostStatus.UNPUBLISHED]
 
 
@@ -99,10 +103,12 @@ def posts_counts(queryset) -> dict:
 
 
 class SuperAdminView(APIView):
-    permission_classes = [IsAuthenticated, IsSuperAdmin]
+    permission_classes = [IsAuthenticated, HasPerm("web_admin.view_reports", PLATFORM, "Only Super Admins can do this.")]
 
 
 class DashboardView(SuperAdminView):
+    permission_classes = [IsAuthenticated, HasPerm("web_admin.view_dashboard", PLATFORM, "Only Super Admins can do this.")]
+
     @extend_schema(summary="Super Admin dashboard")
     def get(self, request):
         now = timezone.now()
@@ -145,7 +151,9 @@ class DashboardView(SuperAdminView):
             if local_date(value) == today
         )
         oldest_pending = pending.order_by("submitted_at").values_list("submitted_at", flat=True).first()
-        admins = RoleAssignment.objects.filter(role__in=ADMIN_ROLES, user__status=UserStatus.ACTIVE)
+        admins = RoleAssignment.objects.filter(
+            group__role_group__key__in=area_admin_roles(), is_active=True, user__is_active=True
+        )
         recent = [audit_entry(row, describer) for row in AuditLog.objects.order_by("-created_at")[:6]]
 
         return Response(
@@ -163,8 +171,8 @@ class DashboardView(SuperAdminView):
                     "escalated": pending.filter(escalated_at__isnull=False).count(),
                     "published_today": published_today,
                     "active_admins": admins.values("user_id").distinct().count(),
-                    "active_users": User.objects.filter(status=UserStatus.ACTIVE).count(),
-                    "blocked_users": User.objects.filter(status=UserStatus.BLOCKED).count(),
+                    "active_users": User.objects.filter(is_active=True).count(),
+                    "blocked_users": User.objects.filter(is_active=False).count(),
                     "live_villages": Village.objects.active().count(),
                     "inactive_villages": Village.objects.count() - Village.objects.active().count(),
                 },
@@ -218,8 +226,9 @@ def report_review_time(days: int) -> list[dict]:
     ):
         submissions[post_id].append(at)
     totals = defaultdict(lambda: [0.0, 0])
+    levels = level_of_roles()
     for post_id, role, at in decisions.values_list("post_id", "actor_role", "created_at"):
-        level = LEVEL_OF_ROLE.get(role)
+        level = levels.get(role)
         earlier = [s for s in submissions.get(post_id, []) if s <= at]
         if level is None or not earlier:
             continue
@@ -241,9 +250,9 @@ def report_admin_activity(days: int) -> list[dict]:
     since = timezone.now() - timedelta(days=days)
     describer = AreaDescriber()
     assignments = (
-        RoleAssignment.objects.filter(role__in=ADMIN_ROLES)
-        .select_related("user")
-        .order_by("user__name", "created_at")
+        RoleAssignment.objects.filter(group__role_group__key__in=area_admin_roles())
+        .select_related("user", "group__role_group")
+        .order_by("user__name", "group__role_group__rank", "assigned_at")
     )
     stats = defaultdict(lambda: {"reviewed": 0, "published": 0, "recheck": 0, "discarded": 0, "hours": []})
     actions = ReviewAction.objects.filter(action__in=DECISIONS, created_at__gte=since, actor__isnull=False)
@@ -262,7 +271,7 @@ def report_admin_activity(days: int) -> list[dict]:
         entry = stats[user.id]
         rows.append(
             {
-                "user": {"id": str(user.id), "name": user.name, "role": assignment.role},
+                "user": {"id": str(user.id), "name": user.name, "role": assignment.group.role_group.key},
                 "area": describer.describe(assignment.area),
                 "reviewed": entry["reviewed"],
                 "published": entry["published"],

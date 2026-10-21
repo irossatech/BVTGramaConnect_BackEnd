@@ -25,10 +25,11 @@ def record(
     if actor is not None and not getattr(actor, "is_authenticated", True):
         actor = None
     if actor is not None and not actor_role:
-        from apps.accounts.scope import user_areas
+        # The keys of the actor's groups, for display, such as VILLAGE_ADMIN.
+        from apps.accounts import authz
 
-        roles = sorted({item.role for item in user_areas(actor)})
-        actor_role = roles[0] if len(roles) == 1 else ",".join(roles)[:20]
+        keys = sorted({grant.key for grant in authz.grants(actor, pending_change_ok=True)})
+        actor_role = keys[0] if len(keys) == 1 else ",".join(keys)[:20]
     target_type = target_id = ""
     if target is not None:
         target_type = target._meta.label_lower

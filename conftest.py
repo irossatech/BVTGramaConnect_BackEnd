@@ -13,6 +13,7 @@ Map (English key, Telugu name):
 Officials are named after role and area: "da_guntur", "ma_tenali",
 "va_kolakaluru", "pm_kolakaluru" and so on. See OFFICIALS. Each one's username
 is that name, the email is <name>@example.org and the password TEST_PASSWORD.
+Roles are the Django groups that migrations create from role_matrix.py.
 """
 
 from __future__ import annotations
@@ -133,9 +134,13 @@ def make_official(world: World, name: str, role: str, area_key: str, mobile: str
     user = User.objects.create_user(
         username=name, email=f"{name}@example.org", mobile=mobile, name=name, password=TEST_PASSWORD,
     )
-    ref = world.ref(area_key)
-    RoleAssignment.objects.create(user=user, role=role, area_level=ref.level, area_id=ref.id)
+    RoleAssignment.objects.assign(user, role, world.ref(area_key))
     return user
+
+
+def assign(world: World, name: str, role: str, area_key: str, **kwargs) -> RoleAssignment:
+    """Give an official another role: assign(world, "pm_kolakaluru", Role.PANCHAYAT_MEMBER, "kaza")."""
+    return RoleAssignment.objects.assign(world.users[name], role, world.ref(area_key), **kwargs)
 
 
 @pytest.fixture
@@ -161,3 +166,33 @@ def client_for(user: User | None = None) -> APIClient:
 def api():
     """api(user) gives a client logged in as that user; api() an anonymous one."""
     return client_for
+
+
+@pytest.fixture
+def super_admin_can_post(db, settings):
+    """Switch SUPER_ADMIN_CAN_POST on and re-sync the groups, as a deploy would.
+
+    super_admin_can_post(False) switches it off again in the same test. The
+    test's transaction rollback puts the permissions back afterwards.
+    """
+    from apps.accounts.sync import sync_role_permissions
+
+    def switch(allowed: bool = True):
+        settings.SUPER_ADMIN_CAN_POST = allowed
+        sync_role_permissions()
+
+    switch(True)
+    return switch
+
+
+def console_client_for(user: User) -> APIClient:
+    """A client with a web console session for `user`, as POST /auth/session/login/ would leave it."""
+    client = APIClient()
+    client.force_login(user)
+    return client
+
+
+@pytest.fixture
+def console():
+    """console(user) gives a client logged in to the web console (session cookie)."""
+    return console_client_for

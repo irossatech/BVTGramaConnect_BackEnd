@@ -7,6 +7,7 @@ Django's default engine.
 from .dev import *  # noqa: F403
 from .dev import BASE_DIR, Q_CLUSTER
 
+# Fast hashing for tests; production uses Argon2 (base.py).
 PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 
 # Background jobs run inline, so tests need no qcluster.
@@ -14,7 +15,7 @@ Q_CLUSTER = {**Q_CLUSTER, "sync": True}
 
 MEDIA_ROOT = BASE_DIR / ".test-media"
 
-# Emails land in django.core.mail.outbox (pytest-django's mailoutbox fixture).
+# Nothing sends email; locmem keeps any stray message out of the console.
 EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
 
 # Pushes are kept in notifications.push.LocmemPushGateway.outbox; retries do not wait.

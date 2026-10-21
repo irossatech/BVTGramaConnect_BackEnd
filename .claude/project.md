@@ -28,7 +28,7 @@ The approved design is the prototype folder "BVT Grama Connect mobile prototype"
 
 ## Roles
 
-A user can hold several role assignments, each tied to one area. Areas: State > District > Mandal > Village.
+A user can hold several role assignments, each tied to one area. Areas: State > District > Mandal > Village. Each role is a Django group, and what it may do is a set of Django permissions (BackEnd repo, `docs/authorization.md`).
 
 | Role | Area | Posts | Reviews | Creates and blocks |
 |---|---|---|---|---|
@@ -39,7 +39,7 @@ A user can hold several role assignments, each tied to one area. Areas: State > 
 | PANCHAYAT_MEMBER | Village | Yes, to own village, goes to review | No | No |
 | Citizen | Chosen village | No | No | No login at all |
 
-Only Super Admins can use the web console.
+Only holders of the console permission, the Super Admin group, can use the web console.
 
 ## Posts
 
@@ -68,9 +68,12 @@ ADMIN_POSTS_AUTO_PUBLISH=True, REVIEW_FIRST_DECISION_WINS=True, REVIEW_ESCALATIO
 
 ## Owner decisions since the original brief
 
-- 2026-10-21 · **No SMS.** No OTP login, no SMS of any kind. Officials log in with **username and password**.
-- 2026-10-21 · **Email invites.** An admin invites a person with name, email, role and area. The person gets an email with their username and their role's default password, and must change it at first login. Admins can reset a password to the role default, which is emailed again.
-- 2026-10-21 · **Default passwords per role.** The Super Admin views and changes them in the console (Settings). A change affects future invites and resets only.
+- 2026-10-21 · **Username and password login** with Django's built-in auth. Nothing is sent by text message or email for login or passwords.
+- 2026-10-21 · **Temporary passwords, handed over in person.** The admin who creates an account or resets a password sets a temporary password or has the server generate one, shown once. The person must change it at first login. Email invites and default passwords per role are gone.
+- 2026-10-21 · **Email is optional** contact information only. The username, unique and case-insensitive, is the only login name.
+- 2026-10-21 · **Groups and permissions.** Roles are Django groups, actions are Django permissions, and each role assignment limits them to one area and the areas below it. The mapping is one dict in `apps/accounts/role_matrix.py`; `python manage.py sync_role_permissions` applies it. See the BackEnd repo's `docs/authorization.md`.
+- 2026-10-21 · **Lockout:** 5 failed logins for one username from one IP address lock it for 15 minutes (django-axes). An admin ranked above the user can unlock early. Lockouts and unlocks are audited.
+- 2026-10-21 · **Console login** uses a Django session with CSRF and a 30-minute idle timeout. The app keeps JWT. The API stays under `/api/v1/`.
 - 2026-10-21 · **Tests run on SQLite**, Django's default database. The server uses MySQL (utf8mb4) or PostgreSQL through DATABASE_URL.
 - 2026-10-21 · **Web parts keep the prototype's technology.** The website and console are Design Canvas pages (React 18 runtime) served as built files, not rewritten.
 - 2026-10-21 · **One web repo.** The website and the console live together in BVTGramaConnect (the console in `console/`), owned by one web developer. The separate Admin repo was removed. One `npm run build` builds both.
@@ -81,7 +84,8 @@ ADMIN_POSTS_AUTO_PUBLISH=True, REVIEW_FIRST_DECISION_WINS=True, REVIEW_ESCALATIO
 - 2026-10-21 · **Event date:** posts may carry an optional event (deadline, camp, distribution, closure or meeting) with a start date and an optional end date.
 - 2026-10-21 · **Video posts are in version 1**, at most 60 seconds.
 - 2026-10-21 · **Also in version 1:** "mark as urgent" for admins, news search in the citizen feed, and a help-line numbers screen in the app.
-- 2026-10-21 · **Second roles** are added and removed in the console only.
+- 2026-10-21 · **Second roles:** any admin with the matching manage permission for that area may add lower roles, in the console or through the API. This replaces the earlier console-only rule.
+- 2026-10-21 · **Mobile app work for the new permissions is postponed.** The API keeps the role keys and the `capabilities` block in `/me` so the current app keeps working.
 - 2026-10-21 · **Master data:** only the Super Admin adds or edits villages and mandals; coordinates come from the console and the CSV import. **Exports** are CSV only.
 - 2026-10-21 · **Website:** the home page's phone picture shows live posts, every page has its own URL, and contact messages are read in the console.
 - 2026-10-21 · **Sharing a post** sends its text plus a link to the website. There is no public post page.

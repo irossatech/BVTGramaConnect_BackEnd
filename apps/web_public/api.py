@@ -27,7 +27,8 @@ from apps.feed.serializers import FeedItemSerializer
 from apps.feed.views import describer_with, published_posts, targets_for_village
 from apps.geography.areas import AreaRef
 from apps.geography.models import AreaLevel, Village
-from apps.posts.views import IsSuperAdmin
+from apps.accounts.authentication import client_via
+from apps.accounts.permissions import PLATFORM, HasPerm
 from grama.exceptions import ApiError
 from grama.http import client_ip
 
@@ -182,6 +183,9 @@ class ShowcaseView(PublicView):
 # --- Contact messages in the console (owner decision Q16) ------------------------------
 
 
+MANAGE_CONTACT = HasPerm("web_public.manage_contact_messages", PLATFORM, "Only Super Admins can do this.")
+
+
 class ContactMessageAdminSerializer(serializers.ModelSerializer):
     handled_by = serializers.SerializerMethodField()
 
@@ -203,7 +207,7 @@ class ContactHandledSerializer(serializers.Serializer):
 
 
 class ContactMessageListView(generics.ListAPIView):
-    permission_classes = [IsAuthenticated, IsSuperAdmin]
+    permission_classes = [IsAuthenticated, MANAGE_CONTACT]
     serializer_class = ContactMessageAdminSerializer
 
     def get_queryset(self):
@@ -229,7 +233,7 @@ class ContactMessageListView(generics.ListAPIView):
 
 
 class ContactMessageDetailView(APIView):
-    permission_classes = [IsAuthenticated, IsSuperAdmin]
+    permission_classes = [IsAuthenticated, MANAGE_CONTACT]
 
     @extend_schema(summary="Mark a contact message handled, or open it again", request=ContactHandledSerializer, responses=ContactMessageAdminSerializer)
     def patch(self, request, pk):
@@ -247,10 +251,9 @@ class ContactMessageDetailView(APIView):
             record(
                 "contact.handled" if handled else "contact.reopened",
                 actor=request.user,
-                actor_role="SUPER_ADMIN",
                 target=message,
                 target_label=f"#{message.id}",  # never the sender's name or number
-                via="console",
+                via=client_via(request),
             )
         return Response(ContactMessageAdminSerializer(message).data)
 

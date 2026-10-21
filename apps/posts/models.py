@@ -29,6 +29,7 @@ class Category(models.Model):
     class Meta:
         ordering = ["order", "id"]
         verbose_name_plural = _("categories")
+        permissions = [("manage_categories", "Add, rename and switch off categories")]
 
     def __str__(self):
         return self.name_en
@@ -106,6 +107,20 @@ class Post(models.Model):
                 condition=models.Q(event_end__isnull=True) | models.Q(event_end__gte=models.F("event_start")),
                 name="post_event_end_after_start",
             ),
+        ]
+        # Checked per area by accounts.authz (docs/authorization.md).
+        permissions = [
+            ("create_post", "Write posts for the area"),
+            ("submit_post", "Send own posts on for review or publishing"),
+            ("review_post", "See the posts of the area that are not drafts"),
+            ("publish_post", "Publish posts, and publish own posts without review"),
+            ("recheck_post", "Send posts back to the author for recheck"),
+            ("discard_post", "Discard posts"),
+            ("takedown_post", "Take down published posts"),
+            ("reverse_decision", "Reverse a decision taken at a lower level"),
+            ("view_review_queue", "See the review queue of the area"),
+            ("mark_urgent", "Mark posts urgent"),
+            ("view_stats", "See the counts for an area dashboard"),
         ]
 
     def __str__(self):
@@ -209,6 +224,9 @@ class SettingOverride(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
     )
     updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        permissions = [("manage_settings", "Change platform settings")]
 
     def __str__(self):
         return f"{self.key} = {self.value!r}"

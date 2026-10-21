@@ -45,22 +45,26 @@ Contents:
 - A post is written in one language, Telugu or English, stored in `language` (owner decision Q3). `translation` is always `null`; it stays in the shape so a later version can fill it without renaming.
 
 ### Authentication
-Officials log in with a username (or their email) and a password. Citizens never log in; every citizen read endpoint is public. There is no SMS anywhere in the platform: an admin invites an official, and the official gets an email with their username and their role's default password, which they must change at first login (`FORCE_PASSWORD_CHANGE_ON_FIRST_LOGIN`, default on).
+Officials log in with a **username and a password**. There is no OTP, no SMS and no email in any login or password flow. The username is unique and ignores case. Email and mobile are optional contact details and never work as a login name. Citizens never log in; every citizen read endpoint is public. `docs/authorization.md` describes the whole flow.
 
-Tokens are JWTs from `djangorestframework-simplejwt`:
+**Mobile app: JWT** from `djangorestframework-simplejwt`.
 - **Access token:** lifetime 15 minutes. Sent as `Authorization: Bearer <access>`.
-- **Refresh token:** lifetime 30 days, rotated on every use, old one blacklisted.
-- **Immediate revocation:** each user has an integer `token_version`. Every token carries it as claim `tv`. The authentication class loads the user on every request and rejects the token when `tv` differs or the user is blocked. Blocking a user, changing or resetting the password, or logging out everywhere, increments `token_version` and blacklists all of that user's refresh tokens in one transaction. Their next request fails with `401 session_revoked`. This meets the CLAUDE.md rule that blocking revokes all sessions at once.
-- **Permissions are read fresh.** Role assignments are loaded from the database on every request, so removing one takes effect on the next call.
+- **Refresh token:** lifetime 30 days, rotated on every use, old one blacklisted. Kept in secure storage (Android Keystore, iOS Keychain). The app calls `POST /auth/refresh/` when it gets `401 token_expired`.
 
-Clients:
-- **Mobile app:** keeps both tokens in secure storage (Android Keystore, iOS Keychain). Calls `POST /auth/refresh` when it gets `401 token_expired`.
-- **Web console:** logs in with `"client": "web_admin"`. The server returns the access token in the body and sets the refresh token in a cookie: `gc_refresh`, `HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth/`. The console keeps the access token in memory only and calls `POST /auth/refresh` with an empty body after a page reload. The server also checks the `Origin` header on the cookie routes. Scripts never see the refresh token, which matters because the console's runtime needs a relaxed Content-Security-Policy.
+**Web console: Django session** with CSRF.
+- `GET /auth/csrf/` sets the readable `csrftoken` cookie. `POST /auth/session/login/` creates the session; the cookie `sessionid` is HttpOnly, SameSite=Lax and Secure on the server.
+- The console sends same-origin cookies and the header `X-CSRFToken` on every POST, PATCH, PUT and DELETE. No `Authorization` header, no tokens.
+- The session ends after `CONSOLE_SESSION_IDLE_MINUTES` (30) without a request: `401 not_authenticated`.
+- Only users holding `web_admin.access_web_console` get a session.
+
+**Immediate revocation.** Each user has an integer `token_version`. Every token carries it as claim `tv`, and every console session stores it at login. The server loads the user on every request and refuses a token or session whose version differs, or whose user is blocked: `401 session_revoked`. Blocking, a password change, an admin reset and "log out everywhere" bump `token_version` and blacklist the refresh tokens in one transaction. This meets the CLAUDE.md rule that blocking revokes all sessions at once.
+
+**Permissions are read fresh.** Role assignments and group permissions are loaded on every request, so a change takes effect on the next call.
 
 ### Permissions
-Every write and every non-public read checks two things on the server, per CLAUDE.md:
-1. One of the actor's active role assignments allows the action.
-2. The target sits inside that assignment's area. The target is a post's target area, a user's assignment area, or a geography node.
+Roles are Django groups, and actions are Django permissions such as `posts.publish_post` (`docs/authorization.md`, sections 6 to 8). Every write and every non-public read checks two things on the server, per CLAUDE.md:
+1. One of the actor's active role assignments has a group that grants the permission.
+2. The target sits inside that assignment's area. The target is a post's target area, a user's assignment area, or a geography node. A Super Admin assignment covers every area.
 
 Lists are filtered to the actor's areas on the server. A client filter can narrow a list but never widen it. Objects outside the actor's areas return `404`, not `403`, so their existence is not revealed.
 
@@ -96,13 +100,13 @@ All errors share one shape:
 |---|---|---|
 | 400 | `validation_error` | Bad or missing fields; `fields` lists them |
 | 400 | `invalid_credentials` | Wrong username or password (same answer for an unknown username), or wrong current password on a password change |
-| 401 | `not_authenticated` | No token |
+| 401 | `not_authenticated` | No token or session, or the console session ended after 30 idle minutes |
 | 401 | `token_expired` | Access token expired; refresh and retry |
-| 401 | `session_revoked` | Token version changed or refresh token blacklisted |
+| 401 | `session_revoked` | Token or session version changed (block, reset, password change elsewhere), or refresh token blacklisted |
 | 403 | `account_blocked` | Blocked user tries to log in |
-| 403 | `not_console_user` | Console login by someone without SUPER_ADMIN |
-| 403 | `password_change_required` | The official must choose a new password first; only `GET /me`, `POST /auth/password/change`, `/auth/refresh` and `/auth/logout` work |
-| 403 | `permission_denied` | Role does not allow the action |
+| 403 | `not_console_user` | Console login without `web_admin.access_web_console`; no session is created |
+| 403 | `password_change_required` | The official must choose a new password first; only `GET /me/`, `POST /auth/password/change/`, `/auth/session/logout/`, `/auth/refresh/` and `/auth/logout/` work, for sessions and tokens alike |
+| 403 | `permission_denied` | No group of the actor grants the permission; also a console request without a valid `X-CSRFToken` |
 | 403 | `out_of_area` | Target is outside the actor's area, on writes |
 | 404 | `not_found` | Missing, or outside the actor's area on reads |
 | 409 | `invalid_transition` | Post state does not allow the action |
@@ -110,17 +114,18 @@ All errors share one shape:
 | 409 | `duplicate` | Username, email, mobile or name already used; `fields` says which |
 | 413 | `file_too_large` | Upload over the limit |
 | 415 | `unsupported_media` | File type not allowed |
+| 429 | `locked_out` | 5 failed logins for this username from this IP address; `retry_after_s` gives the seconds left of the 15-minute lockout |
 | 429 | `throttled` | Rate limit; `Retry-After` header set |
 
 ### Enumerations
 
 | Name | Values |
 |---|---|
-| `role` | `SUPER_ADMIN`, `DISTRICT_ADMIN`, `MANDAL_ADMIN`, `VILLAGE_ADMIN`, `PANCHAYAT_MEMBER`. Citizens have no account. `SYSTEM` appears only as an actor in history and audit. |
+| `role` | A group's key: `SUPER_ADMIN`, `DISTRICT_ADMIN`, `MANDAL_ADMIN`, `VILLAGE_ADMIN`, `PANCHAYAT_MEMBER` (`docs/authorization.md`, section 6). Citizens have no account. `SYSTEM` appears only as an actor in history and audit. |
 | `level` | `STATE`, `DISTRICT`, `MANDAL`, `VILLAGE` |
 | `post.status` | `DRAFT`, `PENDING`, `PUBLISHED`, `RECHECK`, `DISCARDED`, `UNPUBLISHED`. The prototypes call `UNPUBLISHED` "Taken down". |
 | `review_action.action` | `SUBMIT`, `RESUBMIT`, `PUBLISH`, `AUTO_PUBLISH`, `RECHECK`, `DISCARD`, `UNPUBLISH`, `ESCALATE`, `REVERSE` |
-| `user.status` | `ACTIVE`, `BLOCKED` |
+| `user.status` | `ACTIVE`, `BLOCKED`. Read-only, derived from `is_active`; kept for older clients. |
 | `category.key` | `announce`, `schemes`, `news`, `updates`. The design-system CSS variables `--cat-<key>` depend on these keys. |
 | `event.kind` | `deadline`, `camp`, `distribution`, `closure`, `meeting` (owner decision Q7) |
 | `media.kind` | `image`, `video` (video posts in version 1, owner decision Q8) |
@@ -152,23 +157,29 @@ Admin endpoints add `id`, `name_te`, `name_en`, `short_name_te`, `short_name_en`
 
 ### RoleAssignment
 ```json
-{"id": "a71e…", "role": "VILLAGE_ADMIN", "area": {"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు", "path": "…"}, "created_at": "2026-10-01T05:00:00Z"}
+{"id": "a71e…", "role": "VILLAGE_ADMIN", "group": {"key": "VILLAGE_ADMIN", "name": "Village Admin"}, "area": {"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు", "path": "…"}, "is_active": true, "assigned_at": "2026-10-01T05:00:00Z", "created_at": "2026-10-01T05:00:00Z"}
 ```
+`role` repeats `group.key` for older clients.
 
 ### Me
-Returned by `GET /me` and inside the login response.
+Returned by `GET /me/`, inside the app login response and inside the console session login response.
 ```json
 {
   "id": "0b8e…",
   "username": "village.kolakaluru",
-  "email": "suresh@example.org",
   "name": "Suresh Babu",
   "name_te": "సురేష్ బాబు",
   "mobile": "9000000003",
+  "email": null,
   "preferred_language": "te",
+  "is_active": true,
   "status": "ACTIVE",
   "must_change_password": false,
+  "groups": [{"key": "VILLAGE_ADMIN", "name": "Village Admin", "level": "VILLAGE", "rank": 3}],
+  "assignments": [{"id": "a71e…", "group": {"key": "VILLAGE_ADMIN", "name": "Village Admin"}, "area": Area, "is_active": true}],
   "role_assignments": [RoleAssignment],
+  "permissions": ["accounts.block_user", "posts.create_post", "posts.publish_post", "…"],
+  "permissions_by_area": [{"area": Area, "permissions": ["posts.publish_post", "…"]}],
   "capabilities": {
     "can_post": true,
     "can_review": true,
@@ -180,32 +191,37 @@ Returned by `GET /me` and inside the login response.
     "admin_posts_auto_publish": true,
     "super_admin_can_post": false,
     "max_photos_per_post": 5,
-    "video_enabled": false
+    "video_enabled": true
   }
 }
 ```
-`capabilities` and `rules` let the app decide which screens and buttons to show. The server still checks every request. `mobile` may be `null`. When `must_change_password` is true, clients go straight to the change-password screen.
+- `permissions` are the effective `app_label.codename` strings the user holds anywhere. `permissions_by_area` says where. Clients decide which screens and buttons to show from them; the server still checks every request.
+- `assignments` lists every assignment, active or not. `role_assignments` lists the active ones in the older shape.
+- `capabilities` is **deprecated**. It is derived from `permissions` and kept so the current app keeps working.
+- `mobile` and `email` may be `null`. When `must_change_password` is true, clients go straight to the change-password screen.
 
 ### User (admin view)
 ```json
 {
   "id": "0b8e…",
   "username": "village.kolakaluru",
-  "email": "suresh@example.org",
+  "email": null,
   "name": "Suresh Babu",
   "name_te": "సురేష్ బాబు",
   "mobile": null,
+  "is_active": true,
   "status": "ACTIVE",
   "preferred_language": "te",
   "must_change_password": true,
   "role_assignments": [RoleAssignment],
   "last_login_at": "2026-10-14T03:42:00Z",
   "created_at": "2026-10-01T05:00:00Z",
-  "created_by": {"id": "…", "name": "…", "role": "MANDAL_ADMIN"},
-  "allowed_actions": ["block", "reassign"]
+  "created_by": {"id": "…", "name": "…"},
+  "locked_out": false,
+  "allowed_actions": ["edit", "block", "reset_password", "reassign"]
 }
 ```
-`allowed_actions` values: `edit`, `block`, `unblock`, `reset_password`, `reassign`, `add_assignment`, `remove_assignment`.
+`allowed_actions` values: `edit`, `block`, `unblock`, `reset_password`, `unlock` (only while `locked_out`), `add_assignment`, `reassign`, `remove_assignment`. Each one follows the permissions and the rank rule in section 11.
 
 ### Post (authoring and review view)
 ```json
@@ -288,50 +304,51 @@ Lean on purpose, for 2G.
 
 | Method and path | Auth | Request | Response |
 |---|---|---|---|
-| `POST /auth/login` | public | `{"username", "password", "client": "app"\|"web_admin"}` | `200 {"access", "refresh", "user": Me}`. For `web_admin`, `refresh` is omitted and set as the `gc_refresh` cookie. |
-| `POST /auth/password/change` | bearer | `{"current_password", "new_password", "client"?}` | `200 {"access", "refresh"}` (console: `{"access"}` plus a new cookie). Ends every other session. |
-| `POST /auth/refresh` | refresh token | `{"refresh": "…"}`, or empty body with the cookie | `200 {"access": "…", "refresh": "…"}`; cookie clients get a new cookie instead of `refresh` |
-| `POST /auth/logout` | bearer | `{"refresh": "…"}`, or empty with the cookie; `{"all_devices": true}` optional | `204`. Blacklists the refresh token. `all_devices` also bumps `token_version`. |
-| `GET /me` | bearer | — | `200 Me` |
-| `PATCH /me` | bearer | `{"name"?, "name_te"?, "preferred_language"?}` | `200 Me` |
-| `GET /admin/role-passwords` | Super Admin | — | `[{"role", "password", "updated_at", "updated_by": {"id", "name"}\|null}]` for all 5 roles |
-| `PATCH /admin/role-passwords/{ROLE}` | Super Admin | `{"password"}` | The row. Checked by the password validators (`400 validation_error`, `fields.password`). Affects future invites and resets only. Audited as `setting.role_password_changed`, without the password. |
+| `POST /auth/login/` | public | `{"username", "password", "client": "app"}` | `200 {"access", "refresh", "user": Me}`. Mobile app. |
+| `POST /auth/refresh/` | refresh token | `{"refresh": "…"}` | `200 {"access", "refresh"}` |
+| `POST /auth/logout/` | bearer | `{"refresh": "…", "all_devices"?: true}` | `204`. Blacklists the refresh token. `all_devices` also bumps `token_version`. |
+| `GET /auth/csrf/` | public | — | `200 {"detail": "ok"}` and the `csrftoken` cookie. Console. |
+| `POST /auth/session/login/` | public, `X-CSRFToken` | `{"username", "password"}` | `200 {"user": Me}` and the `sessionid` cookie. Console; needs `web_admin.access_web_console`. |
+| `POST /auth/session/logout/` | session, `X-CSRFToken` | — | `204`. The session is flushed. |
+| `POST /auth/password/change/` | bearer or session | `{"current_password", "new_password"}` | App: `200 {"access", "refresh"}`. Console: `200 {"user": Me}`, and the current session stays. Every other session and token ends. |
+| `GET /me/` | bearer or session | — | `200 Me` |
+| `PATCH /me/` | bearer or session | `{"name"?, "name_te"?, "preferred_language"?}` | `200 Me` |
 
 Login rules:
-- `username` matches the username or the email, ignoring case and surrounding spaces. Both are stored in lower case.
-- A wrong password and an unknown username give the same `400 invalid_credentials`, and take the same time.
-- Failed tries are limited: `LOGIN_MAX_FAILURES_PER_USERNAME` (5) per username in `LOGIN_USERNAME_WINDOW_MINUTES` (15), counted since the last success, and `LOGIN_MAX_FAILURES_PER_IP` (30) per IP an hour. Over the limit: `429 throttled` with `Retry-After`. Nginx adds 10 requests a minute per IP.
-- After the password check: blocked → `403 account_blocked`; no role → `403 permission_denied`; `client: "web_admin"` without a `SUPER_ADMIN` assignment → `403 not_console_user`, and no tokens.
-- A successful login updates `last_login_at` and writes audit `auth.login` with `via`.
+- `username` matches the username only, ignoring case and surrounding spaces. Usernames are stored in lower case.
+- A wrong password and an unknown username give the same `400 invalid_credentials`.
+- **Lockout** (django-axes): 5 failures for one username from one IP address lock that pair for 15 minutes. Every try then answers `429 locked_out` with `retry_after_s`, even with the right password. A success clears the count. An admin can unlock early (`POST /users/{id}/unlock/`). Nginx adds 10 requests a minute per IP.
+- After the password check: blocked → `403 account_blocked`; no active role → `403 permission_denied`; console login without `web_admin.access_web_console` → `403 not_console_user`, and no session.
+- A successful login updates `last_login_at` and writes `auth.login` with `via` (`app` or `console`). Failures write `auth.login_failed`, refusals `auth.login_refused`, lockouts `auth.locked_out`.
 
 Passwords:
-- Each role has a default password. A role without one gets a random 12-character password on first use; nothing is hard-coded. The Super Admin sees and changes them in the console's Settings.
-- Inviting or resetting an official sets their password to the default of their highest role. With `FORCE_PASSWORD_CHANGE_ON_FIRST_LOGIN` on, `must_change_password` is set: until they choose a new password, every endpoint except `GET /me`, `POST /auth/password/change`, `/auth/refresh` and `/auth/logout` answers `403 password_change_required`.
-- New passwords pass Django's validators (at least 8 characters, not common, not all digits, not like the username) and must differ from the current one. Errors come as `400 validation_error` with `fields.new_password`.
-- Changing a password ends every other session (token version bump) and returns fresh tokens. Audited as `user.password_changed`.
-- The invite or reset email is sent by a background job: username, temporary password, where to log in (the app; the console address for Super Admins), and a reminder to change it, in Telugu or English by `preferred_language`. The password is never in the job's arguments, the logs or the audit log: the job reads the role default when it runs and sends it only if it still opens the account (otherwise `email.skipped`). Retries with backoff; a final failure writes `email.failed` with a masked address.
+- Hashed with Argon2. New passwords pass Django's validators: at least 8 characters, not common, not all digits, not like the username. A new password must differ from the current one. Errors come as `400 validation_error` with `fields.new_password` (or `fields.password` for admin-set passwords).
+- New and reset accounts carry `must_change_password`. Until they choose a new password, every endpoint except `GET /me/`, `POST /auth/password/change/`, the logouts and `/auth/refresh/` answers `403 password_change_required`.
+- Changing a password ends every other session and token. Audited as `user.password_changed`.
+- Nothing is emailed or texted. Temporary passwords are handed over by the admin in person.
 
 ### Users
 
-| Method and path | Who | Request | Response |
+| Method and path | Needs | Request | Response |
 |---|---|---|---|
-| `GET /users` | admins | Query: `role`, `status=ACTIVE\|BLOCKED`, `level` + `area_id` (users whose assignment lies inside that area), `district`, `q` (name, Telugu name, username, email, mobile), `page` | Page of `User`, plus `"counts": {"total": 15, "active": 13, "blocked": 2, "by_role": {"VILLAGE_ADMIN": 5}}` computed over the same filters except `role` and `status` |
-| `POST /users` | admins | `{"name", "name_te"?, "email", "mobile"?, "username"?, "preferred_language"?, "role", "area": {"level", "id"}}` | `201 User`. This is the invite: the password is the role's default and the email goes out. `username` defaults to the email. A taken email, username or mobile gives `409 duplicate` with the field. |
-| `GET /users/{id}` | admins | — | `User` |
-| `PATCH /users/{id}` | admins | `{"name"?, "name_te"?, "preferred_language"?, "email"?, "mobile"?}` | `User` |
-| `POST /users/{id}/reset-password` | admins | — | `User`. Password back to the role default, `must_change_password` set, every session ended, email sent. Audited as `user.password_reset`. |
-| `POST /users/{id}/block` | admins | `{"reason"?}` | `User`. Revokes all sessions at once. |
-| `POST /users/{id}/unblock` | admins | — | `User` |
-| `POST /users/{id}/role-assignments` | admins | `{"role", "area": {"level", "id"}}` | `201 RoleAssignment`. Second roles are added and removed in the console only (owner decision Q9); the app has no screen for it. |
-| `PATCH /users/{id}/role-assignments/{ra_id}` | admins | `{"area": {"level", "id"}}` | `RoleAssignment`. This is "Reassign area". Pending reviews stay with the old area, as the console says. |
-| `DELETE /users/{id}/role-assignments/{ra_id}` | admins | — | `204`. A user with no assignment left cannot log in. |
+| `GET /users/` | any `accounts.manage_*` | Query: `role`, `status=ACTIVE\|BLOCKED`, `level` + `area_id`, `district`, `q` (name, Telugu name, username, email, mobile), `page` | Page of `User` inside the actor's areas, plus `"counts": {"total", "active", "blocked", "by_role": {"VILLAGE_ADMIN": 5}}` over the same filters except `role` and `status` |
+| `POST /users/` | the group's manage permission over the area | `{"name", "name_te"?, "username", "mobile"?, "email"?, "preferred_language"?, "role", "area": {"level", "id"}, "password"?}` | `201 {"user": User, "temporary_password"?}`. Without `password`, the server generates one and returns it once as `temporary_password`. `must_change_password` is set. A taken username, email or mobile gives `409 duplicate` with the field. |
+| `GET /users/{id}/` | managing the user | — | `User` |
+| `PATCH /users/{id}/` | managing the user | `{"name"?, "name_te"?, "preferred_language"?, "email"?, "mobile"?}` | `User` |
+| `POST /users/{id}/reset-password/` | `accounts.reset_password` | `{"password"?}` | `200 {"user": User, "temporary_password"?}`. Generated when `password` is left out, shown once. Sets `must_change_password`, bumps `token_version`. Audited as `user.password_reset`. |
+| `POST /users/{id}/unlock/` | `accounts.unlock_user` | — | `200 User`. Clears the lockout for that username. Audited as `user.unlocked`. |
+| `POST /users/{id}/block/` | `accounts.block_user` | `{"reason"?}` | `User`. `is_active` false and `token_version` bumped: every session ends at once. |
+| `POST /users/{id}/unblock/` | `accounts.block_user` | — | `User` |
+| `POST /users/{id}/role-assignments/` | the group's manage permission over the area | `{"role", "area": {"level", "id"}}` | `201 RoleAssignment`. This is how a second role is added. |
+| `PATCH /users/{id}/role-assignments/{ra_id}/` | `accounts.reassign_user` | `{"area"?: {"level", "id"}, "is_active"?}` | `RoleAssignment`. "Reassign area". Pending reviews stay with the old area. |
+| `DELETE /users/{id}/role-assignments/{ra_id}/` | managing the user | — | `204`. A user with no active assignment left cannot log in. |
 
 Rules:
-- An admin may act on a user only when every one of that user's assignments sits inside the admin's area and has a role the admin may manage. See section 11.
+- An admin acts on a user only when the permission's assignment covers every one of that user's assignment areas, and every one of the user's groups ranks strictly below the admin's group. This applies to editing, blocking, resetting, unlocking, reassigning and removing.
+- Giving a role needs that group's manage permission over the area (`accounts.manage_village_admin` and so on) and a group strictly above it. Nobody can give a group at or above their own rank.
 - The role must be at the area's level: `DISTRICT_ADMIN` on a district, `MANDAL_ADMIN` on a mandal, `VILLAGE_ADMIN` and `PANCHAYAT_MEMBER` on a village.
-- Super Admins are not created or reset through the API. The first one is made with `createsuperuser` plus a `SUPER_ADMIN` role assignment in Django admin (see deploy/RUNBOOK.md).
-- Inactive areas cannot receive new assignments.
-- Admins cannot block themselves.
+- Super Admins are not created, reset or given through the API. The first one is made on the server with `python manage.py create_super_admin --username <name> --name "<full name>"`, which prints a temporary password once (see deploy/RUNBOOK.md).
+- Inactive areas cannot receive new assignments. Admins cannot block themselves.
 
 ---
 
@@ -573,6 +590,8 @@ Keys, seeded by a migration: `post_published`, `post_approved`, `post_recheck`, 
 
 ### Audit log (Super Admin)
 
+Needs `audit.view_audit_log`; the export needs `audit.export_audit_log`.
+
 | Method and path | Request | Response |
 |---|---|---|
 | `GET /audit` | `q` (actor, action, target, area), `type`, `actor`, `action`, `from`, `to` (dates), `page` | Page of `AuditEntry`, plus `"counts_by_type"` |
@@ -581,6 +600,8 @@ Keys, seeded by a migration: `post_published`, `post_approved`, `post_recheck`, 
 Audit entries are append-only. No endpoint edits or deletes them.
 
 ### Dashboard (Super Admin)
+
+Needs `web_admin.view_dashboard`.
 
 `GET /admin/dashboard`:
 ```json
@@ -599,6 +620,8 @@ Audit entries are append-only. No endpoint edits or deletes them.
 Built (web_admin app). Also returns `"escalation_hours"` (the effective setting). Drafts are not counted. `posts_per_day` covers the last 14 days, bucketed by Asia/Kolkata date in Python, so no database time-zone functions are needed. Each `pending_by_district` row also has `name_te`; `oldest_pending_hours` is null when nothing is pending. `active_admins` counts active users holding a District, Mandal or Village Admin role. `recent_activity` holds 6 entries; the app shows 5.
 
 ### Reports (Super Admin)
+
+Needs `web_admin.view_reports`.
 
 Built (web_admin app). `days` is 1 to 366, default 30, and counts posts created in that window (drafts excluded).
 
@@ -654,24 +677,30 @@ Escalation runs as a django-q2 scheduled job every `ESCALATION_CHECK_MINUTES` (1
 
 ## 11. Permission matrix
 
-"Area" means the area of one of the actor's active role assignments. "Inside" includes the area itself.
+Roles are Django groups and actions are Django permissions. The full group × permission table is in `docs/authorization.md`, section 7, and in code in `apps/accounts/role_matrix.py`. "Area" below means the area of one of the actor's active role assignments; "inside" includes the area itself. A Super Admin assignment covers every area.
 
-| Action | Super Admin | District Admin | Mandal Admin | Village Admin | Panchayat member | Citizen |
-|---|---|---|---|---|---|---|
-| Read feed, categories, geography | yes | yes | yes | yes | yes | yes |
-| Create post | only if `SUPER_ADMIN_CAN_POST`; any area, the only role that may target the state | district, a mandal or a village inside it | mandal, or a village inside it | own village | own village | no |
-| Edit, submit, delete own post | in `DRAFT` or `RECHECK` | same | same | same | same | no |
-| Review queue, publish, recheck, discard | any post | posts targeted inside the district | inside the mandal | inside the village | no | no |
-| Take down a published post | any | inside the district | inside the mandal | inside the village | no | no |
-| Reverse a decision | yes | if the decider was lower | if the decider was lower | no | no | no |
-| Create or block users | District, Mandal, Village Admins and Panchayat members anywhere | Mandal Admins, Village Admins, Panchayat members inside the district | Village Admins, Panchayat members inside the mandal | Panchayat members in the village | no | no |
-| Reassign or add assignments | same as create | same as create | same as create | same as create | no | no |
-| Area stats | any area | inside the district | inside the mandal | the village | no | no |
-| Geography writes | yes | no (owner decision Q13) | no | no | no | no |
-| Dashboard, reports, audit, settings, templates, categories | yes | no | no | no | no | no |
-| Web console login | yes | no | no | no | no | no |
+| Action | Permission | Super Admin | District Admin | Mandal Admin | Village Admin | Panchayat member | Citizen |
+|---|---|---|---|---|---|---|---|
+| Read feed, categories, geography | public | yes | yes | yes | yes | yes | yes |
+| Create and submit a post | `posts.create_post`, `posts.submit_post` | only if `SUPER_ADMIN_CAN_POST`; the only group that may target the state | district, a mandal or a village inside it | mandal, or a village inside it | own village | own village, goes to review | no |
+| Review queue | `posts.view_review_queue`, `posts.review_post` | any post | posts targeted inside the district | inside the mandal | inside the village | no | no |
+| Publish, recheck, discard | `posts.publish_post`, `posts.recheck_post`, `posts.discard_post` | any | inside the district | inside the mandal | inside the village | no | no |
+| Take down a published post | `posts.takedown_post` | any | inside the district | inside the mandal | inside the village | no | no |
+| Reverse a decision | `posts.reverse_decision` | when the decider ranked lower | same | same | same | no | no |
+| Mark as urgent | `posts.mark_urgent` | any | inside the district | inside the mandal | inside the village | no | no |
+| Area stats | `posts.view_stats` | any area | inside the district | inside the mandal | the village | the village | no |
+| Create users, add roles | `accounts.manage_<group>` | District, Mandal, Village Admins, Panchayat members | Mandal, Village Admins, Panchayat members inside the district | Village Admins, Panchayat members inside the mandal | Panchayat members in the village | no | no |
+| Block, reset password, reassign, unlock | `accounts.block_user`, `accounts.reset_password`, `accounts.reassign_user`, `accounts.unlock_user` | anyone ranked below | lower groups inside the district | lower groups inside the mandal | Panchayat members in the village | no | no |
+| Geography writes | `geography.manage_master_data` | yes | no (owner decision Q13) | no | no | no | no |
+| Audit log, export | `audit.view_audit_log`, `audit.export_audit_log` | yes | no | no | no | no | no |
+| Dashboard, reports | `web_admin.view_dashboard`, `web_admin.view_reports` | yes | no | no | no | no | no |
+| Settings, categories | `posts.manage_settings`, `posts.manage_categories` | yes | no | no | no | no | no |
+| Notification templates | `notifications.manage_templates` | yes | no | no | no | no | no |
+| Contact messages | `web_public.manage_contact_messages` | yes | no | no | no | no | no |
+| Web console login | `web_admin.access_web_console` | yes | no | no | no | no | no |
+| Groups and role assignments in Django admin | `accounts.manage_groups` | yes | no | no | no | no | no |
 
-Every row needs a test against SQLite, per CLAUDE.md. That includes the "outside the area" case for each action.
+Every row has tests against SQLite, per CLAUDE.md: each group × each permission × the same area, the parent, a sibling and another district.
 
 ---
 
@@ -689,7 +718,7 @@ Every row needs a test against SQLite, per CLAUDE.md. That includes the "outside
 | Post detail | `GET /feed/posts/{id}` |
 | Saved posts | `GET /feed/posts?ids=` |
 | Citizen alerts | built on the device from `GET /feed` |
-| Login | `POST /auth/login` |
+| Login | `POST /auth/login/` |
 | Change password (first login, profile) | `POST /auth/password/change` |
 | Profile | `GET /me`, `PATCH /me`, `POST /auth/logout` |
 | Panchayat "My posts" | `GET /posts?mine=1` |
@@ -710,11 +739,11 @@ Every row needs a test against SQLite, per CLAUDE.md. That includes the "outside
 
 | Page | Endpoints |
 |---|---|
-| Login | `POST /auth/login` with `client: "web_admin"`; then `POST /auth/password/change` when `must_change_password` |
-| Shell (header, profile, logout) | `POST /auth/refresh`, `GET /me`, `POST /auth/logout`; Posts badge from `GET /posts?status=PENDING&page_size=1` |
+| Login | `GET /auth/csrf/`, `POST /auth/session/login/`; then `POST /auth/password/change/` when `must_change_password` |
+| Shell (header, profile, change password, logout) | `GET /me/`, `POST /auth/password/change/`, `POST /auth/session/logout/`; menus follow `permissions`; Posts badge from `GET /posts?status=PENDING&page_size=1` |
 | Dashboard | `GET /admin/dashboard` |
 | Geography | `GET /geo/tree`, geography writes |
-| Users | `GET /users`, `GET /users/{id}`, `GET /posts?author={id}&page_size=5`, `POST /users`, block, unblock, `PATCH …/role-assignments/{id}` |
+| Users | `GET /users`, `GET /users/{id}`, `GET /posts?author={id}&page_size=5`, `POST /users`, block, unblock, reset password, unlock, role assignments |
 | Posts and moderation | `GET /posts` with `status_counts`, `GET /posts/{id}`, `GET /posts/{id}/history`, `POST /posts/{id}/review`, `GET /categories` for the filter |
 | Reports | `GET /admin/reports/*` and their exports |
 | Audit log | `GET /audit`, `GET /audit/export` |
@@ -735,7 +764,7 @@ Every row needs a test against SQLite, per CLAUDE.md. That includes the "outside
 
 | Item | Limit |
 |---|---|
-| Failed logins | 5 per username in 15 minutes (reset by a success); 30 per IP an hour; Nginx 10 requests a minute per IP |
+| Failed logins | 5 per username and IP address, then locked for 15 minutes (django-axes; a success resets the count); Nginx 10 requests a minute per IP |
 | Contact form | 5 per hour per IP |
 | Public feed | 120 requests per minute per IP |
 | Post title | 150 characters |

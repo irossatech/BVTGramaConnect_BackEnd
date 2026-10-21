@@ -20,7 +20,9 @@ from rest_framework.views import APIView
 from apps.accounts.serializers import describer_from
 from apps.geography.areas import AreaRef
 from grama.exceptions import ApiError
-from apps.posts.views import IsSuperAdmin
+from apps.accounts import authz
+from apps.accounts.authentication import client_via
+from apps.accounts.permissions import HasPerm
 
 from .models import AuditLog, AuditType
 from .services import record
@@ -92,12 +94,24 @@ def filtered(request, *, with_type: bool = True):
     return queryset
 
 
+VIEW = "audit.view_audit_log"
+EXPORT = "audit.export_audit_log"
+
+
+def in_reach(request, queryset, perm: str):
+    """Entries inside the areas where the user holds `perm`; entries without an area need it platform-wide."""
+    scope = authz.area_q(request.user, perm)
+    if not authz.can(request.user, perm, authz.PLATFORM):
+        scope &= ~Q(area_level="")
+    return queryset.filter(scope)
+
+
 class AuditListView(generics.ListAPIView):
-    permission_classes = [IsAuthenticated, IsSuperAdmin]
+    permission_classes = [IsAuthenticated, HasPerm(VIEW, message="Only Super Admins can read the audit log.")]
     serializer_class = AuditEntrySerializer
 
     def get_queryset(self):
-        return filtered(self.request).order_by("-created_at")
+        return in_reach(self.request, filtered(self.request), VIEW).order_by("-created_at")
 
     @extend_schema(summary="Audit log", parameters=FILTERS)
     def get(self, request, *args, **kwargs):
@@ -107,7 +121,7 @@ class AuditListView(generics.ListAPIView):
             [AreaRef(e.area_level, e.area_id) for e in page if e.area_level and e.area_id is not None]
         )
         response = self.get_paginated_response(AuditEntrySerializer(page, many=True, context=context).data)
-        counts = filtered(request, with_type=False).order_by().values("type").annotate(n=Count("id"))
+        counts = in_reach(request, filtered(request, with_type=False), VIEW).order_by().values("type").annotate(n=Count("id"))
         by_type = {t.value: 0 for t in AuditType}
         by_type.update({row["type"]: row["n"] for row in counts})
         response.data["counts_by_type"] = by_type
@@ -128,14 +142,14 @@ class CSVRenderer(BaseRenderer):
 
 
 class AuditExportView(APIView):
-    permission_classes = [IsAuthenticated, IsSuperAdmin]
+    permission_classes = [IsAuthenticated, HasPerm(EXPORT, message="Only Super Admins can download the audit log.")]
     renderer_classes = [JSONRenderer, CSVRenderer]
 
     @extend_schema(summary="Audit log as CSV", parameters=[*FILTERS, OpenApiParameter("format", OpenApiTypes.STR, enum=["csv"])], responses={(200, "text/csv"): OpenApiTypes.BINARY})
     def get(self, request):
         if request.query_params.get("format", "csv") != "csv":
             raise ApiError("validation_error", _("Only CSV export is available."), fields={"format": ["csv"]})
-        rows = filtered(request).order_by("-created_at")[:50000]
+        rows = in_reach(request, filtered(request), EXPORT).order_by("-created_at")[:50000]
         buffer = io.StringIO()
         writer = csv.writer(buffer)
         writer.writerow(["time", "user", "role", "action", "type", "target", "area_level", "area_id", "via"])
@@ -145,7 +159,7 @@ class AuditExportView(APIView):
                 entry.actor_name or "System", entry.actor_role, entry.action, entry.type,
                 entry.target_label, entry.area_level, entry.area_id or "", entry.via,
             ])
-        record("report.exported", actor=request.user, via="console", data={"report": "audit", "filters": dict(request.query_params)})
+        record("report.exported", actor=request.user, via=client_via(request), data={"report": "audit", "filters": dict(request.query_params)})
         response = HttpResponse("﻿" + buffer.getvalue(), content_type="text/csv; charset=utf-8")
         response["Content-Disposition"] = f'attachment; filename="audit-{timezone.localdate():%Y%m%d}.csv"'
         return response

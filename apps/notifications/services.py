@@ -3,11 +3,12 @@
 - Citizens: one push to the FCM topic of the post's target area when it is
   published. A district post reaches every village in the district, because
   each citizen's app subscribes to its village, mandal, district and state topics.
-- Reviewers: inbox item + push when a post in their area waits for review.
-  Village, Mandal and District Admins whose area contains the post's target.
-  Super Admins are not pinged for every post; they see the queue in the
-  console and get escalations that reach state level.
-- Admins one level up: inbox item + push when a post is escalated.
+- Reviewers: inbox item + push when a post in their area waits for review:
+  everyone holding posts.review_post through an assignment at the post's
+  target area or an area above it. Platform-wide groups (Super Admin) are not
+  pinged for every post; they see the queue in the console and get
+  escalations that reach state level.
+- Reviewers one level up: inbox item + push when a post is escalated.
 - The author: inbox item + push when a reviewer publishes, sends back,
   discards or takes down their post.
 
@@ -20,12 +21,11 @@ from __future__ import annotations
 
 import logging
 
-from django.db.models import Q
 from django_q.tasks import async_task
 
-from apps.accounts.models import RoleAssignment, User, UserStatus
-from apps.accounts.roles import Role
-from apps.geography.areas import AreaDescriber, ancestry
+from apps.accounts import authz
+from apps.accounts.models import User
+from apps.geography.areas import AreaDescriber, AreaRef, ancestry
 from apps.geography.models import AreaLevel
 
 from .models import Notification, NotificationKind, NotificationTemplate
@@ -34,11 +34,7 @@ from .templates_data import BY_KEY
 
 logger = logging.getLogger("grama.notifications")
 
-ADMIN_ROLE_AT = {
-    AreaLevel.DISTRICT: Role.DISTRICT_ADMIN,
-    AreaLevel.MANDAL: Role.MANDAL_ADMIN,
-    AreaLevel.VILLAGE: Role.VILLAGE_ADMIN,
-}
+REVIEW = "posts.review_post"
 
 
 class _Blank(dict):
@@ -57,17 +53,16 @@ def render(key: str, language: str, **values) -> str:
 
 
 def admins_over(post_target, *, levels=None, include_super_admins=False):
-    """Active admins whose area contains the target, optionally only at some levels."""
+    """Active reviewers assigned at the target or an area above it, optionally only at some levels.
+
+    Platform-wide reviewers (Super Admin) only with include_super_admins.
+    """
     chain = ancestry(post_target)
-    query = Q(pk__in=[])
-    for level, area_id in chain.items():
-        role = ADMIN_ROLE_AT.get(level)
-        if role and (levels is None or level in levels):
-            query |= Q(role=role, area_level=level, area_id=area_id)
+    areas = [AreaRef(level, area_id) for level, area_id in chain.items() if levels is None or level in levels]
+    users = authz.holders(REVIEW, areas, platform_wide=False) if areas else User.objects.none()
     if include_super_admins:
-        query |= Q(role=Role.SUPER_ADMIN)
-    user_ids = RoleAssignment.objects.filter(query).values("user_id")
-    return User.objects.filter(id__in=user_ids, status=UserStatus.ACTIVE)
+        users = users | authz.holders(REVIEW, platform_wide=True)
+    return users.distinct()
 
 
 def reviewers_for(post):
@@ -160,7 +155,7 @@ def tell_author(post, actor=None) -> list[Notification]:
     if message is None:
         return []
     kind, template_key = message
-    author = User.objects.filter(pk=post.author_id, status=UserStatus.ACTIVE)
+    author = User.objects.filter(pk=post.author_id, is_active=True)
     return notify_users(author, post=post, kind=kind, template_key=template_key, comment=latest_comment(post))
 
 

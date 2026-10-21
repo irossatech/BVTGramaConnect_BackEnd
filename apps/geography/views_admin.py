@@ -17,7 +17,8 @@ from rest_framework.views import APIView
 
 from apps.audit.services import record
 from grama.exceptions import ApiError
-from apps.web_admin.permissions import IsSuperAdmin, client_via
+from apps.accounts.authentication import client_via
+from apps.accounts.permissions import PLATFORM, HasPerm
 
 from .areas import AreaRef
 from .importer import GeographyImporter
@@ -27,6 +28,10 @@ MAX_MISSING_LISTED = 200
 
 
 # --- Serializers ----------------------------------------------------------------
+
+
+#: Owner decision Q13: only the Super Admin maintains villages and mandals.
+MANAGE_MASTER_DATA = HasPerm("geography.manage_master_data", PLATFORM, "Only Super Admins can do this.")
 
 
 class AreaAdminFields(serializers.Serializer):
@@ -83,7 +88,7 @@ LEVEL_CONFIG = {
 
 
 class AreaWriteMixin:
-    permission_classes = [IsAuthenticated, IsSuperAdmin]
+    permission_classes = [IsAuthenticated, MANAGE_MASTER_DATA]
     kind: str = ""
 
     @property
@@ -204,7 +209,7 @@ class GeoTreeView(APIView):
     with 17,000 villages.
     """
 
-    permission_classes = [IsAuthenticated, IsSuperAdmin]
+    permission_classes = [IsAuthenticated, MANAGE_MASTER_DATA]
 
     @extend_schema(summary="Master data tree for the console")
     def get(self, request):
@@ -241,7 +246,7 @@ class GeoTreeView(APIView):
 
 
 class GeoAdminVillagesView(APIView):
-    permission_classes = [IsAuthenticated, IsSuperAdmin]
+    permission_classes = [IsAuthenticated, MANAGE_MASTER_DATA]
 
     @extend_schema(summary="Every village of one mandal, including inactive ones")
     def get(self, request):
@@ -255,7 +260,7 @@ class GeoAdminVillagesView(APIView):
 class VillageImportView(APIView):
     """CSV import, same rules as `manage.py import_geography`. ?dry_run=1 saves nothing."""
 
-    permission_classes = [IsAuthenticated, IsSuperAdmin]
+    permission_classes = [IsAuthenticated, MANAGE_MASTER_DATA]
     parser_classes = [MultiPartParser, FormParser]
 
     @extend_schema(summary="Import villages from CSV", request={"multipart/form-data": {"type": "object"}})

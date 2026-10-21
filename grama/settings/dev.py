@@ -36,7 +36,8 @@ MEDIA_ROOT = BASE_DIR / "media"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 # Plain http on localhost: a Secure cookie would not be stored.
-CONSOLE_COOKIE_SECURE = env.bool("CONSOLE_COOKIE_SECURE", default=False)
+SESSION_COOKIE_SECURE = env.bool("SESSION_COOKIE_SECURE", default=False)
+CSRF_COOKIE_SECURE = env.bool("CSRF_COOKIE_SECURE", default=False)
 
 REST_FRAMEWORK = {
     **REST_FRAMEWORK,

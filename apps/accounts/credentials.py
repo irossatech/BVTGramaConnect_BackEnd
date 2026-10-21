@@ -1,41 +1,34 @@
-"""Passwords for officials: role defaults, invites, resets, login checks and throttling.
+"""Passwords for officials: login checks, temporary passwords, validation.
 
-How it works:
-- Each role has a default password, kept in RoleDefaultPassword. A role with no
-  row gets a random one on first use; there is no default in the code.
-- Inviting or resetting someone sets their password to their role's default
-  and, with FORCE_PASSWORD_CHANGE_ON_FIRST_LOGIN, makes them choose their own
-  at first login. An email tells them their username and the temporary password.
-- Login accepts the username or the email, in any case. Failed tries are
-  counted per username (LOGIN_MAX_FAILURES_PER_USERNAME in
-  LOGIN_USERNAME_WINDOW_MINUTES, reset by a success) and per IP address
-  (LOGIN_MAX_FAILURES_PER_IP per hour), in the database so the limits hold
-  across processes.
+- Login (app and console) goes through Django's authenticate(): django-axes
+  first refuses locked-out username + IP pairs, then OfficialBackend checks
+  the password. Usernames are matched without case. Unknown usernames take as
+  long as real ones (ModelBackend hashes a dummy password).
+- New accounts and resets get a temporary password, set by the admin or
+  generated here and shown once in the API response. It is never emailed,
+  logged or audited. must_change_password then forces a change at first login.
 """
 
 from __future__ import annotations
 
 import secrets
-from datetime import timedelta
 
-from django.conf import settings
-from django.contrib.auth.hashers import check_password, make_password
+from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
-from django.db.models import Q
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils import timezone
 from django.utils.translation import gettext as _
 from rest_framework import status
-from rest_framework.exceptions import Throttled
 
-from grama.exceptions import ApiError, permission_denied
+from apps.audit.services import record
+from grama.exceptions import ApiError
+from grama.http import client_ip
 
-from .models import LoginAttempt, RoleDefaultPassword, User, normalize_login
-from .roles import ROLE_ORDER
-from .scope import forget_areas, user_areas
+from . import lockout
+from .models import User, normalize_login
 
-#: No 0/O, 1/l/I: the password is read from an email and typed on a phone.
+#: No 0/O, 1/l/I: the password is read off a screen and typed on a phone.
 PASSWORD_ALPHABET = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789"
-HOUR = timedelta(hours=1)
 
 
 def generate_password(length: int = 12) -> str:
@@ -47,46 +40,30 @@ def generate_password(length: int = 12) -> str:
             return password
 
 
-# --- Role defaults ---------------------------------------------------------------------
+def check_new_password(password: str, user: User | None = None, field: str = "password") -> None:
+    """Raise a validation_error ApiError unless AUTH_PASSWORD_VALIDATORS accept the password."""
+    try:
+        validate_password(password, user)
+    except DjangoValidationError as exc:
+        raise ApiError("validation_error", exc.messages[0], fields={field: list(exc.messages)}) from None
 
 
-def role_default_row(role: str) -> RoleDefaultPassword:
-    row, _ = RoleDefaultPassword.objects.get_or_create(role=role, defaults={"password": generate_password()})
-    return row
+def set_temporary_password(user: User, password: str | None) -> str | None:
+    """Give the user a temporary password they must change at next login.
 
-
-def role_default(role: str) -> str:
-    return role_default_row(role).password
-
-
-def set_role_default(role: str, password: str, actor) -> RoleDefaultPassword:
-    """Validate with AUTH_PASSWORD_VALIDATORS (raises Django's ValidationError) and save."""
-    validate_password(password)
-    row = role_default_row(role)
-    row.password = password
-    row.updated_by = actor
-    row.save()
-    return row
-
-
-def highest_role(user) -> str | None:
-    forget_areas(user)
-    roles = {item.role for item in user_areas(user)}
-    return next((role for role in ROLE_ORDER if role in roles), None)
-
-
-def give_default_password(user: User, role: str) -> None:
-    """Set the role's default password; the person must change it if the setting says so."""
-    user.set_password(role_default(role))
-    user.must_change_password = settings.FORCE_PASSWORD_CHANGE_ON_FIRST_LOGIN
+    With password=None one is generated and returned, for the response only.
+    The caller has already validated a chosen password. Saves the user and
+    clears any lockout, so the person can log in with it at once.
+    """
+    generated = None
+    if not password:
+        password = generated = generate_password()
+    user.set_password(password)
+    user.must_change_password = True
     user.password_changed_at = None
     user.save(update_fields=["password", "must_change_password", "password_changed_at", "updated_at"])
-
-
-def mask_email(email: str | None) -> str:
-    """ra***@example.org: enough to recognise an address in logs without exposing it."""
-    local, _, domain = (email or "").partition("@")
-    return f"{local[:2]}***@{domain}" if domain else "***"
+    lockout.unlock(user)
+    return generated
 
 
 # --- Login ------------------------------------------------------------------------------------
@@ -96,80 +73,39 @@ def invalid_credentials() -> ApiError:
     return ApiError("invalid_credentials", _("Wrong username or password."))
 
 
-_DUMMY_HASH: str | None = None
-
-
-def _waste_a_password_check(password: str) -> None:
-    """Take as long as a real check, so timing does not reveal unknown usernames."""
-    global _DUMMY_HASH
-    if _DUMMY_HASH is None:
-        _DUMMY_HASH = make_password(generate_password())
-    check_password(password, _DUMMY_HASH)
-
-
-def _throttled(retry_after: timedelta) -> Throttled:
-    seconds = max(1, int(retry_after.total_seconds()) + 1)
-    return Throttled(wait=seconds, detail=_("Too many failed logins. Try again in %(s)d seconds.") % {"s": seconds})
-
-
-def check_login_throttle(key: str, ip: str | None, now) -> None:
-    window = timedelta(minutes=settings.LOGIN_USERNAME_WINDOW_MINUTES)
-    since = now - window
-    last_success = (
-        LoginAttempt.objects.filter(username=key, success=True, created_at__gt=since)
-        .order_by("-created_at")
-        .values_list("created_at", flat=True)
-        .first()
+def locked_out(request, username: str) -> ApiError:
+    seconds = lockout.seconds_left(username, client_ip(request))
+    return ApiError(
+        "locked_out",
+        _("Too many failed logins. Try again in %(m)d minute(s).") % {"m": max(1, (seconds + 59) // 60)},
+        status=status.HTTP_429_TOO_MANY_REQUESTS,
+        retry_after_s=seconds,
     )
-    if last_success:
-        since = last_success
-    limit = settings.LOGIN_MAX_FAILURES_PER_USERNAME
-    failures = list(
-        LoginAttempt.objects.filter(username=key, success=False, created_at__gt=since)
-        .order_by("-created_at")
-        .values_list("created_at", flat=True)[:limit]
-    )
-    if len(failures) >= limit:
-        raise _throttled(failures[-1] + window - now)
-
-    if ip:
-        ip_limit = settings.LOGIN_MAX_FAILURES_PER_IP
-        ip_failures = list(
-            LoginAttempt.objects.filter(ip_address=ip, success=False, created_at__gt=now - HOUR)
-            .order_by("-created_at")
-            .values_list("created_at", flat=True)[:ip_limit]
-        )
-        if len(ip_failures) >= ip_limit:
-            raise _throttled(ip_failures[-1] + HOUR - now)
 
 
-def authenticate_login(identifier: str, password: str, ip: str | None = None, *, require=None) -> User:
-    """The official for this username or email and password, or raise.
+def refuse(user: User, code: str, message, via: str) -> ApiError:
+    record("auth.login_refused", target=user, target_label=user.name, via=via, data={"reason": code})
+    return ApiError(code, message, status=status.HTTP_403_FORBIDDEN)
 
-    `require(user)` may refuse the login (the console allows Super Admins
-    only); it runs after the password is checked, so it reveals nothing to
-    someone without the password.
+
+def authenticate_official(request, username: str, password: str, *, via: str, require=None) -> User:
+    """The official for this username and password, or raise the contract error.
+
+    `request` is Django's HttpRequest (DRF: request._request). `require(user)`
+    may refuse the login (the console needs access_web_console); it runs after
+    the password check, so it tells nothing to someone without the password.
     """
-    key = normalize_login(identifier)
-    now = timezone.now()
-    check_login_throttle(key, ip, now)
-
-    user = User.objects.filter(Q(username=key) | Q(email=key)).first()
-    if user is None or not user.has_usable_password():
-        _waste_a_password_check(password)
-        ok = False
-    else:
-        ok = user.check_password(password)
-    LoginAttempt.objects.create(username=key, ip_address=ip, success=ok, created_at=now)
-    if not ok:
+    key = normalize_login(username)
+    user = authenticate(request, username=key, password=password)
+    if user is None:
+        if getattr(request, "axes_locked_out", False):
+            raise locked_out(request, key)
         raise invalid_credentials()
-
-    if user.is_blocked:
-        raise ApiError("account_blocked", _("This account is blocked."), status=status.HTTP_403_FORBIDDEN)
-    if not user.role_assignments.exists():
-        raise permission_denied(_("This account has no role. Ask your admin to assign one."))
+    if not user.is_active:
+        raise refuse(user, "account_blocked", _("This account is blocked."), via)
+    if not user.role_assignments.filter(is_active=True).exists():
+        raise refuse(user, "permission_denied", _("This account has no role. Ask your admin to assign one."), via)
     if require is not None:
         require(user)
-    User.objects.filter(pk=user.pk).update(last_login=now)
-    user.last_login = now
+    user.last_login = timezone.now()
     return user

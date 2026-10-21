@@ -1,59 +1,23 @@
-"""Roles and what each may do. CLAUDE.md "Roles" is the source of these rules."""
+"""Group keys and display labels.
+
+The keys (SUPER_ADMIN, DISTRICT_ADMIN, ...) are what the API sends as "role"
+and what posts and audit entries record. They come from role_matrix.ROLE_GROUPS.
+They are for display, input and records only: access is decided by
+permissions in authz.py, never by comparing keys.
+"""
 
 from django.db import models
-from django.utils.translation import gettext_lazy as _
 
-from apps.geography.models import AreaLevel
+from .role_matrix import ROLE_GROUPS
 
+Role = models.TextChoices("Role", [(key, (key, spec["name"])) for key, spec in ROLE_GROUPS.items()])
 
-class Role(models.TextChoices):
-    SUPER_ADMIN = "SUPER_ADMIN", _("Super Admin")
-    DISTRICT_ADMIN = "DISTRICT_ADMIN", _("District Admin")
-    MANDAL_ADMIN = "MANDAL_ADMIN", _("Mandal Admin")
-    VILLAGE_ADMIN = "VILLAGE_ADMIN", _("Village Admin")
-    PANCHAYAT_MEMBER = "PANCHAYAT_MEMBER", _("Panchayat Member")
-
-
-#: Highest first. Used to sort role lists.
-ROLE_ORDER = [
-    Role.SUPER_ADMIN,
-    Role.DISTRICT_ADMIN,
-    Role.MANDAL_ADMIN,
-    Role.VILLAGE_ADMIN,
-    Role.PANCHAYAT_MEMBER,
-]
-
-#: The area level each role is assigned at.
-ROLE_LEVEL = {
-    Role.SUPER_ADMIN: AreaLevel.STATE,
-    Role.DISTRICT_ADMIN: AreaLevel.DISTRICT,
-    Role.MANDAL_ADMIN: AreaLevel.MANDAL,
-    Role.VILLAGE_ADMIN: AreaLevel.VILLAGE,
-    Role.PANCHAYAT_MEMBER: AreaLevel.VILLAGE,
-}
-
-#: Roles each role may create, block, unblock and reassign, inside its area.
-MANAGEABLE_ROLES = {
-    Role.SUPER_ADMIN: {Role.DISTRICT_ADMIN, Role.MANDAL_ADMIN, Role.VILLAGE_ADMIN, Role.PANCHAYAT_MEMBER},
-    Role.DISTRICT_ADMIN: {Role.MANDAL_ADMIN, Role.VILLAGE_ADMIN, Role.PANCHAYAT_MEMBER},
-    Role.MANDAL_ADMIN: {Role.VILLAGE_ADMIN, Role.PANCHAYAT_MEMBER},
-    Role.VILLAGE_ADMIN: {Role.PANCHAYAT_MEMBER},
-    Role.PANCHAYAT_MEMBER: set(),
-}
-
-REVIEW_ROLES = {Role.SUPER_ADMIN, Role.DISTRICT_ADMIN, Role.MANDAL_ADMIN, Role.VILLAGE_ADMIN}
-#: Roles that may post. SUPER_ADMIN joins them only when SUPER_ADMIN_CAN_POST is on.
-POSTING_ROLES = {Role.DISTRICT_ADMIN, Role.MANDAL_ADMIN, Role.VILLAGE_ADMIN, Role.PANCHAYAT_MEMBER}
+#: Highest first, for sorting lists by rank.
+ROLE_ORDER = sorted(ROLE_GROUPS, key=lambda key: ROLE_GROUPS[key]["rank"])
 
 ROLE_LABELS = {
-    "te": {
-        Role.SUPER_ADMIN: "సూపర్ అడ్మిన్",
-        Role.DISTRICT_ADMIN: "జిల్లా అడ్మిన్",
-        Role.MANDAL_ADMIN: "మండల అడ్మిన్",
-        Role.VILLAGE_ADMIN: "గ్రామ అడ్మిన్",
-        Role.PANCHAYAT_MEMBER: "పంచాయతీ సభ్యుడు",
-    },
-    "en": {role: str(role.label) for role in Role},
+    "te": {key: spec["name_te"] for key, spec in ROLE_GROUPS.items()},
+    "en": {key: spec["name"] for key, spec in ROLE_GROUPS.items()},
 }
 
 
@@ -63,4 +27,4 @@ def role_label(role: str, language: str = "te") -> str:
 
 
 def sort_roles(roles) -> list[str]:
-    return sorted(roles, key=ROLE_ORDER.index)
+    return sorted(roles, key=lambda key: ROLE_ORDER.index(key) if key in ROLE_ORDER else len(ROLE_ORDER))

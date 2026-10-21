@@ -108,6 +108,7 @@ class NotificationTemplate(models.Model):
 
     class Meta:
         ordering = ["order", "key"]
+        permissions = [("manage_templates", "Change notification texts")]
 
     def __str__(self):
         return self.key

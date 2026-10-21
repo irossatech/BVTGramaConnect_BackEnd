@@ -5,23 +5,24 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.utils.translation import gettext as _
+from django.utils.translation import gettext_lazy
 from django.views.decorators.cache import cache_control
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import generics, mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser
-from rest_framework.permissions import AllowAny, BasePermission, IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.models import RoleAssignment, User, UserStatus
-from apps.accounts.roles import REVIEW_ROLES
-from apps.accounts.scope import is_super_admin, is_within, user_areas
+from apps.accounts import authz
+from apps.accounts.models import RoleAssignment, User
+from apps.accounts.permissions import PLATFORM, HasPerm
 from apps.audit.services import record
 from apps.geography.areas import AreaRef, within_q
 from apps.geography.models import AreaLevel
-from grama.exceptions import ApiError, out_of_area, permission_denied
+from grama.exceptions import ApiError, out_of_area
 
 from . import media as media_service
 from . import services
@@ -41,13 +42,6 @@ from .serializers import (
     UrgentSerializer,
     prime_posts,
 )
-
-
-class IsSuperAdmin(BasePermission):
-    def has_permission(self, request, view):
-        if not is_super_admin(request.user):
-            raise permission_denied(_("Only Super Admins can do this."))
-        return True
 
 
 def post_queryset(queryset):
@@ -83,7 +77,7 @@ class CategoryListView(generics.ListAPIView):
 
 
 class AdminCategoryViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, mixins.UpdateModelMixin, viewsets.GenericViewSet):
-    permission_classes = [IsAuthenticated, IsSuperAdmin]
+    permission_classes = [IsAuthenticated, HasPerm("posts.manage_categories", PLATFORM, gettext_lazy("Only Super Admins can do this."))]
     serializer_class = AdminCategorySerializer
     pagination_class = None
     http_method_names = ["get", "post", "patch", "head", "options"]
@@ -287,7 +281,7 @@ class PostViewSet(viewsets.GenericViewSet):
 
 
 class ReviewQueueView(generics.ListAPIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasPerm("posts.view_review_queue", message=gettext_lazy("Your role cannot review posts."))]
     serializer_class = PostSerializer
 
     @extend_schema(
@@ -298,8 +292,6 @@ class ReviewQueueView(generics.ListAPIView):
         ],
     )
     def get(self, request, *args, **kwargs):
-        if not user_areas(request.user, REVIEW_ROLES):
-            raise permission_denied(_("Your role cannot review posts."))
         return super().get(request, *args, **kwargs)
 
     def get_queryset(self):
@@ -319,26 +311,24 @@ class ReviewQueueView(generics.ListAPIView):
 
 
 class StatsView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasPerm("posts.view_stats")]
 
     @extend_schema(
         summary="Counts for an area dashboard",
         parameters=[OpenApiParameter("level", OpenApiTypes.STR), OpenApiParameter("area_id", OpenApiTypes.INT)],
     )
     def get(self, request):
-        areas = user_areas(request.user)
-        if not areas:
-            raise permission_denied()
+        perm = "posts.view_stats"
         params = request.query_params
         if params.get("level") or params.get("area_id"):
             if params.get("level") not in AreaLevel.values or not (params.get("area_id") or "").isdigit():
                 raise ApiError("validation_error", _("Give both level and area_id."))
             area = AreaRef(params["level"], int(params["area_id"]))
-            if not any(is_within(area, item) for item in areas):
+            if not authz.can(request.user, perm, area):
                 raise out_of_area()
         else:
-            area = areas[0].area
-        global_view = area.level == AreaLevel.STATE and is_super_admin(request.user)
+            area = authz.best_grant(request.user, perm).area
+        global_view = area.level == AreaLevel.STATE and authz.can(request.user, perm, PLATFORM)
         target_q = Q() if global_view else within_q(area, level_field="target_level", id_field="target_area_id")
         posts = Post.objects.filter(target_q)
         today = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -349,8 +339,8 @@ class StatsView(APIView):
                 "area": {"level": area.level, "id": area.id},
                 "pending_review": posts.filter(status=PostStatus.PENDING).count(),
                 "published_today": posts.filter(status=PostStatus.PUBLISHED, published_at__gte=today).count(),
-                "active_users": users.filter(status=UserStatus.ACTIVE).count(),
-                "blocked_users": users.filter(status=UserStatus.BLOCKED).count(),
+                "active_users": users.filter(is_active=True).count(),
+                "blocked_users": users.filter(is_active=False).count(),
                 "escalated": posts.filter(status=PostStatus.PENDING, escalated_at__isnull=False).count(),
             }
         )
@@ -370,7 +360,7 @@ def current_settings() -> dict:
 
 
 class AdminSettingsView(APIView):
-    permission_classes = [IsAuthenticated, IsSuperAdmin]
+    permission_classes = [IsAuthenticated, HasPerm("posts.manage_settings", PLATFORM, gettext_lazy("Only Super Admins can do this."))]
 
     @extend_schema(summary="Platform settings", responses=SettingsSerializer)
     def get(self, request):

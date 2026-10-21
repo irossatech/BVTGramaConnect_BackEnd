@@ -51,6 +51,8 @@ DJANGO_APPS = [
 ]
 
 THIRD_PARTY_APPS = [
+    # Failed-login lockout (apps/accounts/lockout.py).
+    "axes",
     "rest_framework",
     "rest_framework_simplejwt.token_blacklist",
     "drf_spectacular",
@@ -81,6 +83,8 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    # Must stay last: turns axes lockouts on other login forms into 429 responses.
+    "axes.middleware.AxesMiddleware",
 ]
 
 ROOT_URLCONF = "grama.urls"
@@ -106,16 +110,58 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # --- Users ------------------------------------------------------------------
 
-# Officials log in with a username (or email) and a password. Citizens have no account.
+# Officials log in with a username and a password. Citizens have no account.
+# docs/authorization.md describes login, lockout, resets and permissions.
 AUTH_USER_MODEL = "accounts.User"
 
-# Official passwords must pass these checks; so must the role default passwords.
+# axes first: it refuses locked-out username + IP pairs before any password check.
+AUTHENTICATION_BACKENDS = [
+    "axes.backends.AxesStandaloneBackend",
+    "apps.accounts.backends.OfficialBackend",
+]
+
+# Argon2 for new hashes; older PBKDF2 hashes still work and are upgraded at login.
+PASSWORD_HASHERS = [
+    "django.contrib.auth.hashers.Argon2PasswordHasher",
+    "django.contrib.auth.hashers.PBKDF2PasswordHasher",
+    "django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher",
+    "django.contrib.auth.hashers.ScryptPasswordHasher",
+]
+
+# Every password an official or an admin chooses must pass these.
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
-    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
+    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator", "OPTIONS": {"min_length": 8}},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
+
+# Lockout (django-axes): 5 failed logins for one username from one IP address
+# lock that pair for 15 minutes. Tries during the lockout do not extend it; a
+# successful login clears the count. Admins with accounts.unlock_user unlock early.
+AXES_FAILURE_LIMIT = env.int("LOGIN_MAX_FAILURES", default=5)
+AXES_COOLOFF_TIME = timedelta(minutes=env.int("LOGIN_LOCKOUT_MINUTES", default=15))
+AXES_LOCKOUT_PARAMETERS = [["username", "ip_address"]]
+AXES_RESET_ON_SUCCESS = True
+AXES_RESET_COOL_OFF_ON_FAILURE_DURING_LOCKOUT = False
+AXES_USERNAME_CALLABLE = "apps.accounts.lockout.axes_username"
+AXES_CLIENT_IP_CALLABLE = "apps.accounts.lockout.axes_client_ip"
+AXES_LOCKOUT_CALLABLE = "apps.accounts.lockout.lockout_response"
+# Successful logins are in the audit log already.
+AXES_DISABLE_ACCESS_LOG = True
+AXES_VERBOSE = False
+
+# Web console sessions: HttpOnly cookie, CSRF token, ended after this much idle time.
+CONSOLE_SESSION_IDLE_MINUTES = env.int("CONSOLE_SESSION_IDLE_MINUTES", default=30)
+SESSION_COOKIE_AGE = CONSOLE_SESSION_IDLE_MINUTES * 60
+SESSION_SAVE_EVERY_REQUEST = True
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
+SESSION_COOKIE_SECURE = env.bool("SESSION_COOKIE_SECURE", default=True)
+# The console reads the csrftoken cookie and sends it back as X-CSRFToken.
+CSRF_COOKIE_HTTPONLY = False
+CSRF_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SECURE = env.bool("CSRF_COOKIE_SECURE", default=True)
 
 # --- Language and time ------------------------------------------------------
 
@@ -151,9 +197,11 @@ WEB_ADMIN_DIR = _dir_from_env("WEB_ADMIN_DIR", "../BVTGramaConnect/dist/console"
 # --- REST API ----------------------------------------------------------------
 
 REST_FRAMEWORK = {
-    # Bearer JWT plus a token_version check on every request (accounts/tokens.py).
+    # The app: Bearer JWT. The console: session cookie with CSRF. Both check
+    # token_version on every request (apps/accounts/authentication.py).
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "apps.accounts.authentication.GramaJWTAuthentication",
+        "apps.accounts.authentication.GramaSessionAuthentication",
     ],
     "EXCEPTION_HANDLER": "grama.exceptions.exception_handler",
     "DEFAULT_PERMISSION_CLASSES": [
@@ -222,38 +270,11 @@ MAX_PHOTOS_PER_POST = env.int("MAX_PHOTOS_PER_POST", default=5)
 # Owner decision Q8: 60-second video posts are in version 1.
 VIDEO_POSTS_ENABLED = env.bool("VIDEO_POSTS_ENABLED", default=True)
 
-# --- Password login and email ------------------------------------------------------
-
-# Invited and reset officials get their role's default password by email and
-# must choose their own at first login while this is on.
-FORCE_PASSWORD_CHANGE_ON_FIRST_LOGIN = env.bool("FORCE_PASSWORD_CHANGE_ON_FIRST_LOGIN", default=True)
-
-# Failed logins: at most this many per username in the window (a success
-# resets the count), and per IP address per hour.
-LOGIN_MAX_FAILURES_PER_USERNAME = env.int("LOGIN_MAX_FAILURES_PER_USERNAME", default=5)
-LOGIN_USERNAME_WINDOW_MINUTES = env.int("LOGIN_USERNAME_WINDOW_MINUTES", default=15)
-LOGIN_MAX_FAILURES_PER_IP = env.int("LOGIN_MAX_FAILURES_PER_IP", default=30)
-
-# Invite and reset emails. Development prints them to the console; the server
-# sends through SMTP (EMAIL_* in env). `check --deploy` refuses the console backend.
-EMAIL_BACKEND = env.str("EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend")
-EMAIL_HOST = env.str("EMAIL_HOST", default="localhost")
-EMAIL_PORT = env.int("EMAIL_PORT", default=587)
-EMAIL_HOST_USER = env.str("EMAIL_HOST_USER", default="")
-EMAIL_HOST_PASSWORD = env.str("EMAIL_HOST_PASSWORD", default="")
-EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
-EMAIL_TIMEOUT = env.int("EMAIL_TIMEOUT", default=20)
-DEFAULT_FROM_EMAIL = env.str("DEFAULT_FROM_EMAIL", default="BVT Grama Connect <no-reply@bvtgramaconnect.in>")
-
-# Where Super Admins log in; written into their invite emails.
-CONSOLE_LOGIN_URL = env.str("CONSOLE_LOGIN_URL", default="http://127.0.0.1:8000/console/")
+# --- Client addresses -----------------------------------------------------------
 
 # Read the caller's IP from X-Real-IP. Only safe behind a proxy that sets it.
+# Used by the login lockout and the contact form limit.
 TRUST_X_REAL_IP = env.bool("TRUST_X_REAL_IP", default=False)
-
-# The console keeps its refresh token in this HttpOnly cookie.
-CONSOLE_REFRESH_COOKIE = "gc_refresh"
-CONSOLE_COOKIE_SECURE = env.bool("CONSOLE_COOKIE_SECURE", default=True)
 
 # --- Nearest village -------------------------------------------------------------
 
@@ -349,5 +370,7 @@ LOGGING = {
     "root": {"handlers": ["console"], "level": env.str("LOG_LEVEL", default="INFO")},
     "loggers": {
         "django.request": {"handlers": ["console"], "level": "WARNING", "propagate": False},
+        # Lockouts are in the audit log; keep axes to warnings (it never logs passwords).
+        "axes": {"handlers": ["console"], "level": "WARNING", "propagate": False},
     },
 }

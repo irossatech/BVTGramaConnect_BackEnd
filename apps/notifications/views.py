@@ -6,11 +6,12 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import generics, status
 from rest_framework.pagination import CursorPagination
-from rest_framework.permissions import AllowAny, BasePermission, IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.scope import is_super_admin
+from apps.accounts.authentication import client_via
+from apps.accounts.permissions import PLATFORM, HasPerm
 from apps.audit.services import record
 from grama.exceptions import ApiError, permission_denied
 
@@ -129,22 +130,18 @@ class NotificationReadAllView(APIView):
 # --- Notification texts (console Settings page) ----------------------------------------------
 
 
-class IsSuperAdmin(BasePermission):
-    def has_permission(self, request, view):
-        if not is_super_admin(request.user):
-            raise permission_denied("Only Super Admins can change notification texts.")
-        return True
+CAN_EDIT_TEMPLATES = HasPerm("notifications.manage_templates", PLATFORM, "Only Super Admins can change notification texts.")
 
 
 class NotificationTemplateListView(generics.ListAPIView):
-    permission_classes = [IsAuthenticated, IsSuperAdmin]
+    permission_classes = [IsAuthenticated, CAN_EDIT_TEMPLATES]
     serializer_class = NotificationTemplateSerializer
     pagination_class = None
     queryset = NotificationTemplate.objects.all()
 
 
 class NotificationTemplateDetailView(APIView):
-    permission_classes = [IsAuthenticated, IsSuperAdmin]
+    permission_classes = [IsAuthenticated, CAN_EDIT_TEMPLATES]
 
     @extend_schema(
         summary="Change a push text",
@@ -167,7 +164,7 @@ class NotificationTemplateDetailView(APIView):
             actor=request.user,
             target=template,
             target_label=template.name_en,
-            via="console" if request.headers.get("X-Client") == "web_admin" else "app",
+            via=client_via(request),
             data={"before": before},
         )
         return Response(NotificationTemplateSerializer(template).data)

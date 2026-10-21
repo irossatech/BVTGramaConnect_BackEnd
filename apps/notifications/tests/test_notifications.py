@@ -146,7 +146,7 @@ def test_escalation_to_state_alerts_super_admins(world, devices, django_capture_
 def test_blocked_reviewers_are_not_alerted(world, devices, django_capture_on_commit_callbacks):
     from apps.accounts.models import User
 
-    User.objects.filter(pk=world.users["da_guntur"].pk).update(status="BLOCKED")
+    User.objects.filter(pk=world.users["da_guntur"].pk).update(is_active=False)
     post_as(world, "pm_kolakaluru", "kolakaluru", django_capture_on_commit_callbacks)
     alerted = {n.user.name for n in Notification.objects.filter(kind=NotificationKind.REVIEW_PENDING)}
     assert alerted == {"va_kolakaluru", "ma_tenali"}

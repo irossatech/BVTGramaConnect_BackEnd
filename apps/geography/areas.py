@@ -71,6 +71,38 @@ def ancestry(area: AreaRef) -> dict[str, int]:
     return {}
 
 
+def ancestries(refs: Iterable[AreaRef]) -> dict[AreaRef, dict[str, int]]:
+    """ancestry() for many areas: one query per level present. Missing areas map to {}."""
+    by_level: dict[str, set[int]] = {}
+    for ref in refs:
+        by_level.setdefault(ref.level, set()).add(ref.id)
+    found: dict[AreaRef, dict[str, int]] = {}
+    if by_level.get(AreaLevel.VILLAGE):
+        for row in Village.objects.filter(id__in=by_level[AreaLevel.VILLAGE]).values(
+            "id", "mandal_id", "mandal__district_id", "mandal__district__state_id"
+        ):
+            found[AreaRef(AreaLevel.VILLAGE, row["id"])] = {
+                AreaLevel.VILLAGE: row["id"],
+                AreaLevel.MANDAL: row["mandal_id"],
+                AreaLevel.DISTRICT: row["mandal__district_id"],
+                AreaLevel.STATE: row["mandal__district__state_id"],
+            }
+    if by_level.get(AreaLevel.MANDAL):
+        for row in Mandal.objects.filter(id__in=by_level[AreaLevel.MANDAL]).values("id", "district_id", "district__state_id"):
+            found[AreaRef(AreaLevel.MANDAL, row["id"])] = {
+                AreaLevel.MANDAL: row["id"],
+                AreaLevel.DISTRICT: row["district_id"],
+                AreaLevel.STATE: row["district__state_id"],
+            }
+    if by_level.get(AreaLevel.DISTRICT):
+        for row in District.objects.filter(id__in=by_level[AreaLevel.DISTRICT]).values("id", "state_id"):
+            found[AreaRef(AreaLevel.DISTRICT, row["id"])] = {AreaLevel.DISTRICT: row["id"], AreaLevel.STATE: row["state_id"]}
+    if by_level.get(AreaLevel.STATE):
+        for state_id in State.objects.filter(id__in=by_level[AreaLevel.STATE]).values_list("id", flat=True):
+            found[AreaRef(AreaLevel.STATE, state_id)] = {AreaLevel.STATE: state_id}
+    return {AreaRef(level, area_id): found.get(AreaRef(level, area_id), {}) for level, ids in by_level.items() for area_id in ids}
+
+
 def area_is_within(area: AreaRef, container: AreaRef) -> bool:
     """True when `area` is `container` itself or lies below it."""
     if DEPTH[container.level] > DEPTH[area.level]:

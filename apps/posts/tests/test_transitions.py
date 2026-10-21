@@ -84,8 +84,7 @@ def test_posting_outside_your_area_is_refused(api, world, author, target, expect
     assert not Post.objects.exists()
 
 
-def test_super_admin_posts_only_when_allowed(settings, make_post):
-    settings.SUPER_ADMIN_CAN_POST = True
+def test_super_admin_posts_only_when_allowed(super_admin_can_post, make_post):
     post = make_post("super", "ap")
     assert post.status == PostStatus.PUBLISHED
     assert post.posted_as_role == "SUPER_ADMIN"

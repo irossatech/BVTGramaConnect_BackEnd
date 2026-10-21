@@ -2,6 +2,8 @@
 
 Status: written 2026-10-21 from a full read of the prototype folder. Read-only reference; nothing in the prototype folder was changed.
 
+> **Update 2026-10-21 (owner):** officials now log in with a username and a password. There is no OTP, SMS or email login, and roles are Django groups and permissions. The OTP screens and endpoints below are prototype history; the current flow is in [authorization.md](authorization.md).
+
 Prototype folder: `E:\IROSSA_Technologies(2025)\03_PROJECTS\BVT Grama Connect\BVT Grama Connect mobile prototype` (the brief calls it /design/prototype).
 
 Endpoint names below refer to `api-contract.md` in this folder. Line numbers (L123) refer to the prototype file named at the top of each part.
@@ -76,6 +78,8 @@ Holds for all three files:
 - Designed at 390x844.
 
 ### 2.2 Screens
+
+> **Update 2026-10-21 (owner):** officials now log in with a username and a password. There is no OTP, SMS or email login, and roles are Django groups and permissions. The OTP screens and endpoints below are prototype history; the current flow is in [authorization.md](authorization.md).
 
 The `screen` state key picks the view. `go()` pushes onto a back stack, `nav()` resets it for tab switches, and `homeOf(role)` maps each role to its home.
 
@@ -297,6 +301,8 @@ Pages switch in state (`state.page`, L278). There are no URLs or hash routes.
 
 ### 4.2 Pages
 
+> **Update 2026-10-21 (owner):** officials now log in with a username and a password. There is no OTP, SMS or email login, and roles are Django groups and permissions. The OTP screens and endpoints below are prototype history; the current flow is in [authorization.md](authorization.md).
+
 `state.screen` is `login`, `otp` or `app`; inside the app, `state.page` picks the page.
 
 | View | Title | What it does | Lines |
@@ -318,6 +324,8 @@ Pages switch in state (`state.page`, L278). There are no URLs or hash routes.
 | Toasts | — | Top right, 2.6 s | L391-395 |
 
 ### 4.3 Mock data and the API each needs
+
+> **Update 2026-10-21 (owner):** officials now log in with a username and a password. There is no OTP, SMS or email login, and roles are Django groups and permissions. The OTP screens and endpoints below are prototype history; the current flow is in [authorization.md](authorization.md).
 
 | Data | Where | Content | Needs |
 |---|---|---|---|
@@ -471,15 +479,17 @@ These are not open questions. Change them by editing this file and CLAUDE.md.
 4. Authentication uses simplejwt with a per-user token version so blocking revokes sessions at once. Details are in the contract, section 1.
 5. The Flutter app adds a location step (GPS, then the picker) that the prototype only names.
 6. Flutter adds pull-to-refresh, loading, offline and error states in the prototype's visual style; the prototype has none.
-7. **Decision, 2026-10-21 (owner): no SMS.** OTP login and every SMS were dropped. Officials log in with a username (or email) and password. An admin invites them; based on the role they get an email with their username and the role's default password, and must change it at first login. The Super Admin can change each role's default password. The prototypes' mobile-number and OTP screens become username/password and change-password screens in the same visual style. Questions about SMS and DLT no longer apply.
+7. **Decision, 2026-10-21 (owner): no SMS.** OTP login and every SMS were dropped. Officials log in with a username (or email) and password. An admin invites them; based on the role they get an email with their username and the role's default password, and must change it at first login. The Super Admin can change each role's default password. The prototypes' mobile-number and OTP screens become username/password and change-password screens in the same visual style. Questions about SMS and DLT no longer apply. *Changed later the same day: no email invites and no default passwords; see decision 9.*
 
 8. **Decision, 2026-10-21 (owner): one web repo.** The website and the Super Admin console were merged into one repo, BVTGramaConnect, owned by one web developer: the website in `src/`, the console in `console/`, files identical for both in `shared/`, one `npm run build`. The separate Admin repo was removed. Nothing visible changed: both built outputs match the old builds byte for byte except the generated `config.js`.
+
+9. **Decision, 2026-10-21 (owner): Django auth, groups and permissions.** Login is a username and a password only; email is an optional contact field. The admin who adds or resets an official sets a temporary password or has one generated and shown once; nothing is emailed. django-axes locks a username and IP pair after 5 failures for 15 minutes, and a higher admin can unlock it. The app keeps JWT; the console uses a Django session with CSRF. Roles are Django groups and every check asks for a Django permission inside the assignment's area. Full detail: [authorization.md](authorization.md).
 
 ---
 
 ## 8. Open questions
 
-Numbers match the "Pending Qn" marks in `api-contract.md`. The owner decided Q1, Q3, Q5, Q7, Q8, Q9, Q10, Q13, Q14, Q16, Q17 and Q19 on 2026-10-21 (see `.claude/project.md`, "Owner decisions"). Q2, Q4, Q6, Q11, Q12, Q15 and Q18 are still open and run on their defaults.
+Numbers match the "Pending Qn" marks in `api-contract.md`. The owner decided Q1, Q3, Q5, Q7, Q8, Q9, Q10, Q13, Q14, Q16, Q17 and Q19 on 2026-10-21 (see `.claude/project.md`, "Owner decisions"). Q2, Q4, Q6, Q11, Q12, Q15 and Q18 are still open and run on their defaults. Login and permissions changed later on 2026-10-21; see [authorization.md](authorization.md).
 
 | Q | Question | Answer, or the default until there is one |
 |---|---|---|
@@ -491,7 +501,7 @@ Numbers match the "Pending Qn" marks in `api-contract.md`. The owner decided Q1,
 | Q6 | May the Super Admin change escalation hours, switch categories and languages, add categories, and edit notification texts at runtime? SMS texts would stay fixed because DLT registration requires it. | Yes, stored in the database over env defaults; SMS read-only |
 | Q7 | Add an event date field (deadline, camp, distribution, closure, meeting) to compose, so "Don't miss" works? | **Decided 2026-10-21:** yes, optional: kind, start date, optional end date. "Don't miss" reads `GET /feed/upcoming/`. |
 | Q8 | Keep 60-second video posts in version 1? If yes, what size and quality limits suit 2G/3G? | **Decided 2026-10-21:** in version 1. MP4 or MOV, at most 60 s and 50 MB, one video per post and never with photos. `VIDEO_POSTS_ENABLED` switches it off. |
-| Q9 | How do users with several role assignments switch between them, and is there a screen to add one? | **Decided 2026-10-21:** second roles are added and removed in the console only. The app has no screen for it. |
+| Q9 | How do users with several role assignments switch between them, and is there a screen to add one? | **Decided 2026-10-21:** second roles are added and removed in the console only. The app has no screen for it. **Changed later on 2026-10-21:** any admin with the group's manage permission over the area may give a lower second role (`authorization.md`, section 6). |
 | Q10 | Do village coordinates come only from the master-data import, or should the app's village form get latitude and longitude fields? | **Decided 2026-10-21:** coordinates come from the console's village form and the CSV import. |
 | Q11 | May the console get a small pager or "Load more" on Users, Posts and Audit? The design has none. | Yes, minimal pager |
 | Q12 | How are Super Admin accounts created? | `createsuperuser` and a management command |

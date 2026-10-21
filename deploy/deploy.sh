@@ -98,7 +98,7 @@ if ! "$PY" manage.py check --deploy; then
   if [[ "$STRICT_CHECKS" == "1" ]]; then
     die "manage.py check --deploy reported errors (STRICT_CHECKS=1)."
   fi
-  warn "check --deploy reported problems; see above. Expected until SMTP email is configured."
+  warn "check --deploy reported problems; see above."
 fi
 
 log "Health check"

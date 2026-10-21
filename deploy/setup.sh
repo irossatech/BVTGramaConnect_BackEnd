@@ -283,20 +283,8 @@ set_env "$GC_APP_ENV" WEB_ADMIN_DIR "$WWW_DIR/console"
 set_env "$GC_APP_ENV" TRUST_X_REAL_IP True
 set_env "$GC_APP_ENV" SECURE_SSL_REDIRECT False
 set_env "$GC_APP_ENV" LANG C.UTF-8
-# Email for invites and password resets (SMTP). With an empty SMTP_PASSWORD
-# in config.env, the password already in the env file is kept.
-set_env "$GC_APP_ENV" EMAIL_BACKEND django.core.mail.backends.smtp.EmailBackend
-set_env "$GC_APP_ENV" EMAIL_HOST "${SMTP_HOST:-localhost}"
-set_env "$GC_APP_ENV" EMAIL_PORT "${SMTP_PORT:-587}"
-set_env "$GC_APP_ENV" EMAIL_HOST_USER "${SMTP_USER:-}"
-if [[ -n "${SMTP_PASSWORD:-}" ]]; then
-  set_env "$GC_APP_ENV" EMAIL_HOST_PASSWORD "$SMTP_PASSWORD"
-else
-  set_env "$GC_APP_ENV" EMAIL_HOST_PASSWORD "" --if-missing
-fi
-set_env "$GC_APP_ENV" EMAIL_USE_TLS "${SMTP_USE_TLS:-True}"
-set_env "$GC_APP_ENV" DEFAULT_FROM_EMAIL "${MAIL_FROM:-BVT Grama Connect <no-reply@$DOMAIN>}"
-set_env "$GC_APP_ENV" CONSOLE_LOGIN_URL "https://$DOMAIN/console/"
+# Console sessions: idle timeout. Nothing is emailed (no SMTP settings).
+set_env "$GC_APP_ENV" CONSOLE_SESSION_IDLE_MINUTES "${CONSOLE_SESSION_IDLE_MINUTES:-30}"
 # Link added to shared posts and invites (owner decision Q17).
 set_env "$GC_APP_ENV" SITE_WEBSITE_URL "https://$DOMAIN/" --if-missing
 # Placeholder the owner replaces (kept once edited):

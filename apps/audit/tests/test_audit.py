@@ -36,7 +36,7 @@ def test_user_actions_are_audited(api, world):
     client.post(f"/api/v1/users/{target.id}/unblock/", {}, format="json")
     client.post(
         "/api/v1/users/",
-        {"name": "New", "email": "new@example.org", "role": "PANCHAYAT_MEMBER", "area": world.area_json("kolakaluru")},
+        {"name": "New", "username": "new.official", "role": "PANCHAYAT_MEMBER", "area": world.area_json("kolakaluru")},
         format="json",
     )
     actions = set(AuditLog.objects.values_list("action", flat=True))
