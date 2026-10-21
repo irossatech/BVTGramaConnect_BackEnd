@@ -1,0 +1,14 @@
+# Managed by BVT Grama Connect deploy/setup.sh. Edit the template, not this file.
+[Unit]
+Description=BVT Grama Connect encrypted backup (database + media)
+After=network-online.target mysql.service postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Environment=LANG=C.UTF-8
+ExecStart=/bin/bash @DEPLOY_DIR@/backup.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

@@ -1,0 +1,35 @@
+# The one requirements file for every environment: laptops, CI, UAT and production.
+# Python 3.12 or 3.13. Install with: python -m pip install -r requirements.txt
+#
+# On Linux, mysqlclient compiles from source and needs:
+#   sudo apt install pkg-config default-libmysqlclient-dev build-essential python3-dev
+# (deploy/setup.sh installs these). Windows and macOS get prebuilt wheels.
+
+# Framework
+Django==5.2.18
+djangorestframework==3.18.3
+djangorestframework-simplejwt==5.5.1
+drf-spectacular==0.30.0
+django-q2==1.11.1
+django-environ==0.14.0
+Pillow==13.0.0
+
+# Firebase Cloud Messaging HTTP v1 (apps.notifications.push.FcmGateway)
+google-auth==2.62.0
+requests==2.34.2
+
+# Server: Gunicorn, and the drivers for DATABASE_URL (MySQL or PostgreSQL).
+# Development and tests use SQLite, which needs no driver.
+gunicorn==26.2.0
+mysqlclient==2.3.0
+psycopg[binary]==3.3.6
+
+# Tests
+pytest==9.1.1
+pytest-django==4.14.0
+
+# Load test (deploy/loadtest/locustfile.py)
+locust==2.46.7
+
+# django-cors-headers is not installed: Django serves both web parts on the
+# same origin in development. Add it only if a web part gets its own dev server.

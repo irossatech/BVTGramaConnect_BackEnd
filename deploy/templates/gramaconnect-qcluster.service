@@ -1,0 +1,28 @@
+# Managed by BVT Grama Connect deploy/setup.sh. Edit the template, not this file.
+# django-q2 worker: invite and reset emails, push notifications, review escalation. Queue lives in the database.
+[Unit]
+Description=BVT Grama Connect background jobs (django-q2)
+After=network-online.target mysql.service postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@APP_USER@
+Group=www-data
+WorkingDirectory=@BACKEND_DIR@
+EnvironmentFile=@GC_APP_ENV@
+Environment=LANG=C.UTF-8 PYTHONUNBUFFERED=1 PYTHONUTF8=1
+UMask=0027
+ExecStart=@VENV@/bin/python manage.py qcluster
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=90
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=@GC_MEDIA@
+
+[Install]
+WantedBy=multi-user.target

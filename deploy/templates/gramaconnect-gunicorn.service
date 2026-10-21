@@ -1,0 +1,39 @@
+# Managed by BVT Grama Connect deploy/setup.sh. Edit the template, not this file.
+[Unit]
+Description=BVT Grama Connect API (Gunicorn)
+After=network-online.target mysql.service postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@APP_USER@
+Group=www-data
+WorkingDirectory=@BACKEND_DIR@
+EnvironmentFile=@GC_APP_ENV@
+Environment=LANG=C.UTF-8 PYTHONUNBUFFERED=1 PYTHONUTF8=1
+RuntimeDirectory=gramaconnect
+RuntimeDirectoryMode=0750
+UMask=0027
+ExecStart=@VENV@/bin/gunicorn grama.wsgi:application \
+    --bind unix:@GC_SOCKET@ \
+    --umask 007 \
+    --workers @GUNICORN_WORKERS@ \
+    --timeout 60 \
+    --graceful-timeout 30 \
+    --max-requests 2000 \
+    --max-requests-jitter 200 \
+    --access-logfile - \
+    --error-logfile -
+ExecReload=/bin/kill -s HUP $MAINPID
+Restart=always
+RestartSec=3
+KillMode=mixed
+TimeoutStopSec=40
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=@GC_MEDIA@
+
+[Install]
+WantedBy=multi-user.target

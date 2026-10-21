@@ -1,0 +1,19 @@
+# Managed by BVT Grama Connect deploy/setup.sh. Edit the template, not this file.
+[DEFAULT]
+bantime  = 1h
+findtime = 10m
+maxretry = 5
+ignoreip = 127.0.0.1/8 ::1
+
+[sshd]
+enabled  = true
+port     = @SSH_PORT@
+backend  = systemd
+
+# Clients that keep hitting the Nginx rate limits (login tries, API bursts).
+[nginx-limit-req]
+enabled  = true
+port     = http,https
+backend  = auto
+logpath  = /var/log/nginx/*error.log
+maxretry = 10
