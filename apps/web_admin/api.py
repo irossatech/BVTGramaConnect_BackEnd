@@ -214,31 +214,49 @@ def report_posts_by_area(days: int) -> list[dict]:
     return rows
 
 
+def decision_hours(decisions) -> list[tuple]:
+    """(actor_id, actor_role, hours) for each decision, hours since the post's latest (re)submission.
+
+    Decisions with no submission before them are left out. Shared by review-time and admin-activity,
+    so both reports measure the same thing.
+    """
+    rows = list(decisions.values_list("post_id", "actor_id", "actor_role", "created_at"))
+    submissions = defaultdict(list)
+    for post_id, at in (
+        ReviewAction.objects.filter(
+            post_id__in={row[0] for row in rows}, action__in=[ReviewAction.Action.SUBMIT, ReviewAction.Action.RESUBMIT]
+        ).values_list("post_id", "created_at")
+    ):
+        submissions[post_id].append(at)
+    result = []
+    for post_id, actor_id, role, at in rows:
+        earlier = [s for s in submissions.get(post_id, []) if s <= at]
+        if earlier:
+            result.append((actor_id, role, (at - max(earlier)).total_seconds() / 3600))
+    return result
+
+
+def average(total: float, count: int) -> float | None:
+    return round(total / count, 1) if count else None
+
+
 def report_review_time(days: int) -> list[dict]:
     """Average hours from (re)submission to the first decision, per reviewer level."""
     since = timezone.now() - timedelta(days=days)
     decisions = ReviewAction.objects.filter(action__in=DECISIONS, created_at__gte=since).exclude(actor_role="")
-    post_ids = set(decisions.values_list("post_id", flat=True))
-    submissions = defaultdict(list)
-    for post_id, at in (
-        ReviewAction.objects.filter(post_id__in=post_ids, action__in=[ReviewAction.Action.SUBMIT, ReviewAction.Action.RESUBMIT])
-        .values_list("post_id", "created_at")
-    ):
-        submissions[post_id].append(at)
     totals = defaultdict(lambda: [0.0, 0])
     levels = level_of_roles()
-    for post_id, role, at in decisions.values_list("post_id", "actor_role", "created_at"):
+    for _actor_id, role, hours in decision_hours(decisions):
         level = levels.get(role)
-        earlier = [s for s in submissions.get(post_id, []) if s <= at]
-        if level is None or not earlier:
+        if level is None:
             continue
-        totals[level][0] += (at - max(earlier)).total_seconds() / 3600
+        totals[level][0] += hours
         totals[level][1] += 1
     hours = escalation_hours()
     return [
         {
             "level": level,
-            "avg_hours": round(totals[level][0] / totals[level][1], 1) if totals[level][1] else None,
+            "avg_hours": average(*totals[level]),
             "reviews": totals[level][1],
             "escalation_hours": hours,
         }
@@ -261,6 +279,8 @@ def report_admin_activity(days: int) -> list[dict]:
         entry["reviewed"] += 1
         key = {"PUBLISH": "published", "RECHECK": "recheck", "DISCARD": "discarded"}[action]
         entry[key] += 1
+    for actor_id, _role, hours in decision_hours(actions):
+        stats[actor_id]["hours"].append(hours)
     seen = set()
     rows = []
     for assignment in assignments:
@@ -277,6 +297,7 @@ def report_admin_activity(days: int) -> list[dict]:
                 "published": entry["published"],
                 "recheck": entry["recheck"],
                 "discarded": entry["discarded"],
+                "avg_review_hours": average(sum(entry["hours"]), len(entry["hours"])),
                 "last_active_at": user.last_login,
             }
         )
@@ -322,10 +343,11 @@ def csv_rows(report: str, data) -> tuple[list[str], list[list]]:
         return ["Level", "Average hours", "Reviews", "Escalation hours"], [
             [row["level"], row["avg_hours"] if row["avg_hours"] is not None else "", row["reviews"], row["escalation_hours"]] for row in data
         ]
-    return ["Name", "Role", "Area", "Reviewed", "Published", "Recheck", "Discarded", "Last active"], [
+    return ["Name", "Role", "Area", "Reviewed", "Published", "Recheck", "Discarded", "Average review hours", "Last active"], [
         [
             row["user"]["name"], row["user"]["role"], (row["area"] or {}).get("name", ""),
             row["reviewed"], row["published"], row["recheck"], row["discarded"],
+            row["avg_review_hours"] if row["avg_review_hours"] is not None else "",
             timezone.localtime(row["last_active_at"]).strftime("%Y-%m-%d %H:%M") if row["last_active_at"] else "",
         ]
         for row in data

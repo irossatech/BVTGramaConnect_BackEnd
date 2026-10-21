@@ -7,7 +7,6 @@ Open work for the Backend team, most important first. Update this file as items 
 3. **Real push.** `apps.notifications.push.FcmGateway` has never sent to Firebase. Put a service-account file on staging (FCM_CREDENTIALS_FILE, FCM_PROJECT_ID) and confirm a topic push and a device push reach a phone.
 4. **Staging deploy.** Run `deploy/setup.sh` once on an Ubuntu VM with MySQL and once with PostgreSQL (the server database is not chosen yet; everyone develops on SQLite). Fix whatever the dry run finds. Then run the backup and restore drill in `deploy/RUNBOOK.md`.
 5. **Load test at the real size.** Run `deploy/loadtest/locustfile.py` against staging with Gunicorn once the owner gives [EXPECTED USERS].
-6. **Admin activity report.** `report_admin_activity` in `apps/web_admin/api.py` returns no average review time per admin, so the console shows "—". Add `avg_review_hours` from ReviewAction timestamps.
-7. **Video on a real server.** Upload a real 60-second phone video on staging with ffmpeg installed. Check the poster, seeking over 3G (Nginx range requests on `/media/`) and the 50 MB limit end to end. Without ffmpeg the phone must send `duration_s` and a poster.
-8. **Video metadata.** Videos are stored as sent, so a phone's GPS tag stays in the file. Ask the owner whether to re-encode with ffmpeg to strip it.
-9. **Housekeeping.** django-axes `AccessAttempt` rows and django-q task rows grow forever; add a scheduled cleanup job.
+6. **Video on a real server.** Upload a real 60-second phone video on staging with ffmpeg installed. Check the poster, seeking over 3G (Nginx range requests on `/media/`) and the 50 MB limit end to end. Without ffmpeg the phone must send `duration_s` and a poster.
+7. **Video metadata.** Videos are stored as sent, so a phone's GPS tag stays in the file. Ask the owner whether to re-encode with ffmpeg to strip it.
+8. **Housekeeping.** django-axes `AccessAttempt` rows and django-q task rows grow forever; add a scheduled cleanup job.
