@@ -2,7 +2,7 @@
 
 Django backend for BVT Grama Connect, the village news platform for Andhra Pradesh. It serves the REST API for the mobile app and the Super Admin console, and in development it also serves the two ported web parts.
 
-- Project brief: `CLAUDE.md` in the folder above this repo.
+- Project brief: [CLAUDE.md](CLAUDE.md) and the `.claude/` folder in this repo.
 - What the prototypes contain and how they are ported: [docs/prototype-inventory.md](docs/prototype-inventory.md).
 - Every endpoint, object and permission rule: [docs/api-contract.md](docs/api-contract.md).
 - Login, lockout, groups and permissions: [docs/authorization.md](docs/authorization.md).
@@ -86,7 +86,7 @@ This creates the review-escalation job, which runs every 15 minutes and alerts t
 | URL | What |
 |---|---|
 | http://127.0.0.1:8000/api/v1/health/ | Health check: `{"status": "ok"}` |
-| http://127.0.0.1:8000/api/v1/ | REST API |
+| http://127.0.0.1:8000/api/v1/geo/states/ | REST API. `/api/v1/` is the base path of every endpoint and answers 404 on its own; `docs/api-contract.md` lists the endpoints |
 | http://127.0.0.1:8000/api/schema/ | OpenAPI schema |
 | http://127.0.0.1:8000/api/docs/ | Swagger UI for the schema |
 | http://127.0.0.1:8000/django-admin/ | Django admin, developers only |
