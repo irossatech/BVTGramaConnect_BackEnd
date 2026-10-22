@@ -4,7 +4,7 @@ Development runs on SQLite; the server runs MySQL or PostgreSQL. Only **master a
 
 | Moves | Never moves |
 |---|---|
-| Geography: states, districts, mandals, villages | Users, role assignments, login attempts, role default passwords |
+| Geography: states, districts, mandals, villages | Users, role assignments, lockout records (`axes`) |
 | Post categories | JWT and blacklist tables (`token_blacklist`) |
 | Notification templates | django-q tasks and schedules (`django_q`) |
 | | Posts, media, audit log, sessions, Django admin log |
