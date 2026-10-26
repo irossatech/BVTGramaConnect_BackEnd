@@ -32,6 +32,14 @@ from .serializers import (
 VILLAGE_SEARCH_LIMIT = 50
 public_cache = method_decorator(cache_control(public=True, max_age=3600), name="dispatch")
 
+# Query parameters of the public lists. views_admin's schema-only classes reuse them.
+STATE_PARAMS = [OpenApiParameter("state", OpenApiTypes.INT, description="State id")]
+DISTRICT_PARAMS = [OpenApiParameter("district", OpenApiTypes.INT, required=True)]
+VILLAGE_PARAMS = [
+    OpenApiParameter("mandal", OpenApiTypes.INT, description="Mandal id. Required unless q is given."),
+    OpenApiParameter("q", OpenApiTypes.STR, description="Search English and Telugu names, 2+ characters."),
+]
+
 
 def _int_param(request, name: str, *, required: bool) -> int | None:
     raw = request.query_params.get(name, "").strip()
@@ -59,7 +67,7 @@ class StateListView(PublicGeoView, generics.ListAPIView):
 
 
 @public_cache
-@extend_schema(parameters=[OpenApiParameter("state", OpenApiTypes.INT, description="State id")])
+@extend_schema(parameters=STATE_PARAMS)
 class DistrictListView(PublicGeoView, generics.ListAPIView):
     serializer_class = DistrictSerializer
 
@@ -72,7 +80,7 @@ class DistrictListView(PublicGeoView, generics.ListAPIView):
 
 
 @public_cache
-@extend_schema(parameters=[OpenApiParameter("district", OpenApiTypes.INT, required=True)])
+@extend_schema(parameters=DISTRICT_PARAMS)
 class MandalListView(PublicGeoView, generics.ListAPIView):
     serializer_class = MandalSerializer
 
@@ -82,12 +90,7 @@ class MandalListView(PublicGeoView, generics.ListAPIView):
 
 
 @public_cache
-@extend_schema(
-    parameters=[
-        OpenApiParameter("mandal", OpenApiTypes.INT, description="Mandal id. Required unless q is given."),
-        OpenApiParameter("q", OpenApiTypes.STR, description="Search English and Telugu names, 2+ characters."),
-    ]
-)
+@extend_schema(parameters=VILLAGE_PARAMS)
 class VillageListView(PublicGeoView, generics.ListAPIView):
     serializer_class = VillageListSerializer
 

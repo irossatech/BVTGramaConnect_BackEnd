@@ -14,24 +14,26 @@ urlpatterns = [
     path("geo/states/", views.StateListView.as_view(), name="states"),
     path(
         "geo/districts/",
-        dispatch_by_method(get=views.DistrictListView, post=create_view("districts")),
+        dispatch_by_method(get=views.DistrictListView, post=create_view("districts"), schema=views_admin.DistrictsSchema),
         name="districts",
     ),
     path("geo/districts/<int:pk>/", update_view("districts").as_view(), name="district-detail"),
     path(
         "geo/mandals/",
-        dispatch_by_method(get=views.MandalListView, post=create_view("mandals")),
+        dispatch_by_method(get=views.MandalListView, post=create_view("mandals"), schema=views_admin.MandalsSchema),
         name="mandals",
     ),
     path("geo/mandals/<int:pk>/", update_view("mandals").as_view(), name="mandal-detail"),
     path(
         "geo/villages/",
-        dispatch_by_method(get=views.VillageListView, post=create_view("villages")),
+        dispatch_by_method(get=views.VillageListView, post=create_view("villages"), schema=views_admin.VillagesSchema),
         name="villages",
     ),
     path(
         "geo/villages/<int:pk>/",
-        dispatch_by_method(get=views.VillageDetailView, patch=update_view("villages")),
+        dispatch_by_method(
+            get=views.VillageDetailView, patch=update_view("villages"), schema=views_admin.VillageDetailSchema
+        ),
         name="village-detail",
     ),
     path("geo/villages/import/", views_admin.VillageImportView.as_view(), name="village-import"),

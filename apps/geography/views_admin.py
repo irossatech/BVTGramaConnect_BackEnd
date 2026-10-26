@@ -8,7 +8,8 @@ from __future__ import annotations
 
 from django.db import transaction
 from django.utils.translation import gettext as _
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import serializers, status
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
@@ -23,6 +24,8 @@ from apps.accounts.permissions import PLATFORM, HasPerm
 from .areas import AreaRef
 from .importer import GeographyImporter
 from .models import District, Mandal, State, Village, name_key
+from .serializers import DistrictSerializer, MandalSerializer, VillageDetailSerializer, VillageListSerializer
+from .views import DISTRICT_PARAMS, STATE_PARAMS, VILLAGE_PARAMS
 
 MAX_MISSING_LISTED = 200
 
@@ -52,6 +55,97 @@ class VillageAdminFields(AreaAdminFields):
     latitude = serializers.DecimalField(max_digits=9, decimal_places=6, min_value=-90, max_value=90)
     longitude = serializers.DecimalField(max_digits=9, decimal_places=6, min_value=-180, max_value=180)
     pin_code = serializers.RegexField(r"^\d{6}$", required=False, allow_blank=True)
+
+
+# --- Shapes for the OpenAPI schema only (Swagger). Requests are validated above. ---------
+
+
+class DistrictCreateRequest(AreaAdminFields):
+    state_id = serializers.IntegerField()
+
+
+class MandalCreateRequest(AreaAdminFields):
+    district_id = serializers.IntegerField()
+
+
+class VillageCreateRequest(VillageAdminFields):
+    mandal_id = serializers.IntegerField()
+
+
+class AreaRow(serializers.Serializer):
+    """area_row() of a state; the levels below add their parent's id."""
+
+    id = serializers.IntegerField()
+    level = serializers.CharField()
+    name_en = serializers.CharField()
+    name_te = serializers.CharField()
+    lgd_code = serializers.CharField(allow_null=True)
+    is_active = serializers.BooleanField()
+
+
+class DistrictRow(AreaRow):
+    state_id = serializers.IntegerField()
+
+
+class MandalRow(AreaRow):
+    district_id = serializers.IntegerField()
+
+
+class VillageRow(AreaRow):
+    latitude = serializers.CharField(allow_null=True, help_text="6 decimals")
+    longitude = serializers.CharField(allow_null=True, help_text="6 decimals")
+    pin_code = serializers.CharField()
+    mandal_id = serializers.IntegerField()
+
+
+class TreeMandal(MandalRow):
+    village_count = serializers.IntegerField()
+    villages = VillageRow(many=True, required=False, help_text="Only with ?villages=1")
+
+
+class TreeDistrict(DistrictRow):
+    mandal_count = serializers.IntegerField()
+    village_count = serializers.IntegerField()
+    mandals = TreeMandal(many=True)
+
+
+class TreeState(AreaRow):
+    districts = TreeDistrict(many=True)
+
+
+class ImportCounts(serializers.Serializer):
+    created = serializers.IntegerField()
+    updated = serializers.IntegerField()
+    unchanged = serializers.IntegerField()
+
+
+class MissingCoordinates(serializers.Serializer):
+    state = serializers.CharField()
+    district = serializers.CharField()
+    mandal = serializers.CharField()
+    village = serializers.CharField()
+    village_lgd_code = serializers.CharField(allow_null=True)
+
+
+class GeographyImportReport(serializers.Serializer):
+    ok = serializers.BooleanField()
+    dry_run = serializers.BooleanField()
+    rows = serializers.IntegerField()
+    errors = serializers.ListField(child=serializers.CharField())
+    warnings = serializers.ListField(child=serializers.CharField())
+    counts = serializers.DictField(child=ImportCounts(), help_text="state, district, mandal, village")
+    missing_coordinates = MissingCoordinates(many=True)
+    missing_coordinates_count = serializers.IntegerField()
+    missing_telugu = serializers.IntegerField()
+
+
+CSV_UPLOAD = {
+    "multipart/form-data": {
+        "type": "object",
+        "properties": {"file": {"type": "string", "format": "binary"}},
+        "required": ["file"],
+    }
+}
 
 
 def area_row(obj) -> dict:
@@ -84,6 +178,12 @@ LEVEL_CONFIG = {
     "districts": (District, "state", State, AreaAdminFields),
     "mandals": (Mandal, "district", District, AreaAdminFields),
     "villages": (Village, "mandal", Mandal, VillageAdminFields),
+}
+#: kind: (create request, row) for the schema.
+LEVEL_SCHEMA = {
+    "districts": (DistrictCreateRequest, DistrictRow),
+    "mandals": (MandalCreateRequest, MandalRow),
+    "villages": (VillageCreateRequest, VillageRow),
 }
 
 
@@ -177,8 +277,13 @@ class AreaUpdateView(AreaWriteMixin, APIView):
         return Response(area_row(obj))
 
 
-def dispatch_by_method(**views):
-    """One URL, different views per HTTP method (public GET, Super Admin writes)."""
+def dispatch_by_method(schema=None, **views):
+    """One URL, different views per HTTP method (public GET, Super Admin writes).
+
+    `schema` is a schema-only APIView describing every method for the OpenAPI
+    schema: drf-spectacular lists a URL only when its view has a DRF class
+    (`.cls`), and this function has none of its own. Requests never reach it.
+    """
     handlers = {method.upper(): view.as_view() for method, view in views.items()}
 
     def view(request, *args, **kwargs):
@@ -188,15 +293,82 @@ def dispatch_by_method(**views):
         return handler(request, *args, **kwargs)
 
     view.csrf_exempt = True
+    if schema is not None:
+        view.cls = schema
+        view.initkwargs = {}
     return view
 
 
 def create_view(kind):
-    return type(f"{kind.title()}CreateView", (AreaCreateView,), {"kind": kind})
+    request_shape, row = LEVEL_SCHEMA[kind]
+    view = type(f"{kind.title()}CreateView", (AreaCreateView,), {"kind": kind})
+    return extend_schema_view(
+        post=extend_schema(summary=f"Add a {kind[:-1]} (Super Admin)", request=request_shape, responses={201: row})
+    )(view)
 
 
 def update_view(kind):
-    return type(f"{kind.title()}UpdateView", (AreaUpdateView,), {"kind": kind})
+    _model, _parent, _parent_model, fields = LEVEL_CONFIG[kind]
+    view = type(f"{kind.title()}UpdateView", (AreaUpdateView,), {"kind": kind})
+    return extend_schema_view(
+        patch=extend_schema(
+            summary=f"Edit, deactivate or reactivate a {kind[:-1]} (Super Admin)",
+            request=fields,
+            responses=LEVEL_SCHEMA[kind][1],
+        )
+    )(view)
+
+
+# --- Schema-only views for URLs that share a public GET and a Super Admin write -----------
+
+
+class SchemaOnly(APIView):
+    """Describes a dispatch_by_method URL in the OpenAPI schema. Never handles a request."""
+
+    permission_classes = [IsAuthenticated, MANAGE_MASTER_DATA]
+
+    def _never(self, *args, **kwargs):
+        raise NotImplementedError("Requests go through dispatch_by_method's handlers.")
+
+
+class DistrictsSchema(SchemaOnly):
+    @extend_schema(summary="Active districts (public)", auth=[], parameters=STATE_PARAMS, responses=DistrictSerializer(many=True))
+    def get(self, request):
+        self._never()
+
+    @extend_schema(summary="Add a district (Super Admin)", request=DistrictCreateRequest, responses={201: DistrictRow})
+    def post(self, request):
+        self._never()
+
+
+class MandalsSchema(SchemaOnly):
+    @extend_schema(summary="Active mandals of a district (public)", auth=[], parameters=DISTRICT_PARAMS, responses=MandalSerializer(many=True))
+    def get(self, request):
+        self._never()
+
+    @extend_schema(summary="Add a mandal (Super Admin)", request=MandalCreateRequest, responses={201: MandalRow})
+    def post(self, request):
+        self._never()
+
+
+class VillagesSchema(SchemaOnly):
+    @extend_schema(summary="Active villages of a mandal, or a name search (public)", auth=[], parameters=VILLAGE_PARAMS, responses=VillageListSerializer(many=True))
+    def get(self, request):
+        self._never()
+
+    @extend_schema(summary="Add a village (Super Admin)", request=VillageCreateRequest, responses={201: VillageRow})
+    def post(self, request):
+        self._never()
+
+
+class VillageDetailSchema(SchemaOnly):
+    @extend_schema(summary="One active village with its mandal, district and state (public)", auth=[], responses=VillageDetailSerializer)
+    def get(self, request, pk):
+        self._never()
+
+    @extend_schema(summary="Edit, deactivate or reactivate a village (Super Admin)", request=VillageAdminFields, responses=VillageRow)
+    def patch(self, request, pk):
+        self._never()
 
 
 # --- Reads for the console --------------------------------------------------------------
@@ -211,7 +383,11 @@ class GeoTreeView(APIView):
 
     permission_classes = [IsAuthenticated, MANAGE_MASTER_DATA]
 
-    @extend_schema(summary="Master data tree for the console")
+    @extend_schema(
+        summary="Master data tree for the console",
+        parameters=[OpenApiParameter("villages", OpenApiTypes.BOOL, description="1: include each mandal's villages")],
+        responses=TreeState(many=True),
+    )
     def get(self, request):
         states = list(State.objects.order_by("name_en"))
         districts = list(District.objects.order_by("name_en"))
@@ -248,7 +424,11 @@ class GeoTreeView(APIView):
 class GeoAdminVillagesView(APIView):
     permission_classes = [IsAuthenticated, MANAGE_MASTER_DATA]
 
-    @extend_schema(summary="Every village of one mandal, including inactive ones")
+    @extend_schema(
+        summary="Every village of one mandal, including inactive ones",
+        parameters=[OpenApiParameter("mandal", OpenApiTypes.INT, required=True)],
+        responses=VillageRow(many=True),
+    )
     def get(self, request):
         mandal = request.query_params.get("mandal", "")
         if not mandal.isdigit():
@@ -263,7 +443,12 @@ class VillageImportView(APIView):
     permission_classes = [IsAuthenticated, MANAGE_MASTER_DATA]
     parser_classes = [MultiPartParser, FormParser]
 
-    @extend_schema(summary="Import villages from CSV", request={"multipart/form-data": {"type": "object"}})
+    @extend_schema(
+        summary="Import villages from CSV",
+        parameters=[OpenApiParameter("dry_run", OpenApiTypes.BOOL, description="1: check every row and save nothing")],
+        request=CSV_UPLOAD,
+        responses=GeographyImportReport,
+    )
     def post(self, request):
         upload = request.FILES.get("file")
         if upload is None:
