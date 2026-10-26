@@ -1,15 +1,17 @@
 """Public geography endpoints: cascading lists and nearest village.
 
 No login. Only active areas whose parents are active. Unpaged, because each
-level under one parent is small. Responses are cacheable for an hour and
-vary by Accept-Language.
+level under one parent is small. GET responses are cacheable for
+GEO_PUBLIC_MAX_AGE (10 minutes) and vary by Accept-Language. The district,
+mandal and village URLs also take the Super Admin's writes (views_admin.py),
+which are never cached.
 """
 
 from django.conf import settings
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import cache_control
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter, extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import generics
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -30,9 +32,10 @@ from .serializers import (
 )
 
 VILLAGE_SEARCH_LIMIT = 50
-public_cache = method_decorator(cache_control(public=True, max_age=3600), name="dispatch")
+# GET only: the same URLs take POST and PATCH (views_admin.py), whose answers must not be cached.
+public_cache = method_decorator(cache_control(public=True, max_age=settings.GEO_PUBLIC_MAX_AGE), name="get")
 
-# Query parameters of the public lists. views_admin's schema-only classes reuse them.
+# Query parameters of the public lists, on GET only (views_admin's classes add POST to these URLs).
 STATE_PARAMS = [OpenApiParameter("state", OpenApiTypes.INT, description="State id")]
 DISTRICT_PARAMS = [OpenApiParameter("district", OpenApiTypes.INT, required=True)]
 VILLAGE_PARAMS = [
@@ -67,7 +70,7 @@ class StateListView(PublicGeoView, generics.ListAPIView):
 
 
 @public_cache
-@extend_schema(parameters=STATE_PARAMS)
+@extend_schema_view(get=extend_schema(parameters=STATE_PARAMS))
 class DistrictListView(PublicGeoView, generics.ListAPIView):
     serializer_class = DistrictSerializer
 
@@ -80,7 +83,7 @@ class DistrictListView(PublicGeoView, generics.ListAPIView):
 
 
 @public_cache
-@extend_schema(parameters=DISTRICT_PARAMS)
+@extend_schema_view(get=extend_schema(parameters=DISTRICT_PARAMS))
 class MandalListView(PublicGeoView, generics.ListAPIView):
     serializer_class = MandalSerializer
 
@@ -90,7 +93,7 @@ class MandalListView(PublicGeoView, generics.ListAPIView):
 
 
 @public_cache
-@extend_schema(parameters=VILLAGE_PARAMS)
+@extend_schema_view(get=extend_schema(parameters=VILLAGE_PARAMS))
 class VillageListView(PublicGeoView, generics.ListAPIView):
     serializer_class = VillageListSerializer
 

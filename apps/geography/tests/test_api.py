@@ -83,7 +83,7 @@ def test_village_detail_has_parents_and_path(api, geo):
 def test_lists_are_cacheable_and_answer_304_when_unchanged(api, geo):
     client = api()
     first = client.get("/api/v1/geo/states/")
-    assert "public" in first["Cache-Control"] and "max-age=3600" in first["Cache-Control"]
+    assert "public" in first["Cache-Control"] and "max-age=600" in first["Cache-Control"]  # GEO_PUBLIC_MAX_AGE
     assert "Accept-Language" in first["Vary"]
     etag = first["ETag"]
     again = client.get("/api/v1/geo/states/", HTTP_IF_NONE_MATCH=etag)

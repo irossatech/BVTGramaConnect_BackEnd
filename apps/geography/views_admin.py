@@ -1,151 +1,52 @@
-"""Master data writes for Super Admins: districts, mandals, villages, CSV import.
+"""Master data for Super Admins: districts, mandals, villages, the console tree and the CSV import.
 
-docs/api-contract.md, section 4. Areas are never deleted; deactivating one hides
-it and everything below it. Every change is written to the audit log.
+docs/api-contract.md, section 4. The list URLs serve the public read (GET, no
+login) and the Super Admin write (POST/PATCH) in one class each. Views are
+thin: they validate the request shape and call services.py, the only writer.
+Areas are never deleted; deactivating one hides it and everything below it.
 """
 
 from __future__ import annotations
 
-from django.db import transaction
 from django.utils.translation import gettext as _
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
-from rest_framework import serializers, status
+from rest_framework import status
 from rest_framework.parsers import FormParser, MultiPartParser
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.settings import api_settings
 from rest_framework.views import APIView
 
-from apps.audit.services import record
-from grama.exceptions import ApiError
 from apps.accounts.authentication import client_via
 from apps.accounts.permissions import PLATFORM, HasPerm
+from apps.audit.services import record
+from grama.exceptions import ApiError
+from grama.schema import ErrorSerializer
 
-from .areas import AreaRef
+from . import services
 from .importer import GeographyImporter
-from .models import District, Mandal, State, Village, name_key
-from .serializers import DistrictSerializer, MandalSerializer, VillageDetailSerializer, VillageListSerializer
-from .views import DISTRICT_PARAMS, STATE_PARAMS, VILLAGE_PARAMS
+from .models import District, Mandal, State, Village
+from .serializers_admin import (
+    CSV_UPLOAD,
+    AreaRowSerializer,
+    AreaUpdateSerializer,
+    AreaWriteSerializer,
+    DistrictCreateSerializer,
+    GeographyImportReport,
+    MandalCreateSerializer,
+    TreeState,
+    VillageCreateSerializer,
+    VillageUpdateSerializer,
+)
+from .views import DISTRICT_PARAMS, STATE_PARAMS, VILLAGE_PARAMS, DistrictListView, MandalListView, VillageDetailView, VillageListView
 
 MAX_MISSING_LISTED = 200
 
-
-# --- Serializers ----------------------------------------------------------------
-
-
-#: Owner decision Q13: only the Super Admin maintains villages and mandals.
+#: Owner decision Q13: only the Super Admin maintains districts, mandals and villages.
 MANAGE_MASTER_DATA = HasPerm("geography.manage_master_data", PLATFORM, "Only Super Admins can do this.")
-
-
-class AreaAdminFields(serializers.Serializer):
-    id = serializers.IntegerField(read_only=True)
-    name_en = serializers.CharField(max_length=120)
-    name_te = serializers.CharField(max_length=120, required=False, allow_blank=True)
-    lgd_code = serializers.CharField(max_length=20, required=False, allow_blank=True, allow_null=True)
-    is_active = serializers.BooleanField(required=False)
-
-    def validate_name_en(self, value):
-        value = " ".join(value.split())
-        if not value:
-            raise serializers.ValidationError(_("Enter a name."))
-        return value
-
-
-class VillageAdminFields(AreaAdminFields):
-    latitude = serializers.DecimalField(max_digits=9, decimal_places=6, min_value=-90, max_value=90)
-    longitude = serializers.DecimalField(max_digits=9, decimal_places=6, min_value=-180, max_value=180)
-    pin_code = serializers.RegexField(r"^\d{6}$", required=False, allow_blank=True)
-
-
-# --- Shapes for the OpenAPI schema only (Swagger). Requests are validated above. ---------
-
-
-class DistrictCreateRequest(AreaAdminFields):
-    state_id = serializers.IntegerField()
-
-
-class MandalCreateRequest(AreaAdminFields):
-    district_id = serializers.IntegerField()
-
-
-class VillageCreateRequest(VillageAdminFields):
-    mandal_id = serializers.IntegerField()
-
-
-class AreaRow(serializers.Serializer):
-    """area_row() of a state; the levels below add their parent's id."""
-
-    id = serializers.IntegerField()
-    level = serializers.CharField()
-    name_en = serializers.CharField()
-    name_te = serializers.CharField()
-    lgd_code = serializers.CharField(allow_null=True)
-    is_active = serializers.BooleanField()
-
-
-class DistrictRow(AreaRow):
-    state_id = serializers.IntegerField()
-
-
-class MandalRow(AreaRow):
-    district_id = serializers.IntegerField()
-
-
-class VillageRow(AreaRow):
-    latitude = serializers.CharField(allow_null=True, help_text="6 decimals")
-    longitude = serializers.CharField(allow_null=True, help_text="6 decimals")
-    pin_code = serializers.CharField()
-    mandal_id = serializers.IntegerField()
-
-
-class TreeMandal(MandalRow):
-    village_count = serializers.IntegerField()
-    villages = VillageRow(many=True, required=False, help_text="Only with ?villages=1")
-
-
-class TreeDistrict(DistrictRow):
-    mandal_count = serializers.IntegerField()
-    village_count = serializers.IntegerField()
-    mandals = TreeMandal(many=True)
-
-
-class TreeState(AreaRow):
-    districts = TreeDistrict(many=True)
-
-
-class ImportCounts(serializers.Serializer):
-    created = serializers.IntegerField()
-    updated = serializers.IntegerField()
-    unchanged = serializers.IntegerField()
-
-
-class MissingCoordinates(serializers.Serializer):
-    state = serializers.CharField()
-    district = serializers.CharField()
-    mandal = serializers.CharField()
-    village = serializers.CharField()
-    village_lgd_code = serializers.CharField(allow_null=True)
-
-
-class GeographyImportReport(serializers.Serializer):
-    ok = serializers.BooleanField()
-    dry_run = serializers.BooleanField()
-    rows = serializers.IntegerField()
-    errors = serializers.ListField(child=serializers.CharField())
-    warnings = serializers.ListField(child=serializers.CharField())
-    counts = serializers.DictField(child=ImportCounts(), help_text="state, district, mandal, village")
-    missing_coordinates = MissingCoordinates(many=True)
-    missing_coordinates_count = serializers.IntegerField()
-    missing_telugu = serializers.IntegerField()
-
-
-CSV_UPLOAD = {
-    "multipart/form-data": {
-        "type": "object",
-        "properties": {"file": {"type": "string", "format": "binary"}},
-        "required": ["file"],
-    }
-}
+WRITE_ERRORS = {400: ErrorSerializer, 401: ErrorSerializer, 403: ErrorSerializer, 409: ErrorSerializer}
+SAFE_METHODS = ("GET", "HEAD", "OPTIONS")
 
 
 def area_row(obj) -> dict:
@@ -171,204 +72,109 @@ def area_row(obj) -> dict:
     return row
 
 
-# --- Writes ---------------------------------------------------------------------------
+# --- Writes -----------------------------------------------------------------------------
 
 
-LEVEL_CONFIG = {
-    "districts": (District, "state", State, AreaAdminFields),
-    "mandals": (Mandal, "district", District, AreaAdminFields),
-    "villages": (Village, "mandal", Mandal, VillageAdminFields),
-}
-#: kind: (create request, row) for the schema.
-LEVEL_SCHEMA = {
-    "districts": (DistrictCreateRequest, DistrictRow),
-    "mandals": (MandalCreateRequest, MandalRow),
-    "villages": (VillageCreateRequest, VillageRow),
-}
+class PublicReadAdminWrite:
+    """GET stays public with no authentication at all, so a stale token on a phone never
+    breaks it; POST and PATCH need a login and geography.manage_master_data.
 
-
-class AreaWriteMixin:
-    permission_classes = [IsAuthenticated, MANAGE_MASTER_DATA]
-    kind: str = ""
-
-    @property
-    def config(self):
-        return LEVEL_CONFIG[self.kind]
-
-    def check_unique(self, model, parent_field, parent_id, name, exclude_id=None):
-        clash = model.objects.filter(**{f"{parent_field}_id": parent_id, "name_key": name_key(name)})
-        if exclude_id:
-            clash = clash.exclude(id=exclude_id)
-        if clash.exists():
-            message = _("This name already exists here.")
-            raise ApiError("duplicate", message, status=status.HTTP_409_CONFLICT, fields={"name_en": [message]})
-
-    def check_lgd(self, model, code, exclude_id=None):
-        if not code:
-            return
-        clash = model.objects.filter(lgd_code=code)
-        if exclude_id:
-            clash = clash.exclude(id=exclude_id)
-        if clash.exists():
-            message = _("This LGD code is already used.")
-            raise ApiError("duplicate", message, status=status.HTTP_409_CONFLICT, fields={"lgd_code": [message]})
-
-
-class AreaCreateView(AreaWriteMixin, APIView):
-    def post(self, request):
-        model, parent_field, parent_model, fields = self.config
-        data = fields(data=request.data)
-        data.is_valid(raise_exception=True)
-        values = dict(data.validated_data)
-        parent_id = request.data.get(f"{parent_field}_id")
-        parent = parent_model.objects.filter(id=parent_id).first() if str(parent_id or "").isdigit() else None
-        if parent is None:
-            raise ApiError(
-                "validation_error",
-                _("Choose the parent area."),
-                fields={f"{parent_field}_id": [_("No such area.")]},
-            )
-        self.check_unique(model, parent_field, parent.id, values["name_en"])
-        self.check_lgd(model, values.get("lgd_code"))
-        with transaction.atomic():
-            obj = model.objects.create(**{parent_field: parent}, **values)
-            record(
-                "area.created",
-                actor=request.user,
-                target=obj,
-                target_label=obj.name_en,
-                area=AreaRef(obj.level, obj.id),
-                via=client_via(request),
-            )
-        return Response(area_row(obj), status=status.HTTP_201_CREATED)
-
-
-class AreaUpdateView(AreaWriteMixin, APIView):
-    def patch(self, request, pk):
-        model, parent_field, _parent_model, fields = self.config
-        obj = model.objects.filter(pk=pk).first()
-        if obj is None:
-            raise ApiError("not_found", _("No such area."), status=status.HTTP_404_NOT_FOUND)
-        data = fields(obj, data=request.data, partial=True)
-        data.is_valid(raise_exception=True)
-        values = dict(data.validated_data)
-        if "name_en" in values:
-            self.check_unique(model, parent_field, getattr(obj, f"{parent_field}_id"), values["name_en"], obj.id)
-        if values.get("lgd_code"):
-            self.check_lgd(model, values["lgd_code"], obj.id)
-        was_active = obj.is_active
-        with transaction.atomic():
-            for key, value in values.items():
-                setattr(obj, key, value)
-            obj.save()
-            if "is_active" in values and values["is_active"] != was_active:
-                action = "area.reactivated" if obj.is_active else "area.deactivated"
-            else:
-                action = "area.updated"
-            record(
-                action,
-                actor=request.user,
-                target=obj,
-                target_label=obj.name_en,
-                area=AreaRef(obj.level, obj.id),
-                via=client_via(request),
-                data={"changed": sorted(values)},
-            )
-        return Response(area_row(obj))
-
-
-def dispatch_by_method(schema=None, **views):
-    """One URL, different views per HTTP method (public GET, Super Admin writes).
-
-    `schema` is a schema-only APIView describing every method for the OpenAPI
-    schema: drf-spectacular lists a URL only when its view has a DRF class
-    (`.cls`), and this function has none of its own. Requests never reach it.
+    The class keeps the default authenticators, so the schema shows the login on
+    the writes; a read drops them before DRF reads them.
     """
-    handlers = {method.upper(): view.as_view() for method, view in views.items()}
 
-    def view(request, *args, **kwargs):
-        handler = handlers.get(request.method)
-        if handler is None:
-            handler = next(iter(handlers.values()))
-        return handler(request, *args, **kwargs)
+    authentication_classes = api_settings.DEFAULT_AUTHENTICATION_CLASSES
 
-    view.csrf_exempt = True
-    if schema is not None:
-        view.cls = schema
-        view.initkwargs = {}
-    return view
+    def initialize_request(self, request, *args, **kwargs):
+        # get_authenticators() runs inside initialize_request, before self.request exists.
+        if request.method in SAFE_METHODS:
+            self.authentication_classes = []
+        return super().initialize_request(request, *args, **kwargs)
 
-
-def create_view(kind):
-    request_shape, row = LEVEL_SCHEMA[kind]
-    view = type(f"{kind.title()}CreateView", (AreaCreateView,), {"kind": kind})
-    return extend_schema_view(
-        post=extend_schema(summary=f"Add a {kind[:-1]} (Super Admin)", request=request_shape, responses={201: row})
-    )(view)
+    def get_permissions(self):
+        method = getattr(getattr(self, "request", None), "method", None)
+        if method in SAFE_METHODS:
+            return [AllowAny()]
+        return [IsAuthenticated(), MANAGE_MASTER_DATA]  # writes, and the schema
 
 
-def update_view(kind):
-    _model, _parent, _parent_model, fields = LEVEL_CONFIG[kind]
-    view = type(f"{kind.title()}UpdateView", (AreaUpdateView,), {"kind": kind})
-    return extend_schema_view(
-        patch=extend_schema(
-            summary=f"Edit, deactivate or reactivate a {kind[:-1]} (Super Admin)",
-            request=fields,
-            responses=LEVEL_SCHEMA[kind][1],
-        )
-    )(view)
+def _respond(outcome, code=status.HTTP_200_OK) -> Response:
+    return Response({**area_row(outcome.area), "warnings": outcome.warnings}, status=code)
 
 
-# --- Schema-only views for URLs that share a public GET and a Super Admin write -----------
+def _create(level, serializer_class):
+    def post(self, request):
+        data = serializer_class(data=request.data)
+        data.is_valid(raise_exception=True)
+        outcome = services.create_area(request.user, level, data.validated_data, via=client_via(request))
+        return _respond(outcome, status.HTTP_201_CREATED)
+
+    return post
 
 
-class SchemaOnly(APIView):
-    """Describes a dispatch_by_method URL in the OpenAPI schema. Never handles a request."""
+def _update(level, serializer_class):
+    def patch(self, request, pk):
+        data = serializer_class(data=request.data)
+        data.is_valid(raise_exception=True)
+        return _respond(services.update_area(request.user, level, pk, data.validated_data, via=client_via(request)))
 
+    return patch
+
+
+@extend_schema_view(
+    get=extend_schema(summary="Active districts (public)", auth=[], parameters=STATE_PARAMS),
+    post=extend_schema(summary="Add a district (Super Admin)", request=DistrictCreateSerializer,
+                       responses={201: AreaWriteSerializer, **WRITE_ERRORS}),
+)
+class DistrictCollectionView(PublicReadAdminWrite, DistrictListView):
+    post = _create("DISTRICT", DistrictCreateSerializer)
+
+
+@extend_schema_view(
+    get=extend_schema(summary="Active mandals of a district (public)", auth=[], parameters=DISTRICT_PARAMS),
+    post=extend_schema(summary="Add a mandal (Super Admin)", request=MandalCreateSerializer,
+                       responses={201: AreaWriteSerializer, **WRITE_ERRORS}),
+)
+class MandalCollectionView(PublicReadAdminWrite, MandalListView):
+    post = _create("MANDAL", MandalCreateSerializer)
+
+
+@extend_schema_view(
+    get=extend_schema(summary="Active villages of a mandal, or a name search (public)", auth=[], parameters=VILLAGE_PARAMS),
+    post=extend_schema(summary="Add a village (Super Admin)", request=VillageCreateSerializer,
+                       responses={201: AreaWriteSerializer, **WRITE_ERRORS}),
+)
+class VillageCollectionView(PublicReadAdminWrite, VillageListView):
+    post = _create("VILLAGE", VillageCreateSerializer)
+
+
+@extend_schema_view(
+    get=extend_schema(summary="One active village with its mandal, district and path (public)", auth=[]),
+    patch=extend_schema(summary="Edit, switch off or on a village (Super Admin)", request=VillageUpdateSerializer,
+                        responses={200: AreaWriteSerializer, 404: ErrorSerializer, **WRITE_ERRORS}),
+)
+class VillageItemView(PublicReadAdminWrite, VillageDetailView):
+    patch = _update("VILLAGE", VillageUpdateSerializer)
+
+
+class _AdminOnlyItem(APIView):
     permission_classes = [IsAuthenticated, MANAGE_MASTER_DATA]
 
-    def _never(self, *args, **kwargs):
-        raise NotImplementedError("Requests go through dispatch_by_method's handlers.")
+
+@extend_schema_view(
+    patch=extend_schema(summary="Edit, switch off or on a district (Super Admin)", request=AreaUpdateSerializer,
+                        responses={200: AreaWriteSerializer, 404: ErrorSerializer, **WRITE_ERRORS}),
+)
+class DistrictItemView(_AdminOnlyItem):
+    patch = _update("DISTRICT", AreaUpdateSerializer)
 
 
-class DistrictsSchema(SchemaOnly):
-    @extend_schema(summary="Active districts (public)", auth=[], parameters=STATE_PARAMS, responses=DistrictSerializer(many=True))
-    def get(self, request):
-        self._never()
-
-    @extend_schema(summary="Add a district (Super Admin)", request=DistrictCreateRequest, responses={201: DistrictRow})
-    def post(self, request):
-        self._never()
-
-
-class MandalsSchema(SchemaOnly):
-    @extend_schema(summary="Active mandals of a district (public)", auth=[], parameters=DISTRICT_PARAMS, responses=MandalSerializer(many=True))
-    def get(self, request):
-        self._never()
-
-    @extend_schema(summary="Add a mandal (Super Admin)", request=MandalCreateRequest, responses={201: MandalRow})
-    def post(self, request):
-        self._never()
-
-
-class VillagesSchema(SchemaOnly):
-    @extend_schema(summary="Active villages of a mandal, or a name search (public)", auth=[], parameters=VILLAGE_PARAMS, responses=VillageListSerializer(many=True))
-    def get(self, request):
-        self._never()
-
-    @extend_schema(summary="Add a village (Super Admin)", request=VillageCreateRequest, responses={201: VillageRow})
-    def post(self, request):
-        self._never()
-
-
-class VillageDetailSchema(SchemaOnly):
-    @extend_schema(summary="One active village with its mandal, district and state (public)", auth=[], responses=VillageDetailSerializer)
-    def get(self, request, pk):
-        self._never()
-
-    @extend_schema(summary="Edit, deactivate or reactivate a village (Super Admin)", request=VillageAdminFields, responses=VillageRow)
-    def patch(self, request, pk):
-        self._never()
+@extend_schema_view(
+    patch=extend_schema(summary="Edit, switch off or on a mandal (Super Admin)", request=AreaUpdateSerializer,
+                        responses={200: AreaWriteSerializer, 404: ErrorSerializer, **WRITE_ERRORS}),
+)
+class MandalItemView(_AdminOnlyItem):
+    patch = _update("MANDAL", AreaUpdateSerializer)
 
 
 # --- Reads for the console --------------------------------------------------------------
@@ -427,7 +233,7 @@ class GeoAdminVillagesView(APIView):
     @extend_schema(
         summary="Every village of one mandal, including inactive ones",
         parameters=[OpenApiParameter("mandal", OpenApiTypes.INT, required=True)],
-        responses=VillageRow(many=True),
+        responses=AreaRowSerializer(many=True),
     )
     def get(self, request):
         mandal = request.query_params.get("mandal", "")
@@ -458,7 +264,7 @@ class VillageImportView(APIView):
             text = upload.read().decode("utf-8-sig")
         except UnicodeDecodeError:
             raise ApiError("validation_error", _("Save the file as UTF-8 CSV."), fields={"file": [_("Not UTF-8.")]}) from None
-        report = GeographyImporter(dry_run=dry_run).run_text(text)
+        report = GeographyImporter(dry_run=dry_run, actor=request.user, via=client_via(request)).run_text(text)
         body = {
             "ok": report.ok,
             "dry_run": dry_run,

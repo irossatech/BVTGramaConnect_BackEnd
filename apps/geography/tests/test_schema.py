@@ -1,8 +1,8 @@
 """Every geography endpoint is in the OpenAPI schema (Swagger) with its request body and its auth.
 
-The URLs that share a public GET and a Super Admin write go through
-views_admin.dispatch_by_method; drf-spectacular only sees them through the
-schema-only classes. Behaviour is covered in test_api.py.
+The URLs that share a public GET and a Super Admin write are one view class
+each (views_admin.PublicReadAdminWrite): the GET must show no login, the
+writes must. Behaviour is covered in test_api.py and test_writes.py.
 """
 
 import pytest
