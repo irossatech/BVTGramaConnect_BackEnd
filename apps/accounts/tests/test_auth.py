@@ -148,6 +148,7 @@ def test_validators_are_on():
         "MinimumLengthValidator",
         "CommonPasswordValidator",
         "NumericPasswordValidator",
+        "PasswordCompositionValidator",
     ]
     assert settings.AUTH_PASSWORD_VALIDATORS[1]["OPTIONS"] == {"min_length": 8}
 
@@ -308,6 +309,63 @@ def test_eight_characters_are_enough(world):
     client = bearer(login("va_kolakaluru").json()["access"])
     response = client.post(CHANGE, {"current_password": TEST_PASSWORD, "new_password": "Pq7-wxyz"}, format="json")
     assert response.status_code == 200
+
+
+# --- Password composition: a capital, a small letter, a number, a special character ----------------
+
+
+@pytest.mark.parametrize(
+    "new, missing",
+    [
+        ("pq7-wxyzab", ["capital letter"]),
+        ("PQ7-WXYZAB", ["small letter"]),
+        ("Pqr-wxyzab", ["number"]),
+        ("Pq7wxyzab9", ["special character"]),
+        ("pqrwxyzabc", ["capital letter", "number", "special character"]),  # all named in one message
+    ],
+)
+def test_a_new_password_needs_every_kind_of_character(world, new, missing):
+    client = bearer(login("va_kolakaluru").json()["access"])
+    response = client.post(CHANGE, {"current_password": TEST_PASSWORD, "new_password": new}, format="json")
+    assert response.status_code == 400 and code(response) == "validation_error"
+    message = " ".join(response.json()["error"]["fields"]["new_password"])
+    assert all(part in message for part in missing), message
+
+
+@pytest.mark.parametrize("new", ["Pq7@wxyz", "Gram#2026x", "Abc 12345!", "తెలుగుAb1$"])
+def test_any_special_character_counts(world, new):
+    client = bearer(login("va_kolakaluru").json()["access"])
+    response = client.post(CHANGE, {"current_password": TEST_PASSWORD, "new_password": new}, format="json")
+    assert response.status_code == 200, response.json()
+
+
+def test_admins_typed_temporary_passwords_follow_the_rule_too(api, world):
+    refused = reset(api, world, "va_kolakaluru", password="GramReset2026")  # no special character
+    assert refused.status_code == 400 and "special character" in " ".join(refused.json()["error"]["fields"]["password"])
+    body = {"name": "New Member", "username": "new.member", "role": "PANCHAYAT_MEMBER",
+            "area": world.area_json("kolakaluru"), "password": "gram-reset-2026"}  # no capital letter
+    created = api(world.users["va_kolakaluru"]).post("/api/v1/users/", body, format="json")
+    assert created.status_code == 400 and "capital letter" in " ".join(created.json()["error"]["fields"]["password"])
+
+
+def test_generated_temporary_passwords_always_pass_every_rule(world):
+    from django.contrib.auth.password_validation import validate_password
+
+    from apps.accounts.credentials import PASSWORD_SPECIALS, generate_password
+
+    user = world.users["pm_kolakaluru"]
+    for _ in range(300):
+        password = generate_password()
+        assert len(password) == 12 and sum(ch in PASSWORD_SPECIALS for ch in password) == 1
+        validate_password(password, user)  # raises if any rule fails
+
+
+def test_existing_passwords_keep_working(world):
+    """The rule applies when a password is next set, not to passwords people already have."""
+    user = world.users["pm_kolakaluru"]
+    user.set_password("oldstyle2024")  # set before the rule existed
+    user.save(update_fields=["password"])
+    assert login("pm_kolakaluru", "oldstyle2024").status_code == 200
 
 
 # --- Refresh and logout (app) ------------------------------------------------------------------
