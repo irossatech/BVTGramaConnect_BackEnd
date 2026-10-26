@@ -537,6 +537,7 @@ No login. These views ignore any `Authorization` header, so a stale token on a c
   "area": {"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు"},
   "published_at": "2026-10-14T10:32:00+05:30",
   "thumbnail_url": "/media/posts/2026/10/…-320.webp",
+  "image_url": "/media/posts/2026/10/…-1280.webp",
   "media_count": 3,
   "source_role": "VILLAGE_ADMIN",
   "event": {"kind": "meeting", "start_date": "2026-10-20", "end_date": null},
@@ -547,6 +548,7 @@ No login. These views ignore any `Authorization` header, so a stale token on a c
 - `event` and `is_urgent` as on Post. `video`: `null`, or for a video post `{"url", "poster_url", "duration_s"}`, so the reels screen needs no extra call; `thumbnail_url` is then the poster's thumbnail.
 - The list carries the full `body`, not an excerpt. The app's news deck shows the body on the card, and one larger page costs less on 2G than a request per card.
 - `thumbnail_url` is the first photo's 320 px WebP, or `null`. URLs are relative to the server.
+- `image_url` is the first photo at full size (at most 1280 px), or `null` for a post without a photo and for a video post (use `video.poster_url`). Use it for large cards and `thumbnail_url` for small rows. Clients fall back to `thumbnail_url` when the field is missing.
 - `category` is the key only; the app caches `GET /categories`.
 
 `FeedPost` (detail) is `FeedItem` plus `"path": "కొలకలూరు · తెనాలి · గుంటూరు"` and `"media": [{"id", "kind", "url", "thumb_url", "poster_url", "width", "height", "duration_s"}]`.

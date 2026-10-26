@@ -48,12 +48,15 @@ class FeedCursorPagination(CursorPagination):
 def published_posts():
     media = PostMedia.objects.filter(post=OuterRef("pk"))
     first_thumb = media.order_by("order", "created_at").values("thumbnail")[:1]
+    # The first photo's large file for big cards; a video's poster stays in video.poster_url.
+    first_image = media.filter(kind=MediaKind.IMAGE).order_by("order", "created_at").values("image")[:1]
     video = media.filter(kind=MediaKind.VIDEO)
     return (
         Post.objects.filter(status=PostStatus.PUBLISHED)
         .select_related("category")
         .annotate(
             thumbnail_name=Subquery(first_thumb),
+            image_name=Subquery(first_image),
             media_count=Count("media"),
             video_name=Subquery(video.values("video")[:1]),
             video_poster_name=Subquery(video.values("image")[:1]),

@@ -70,16 +70,18 @@ def test_slim_shape_with_thumbnail(world, make_post):
     first, second = rows
     assert set(first) == {
         "id", "category", "language", "title", "body", "area", "published_at",
-        "thumbnail_url", "media_count", "source_role", "event", "is_urgent", "video",
+        "thumbnail_url", "image_url", "media_count", "source_role", "event", "is_urgent", "video",
     }
     assert first["event"] is None and first["is_urgent"] is False and first["video"] is None
     assert first["id"] == str(post.id)
     assert first["category"] == "announce"
     assert first["area"] == {"level": "MANDAL", "id": world.areas["tenali"].id, "name": "తెనాలి"}
     assert first["thumbnail_url"] == f"/media/posts/2026/10/{post.pk}-0-320.webp"
+    assert first["image_url"] == f"/media/posts/2026/10/{post.pk}-0.webp"
     assert first["media_count"] == 3
     assert first["source_role"] == "VILLAGE_ADMIN"
     assert second["thumbnail_url"] is None and second["media_count"] == 0
+    assert second["image_url"] is None
 
 
 def test_area_names_follow_accept_language(world, make_post):

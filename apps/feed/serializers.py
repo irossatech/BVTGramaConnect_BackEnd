@@ -54,6 +54,7 @@ class FeedItemSerializer(serializers.Serializer):
     area = serializers.SerializerMethodField()
     published_at = serializers.DateTimeField()
     thumbnail_url = serializers.SerializerMethodField()
+    image_url = serializers.SerializerMethodField()
     media_count = serializers.SerializerMethodField()
     source_role = serializers.CharField(source="posted_as_role")
     event = serializers.SerializerMethodField()
@@ -75,6 +76,11 @@ class FeedItemSerializer(serializers.Serializer):
 
     def get_thumbnail_url(self, obj) -> str | None:
         name = getattr(obj, "thumbnail_name", None)
+        return default_storage.url(name) if name else None
+
+    def get_image_url(self, obj) -> str | None:
+        """First photo at full size (POST_IMAGE_MAX_PX); null without a photo or for a video post."""
+        name = getattr(obj, "image_name", None)
         return default_storage.url(name) if name else None
 
     def get_media_count(self, obj) -> int:
