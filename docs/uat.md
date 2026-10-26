@@ -30,6 +30,7 @@ For the QA engineer and the client's testers during user acceptance testing. Wor
 | C14 | "Don't miss" | Posts with an event date from today on show soonest first: at most 10. Events that ended yesterday are gone. |
 | C15 | Urgent banner | An urgent post from the last 7 days shows at the top. Its push alert arrives even when the phone is idle. |
 | C16 | Help lines | The help-line screen lists 112, 108, 1930, 181, 1098 and 1912 with Telugu names. Tapping one opens the dialler. |
+| C17 | Contacts tab | "For you" lists the numbers of your village, your mandal and your district, grouped by type (VRO, Mee Seva, Sachivalayam …) with the village's first; "Government helplines" lists the state's numbers. Nothing from a neighbouring village, mandal or district. Telugu and English both work. Tapping a number opens the dialler. A number an official removed is gone within 5 minutes. With no signal the last list still shows, and 112 and 108 always work. |
 
 ## Panchayat Member (mobile app)
 
@@ -49,6 +50,7 @@ For the QA engineer and the client's testers during user acceptance testing. Wor
 | P9 | No admin screens | No review queue, no user management. |
 | P10 | Event date and video | An optional event (deadline, camp, distribution, closure or meeting) with a start and optional end date can be added. A video of at most 60 seconds can be attached instead of photos, never both. |
 | P11 | No "urgent" | A Panchayat member cannot mark a post as urgent; the option is not offered. |
+| P12 | Important numbers | The member adds, edits and removes numbers for their own village only, and citizens of the village see them. "Who sees it" offers only the village. Helplines can be read but not changed. |
 
 ## Village Admin (mobile app)
 
@@ -65,6 +67,7 @@ For the QA engineer and the client's testers during user acceptance testing. Wor
 | V9 | Block | The blocked member is logged out at once on their phone and cannot log in again. |
 | V10 | Mark as urgent | The Village Admin can mark their own post or a pending or published post from the village as urgent, and clear it again. Both show in the audit log. |
 | V11 | Visible to | Only the village is offered. |
+| V12 | Important numbers | The Village Admin adds, edits, verifies and removes numbers for their own village; citizens see the change. Numbers of other villages, the mandal or the district cannot be seen or changed. "0863-223 4567" is saved as 08632234567; "12", "108" and "*#06#" are refused. A 10-digit mobile needs the consent tick. The same number twice for the same type shows "already listed". |
 
 ## Mandal Admin (mobile app)
 
@@ -110,6 +113,9 @@ For the QA engineer and the client's testers during user acceptance testing. Wor
 | S13 | Contact messages | Messages from the website show newest first, with New and Handled filters and a search. Marking one handled records who and when; opening it again clears that. Both show in the audit log. |
 | S14 | Second roles | A second role for an official is added and removed in the user panel. The role list offers only roles below your own, and an admin may give a role only inside their own area. |
 | S15 | Django admin | `/django-admin/` opens from the office network only. From any other network it answers 403. |
+| S16 | Important numbers | Area and Helpline tabs. The Super Admin adds, edits and removes statewide helplines (short codes such as 108 accepted) and any area's numbers. Numbers not checked for 180 days show "needs re-check"; Verify clears it. The website's help lines follow the statewide list. |
+| S17 | Numbers CSV import | A dry run lists every bad row with its row number and field and saves nothing. One bad row means nothing is imported. A real import of a district's numbers works; importing it again changes nothing. A file saved from Excel with Telugu names imports correctly. |
+| S18 | Contact types | Add a type, rename it in Telugu and English, and switch it off; a switched-off type's numbers disappear from the app. A type in use cannot be deleted. |
 
 ## Public website
 

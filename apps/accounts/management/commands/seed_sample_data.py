@@ -4,6 +4,9 @@
 state: DRAFT, PENDING, PUBLISHED, RECHECK, DISCARDED, UNPUBLISHED. Posts are
 made through posts.services, so they carry real review history and audit rows.
 
+It also loads the statewide helplines and the mobile app's demo important numbers
+(VRO, Sachivalayam, Tahsildar office …) with made-up numbers.
+
 Owner decisions add three things: posts with an event date (Q7) for "Don't
 miss", an urgent post (Q19) for the banner, and a media check that says
 whether uploads can be stored and whether ffprobe and ffmpeg are installed
@@ -59,6 +62,21 @@ OFFICIALS = [
     ("Suresh Babu", "సురేష్ బాబు", "village.kolakaluru", "9100000004", Role.VILLAGE_ADMIN, ("VILLAGE", "Kolakaluru")),
     ("Ravi Kumar", "రవి కుమార్", "member.kolakaluru", "9100000005", Role.PANCHAYAT_MEMBER, ("VILLAGE", "Kolakaluru")),
 ]
+
+
+# Important numbers (docs/api-contract.md, section 14): the mobile app's demo data, made-up numbers.
+# The Nandivelugu and Mangalagiri rows are what a Kolakaluru citizen must NOT see.
+SAMPLE_CONTACTS_CSV = """type,name,name_te,phone,district,mandal,village,consent
+vro,K. Srinivasa Rao,కె. శ్రీనివాసరావు,9000010001,Guntur,Tenali,Kolakaluru,yes
+sachivalayam,Kolakaluru Grama Sachivalayam,కొలకలూరు గ్రామ సచివాలయం,9000010002,Guntur,Tenali,Kolakaluru,yes
+meeseva,Mee Seva Centre Kolakaluru,మీ సేవ కేంద్రం కొలకలూరు,9000010003,Guntur,Tenali,Kolakaluru,yes
+revenue,"Tahsildar Office, Tenali","తహసీల్దార్ కార్యాలయం, తెనాలి",9000010004,Guntur,Tenali,,yes
+official,"MPDO Office, Tenali","ఎంపీడీఓ కార్యాలయం, తెనాలి",9000010005,Guntur,Tenali,,yes
+vro,P. Lakshmi,పి. లక్ష్మి,9000010006,Guntur,Tenali,Nandivelugu,yes
+official,"Collectorate, Guntur","కలెక్టరేట్, గుంటూరు",9000010007,Guntur,,,yes
+revenue,"RDO Office, Tenali Division","ఆర్డీఓ కార్యాలయం, తెనాలి డివిజన్",9000010008,Guntur,,,yes
+revenue,"Tahsildar Office, Mangalagiri","తహసీల్దార్ కార్యాలయం, మంగళగిరి",9000010009,Guntur,Mangalagiri,,yes
+"""
 
 
 def area_ref(level: str, name: str) -> AreaRef:
@@ -120,6 +138,11 @@ class Command(BaseCommand):
             self.style.SUCCESS(f"Event and urgent posts: {extra} created.") if extra
             else "Event and urgent posts: already present."
         )
+        contacts = self._contacts()
+        self.stdout.write(
+            self.style.SUCCESS(f"Important numbers: {contacts} created.") if contacts
+            else "Important numbers: already present."
+        )
         self._media_check()
         if passwords:
             User.objects.filter(username__in=list(passwords)).update(must_change_password=True)
@@ -129,6 +152,19 @@ class Command(BaseCommand):
         for name, _te, username, _mobile, role, (level, area_name) in OFFICIALS:
             password = passwords.get(username, "(unchanged)")
             self.stdout.write(f"  {username:<20} {password:<14} {role:<17} {area_name}  ({name})")
+
+    def _contacts(self) -> int:
+        """The statewide helplines and the app's demo area numbers, through the import (same rules, idempotent)."""
+        from apps.contacts.management.commands.seed_helplines import DEFAULT_FILE
+        from apps.contacts.services import import_contacts
+
+        made = 0
+        for text in (DEFAULT_FILE.read_text(encoding="utf-8-sig"), SAMPLE_CONTACTS_CSV):
+            report = import_contacts(None, text, via="system")
+            if not report.ok:
+                raise SystemExit("\n".join(f"row {e['row']} {e['field']}: {e['message']}" for e in report.errors))
+            made += report.created
+        return made
 
     def _posts(self, users) -> int:
         from apps.posts.models import Category, Post

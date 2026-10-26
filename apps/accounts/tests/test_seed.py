@@ -64,3 +64,24 @@ def test_sample_data_has_events_an_urgent_post_and_a_media_check(settings, tmp_p
     assert Post.objects.filter(event_start__isnull=False).count() == 4
     assert Post.objects.filter(is_urgent=True).count() == 1
     assert "Event and urgent posts: already present." in again.getvalue()
+
+
+def test_sample_data_has_the_app_s_important_numbers(api):
+    from apps.contacts.models import Contact
+
+    call_command("seed_sample_data", stdout=StringIO())
+    assert Contact.objects.count() == 15  # 6 helplines + 9 area numbers
+    village = Village.objects.get(name_en="Kolakaluru")
+    data = api().get("/api/v1/contacts/", {"village_id": village.id}, HTTP_ACCEPT_LANGUAGE="en").json()
+    names = [c["name"] for group in data["for_you"] for c in group["contacts"]]
+    # The app's demo set for Kolakaluru; P. Lakshmi (Nandivelugu) and Mangalagiri's Tahsildar are elsewhere.
+    assert set(names) == {
+        "K. Srinivasa Rao", "Kolakaluru Grama Sachivalayam", "Mee Seva Centre Kolakaluru", "Tahsildar Office, Tenali",
+        "MPDO Office, Tenali", "Collectorate, Guntur", "RDO Office, Tenali Division",
+    }
+    assert [c["phone"] for g in data["helplines"] for c in g["contacts"]].count("108") == 1
+
+    again = StringIO()
+    call_command("seed_sample_data", stdout=again)
+    assert Contact.objects.count() == 15
+    assert "Important numbers: already present." in again.getvalue()

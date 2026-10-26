@@ -209,6 +209,7 @@ Rank 0 is the highest. The groups, their levels, ranks and permissions are writt
 | `accounts.reset_password` | yes | yes | yes | yes |  |
 | `accounts.reassign_user` | yes | yes | yes | yes |  |
 | `accounts.unlock_user` | yes | yes | yes | yes |  |
+| `contacts.manage_contact` | yes | yes | yes | yes | yes |
 | `accounts.manage_groups` | yes |  |  |  |  |
 | `geography.manage_master_data` | yes |  |  |  |  |
 | `audit.view_audit_log` | yes |  |  |  |  |
@@ -218,6 +219,7 @@ Rank 0 is the highest. The groups, their levels, ranks and permissions are writt
 | `web_admin.view_reports` | yes |  |  |  |  |
 | `notifications.manage_templates` | yes |  |  |  |  |
 | `web_public.manage_contact_messages` | yes |  |  |  |  |
+| `contacts.manage_contact_types` | yes |  |  |  |  |
 
 Rules on top of the table:
 
@@ -226,6 +228,7 @@ Rules on top of the table:
 - **First decision wins.** A second reviewer gets `409 already_decided`.
 - **User actions** need the permission over the user's area and a group ranked strictly below the admin's own. This covers assigning, reassigning, removing, blocking, resetting and unlocking. An admin can never give a group at or above their own rank.
 - **Console screens** follow the same permissions: Geography needs `geography.manage_master_data`, the Audit Log needs `audit.view_audit_log`, and so on. The console hides what the user lacks; the server still refuses it.
+- **Important numbers** need `contacts.manage_contact` over the number's area, so every official works inside their own area and below. Only a platform-wide assignment covers the STATE, so only the Super Admin edits the statewide helplines; everyone else reads them. The CSV import needs the permission over the whole platform.
 
 ---
 
@@ -334,6 +337,9 @@ python manage.py sync_role_permissions
 | `user.blocked`, `user.unblocked` | Blocking |
 | `user.assignment_added`, `user.assignment_removed` | Roles given, moved or taken away |
 | `setting.group_permissions_changed` | Group permissions edited in Django admin |
+| `contact.created`, `contact.updated`, `contact.removed` | An important number added, edited or verified, or removed; the phone is masked (`******0001`) |
+| `contact_type.created`, `contact_type.updated` | Contact types managed by the Super Admin |
+| `contacts.imported` | A CSV import of important numbers committed; counts only |
 
 No audit entry holds a password. The console shows these under Audit Log, tab Logins and tab Users.
 

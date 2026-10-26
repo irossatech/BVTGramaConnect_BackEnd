@@ -19,7 +19,7 @@ from django.utils import timezone
 from django.utils.translation import gettext as _
 from drf_spectacular.utils import extend_schema
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.renderers import BaseRenderer, JSONRenderer
+from rest_framework.renderers import BaseRenderer
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -32,6 +32,7 @@ from apps.geography.areas import AreaDescriber, AreaRef, within_q
 from apps.geography.models import AreaLevel, District, Mandal, Village
 from grama.exceptions import ApiError
 from grama.pagination import PageNumberPagination
+from grama.renderers import JSONRenderer
 from apps.posts.models import Post, PostStatus, ReviewAction, SettingOverride
 
 from .permissions import client_via

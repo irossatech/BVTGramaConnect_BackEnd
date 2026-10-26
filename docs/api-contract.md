@@ -18,6 +18,7 @@ Contents:
 11. Permission matrix
 12. Screen to endpoint map
 13. Limits and throttles
+14. contacts: important numbers
 
 ---
 
@@ -35,7 +36,7 @@ Contents:
 - An area is always addressed as a pair: `level` plus `id`.
 
 ### Time
-- Stored and returned in UTC, ISO 8601 with `Z`, for example `2026-10-14T09:30:00Z`. Clients display Asia/Kolkata time.
+- Returned in India Standard Time (Asia/Kolkata), ISO 8601 with the offset, for example `2026-10-14T15:00:00+05:30`. Every endpoint does this, whether the time comes from a serializer or straight from a view (`grama/renderers.py`). The database stores UTC (`USE_TZ`). Clients show the time as sent; times they send may carry any offset.
 - Calendar dates such as event days are `YYYY-MM-DD`.
 
 ### Language
@@ -157,7 +158,7 @@ Admin endpoints add `id`, `name_te`, `name_en`, `short_name_te`, `short_name_en`
 
 ### RoleAssignment
 ```json
-{"id": "a71e…", "role": "VILLAGE_ADMIN", "group": {"key": "VILLAGE_ADMIN", "name": "Village Admin"}, "area": {"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు", "path": "…"}, "is_active": true, "assigned_at": "2026-10-01T05:00:00Z", "created_at": "2026-10-01T05:00:00Z"}
+{"id": "a71e…", "role": "VILLAGE_ADMIN", "group": {"key": "VILLAGE_ADMIN", "name": "Village Admin"}, "area": {"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు", "path": "…"}, "is_active": true, "assigned_at": "2026-10-01T10:30:00+05:30", "created_at": "2026-10-01T10:30:00+05:30"}
 ```
 `role` repeats `group.key` for older clients.
 
@@ -214,8 +215,8 @@ Returned by `GET /me/`, inside the app login response and inside the console ses
   "preferred_language": "te",
   "must_change_password": true,
   "role_assignments": [RoleAssignment],
-  "last_login_at": "2026-10-14T03:42:00Z",
-  "created_at": "2026-10-01T05:00:00Z",
+  "last_login_at": "2026-10-14T09:12:00+05:30",
+  "created_at": "2026-10-01T10:30:00+05:30",
   "created_by": {"id": "…", "name": "…"},
   "locked_out": false,
   "allowed_actions": ["edit", "block", "reset_password", "reassign"]
@@ -240,9 +241,9 @@ Returned by `GET /me/`, inside the app login response and inside the console ses
   "media": [Media],
   "author": {"id": "…", "name": "Ravi Kumar", "role": "PANCHAYAT_MEMBER"},
   "posted_as": {"role": "PANCHAYAT_MEMBER", "area": Area},
-  "created_at": "2026-10-14T04:18:00Z",
-  "updated_at": "2026-10-14T04:18:00Z",
-  "submitted_at": "2026-10-14T04:18:00Z",
+  "created_at": "2026-10-14T09:48:00+05:30",
+  "updated_at": "2026-10-14T09:48:00+05:30",
+  "submitted_at": "2026-10-14T09:48:00+05:30",
   "published_at": null,
   "escalated": false,
   "escalated_at": null,
@@ -267,7 +268,7 @@ Lean on purpose, for 2G.
   "body": "…",
   "translation": null,
   "area": Area,
-  "published_at": "2026-10-14T05:02:00Z",
+  "published_at": "2026-10-14T10:32:00+05:30",
   "event": null,
   "is_urgent": false,
   "media": [Media],
@@ -512,7 +513,7 @@ No login. These views ignore any `Authorization` header, so a stale token on a c
   "title": "గ్రామ సభ సమావేశం – అక్టోబర్ 20",
   "body": "…",
   "area": {"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు"},
-  "published_at": "2026-10-14T05:02:00Z",
+  "published_at": "2026-10-14T10:32:00+05:30",
   "thumbnail_url": "/media/posts/2026/10/…-320.webp",
   "media_count": 3,
   "source_role": "VILLAGE_ADMIN",
@@ -648,7 +649,7 @@ Built (web_admin app). `days` is 1 to 366, default 30, and counts posts created 
 - Built. Values come from settings, each overridable by env: `SITE_OFFICE_ADDRESS_TE`, `SITE_OFFICE_ADDRESS_EN`, `SITE_PHONE`, `SITE_EMAIL`, `SITE_HOURS_TE`, `SITE_HOURS_EN`, `PLAY_STORE_URL`, `APP_STORE_URL`. Defaults are the prototype's values.
 - Contact form validation matches the website: name and message required after trimming, mobile 10 digits (`+91` and spaces are accepted and stripped). `website` is a honeypot: when filled, the server answers `201` with `id` 0 and stores nothing. At most `CONTACT_MESSAGES_PER_IP_PER_HOUR` (default 5) per IP, then `429 throttled` with `Retry-After`.
 - `website_url` (`SITE_WEBSITE_URL`) is the link the app adds to shared posts and invites (owner decision Q17).
-- `helplines` (owner decision Q19): defaults 112 Emergency, 108 Ambulance, 1930 Cyber fraud, 181 Women helpline, 1098 Child helpline, 1912 Electricity, with the prototype's Telugu labels. Override with `SITE_HELPLINES` (a JSON list in the env).
+- `helplines` (owner decision Q19): the state's helplines from the important numbers (section 14), in their `sort_order`. While none are loaded it falls back to `SITE_HELPLINES` (a JSON list in the env), by default 112 Emergency, 108 Ambulance, 1930 Cyber fraud, 181 Women helpline, 1098 Child helpline, 1912 Electricity, with the prototype's Telugu labels. `seed_helplines` loads that same list into the table, so the output does not change.
 - **Showcase (owner decision Q16):** `location` is the village in `SITE_SHOWCASE_VILLAGE_ID` and the posts come from its feed: `featured` is the newest post with a photo (or the newest post), `items` the next two. When the setting is empty or that feed has no posts, the newest published posts anywhere are used and `location` is the featured post's area.
 - **Contact messages (owner decision Q16)** are read and marked handled in the console. Others get `403 permission_denied`.
 
@@ -697,6 +698,8 @@ Roles are Django groups and actions are Django permissions. The full group × pe
 | Settings, categories | `posts.manage_settings`, `posts.manage_categories` | yes | no | no | no | no | no |
 | Notification templates | `notifications.manage_templates` | yes | no | no | no | no | no |
 | Contact messages | `web_public.manage_contact_messages` | yes | no | no | no | no | no |
+| Important numbers (section 14) | `contacts.manage_contact` | any area, and the statewide helplines | inside the district | inside the mandal | the village | the village (decision C1) | read only, public |
+| Contact types | `contacts.manage_contact_types` | yes | no | no | no | no | no |
 | Web console login | `web_admin.access_web_console` | yes | no | no | no | no | no |
 | Groups and role assignments in Django admin | `accounts.manage_groups` | yes | no | no | no | no | no |
 
@@ -734,6 +737,8 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Super Admin: areas | `GET /geo/*?include_inactive=1&with_counts=1`, geography writes |
 | Super Admin: reports, audit, settings | `GET /admin/reports/*`, `GET /audit`, `/admin/settings`, `/admin/categories`, `/admin/notification-templates` |
 | App start | `POST /devices` |
+| Contacts tab (citizens) | `GET /contacts?village_id=`; `GET /contact-types` for chips and icons |
+| Important numbers (every official) | `GET /admin/contacts` (`section=AREA\|HELPLINE`), `POST /admin/contacts`, `PATCH /admin/contacts/{id}`, `DELETE /admin/contacts/{id}`, `GET /admin/contacts/targets` |
 
 ### Super Admin console
 
@@ -749,6 +754,7 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Audit log | `GET /audit`, `GET /audit/export` |
 | Settings | `/admin/settings`, `/admin/categories`, `/admin/notification-templates` |
 | Contact messages | `GET /admin/contact-messages`, `PATCH /admin/contact-messages/{id}` |
+| Important numbers | `GET /admin/contacts` (area and helpline tabs), `POST /admin/contacts`, `PATCH /admin/contacts/{id}`, `DELETE /admin/contacts/{id}`, `GET /admin/contacts/targets`, `POST /admin/contacts/import`; types: `/admin/contact-types` |
 
 ### Public website
 
@@ -774,3 +780,102 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Image upload | `MAX_IMAGE_UPLOAD_MB`, default 10 |
 | Video | one per post, `VIDEO_MAX_SECONDS` 60, `MAX_VIDEO_UPLOAD_MB` default 50 |
 | Page size | feed 20, admin lists 100 |
+| Important numbers | 200 active per area (`CONTACTS_MAX_PER_AREA`); name 150, custom type 40 characters; CSV import 2 MB and 5,000 rows |
+
+---
+
+## 14. contacts: important numbers
+
+Built (`apps.contacts`). The app's Contacts tab: phone numbers officials publish for their area (VRO, Mee Seva, Sachivalayam, Tahsildar office …) and the statewide government helplines (108, 1098 …). Each number has one area, stored like a post's target. A citizen sees the numbers of their village, its mandal, its district and its state. Open decisions C1 to C5 and their defaults are in `prototype-inventory.md`, section 8.
+
+**Sections.** A type is either `AREA` (numbers at district, mandal or village level, shown under "For you") or `HELPLINE` (numbers at state level, shown under "Government helplines"). A number's level must agree with its type's section: otherwise `400 validation_error` on `area`.
+
+### Public (no login)
+
+| Method and path | Request | Response |
+|---|---|---|
+| `GET /contacts/?village_id=` | `village_id` (required) | `CitizenContacts` (below). `400` without `village_id`; `404` for an unknown or inactive village. `ETag` and `Cache-Control: public, max-age=300` (`CONTACTS_PUBLIC_MAX_AGE`); `If-None-Match` gets `304`. Ignores any `Authorization` header, like the feed. Rate-limited by Nginx like the rest of the API. |
+| `GET /contact-types/` | — | `[{"key", "section", "name", "is_other", "sort_order"}]`, active types only. `max-age=3600`. |
+
+```jsonc
+// CitizenContacts: one call fills the whole Contacts tab
+{
+  "village": {"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు", "path": "కొలకలూరు · తెనాలి · గుంటూరు"},
+  "for_you": [
+    {
+      "type": "vro",
+      "label": "వీఆర్వో",            // the typed custom_type for "Other" numbers
+      "contacts": [
+        {"id": "6f1c…", "name": "కె. శ్రీనివాసరావు", "phone": "9000010001", "phone_kind": "MOBILE",
+         "email": null, "area": {"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు"}}
+      ]
+    }
+  ],
+  "helplines": [
+    {"type": "health", "label": "ఆరోగ్యం", "contacts": [
+      {"id": "…", "name": "అంబులెన్స్", "phone": "108", "phone_kind": "SHORT_CODE", "email": null,
+       "area": {"level": "STATE", "id": 1, "name": "ఆంధ్రప్రదేశ్"}}
+    ]}
+  ],
+  "updated_at": "2026-10-26T15:00:00+05:30"   // newest change among the rows; null when there are none
+}
+```
+- Order: groups in the types' `sort_order`; one group per type, and one per typed name for "Other" numbers (ignoring case). Inside a group the most local number first (village, mandal, district), then its `sort_order`, then its name. Empty groups are left out.
+- `label`, `name` and the area's name follow `Accept-Language` (Telugu by default). A number without a Telugu name shows its English one.
+- Not paged: at most `CONTACTS_MAX_PER_AREA` numbers per area and four areas. Phone formatting ("90000 10001") is the app's job; the server sends digits.
+
+### Officials
+
+All need `contacts.manage_contact`, which every official holds in their own area: District, Mandal and Village Admins, Panchayat members (decision C1) and the Super Admin. Only a platform-wide assignment covers the STATE, so only the Super Admin changes helplines.
+
+| Method and path | Who | Request | Response |
+|---|---|---|---|
+| `GET /admin/contacts/` | `manage_contact` anywhere | `section=AREA\|HELPLINE` (default `AREA`), `level` + `area_id` (that area and below), `type` (key), `q` (name, or the phone's digits), `page` | Page of `AdminContact`. `AREA`: only numbers inside the actor's areas. `HELPLINE`: every active statewide number; `allowed_actions` is empty unless the actor may edit it. Most local first, then type, `sort_order`, name. |
+| `POST /admin/contacts/` | `manage_contact` over `area` | `{"type", "custom_type"?, "name", "name_te"?, "phone", "email"?, "area": {"level", "id"}, "sort_order"?, "consent_recorded"?}` | `201 AdminContact`. `400 validation_error`; `403 out_of_area`; `409 duplicate` (`fields.phone`). |
+| `GET /admin/contacts/{id}/` | `manage_contact` over its area; any official for a helpline | — | `AdminContact`, otherwise `404` |
+| `PATCH /admin/contacts/{id}/` | over the old **and** the new area | any POST field, plus `"verified": true` to stamp `verified_at` | `AdminContact`. `404` if the number is outside reach; `403 out_of_area` if the new area is. |
+| `DELETE /admin/contacts/{id}/` | over its area | — | `204`. Soft delete: hidden from citizens, kept for the audit trail. A second delete answers `404`. |
+| `GET /admin/contacts/targets/` | `manage_contact` anywhere | — | "Who sees it" choices, in the shape of `GET /posts/targets/` (`levels`, `areas`, `pick_via: "geo"`), never `STATE` |
+| `POST /admin/contacts/import/` | Super Admin (`manage_contact` over the platform) | multipart `file` (UTF-8 CSV, BOM allowed, at most `CONTACTS_IMPORT_MAX_BYTES` 2 MB and `CONTACTS_IMPORT_MAX_ROWS` 5,000 rows); `?dry_run=1` checks only | `200 {"dry_run", "created", "updated", "skipped", "errors": []}`. Any bad row: `400 validation_error` with `report` holding the same object and `errors: [{"row", "field", "message"}]`, and nothing is written. Too large: `413 file_too_large`. |
+| `GET /admin/contact-types/` | Super Admin (`contacts.manage_contact_types`) | — | `[{"id", "key", "section", "name_en", "name_te", "is_other", "sort_order", "is_active", "contact_count"}]` |
+| `POST /admin/contact-types/` | same | `{"key", "section", "name_en", "name_te", "is_other"?, "sort_order"?, "is_active"?}` | `201`; a used key: `409 duplicate` |
+| `PATCH /admin/contact-types/{id}/` | same | `name_en`, `name_te`, `is_other`, `sort_order`, `is_active` | The type. `key` and `section` never change. A type is switched off, never deleted. |
+
+`AdminContact`:
+```jsonc
+{
+  "id": "6f1c…",
+  "type": {"key": "other", "section": "AREA", "name": "ఇతర"},
+  "custom_type": "Anganwadi",
+  "name": "Anganwadi Centre, Tenali", "name_te": "",
+  "phone": "9848012345", "phone_kind": "MOBILE", "email": "",
+  "area": {"level": "MANDAL", "id": 12, "name": "తెనాలి", "path": "తెనాలి · గుంటూరు"},
+  "sort_order": 100,
+  "consent_recorded": true,
+  "verified_at": "2026-10-26T15:00:00+05:30",
+  "needs_recheck": false,            // never verified, or not for CONTACTS_VERIFY_DAYS (180)
+  "created_by": {"id": "…", "name": "Lakshmi Devi"},
+  "created_at": "…", "updated_at": "…",
+  "allowed_actions": ["edit", "remove", "verify"]
+}
+```
+
+### Rules
+
+| Field | Rule |
+|---|---|
+| `type` | An active type's key. Seeded `AREA` keys: `vro`, `meeseva`, `sachivalayam`, `revenue`, `official`, `other`. `HELPLINE` keys: `emergency`, `farmers`, `senior`, `student`, `women`, `health`, `police`, `railways`, `power`, `grievance`, `more`. They are the app's icon keys. |
+| `custom_type` | Required, 1 to 40 characters, for "Other" types (`is_other`); must be empty otherwise. Changing to another type clears it. |
+| `name`, `name_te` | `name` required, 1 to 150 characters after collapsing spaces. `name_te` optional, the Telugu name. |
+| `phone` | Spaces, dashes and brackets are removed; a leading `+91`, or `91` when 12 digits remain, is dropped. Then one kind must match: `MOBILE` `[6-9]` + 9 digits, `LANDLINE` `0` + 9-10 digits, `TOLL_FREE` `1800` + 6-7 digits, `SHORT_CODE` 3-6 digits for helplines only. Anything else, such as `*#06#`, is refused. |
+| `email` | Optional, a valid address, stored in lower case. |
+| `area` | Must exist and be active, and agree with the type's section. |
+| `consent_recorded` | Must be `true` for a `MOBILE` number while `CONTACTS_REQUIRE_MOBILE_CONSENT` is on (decision C2). The form says "This person agreed to have this number shown to the public". |
+| `sort_order` | 0 to 1000, default 100. |
+| Duplicates | No two active numbers with the same type, phone and area: `409 duplicate`. Checked in the transaction; a removed number may be added again. |
+| Capacity | At most `CONTACTS_MAX_PER_AREA` (200) active numbers per area: `400 validation_error` on `area`. |
+
+- Audited, with the phone masked (`******0001`): `contact.created`, `contact.updated` (changed field names, and the masked old and new phone when it changed), `contact.removed`, `contact_type.created`, `contact_type.updated`, `contacts.imported` (counts only).
+- CSV columns: `type`, `name`, `phone` (required), `custom_type`, `name_te`, `email`, `sort_order`, `consent` (`yes`/`1`/`true`), and the area as `district_lgd`, `mandal_lgd`, `village_lgd` or the names `district`, `mandal`, `village` (LGD code first, else the name within the parent; the deepest one given sets the level). Helpline rows leave the area columns empty and go to the state. A row matching an active number's type, phone and area updates it instead of adding one. `python manage.py import_contacts file.csv [--dry-run]` does the same.
+- `python manage.py seed_helplines` loads `apps/contacts/sample_data/helplines.csv`, the six numbers of `SITE_HELPLINES`, until the owner signs off a longer list (decision C3).
+- `GET /public/site-config/` reads `helplines` from the statewide numbers (`label_en` = `name`, `label_te` = `name_te` or the type's Telugu name, in `sort_order`), and falls back to `SITE_HELPLINES` while none are loaded.

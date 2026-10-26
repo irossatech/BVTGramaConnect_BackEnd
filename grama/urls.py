@@ -26,6 +26,7 @@ api_v1 = [
     path("", include("apps.audit.urls")),
     path("", include("apps.web_public.api_urls")),
     path("", include("apps.web_admin.api_urls")),
+    path("", include("apps.contacts.urls")),
 ]
 
 urlpatterns = [

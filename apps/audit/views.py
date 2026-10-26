@@ -14,12 +14,13 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import generics, serializers
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.renderers import BaseRenderer, JSONRenderer
+from rest_framework.renderers import BaseRenderer
 from rest_framework.views import APIView
 
 from apps.accounts.serializers import describer_from
 from apps.geography.areas import AreaRef
 from grama.exceptions import ApiError
+from grama.renderers import JSONRenderer
 from apps.accounts import authz
 from apps.accounts.authentication import client_via
 from apps.accounts.permissions import HasPerm

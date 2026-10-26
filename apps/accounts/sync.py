@@ -29,6 +29,22 @@ def ensure_permissions(apps=global_apps, using: str = DEFAULT_DB_ALIAS) -> None:
         create_permissions(app_config, verbosity=0, apps=apps, using=using)
 
 
+def _app_not_migrated_yet(apps, perm: str) -> bool:
+    """True inside a migration whose historical state has no models of the permission's app yet.
+
+    Data migration 0005 runs this sync with the dict as it is today, so an app
+    added later (contacts) is not migrated at that point. Its permissions are
+    applied by the post_migrate sync at the end of the same `migrate`.
+    """
+    if apps is global_apps:
+        return False
+    try:
+        apps.get_app_config(perm.split(".", 1)[0])
+    except LookupError:
+        return True
+    return False
+
+
 def wanted_permissions(spec: dict) -> set[str]:
     """The group's permissions, without those whose setting is off."""
     conditional = spec.get("requires_setting", {})
@@ -69,7 +85,9 @@ def sync_role_permissions(apps=global_apps, using: str = DEFAULT_DB_ALIAS) -> li
         names = {pk: name for name, pk in by_name.items()}
         named = {perm for spec in ROLE_GROUPS.values() for perm in spec["permissions"]}
         named |= {spec["manage_permission"] for spec in ROLE_GROUPS.values() if spec["manage_permission"]}
-        unknown = sorted(perm for perm in named if perm not in by_name)
+        missing = {perm for perm in named if perm not in by_name}
+        later = {perm for perm in missing if _app_not_migrated_yet(apps, perm)}
+        unknown = sorted(missing - later)
         if unknown:
             raise UnknownPermission("No model declares: " + ", ".join(unknown))
 
@@ -107,7 +125,7 @@ def sync_role_permissions(apps=global_apps, using: str = DEFAULT_DB_ALIAS) -> li
             if dirty:
                 row.save(using=using, force_insert=is_new)
 
-            wanted = {by_name[perm] for perm in wanted_permissions(spec)}
+            wanted = {by_name[perm] for perm in wanted_permissions(spec) - later}
             current = set(group.permissions.values_list("pk", flat=True))
             for pk in sorted(wanted - current, key=names.get):
                 changes.append(f"{key}: + {names[pk]}")

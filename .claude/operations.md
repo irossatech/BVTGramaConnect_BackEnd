@@ -35,6 +35,8 @@ Linux or macOS: the same with `python3 -m venv .venv` and `source .venv/bin/acti
 | Unlock a username | `python manage.py axes_reset_username <username>`, or Unlock in the console |
 | New sample passwords | `python manage.py seed_sample_data --reset-passwords` |
 | Import villages | `python manage.py import_geography <file.csv> [--dry-run] [--missing-report out.csv]` |
+| Statewide helplines | `python manage.py seed_helplines [--file list.csv]` (safe to repeat; `seed_sample_data` runs it too) |
+| Import important numbers | `python manage.py import_contacts <file.csv> [--dry-run]` (all rows or none; columns in `docs/api-contract.md` section 14) |
 | Sample file | `apps/geography/sample_data/prototype_villages.csv` |
 | Deploy checks | `DJANGO_SETTINGS_MODULE=grama.settings.prod python manage.py check --deploy` (needs the prod env vars) |
 

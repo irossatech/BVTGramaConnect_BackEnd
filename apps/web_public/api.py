@@ -75,6 +75,21 @@ class PublicView(APIView):
     authentication_classes: list = []
 
 
+def helplines() -> list[dict]:
+    """The state's helplines from apps.contacts; SITE_HELPLINES while none are loaded."""
+    from apps.contacts.selectors import statewide_helplines
+    from apps.contacts.services import default_state
+
+    state = default_state()
+    rows = sorted(
+        statewide_helplines(state.id if state else None),
+        key=lambda c: (c.sort_order, c.type.sort_order, c.name.casefold()),
+    )
+    if not rows:
+        return settings.SITE_HELPLINES
+    return [{"number": c.phone, "label_te": c.name_te or c.type.name_te, "label_en": c.name} for c in rows]
+
+
 @method_decorator(cache_control(public=True, max_age=300), name="dispatch")
 class SiteConfigView(PublicView):
     @extend_schema(summary="Contact details and store links for the public website", responses=SiteConfigSerializer)
@@ -90,7 +105,7 @@ class SiteConfigView(PublicView):
                 "play_store_url": settings.PLAY_STORE_URL,
                 "app_store_url": settings.APP_STORE_URL,
                 "website_url": settings.SITE_WEBSITE_URL,
-                "helplines": settings.SITE_HELPLINES,
+                "helplines": helplines(),
             }
         )
 
