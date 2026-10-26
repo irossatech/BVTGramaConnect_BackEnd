@@ -92,8 +92,11 @@ The same rule applies to sessions and to tokens. Clients send the official strai
   - at least 8 characters;
   - not a common password;
   - not all digits;
-  - not too similar to the username, name or email.
-- A failing password gives `400 validation_error`, with the reasons under `fields.new_password` or `fields.password`.
+  - not too similar to the username, name or email;
+  - at least **one capital letter, one small letter, one number and one special character** (anything that is not a letter, a number or a space, such as `@ # $ % & * ! ?`). `apps/accounts/validators.py`, `PasswordCompositionValidator`.
+- A failing password gives `400 validation_error`, with the reasons under `fields.new_password` or `fields.password`. One message names everything missing, for example "The password needs at least a capital letter (A-Z), a number (0-9)."
+- Generated temporary passwords follow the same rules: 12 characters with one special character from `@#$%&*!?` (on a phone's first symbol keyboard), and no look-alikes (0/O, 1/l/I).
+- The rules apply when a password is set. Passwords people already have keep working until they next change them.
 - Passwords are never written to logs, the audit log or background jobs.
 
 ---

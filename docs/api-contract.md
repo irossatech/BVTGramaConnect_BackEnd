@@ -323,7 +323,7 @@ Login rules:
 - A successful login updates `last_login_at` and writes `auth.login` with `via` (`app` or `console`). Failures write `auth.login_failed`, refusals `auth.login_refused`, lockouts `auth.locked_out`.
 
 Passwords:
-- Hashed with Argon2. New passwords pass Django's validators: at least 8 characters, not common, not all digits, not like the username. A new password must differ from the current one. Errors come as `400 validation_error` with `fields.new_password` (or `fields.password` for admin-set passwords).
+- Hashed with Argon2. New passwords pass Django's validators: at least 8 characters, not common, not all digits, not like the username, and at least one capital letter, one small letter, one number and one special character (anything not a letter, number or space, such as `@ # $ % & * ! ?`). Generated temporary passwords follow the same rules. Existing passwords keep working until next changed. A new password must differ from the current one. Errors come as `400 validation_error` with `fields.new_password` (or `fields.password` for admin-set passwords).
 - New and reset accounts carry `must_change_password`. Until they choose a new password, every endpoint except `GET /me/`, `POST /auth/password/change/`, the logouts and `/auth/refresh/` answers `403 password_change_required`.
 - Changing a password ends every other session and token. Audited as `user.password_changed`.
 - Nothing is emailed or texted. Temporary passwords are handed over by the admin in person.

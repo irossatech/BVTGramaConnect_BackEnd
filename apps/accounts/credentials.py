@@ -29,11 +29,16 @@ from .models import User, normalize_login
 
 #: No 0/O, 1/l/I: the password is read off a screen and typed on a phone.
 PASSWORD_ALPHABET = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789"
+#: On the first screen of a phone's symbol keyboard; no quotes or backslash, easy to read aloud.
+PASSWORD_SPECIALS = "@#$%&*!?"
 
 
 def generate_password(length: int = 12) -> str:
+    """A temporary password that passes every validator: capital, small letter, number, one special."""
     while True:
-        password = "".join(secrets.choice(PASSWORD_ALPHABET) for _ in range(length))
+        chars = [secrets.choice(PASSWORD_ALPHABET) for _ in range(length - 1)]
+        chars.insert(secrets.randbelow(length), secrets.choice(PASSWORD_SPECIALS))
+        password = "".join(chars)
         if any(c.isdigit() for c in password) and any(c.islower() for c in password) and any(
             c.isupper() for c in password
         ):
