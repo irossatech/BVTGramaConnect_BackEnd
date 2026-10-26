@@ -324,6 +324,12 @@ SITE_WEBSITE_URL = env.str("SITE_WEBSITE_URL", default="https://example.in/")
 # Village whose feed fills the home page's phone picture (owner decision Q16).
 # Empty: the newest published posts anywhere.
 SITE_SHOWCASE_VILLAGE_ID = env.int("SITE_SHOWCASE_VILLAGE_ID", default=0) or None
+# --- Geography (apps.geography) -------------------------------------------------
+# Public geography lists: browsers and phones may reuse them this long (ETag still gives 304s).
+GEO_PUBLIC_MAX_AGE = env.int("GEO_PUBLIC_MAX_AGE", default=600)
+# Andhra Pradesh bounding box, for the "outside the state" and "swapped" warnings on villages.
+GEO_BOUNDS = {"lat": (12.6, 19.95), "lng": (76.7, 84.8)}
+
 # --- Important numbers (apps.contacts, docs/api-contract.md section 14) --------
 # Cap on active numbers in one area, so the citizen response stays small on 2G.
 CONTACTS_MAX_PER_AREA = env.int("CONTACTS_MAX_PER_AREA", default=200)

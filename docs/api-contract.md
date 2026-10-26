@@ -81,7 +81,7 @@ Objects that clients act on carry `allowed_actions`, computed on the server for 
 
 ### Caching
 - Feed and public post endpoints send `ETag` and `Cache-Control: public, max-age=60`. Clients send `If-None-Match` and get `304 Not Modified` with an empty body when nothing changed.
-- Geography and category lists send `ETag` and `Cache-Control: public, max-age=3600`.
+- Geography lists send `ETag` and `Cache-Control: public, max-age=600` (`GEO_PUBLIC_MAX_AGE`), on `GET` only, so a new village shows within minutes. Category lists send `max-age=3600`.
 - The app keeps the last feed page on the device and shows it at once on launch, per CLAUDE.md.
 
 ### Errors
@@ -373,7 +373,7 @@ Reads for Super Admins, including inactive areas:
 | `GET /geo/tree?villages=1` | `[State]`, each with `districts: [District]`, each with `mandals: [Mandal]`. Every row has `id`, `level`, `name_en`, `name_te`, `lgd_code`, `is_active`; districts add `mandal_count` and `village_count`, mandals add `village_count`. With `villages=1` each mandal also carries `villages: [Village]` (`latitude`, `longitude` as 6-decimal strings or null, `pin_code`). Leave it out for large data and load villages per mandal. |
 | `GET /geo/admin/villages?mandal={id}` | `[Village]` of one mandal, same fields |
 
-Writes, Super Admin only. Each write answers with the area row above and writes an audit entry (`area.created`, `area.updated`, `area.deactivated`, `area.reactivated`, `area.imported`):
+Writes, Super Admin only (`geography.manage_master_data`). `apps/geography/services.py` is the only writer; the CSV import uses it too. Each write answers with the area row above plus `"warnings"` (below) and writes an audit entry with the old and new values (`area.created`, `area.updated`, `area.deactivated`, `area.reactivated`; the import writes one `area.imported` with counts). An edit that changes nothing writes no entry. The district, mandal and village list URLs take both the public `GET` and the Super Admin `POST`; only the `GET` is cached.
 
 | Method and path | Request |
 |---|---|
@@ -385,9 +385,31 @@ Writes, Super Admin only. Each write answers with the area row above and writes 
 | `PATCH /geo/villages/{id}` | any of the above plus `is_active` |
 | `POST /geo/villages/import` | multipart `file` (UTF-8 CSV, same columns as `manage.py import_geography`); `?dry_run=1` saves nothing. `200 {"ok", "dry_run", "rows", "errors", "warnings", "counts": {"state"\|"district"\|"mandal"\|"village": {"created", "updated", "unchanged"}}, "missing_coordinates": [first 200], "missing_coordinates_count", "missing_telugu"}`. Any error: `400 validation_error` with the same object in `error.report`, and nothing is saved. |
 
+Every write answers, for example:
+```json
+{
+  "id": 77, "level": "VILLAGE", "name_en": "Chebrolu", "name_te": "చేబ్రోలు", "lgd_code": null,
+  "is_active": true, "latitude": "16.196000", "longitude": "80.525000", "pin_code": "110001", "mandal_id": 12,
+  "warnings": [{"code": "pin_outside_state", "message": "Andhra Pradesh PIN codes start with 5."}]
+}
+```
+
+| Status | `code` | When |
+|---|---|---|
+| `201` / `200` | — | Created / updated. Check `warnings`. |
+| `400` | `validation_error` | Missing or bad field (`fields` lists them); unknown parent (`fields.state_id`, `district_id` or `mandal_id`) |
+| `401` | `not_authenticated`, `token_expired` | No or expired login (writes only) |
+| `403` | `permission_denied` | Not a Super Admin. A console session write without `X-CSRFToken` is refused too. |
+| `404` | `not_found` | PATCH of an id that does not exist |
+| `409` | `duplicate` | Same name under the same parent (`fields.name_en`), also when another admin added it a moment earlier, or the LGD code is already used (`fields.lgd_code`) |
+
+Warnings never block a save: `parent_inactive` (the parent is switched off), `name_te_missing` (no Telugu name, or the same as the English one), `name_te_not_telugu`, `coordinates_swapped`, `outside_state` (outside the `GEO_BOUNDS` box of Andhra Pradesh), `pin_outside_state` (not starting with 5). The CSV import lists them in its `warnings`, except `name_te_missing`, which `missing_telugu` counts.
+
 Rules:
-- `name_en` is required and unique among siblings, ignoring case; `409 duplicate` otherwise. A missing `name_te` copies `name_en`.
+- `name_en` is required and unique among siblings, ignoring case and extra spaces; `409 duplicate` otherwise. The database enforces it (unique constraints, migration `geography.0003`), so two admins adding the same name at once cannot both succeed. A missing `name_te` copies `name_en`.
+- `lgd_code` is digits only, at most 20, and unique per level.
 - `latitude` is between -90 and 90 and `longitude` between -180 and 180, each with at most 6 decimals. `pin_code` is 6 digits.
+- Before migrating a server to `geography.0003`, run `python manage.py geo_duplicates` (read-only). It must print "No duplicates."; fix any it lists with the owner first.
 - Areas are never deleted. Deactivating an area hides it from public lists and blocks new users and posts there and in every area below it. Existing posts stay visible.
 - Nearest village: bounding-box filter in the ORM, then haversine distance in Python, per CLAUDE.md.
 

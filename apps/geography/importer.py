@@ -12,6 +12,10 @@ Rules:
   its English name inside its parent (ignoring case and extra spaces).
 - Blank cells never erase data already in the database.
 - Nothing is deleted or deactivated; rows missing from the file are left alone.
+- Districts, mandals and villages are written through services.py, the same
+  writer as the API, without one audit entry per row: the view audits the
+  whole import once (area.imported). The writer's data-quality warnings join
+  the report, except a missing Telugu name, which missing_telugu counts.
 """
 
 from __future__ import annotations
@@ -25,6 +29,9 @@ from pathlib import Path
 
 from django.db import transaction
 
+from grama.exceptions import ApiError
+
+from . import services
 from .models import District, Mandal, State, Village, clean_name, name_key
 
 REQUIRED = ("state", "district", "mandal", "village")
@@ -123,8 +130,10 @@ def _decimal(raw: str) -> Decimal:
 
 
 class GeographyImporter:
-    def __init__(self, *, dry_run: bool = False):
+    def __init__(self, *, dry_run: bool = False, actor=None, via: str = "system"):
         self.report = ImportReport(dry_run=dry_run)
+        self.actor = actor
+        self.via = via
         self.states: dict[tuple, Node] = {}
         self.districts: dict[tuple, Node] = {}
         self.mandals: dict[tuple, Node] = {}
@@ -342,7 +351,8 @@ class GeographyImporter:
                     },
                 )
             self._collect_missing()
-            if self.report.dry_run:
+            # A conflict found while writing (another admin added the same name) undoes the whole file.
+            if self.report.dry_run or not self.report.ok:
                 transaction.set_rollback(True)
 
     def _save(self, node: Node, model, parent: dict, extra: dict | None = None) -> None:
@@ -357,25 +367,62 @@ class GeographyImporter:
                 values[name] = value
 
         obj = node.obj
-        if obj is None:
-            obj = model(**parent, **values)
-            obj.save()
-            node.obj = obj
+        if model is State:
+            obj = self._save_state(node, obj, values, counts)
+        elif obj is None:
+            ((_parent_field, parent_obj),) = parent.items()
+            if parent_obj is None:
+                return  # its parent failed: that error already fails the file
+            level = node.level.upper()
+            outcome = self._call_writer(
+                node, services.create_area, level, {services.LEVELS[level][3]: parent_obj.id, **values}
+            )
+            if outcome is None:
+                return
+            obj = node.obj = outcome.area
             counts.created += 1
         else:
-            changed = False
-            for name, value in values.items():
-                if getattr(obj, name) != value:
-                    setattr(obj, name, value)
-                    changed = True
+            changed = {name: value for name, value in values.items() if getattr(obj, name) != value}
             if changed:
-                obj.save()
+                outcome = self._call_writer(node, services.update_area, node.level.upper(), changed, area_id=obj.id)
+                if outcome is None:
+                    return
+                obj = node.obj = outcome.area
                 counts.updated += 1
             else:
                 counts.unchanged += 1
         # save() copies the English name when there is no Telugu one.
         if obj.name_te == obj.name_en:
             self.report.missing_telugu += 1
+
+    def _save_state(self, node: Node, obj, values: dict, counts: Counts):
+        """States are rare and outside services.py (only districts and below are edited in the app)."""
+        if obj is None:
+            obj = node.obj = State.objects.create(**values)
+            counts.created += 1
+        elif any(getattr(obj, name) != value for name, value in values.items()):
+            for name, value in values.items():
+                setattr(obj, name, value)
+            obj.save()
+            counts.updated += 1
+        else:
+            counts.unchanged += 1
+        return obj
+
+    def _call_writer(self, node: Node, writer, level: str, values: dict, area_id=None):
+        """Call the writer for one row; its warnings join the report and its errors fail the file."""
+        try:
+            if area_id is None:
+                outcome = writer(self.actor, level, values, via=self.via, audit=False)
+            else:
+                outcome = writer(self.actor, level, area_id, values, via=self.via, audit=False)
+        except ApiError as error:
+            self._error(node.lines[0], f"{node.level} '{node.label()}': {error.detail}")
+            return None
+        for warning in outcome.warnings:
+            if warning["code"] != "name_te_missing":  # missing_telugu counts these
+                self._warn(node.lines[0], f"{node.level} '{node.label()}': {warning['message']}")
+        return outcome
 
     def _collect_missing(self) -> None:
         for node in self.villages.values():

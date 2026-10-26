@@ -116,7 +116,8 @@ class District(Area):
     class Meta(Area.Meta):
         verbose_name = _("district")
         verbose_name_plural = _("districts")
-        indexes = [models.Index(fields=["state", "name_key"])]
+        # The real guard against two admins adding the same name at once (the constraint is also the index).
+        constraints = [models.UniqueConstraint(fields=["state", "name_key"], name="geo_district_name_unique_in_state")]
 
 
 class MandalQuerySet(AreaQuerySet):
@@ -133,7 +134,7 @@ class Mandal(Area):
     class Meta(Area.Meta):
         verbose_name = _("mandal")
         verbose_name_plural = _("mandals")
-        indexes = [models.Index(fields=["district", "name_key"])]
+        constraints = [models.UniqueConstraint(fields=["district", "name_key"], name="geo_mandal_name_unique_in_district")]
 
 
 class VillageQuerySet(AreaQuerySet):
@@ -179,10 +180,8 @@ class Village(Area):
     class Meta(Area.Meta):
         verbose_name = _("village")
         verbose_name_plural = _("villages")
-        indexes = [
-            models.Index(fields=["mandal", "name_key"]),
-            models.Index(fields=["latitude", "longitude"]),
-        ]
+        indexes = [models.Index(fields=["latitude", "longitude"])]  # nearest-village search
+        constraints = [models.UniqueConstraint(fields=["mandal", "name_key"], name="geo_village_name_unique_in_mandal")]
 
     @property
     def has_coordinates(self) -> bool:

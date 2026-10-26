@@ -9,7 +9,7 @@ Top level of the repo: `apps/`, `grama/` (settings, URLs, shared helpers, projec
 | App | Owns |
 |---|---|
 | `accounts` | User, RoleGroup (each group's key, level and rank), RoleAssignment (user, group, area). App login with JWT and a token version (`tokens.py`, `authentication.py`), console session login, password change, `/me`, users and role-assignment API (`views_auth.py`, `views_users.py`). Lockout with django-axes (`lockout.py`). The role matrix (`role_matrix.py`), its sync (`sync.py`, run after every `migrate` and by `sync_role_permissions`) and the permission checks (`authz.py`, `permissions.py`). `seed_sample_data` and `create_super_admin` commands. |
-| `geography` | State, District, Mandal, Village. Public cascading lists, nearest village (`nearest.py`), Super Admin writes and tree (`views_admin.py`), CSV import (`importer.py`, `import_geography` command), area references and containment (`areas.py`). |
+| `geography` | State, District, Mandal, Village (sibling names unique per parent in the database). Public cascading lists, nearest village (`nearest.py`), Super Admin writes and tree (`views_admin.py`: one class per URL for the public read and the write), the only writer of areas (`services.py`) with soft data-quality warnings (`validation.py`), CSV import (`importer.py`, `import_geography` command, through `services.py`), `geo_duplicates` check, area references and containment (`areas.py`). |
 | `posts` | Category, Post (with optional event date and the urgent flag), PostMedia (photo or video), ReviewAction, SettingOverride. Post API, review queue, stats, runtime settings, "Visible to" choices (`posting_targets`). Photo and video processing (`media.py`; ffprobe and ffmpeg when installed, else the phone sends the length and a poster). Escalation job (`tasks.py`, `ensure_schedules` command). |
 | `audit` | AuditLog. Audit list and CSV export. |
 | `feed` | Public citizen feed with news search and a video filter, "Don't miss" (upcoming events) and the urgent list. No models of its own; reads Post. |
@@ -31,6 +31,7 @@ Top level of the repo: `apps/`, `grama/` (settings, URLs, shared helpers, projec
 - **Runtime settings**: `apps.posts.services.runtime(name)` reads a SettingOverride row first, then the Django setting.
 - **Urgent** is set at create or edit by admins, or later by a reviewer through `apps.posts.services.set_urgent`, which audits it. Urgent posts push at high priority; others at normal.
 - **"Visible to"**: what an author may target is checked in `posting_assignment`; the choices the app shows come from `posting_targets`. Both live in `apps/posts/services.py`. The area picker itself is `authz.area_targets(user, perm)`, shared with the important numbers' "Who sees it".
+- **Districts, mandals and villages** are written only by `apps/geography/services.py` (`create_area`, `update_area`), for the API and the CSV import alike: parent check, unique names (the database constraint is the real guard), audit with old and new values, and `warnings`.
 - **Important numbers** are written only by `apps/contacts/services.py`: permission over the area, validation, write and audit (phones masked) in one transaction.
 
 ## Settings
