@@ -512,3 +512,15 @@ Numbers match the "Pending Qn" marks in `api-contract.md`. The owner decided Q1,
 | Q17 | Which public URL do shared posts and app invites link to? The website has no post page. | **Decided 2026-10-21:** sharing sends the post text plus the website link (`website_url` in site-config). There is no public post page. |
 | Q18 | Who may take down a published post? | Any reviewer whose area contains the post |
 | Q19 | Are the help-line numbers, news search and "Mark as urgent" strings in scope for version 1? They have no screens. | **Decided 2026-10-21:** all three in version 1. Help lines come from site-config, search is `q` on the feed, urgent is `POST /posts/{id}/urgent/` and `GET /feed/urgent/`. |
+
+### Important numbers (Contacts tab)
+
+The app's Contacts tab moved onto the server on 2026-10-26 (`api-contract.md`, section 14). Built on these defaults until the owner decides:
+
+| # | Question | Default |
+|---|---|---|
+| C1 | May Panchayat members add and edit numbers for their village? | Yes, published at once. The alternative is a review step like posts. |
+| C2 | May officials' personal mobile numbers be published? | Yes, but only with the consent tick for 10-digit mobiles (`CONTACTS_REQUIRE_MOBILE_CONSENT`). Office, landline and CUG numbers are preferred. |
+| C3 | Who signs off the starter helpline list? | The owner, before production. Until then `seed_helplines` loads only the six numbers of `SITE_HELPLINES`. |
+| C4 | "Other" types: is free text acceptable? | Yes, up to 40 characters per number. The Super Admin can turn a frequent one into a real type. |
+| C5 | Should district or mandal admins get their own helplines section? | No. Helplines are statewide and the Super Admin's; a district control room is an area number at district level. |

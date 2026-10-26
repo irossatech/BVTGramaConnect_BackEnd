@@ -81,6 +81,7 @@ PLATFORM_PROBES = {
     "web_admin.view_reports": "/api/v1/admin/reports/summary/",
     "notifications.manage_templates": "/api/v1/admin/notification-templates/",
     "web_public.manage_contact_messages": "/api/v1/admin/contact-messages/",
+    "contacts.manage_contact_types": "/api/v1/admin/contact-types/",
     "posts.manage_categories": "/api/v1/admin/categories/",
     "posts.manage_settings": "/api/v1/admin/settings/",
 }
@@ -193,6 +194,12 @@ def probe(world, client, actor: User, perm: str, area_key: str | None) -> bool:
         return outcome(client.post(f"/api/v1/posts/{published.id}/urgent/", {"is_urgent": True}, format="json"))
     if perm == "posts.view_stats":
         return outcome(client.get(f"/api/v1/stats/?level={area.level}&area_id={area.id}"))
+    if perm == "contacts.manage_contact":
+        if area.level == "STATE":
+            body = {"type": "health", "name": "Ambulance", "phone": "108"}
+        else:
+            body = {"type": "official", "name": "Probe office", "phone": "08644222333"}
+        return outcome(client.post("/api/v1/admin/contacts/", {**body, "area": world.area_json(area_key)}, format="json"))
     if perm in MANAGE_ROLE:
         body = {"name": "Probe", "username": "probe.new", "role": MANAGE_ROLE[perm], "area": world.area_json(area_key)}
         return outcome(client.post("/api/v1/users/", body, format="json"))

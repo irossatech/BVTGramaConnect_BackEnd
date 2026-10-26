@@ -27,6 +27,26 @@ def test_openapi_schema_is_served(client):
     assert response.json()["info"]["title"] == "BVT Grama Connect API"
 
 
+@pytest.mark.django_db
+def test_every_time_goes_out_in_india_standard_time(client):
+    """Times a view returns directly (health) and through serializers both carry +05:30, never Z."""
+    from datetime import datetime, timedelta
+
+    body = client.get("/api/v1/health/").json()
+    sent = datetime.fromisoformat(body["time"])
+    assert body["time"].endswith("+05:30")
+    assert sent.utcoffset() == timedelta(hours=5, minutes=30)
+
+
+def test_the_renderer_converts_utc_to_ist():
+    from datetime import datetime, timezone
+
+    from grama.renderers import JSONRenderer
+
+    noon_utc = datetime(2026, 10, 26, 12, 0, tzinfo=timezone.utc)
+    assert JSONRenderer().render({"at": noon_utc}) == b'{"at":"2026-10-26T17:30:00+05:30"}'
+
+
 def test_api_sends_telugu_as_raw_utf8():
     from rest_framework.renderers import JSONRenderer
 

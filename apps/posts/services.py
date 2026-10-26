@@ -38,8 +38,8 @@ from rest_framework import status as http
 from apps.accounts import authz
 from apps.accounts.authz import Grant
 from apps.audit.services import record
-from apps.geography.areas import AreaDescriber, AreaRef, area_exists, within_q
-from apps.geography.models import AreaLevel, District, Mandal, State
+from apps.geography.areas import AreaRef, area_exists, within_q
+from apps.geography.models import AreaLevel
 from grama.exceptions import ApiError, out_of_area, permission_denied
 
 from . import signals
@@ -79,8 +79,6 @@ AUDIT_ACTIONS = {
     ReviewAction.Action.UNPUBLISH: "post.unpublished",
     ReviewAction.Action.REVERSE: "post.reversed",
 }
-#: Levels from the widest down, for the "Visible to" picker.
-LEVEL_ORDER = [AreaLevel.STATE, AreaLevel.DISTRICT, AreaLevel.MANDAL, AreaLevel.VILLAGE]
 
 
 # --- Runtime settings (database value over the Django setting) -----------------------
@@ -541,56 +539,9 @@ def set_urgent(user, post: Post, is_urgent: bool) -> Post:
 # --- "Visible to" choices for compose (owner decision Q5) ------------------------------
 
 
-def _children(area: AreaRef) -> list[AreaRef]:
-    if area.level == AreaLevel.STATE:
-        return [AreaRef(AreaLevel.DISTRICT, i) for i in District.objects.active().filter(state_id=area.id).values_list("id", flat=True)]
-    if area.level == AreaLevel.DISTRICT:
-        return [AreaRef(AreaLevel.MANDAL, i) for i in Mandal.objects.active().filter(district_id=area.id).values_list("id", flat=True)]
-    if area.level == AreaLevel.MANDAL:
-        from apps.geography.models import Village
-
-        return [AreaRef(AreaLevel.VILLAGE, i) for i in Village.objects.active().filter(mandal_id=area.id).values_list("id", flat=True)]
-    return []
-
-
 def posting_targets(user) -> dict:
-    """Levels and areas this official may pick as "Visible to", widest first.
-
-    Own area at own level, and the areas one level below it. Two or more levels
-    below would be too long a list, so those say pick_via="geo": the app walks
-    down from the level above with the geography lists.
-    """
-    choices: dict[str, list[AreaRef]] = {}
-    via_geo: set[str] = set()
-    for item in authz.grants_for(user, CREATE):
-        if item.platform_wide:
-            states = [AreaRef(AreaLevel.STATE, i) for i in State.objects.active().values_list("id", flat=True)]
-            choices.setdefault(AreaLevel.STATE, []).extend(states)
-            for state in states:
-                choices.setdefault(AreaLevel.DISTRICT, []).extend(_children(state))
-            via_geo.update({AreaLevel.MANDAL, AreaLevel.VILLAGE})
-            continue
-        if not area_exists(item.area, active_only=True):
-            continue
-        choices.setdefault(item.area.level, []).append(item.area)
-        below = _children(item.area)
-        if below:
-            choices.setdefault(below[0].level, []).extend(below)
-        depth = LEVEL_ORDER.index(item.area.level)
-        via_geo.update(LEVEL_ORDER[depth + 2:])
-    describer = AreaDescriber()
-    describer.prime([ref for refs in choices.values() for ref in refs])
-    levels = []
-    for level in LEVEL_ORDER:
-        refs = sorted(set(choices.get(level, [])), key=lambda ref: ref.id)
-        if refs:
-            entry = {"level": level, "areas": [a for a in (describer.describe(r) for r in refs) if a]}
-            if level in via_geo:
-                entry["pick_via"] = "geo"
-            levels.append(entry)
-        elif level in via_geo:
-            levels.append({"level": level, "areas": [], "pick_via": "geo"})
-    return {"levels": levels}
+    """Levels and areas this official may pick as "Visible to", widest first (authz.area_targets)."""
+    return authz.area_targets(user, CREATE)
 
 
 def escalate_overdue(now=None) -> int:

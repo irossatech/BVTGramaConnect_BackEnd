@@ -271,6 +271,70 @@ def is_platform_wide(user, perm: str) -> bool:
     return can(user, perm, PLATFORM)
 
 
+# --- Area pickers ("Visible to" for posts, "Who sees it" for important numbers) -------------
+
+LEVEL_ORDER = ["STATE", "DISTRICT", "MANDAL", "VILLAGE"]
+
+
+def _children(area: AreaRef) -> list[AreaRef]:
+    from apps.geography.models import District, Mandal, Village
+
+    if area.level == "STATE":
+        return [AreaRef("DISTRICT", i) for i in District.objects.active().filter(state_id=area.id).values_list("id", flat=True)]
+    if area.level == "DISTRICT":
+        return [AreaRef("MANDAL", i) for i in Mandal.objects.active().filter(district_id=area.id).values_list("id", flat=True)]
+    if area.level == "MANDAL":
+        return [AreaRef("VILLAGE", i) for i in Village.objects.active().filter(mandal_id=area.id).values_list("id", flat=True)]
+    return []
+
+
+def area_targets(user, perm: str, *, include_state: bool = True) -> dict:
+    """Levels and areas where the user may place something that needs `perm`, widest first.
+
+    Own area at own level, and the areas one level below it. Two or more levels
+    below would be too long a list, so those say pick_via="geo": the app walks
+    down from the level above with the geography lists. include_state=False
+    leaves the STATE level out (important numbers: state numbers are helplines).
+    """
+    from apps.geography.areas import AreaDescriber, area_exists
+    from apps.geography.models import State
+
+    choices: dict[str, list[AreaRef]] = {}
+    via_geo: set[str] = set()
+    for item in grants_for(user, perm):
+        if item.platform_wide:
+            states = [AreaRef("STATE", i) for i in State.objects.active().values_list("id", flat=True)]
+            if include_state:
+                choices.setdefault("STATE", []).extend(states)
+            for state in states:
+                choices.setdefault("DISTRICT", []).extend(_children(state))
+            via_geo.update({"MANDAL", "VILLAGE"})
+            continue
+        if not area_exists(item.area, active_only=True):
+            continue
+        choices.setdefault(item.area.level, []).append(item.area)
+        below = _children(item.area)
+        if below:
+            choices.setdefault(below[0].level, []).extend(below)
+        depth = LEVEL_ORDER.index(item.area.level)
+        via_geo.update(LEVEL_ORDER[depth + 2:])
+    describer = AreaDescriber()
+    describer.prime([ref for refs in choices.values() for ref in refs])
+    levels = []
+    for level in LEVEL_ORDER:
+        if level == "STATE" and not include_state:
+            continue
+        refs = sorted(set(choices.get(level, [])), key=lambda ref: ref.id)
+        if refs:
+            entry = {"level": level, "areas": [a for a in (describer.describe(r) for r in refs) if a]}
+            if level in via_geo:
+                entry["pick_via"] = "geo"
+            levels.append(entry)
+        elif level in via_geo:
+            levels.append({"level": level, "areas": [], "pick_via": "geo"})
+    return {"levels": levels}
+
+
 # --- Roles and ranks -----------------------------------------------------------------------
 
 

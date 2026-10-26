@@ -44,6 +44,9 @@ USER_ACTIONS = [
     "accounts.reassign_user",
     "accounts.unlock_user",
 ]
+# Important numbers citizens call (docs/api-contract.md, section 14): every official, in their own
+# area; Panchayat members too (decision C1). Statewide helplines need a STATE area, so only the Super Admin.
+CONTACTS = ["contacts.manage_contact"]
 PLATFORM_ADMIN = [
     "accounts.manage_groups",
     "geography.manage_master_data",
@@ -54,6 +57,7 @@ PLATFORM_ADMIN = [
     "web_admin.view_reports",
     "notifications.manage_templates",
     "web_public.manage_contact_messages",
+    "contacts.manage_contact_types",
     "posts.manage_categories",
     "posts.manage_settings",
 ]
@@ -75,6 +79,7 @@ ROLE_GROUPS: dict[str, dict] = {
             "accounts.manage_village_admin",
             "accounts.manage_panchayat_member",
             *USER_ACTIONS,
+            *CONTACTS,
             *PLATFORM_ADMIN,
         ],
         # CLAUDE.md "Configurable rules": the Super Admin posts only when this is on.
@@ -95,6 +100,7 @@ ROLE_GROUPS: dict[str, dict] = {
             "accounts.manage_village_admin",
             "accounts.manage_panchayat_member",
             *USER_ACTIONS,
+            *CONTACTS,
         ],
     },
     "MANDAL_ADMIN": {
@@ -111,6 +117,7 @@ ROLE_GROUPS: dict[str, dict] = {
             "accounts.manage_village_admin",
             "accounts.manage_panchayat_member",
             *USER_ACTIONS,
+            *CONTACTS,
         ],
     },
     "VILLAGE_ADMIN": {
@@ -126,6 +133,7 @@ ROLE_GROUPS: dict[str, dict] = {
             "posts.view_stats",
             "accounts.manage_panchayat_member",
             *USER_ACTIONS,
+            *CONTACTS,
         ],
     },
     "PANCHAYAT_MEMBER": {
@@ -136,7 +144,7 @@ ROLE_GROUPS: dict[str, dict] = {
         "platform_wide": False,
         "manage_permission": "accounts.manage_panchayat_member",
         # Their posts wait for review: they lack publish_post (posts/services.py).
-        "permissions": [*POSTING, "posts.view_stats"],
+        "permissions": [*POSTING, "posts.view_stats", *CONTACTS],
     },
 }
 

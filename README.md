@@ -120,6 +120,7 @@ apps/                 every Django app (Python package "apps"; each keeps its sh
   audit/              audit log and CSV export
   web_public/         serves the public website; site-config and contact API
   web_admin/          serves the Super Admin console; dashboard and reports API
+  contacts/           important numbers (VRO, Mee Seva, Tahsildar office …) and statewide helplines; officials manage their own area
 grama/                Django project
   settings/           base.py, dev.py (default for manage.py), prod.py (wsgi/asgi), test.py
   urls.py             URL layout

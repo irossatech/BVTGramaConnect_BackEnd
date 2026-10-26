@@ -47,7 +47,8 @@ class Citizen(HttpUser):
         self.village_id = random.choice(self.village_ids)
         self.etag = None
 
-    @task(6)
+    # Weights are ×10 so the Contacts tab can sit at one tenth of the feed (it is opened far less).
+    @task(60)
     def open_feed(self):
         headers = {"If-None-Match": self.etag} if self.etag else {}
         with self.client.get(
@@ -65,7 +66,7 @@ class Citizen(HttpUser):
             else:
                 response.failure(f"status {response.status_code}")
 
-    @task(3)
+    @task(30)
     def scroll(self):
         next_url = getattr(self, "next_url", None)
         if next_url:
@@ -73,17 +74,34 @@ class Citizen(HttpUser):
             if response.ok:
                 self.next_url = response.json().get("next")
 
-    @task(2)
+    @task(20)
     def open_post(self):
         posts = getattr(self, "posts", [])
         if posts:
             post = random.choice(posts)
             self.client.get(f"{API}/feed/posts/{post['id']}/", name="feed post detail")
 
-    @task(1)
+    @task(6)
+    def open_contacts(self):
+        """The Contacts tab: one call, cached with an ETag like the feed."""
+        etag = getattr(self, "contacts_etag", None)
+        with self.client.get(
+            f"{API}/contacts/?village_id={self.village_id}",
+            headers={"If-None-Match": etag} if etag else {},
+            name="contacts",
+            catch_response=True,
+        ) as response:
+            if response.status_code in (200, 304):
+                self.contacts_etag = response.headers.get("ETag", etag)
+                response.success()
+            else:
+                response.failure(f"status {response.status_code}")
+
+    @task(10)
     def change_village(self):
         self.village_id = random.choice(self.village_ids)
         self.etag = None
+        self.contacts_etag = None
 
 
 class OfficialLogin(HttpUser):

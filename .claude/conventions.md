@@ -33,6 +33,7 @@
 - Errors always use `{"error": {"code", "message", "fields"?, ...}}`, produced by `grama/exceptions.py`. Raise `ApiError(code, message, status=...)` for a contract code and `AuthError` for 401s. The codes are listed in `docs/api-contract.md`, section 1.
 - Objects that clients act on carry `allowed_actions`, computed on the server.
 - Admin lists use page numbers (`grama/pagination.py`, at most 100); the feed and the inbox use cursors.
+- Times go out in India Standard Time with the offset (`2026-10-26T15:00:00+05:30`), never `Z`. `grama/renderers.py` converts every aware datetime, so views may return `timezone.now()` as is. The database stores UTC.
 
 ## Privacy and secrets
 

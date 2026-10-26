@@ -68,6 +68,7 @@ LOCAL_APPS = [
     "apps.audit",
     "apps.web_public",
     "apps.web_admin",
+    "apps.contacts",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -207,8 +208,9 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
+    # Every time goes out in India Standard Time (+05:30), see grama/renderers.py.
     "DEFAULT_RENDERER_CLASSES": [
-        "rest_framework.renderers.JSONRenderer",
+        "grama.renderers.JSONRenderer",
     ],
     "DEFAULT_PARSER_CLASSES": [
         "rest_framework.parsers.JSONParser",
@@ -322,7 +324,20 @@ SITE_WEBSITE_URL = env.str("SITE_WEBSITE_URL", default="https://example.in/")
 # Village whose feed fills the home page's phone picture (owner decision Q16).
 # Empty: the newest published posts anywhere.
 SITE_SHOWCASE_VILLAGE_ID = env.int("SITE_SHOWCASE_VILLAGE_ID", default=0) or None
+# --- Important numbers (apps.contacts, docs/api-contract.md section 14) --------
+# Cap on active numbers in one area, so the citizen response stays small on 2G.
+CONTACTS_MAX_PER_AREA = env.int("CONTACTS_MAX_PER_AREA", default=200)
+# Seconds of Cache-Control on GET /contacts/; an admin's change reaches citizens within this.
+CONTACTS_PUBLIC_MAX_AGE = env.int("CONTACTS_PUBLIC_MAX_AGE", default=300)
+# Numbers nobody confirmed for this many days show as "needs re-check" to admins.
+CONTACTS_VERIFY_DAYS = env.int("CONTACTS_VERIFY_DAYS", default=180)
+# Decision C2: a 10-digit mobile is published only after the admin ticks the consent line.
+CONTACTS_REQUIRE_MOBILE_CONSENT = env.bool("CONTACTS_REQUIRE_MOBILE_CONSENT", default=True)
+CONTACTS_IMPORT_MAX_BYTES = env.int("CONTACTS_IMPORT_MAX_BYTES", default=2 * 1024 * 1024)
+CONTACTS_IMPORT_MAX_ROWS = env.int("CONTACTS_IMPORT_MAX_ROWS", default=5000)
+
 # Help-line numbers for the app (owner decision Q19), labels from the approved prototype.
+# Statewide contacts in apps.contacts replace them once loaded; this list is the fallback.
 # Override with SITE_HELPLINES as a JSON list of {"number", "label_te", "label_en"}.
 SITE_HELPLINES = env.json(
     "SITE_HELPLINES",

@@ -52,7 +52,8 @@ def test_sync_recreates_missing_groups(db):
     Group.objects.filter(name="Panchayat Member").delete()
     changes = sync_role_permissions()
     assert "PANCHAYAT_MEMBER: created group 'Panchayat Member'" in changes
-    assert RoleGroup.objects.get(key="PANCHAYAT_MEMBER").group.permissions.count() == 3
+    # create, submit, view_stats, and manage_contact (contacts decision C1)
+    assert RoleGroup.objects.get(key="PANCHAYAT_MEMBER").group.permissions.count() == 4
 
 
 def test_command_reports_audits_once_and_checks(db):
@@ -76,6 +77,30 @@ def test_command_reports_audits_once_and_checks(db):
     call_command("sync_role_permissions", "--check", stdout=StringIO())  # no error now
 
 
+def test_inside_an_old_migration_a_later_app_s_permissions_wait_for_post_migrate(db):
+    """Migration 0005 syncs before the contacts app exists; the end-of-migrate sync adds its permission."""
+    from django.db import connection
+    from django.db.migrations.loader import MigrationLoader
+
+    perm("contacts.manage_contact").delete()
+    state_apps = MigrationLoader(connection).project_state(("accounts", "0005_roles_to_groups")).apps
+    sync_role_permissions(state_apps)  # no UnknownPermission
+    assert not Permission.objects.filter(codename="manage_contact").exists()
+
+    sync_role_permissions()
+    assert perm("contacts.manage_contact") in RoleGroup.objects.get(key="VILLAGE_ADMIN").group.permissions.all()
+
+
+def test_a_misspelt_permission_still_stops_the_sync(db, monkeypatch):
+    from apps.accounts import role_matrix, sync
+
+    spec = {**role_matrix.ROLE_GROUPS["VILLAGE_ADMIN"]}
+    spec["permissions"] = [*spec["permissions"], "contacts.manage_contactz"]
+    monkeypatch.setitem(sync.ROLE_GROUPS, "VILLAGE_ADMIN", spec)
+    with pytest.raises(sync.UnknownPermission, match="contacts.manage_contactz"):  # the app exists: a real typo
+        sync_role_permissions()
+
+
 def test_group_permission_changes_outside_the_sync_are_audited(db):
     group = RoleGroup.objects.get(key="DISTRICT_ADMIN").group
     group.permissions.add(perm("audit.view_audit_log"))
@@ -84,7 +109,7 @@ def test_group_permission_changes_outside_the_sync_are_audited(db):
     assert entry.data == {"change": "added", "permissions": ["audit.view_audit_log"]}
     group.permissions.clear()
     removed = AuditLog.objects.filter(action="setting.group_permissions_changed", data__change="removed").get()
-    assert len(removed.data["permissions"]) == 19
+    assert len(removed.data["permissions"]) == 20
 
 
 # --- Django admin ----------------------------------------------------------------------------------

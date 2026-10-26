@@ -47,12 +47,13 @@ SUPER_ONLY = {
     "accounts.manage_groups", "geography.manage_master_data", "audit.view_audit_log", "audit.export_audit_log",
     "web_admin.access_web_console", "web_admin.view_dashboard", "web_admin.view_reports",
     "notifications.manage_templates", "web_public.manage_contact_messages", "posts.manage_categories",
-    "posts.manage_settings",
+    "posts.manage_settings", "contacts.manage_contact_types",
 }
 
 
 def expected_permissions(key: str, super_admin_can_post: bool = False) -> set[str]:
-    perms = {MANAGE_PERMISSION[role] for role in MANAGES[key]} | {"posts.view_stats"}
+    # Every official manages important numbers in their own area (contacts plan, decision C1).
+    perms = {MANAGE_PERMISSION[role] for role in MANAGES[key]} | {"posts.view_stats", "contacts.manage_contact"}
     if key != "PANCHAYAT_MEMBER":
         perms |= REVIEW | USER_ACTIONS
     if key != "SUPER_ADMIN" or super_admin_can_post:
