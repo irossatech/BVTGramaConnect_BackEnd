@@ -34,7 +34,7 @@ def test_register_returns_the_token_once_and_stores_only_its_hash(world):
     token = data["token"]
     assert len(token) >= 40
     assert data["device"]["village"] == {"level": "VILLAGE", "id": world.areas["kolakaluru"].id, "name": "కొలకలూరు"}
-    assert data["device"]["blocked"] is False and data["device"]["posts_per_day"] == 3
+    assert data["device"]["blocked"] is False and data["device"]["posts_per_day"] is None  # no daily limit
     device = CitizenDevice.objects.get()
     assert device.token_hash == hashlib.sha256(token.encode()).hexdigest()
     assert token not in str(CitizenDevice.objects.values().get())

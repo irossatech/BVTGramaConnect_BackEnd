@@ -61,8 +61,9 @@ class CitizenDeviceSerializer(serializers.ModelSerializer):
 
         return posts_today(obj).count()
 
-    def get_posts_per_day(self, obj) -> int:
-        return settings.CITIZEN_POSTS_PER_DAY
+    def get_posts_per_day(self, obj) -> int | None:
+        """null: no daily limit."""
+        return settings.CITIZEN_POSTS_PER_DAY or None
 
 
 class RegisteredSerializer(serializers.Serializer):

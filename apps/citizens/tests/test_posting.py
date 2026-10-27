@@ -68,7 +68,15 @@ def test_an_officials_login_is_not_a_citizen_token(world):
     assert response.status_code == 401 and code(response) == "citizen_token_invalid"
 
 
-def test_three_posts_a_day_per_phone(world, phone):
+def test_no_daily_limit_by_default(world, phone):
+    citizen = phone()
+    for index in range(12):
+        assert citizen.post(title=f"సమస్య {index}").status_code == 201
+    assert citizen.client.get(ME).json()["posts_per_day"] is None
+
+
+def test_a_daily_limit_can_be_switched_on(world, phone, settings):
+    settings.CITIZEN_POSTS_PER_DAY = 3
     citizen = phone()
     for index in range(3):
         assert citizen.post(title=f"సమస్య {index}").status_code == 201
@@ -97,7 +105,14 @@ def test_fields_are_checked(world, phone, fields, bad):
     assert not Post.objects.exists()
 
 
-def test_at_most_three_photos(world, phone, media_root):
+def test_no_photo_limit_by_default(world, phone, media_root):
+    response = phone().post(photos=[photo((400, 300)) for _ in range(8)])
+    assert response.status_code == 201 and len(response.json()["photos"]) == 8
+    assert [m.order for m in PostMedia.objects.order_by("order")] == list(range(8))
+
+
+def test_a_photo_limit_can_be_switched_on(world, phone, media_root, settings):
+    settings.CITIZEN_MAX_PHOTOS = 3
     response = phone().post(photos=[photo((400, 300)) for _ in range(4)])
     assert response.status_code == 400 and "photos" in response.json()["error"]["fields"]
     assert not Post.objects.exists() and not PostMedia.objects.exists()

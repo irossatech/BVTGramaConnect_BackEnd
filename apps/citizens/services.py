@@ -5,7 +5,8 @@
   CITIZEN_REGISTRATIONS_PER_IP_PER_DAY per IP address. Only its SHA-256 hash is
   stored; the IP address only as a keyed hash.
 - Posts go through posts.services.create_citizen_post: straight to PENDING
-  for every reviewer of the phone's village, at most CITIZEN_POSTS_PER_DAY.
+  for every reviewer of the phone's village. CITIZEN_POSTS_PER_DAY and
+  CITIZEN_MAX_PHOTOS limit them only when set (0, the default, is no limit).
 - Officials holding posts.block_citizen over a citizen post's village block
   the phone; its other pending posts in their area are discarded.
 """
@@ -177,14 +178,15 @@ def create_post(device: CitizenDevice, *, category, language: str, title: str, b
             "citizen_blocked", _("This phone has been blocked from posting."), status=http.HTTP_403_FORBIDDEN
         )
     now = timezone.now()
-    recent = posts_today(device, now)
     limit = settings.CITIZEN_POSTS_PER_DAY
-    if recent.count() >= limit:
-        oldest = recent.order_by("-created_at").values_list("created_at", flat=True)[limit - 1]
-        raise throttled(
-            _("You can send at most %(n)d posts a day.") % {"n": limit}, _seconds_until(oldest, now)
-        )
-    if len(photos) > settings.CITIZEN_MAX_PHOTOS:
+    if limit:
+        recent = posts_today(device, now)
+        if recent.count() >= limit:
+            oldest = recent.order_by("-created_at").values_list("created_at", flat=True)[limit - 1]
+            raise throttled(
+                _("You can send at most %(n)d posts a day.") % {"n": limit}, _seconds_until(oldest, now)
+            )
+    if settings.CITIZEN_MAX_PHOTOS and len(photos) > settings.CITIZEN_MAX_PHOTOS:
         raise _validation("photos", _("At most %(n)d photos.") % {"n": settings.CITIZEN_MAX_PHOTOS})
     # Photos are checked and re-encoded before anything is written (413/415 leave no post behind).
     processed = [media.process_image(photo) for photo in photos]

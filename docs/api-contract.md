@@ -815,7 +815,7 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Video | one per post, `VIDEO_MAX_SECONDS` 60, `MAX_VIDEO_UPLOAD_MB` default 50 |
 | Page size | feed 20, admin lists 100 |
 | Important numbers | 200 active per area (`CONTACTS_MAX_PER_AREA`); name 150, custom type 40 characters; CSV import 2 MB and 5,000 rows |
-| Citizen posts | 3 per phone in 24 hours (`CITIZEN_POSTS_PER_DAY`), at most 3 photos, no video; 5 posting tokens per IP address in 24 hours |
+| Citizen posts | No limit on posts or photos (switchable: `CITIZEN_POSTS_PER_DAY`, `CITIZEN_MAX_PHOTOS`); each photo at most `MAX_IMAGE_UPLOAD_MB`; no video; 5 posting tokens per IP address in 24 hours |
 
 ---
 
@@ -934,7 +934,7 @@ Built (`apps.citizens`). A citizen posts news or an issue for the village chosen
 | `POST /citizen/register/` | `{"nonce", "integrity_token", "platform": "android", "village_id", "app_version"?}` | `201 {"token": "…", "device": CitizenDevice}`. `400 validation_error` (expired or reused nonce: `fields.nonce`; unknown or inactive village: `fields.village_id`); `403 integrity_failed` (Google's verdict is not genuine); `429 throttled` after `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY` (5) registrations from one IP address in 24 hours. |
 | `GET /citizen/me/` | token | `CitizenDevice` |
 | `PATCH /citizen/me/` | token; `{"village_id"}` | `CitizenDevice`. The village posts go to. |
-| `POST /citizen/posts/` | token; multipart `category`, `language`, `title`, `body`, `photos` (0 to `CITIZEN_MAX_PHOTOS`, 3) | `201 CitizenPost`, already `PENDING`. `400 validation_error`; `403 citizen_blocked`; `413`/`415` as for officials' photos; `429 throttled` after `CITIZEN_POSTS_PER_DAY` (3) posts in 24 hours, with `retry_after_s`. |
+| `POST /citizen/posts/` | token; multipart `category`, `language`, `title`, `body`, `photos` (any number; repeat the field per photo) | `201 CitizenPost`, already `PENDING`. `400 validation_error`; `403 citizen_blocked`; `413`/`415` as for officials' photos (each photo at most `MAX_IMAGE_UPLOAD_MB`). No daily limit by default; only if `CITIZEN_POSTS_PER_DAY` or `CITIZEN_MAX_PHOTOS` is set: `429 throttled` with `retry_after_s`, or `400` on `photos`. |
 | `GET /citizen/posts/` | token | `[CitizenPost]`, this phone's posts, newest first, at most 50 |
 
 Every citizen endpoint answers `401 citizen_token_invalid` without a valid token. A blocked phone can still read `GET /citizen/me/` and its posts, but cannot post.
@@ -942,7 +942,9 @@ Every citizen endpoint answers `401 citizen_token_invalid` without a valid token
 ```jsonc
 // CitizenDevice
 {"id": "3b7e…", "village": {"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు"},
- "blocked": false, "posts_today": 1, "posts_per_day": 3, "created_at": "2026-10-27T10:00:00+05:30"}
+ "blocked": false, "posts_today": 1,
+ "posts_per_day": null,   // null: no daily limit (CITIZEN_POSTS_PER_DAY unset)
+ "created_at": "2026-10-27T10:00:00+05:30"}
 
 // CitizenPost
 {"id": "c2d4…", "status": "PENDING", "category": "news", "language": "te",
@@ -972,15 +974,15 @@ Every citizen endpoint answers `401 citizen_token_invalid` without a valid token
 | `CITIZEN_INTEGRITY_REQUIRED` | on in `prod.py`, off in `dev.py` and tests | Off: registration skips the Google check (for debug builds and the qa server). Never off in production. |
 | `PLAY_INTEGRITY_PACKAGE` | — | The app's package name, e.g. `com.bvt.gramaconnect` |
 | `PLAY_INTEGRITY_CREDENTIALS_FILE` | `FCM_CREDENTIALS_FILE` | Service account allowed to call the Play Integrity API |
-| `CITIZEN_POSTS_PER_DAY` | 3 | Posts per phone in 24 hours |
+| `CITIZEN_POSTS_PER_DAY` | 0 (no limit) | Posts per phone in 24 hours, when set |
+| `CITIZEN_MAX_PHOTOS` | 0 (no limit) | Photos per citizen post, when set |
 | `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY` | 5 | Tokens per IP address in 24 hours |
-| `CITIZEN_MAX_PHOTOS` | 3 | Photos per citizen post |
 
 ### Open decisions and defaults
 
 | # | Question | Default until decided |
 |---|---|---|
 | CP1 | Do all levels see a citizen post at once, or one level at a time? | At once, with escalation after 24 h (owner decision Q1) |
-| CP2 | Photos only, or video too? | Photos only, at most 3 |
+| CP2 | Photos only, or video too? | Photos only, any number (no limit on posts or photos, decided 2026-10-27) |
 | CP3 | iPhones: Play Integrity is Android only. Apple App Attest is needed for iOS. | iOS registration works only while `CITIZEN_INTEGRITY_REQUIRED` is off |
 | CP4 | Is the citizen told when the post is published or discarded? | Shown in `GET /citizen/posts/` (`status`, `reason`); no push |
