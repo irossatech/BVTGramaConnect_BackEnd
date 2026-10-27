@@ -53,7 +53,7 @@ def test_sync_recreates_missing_groups(db):
     changes = sync_role_permissions()
     assert "PANCHAYAT_MEMBER: created group 'Panchayat Member'" in changes
     # create, submit, view_stats, and manage_contact (contacts decision C1)
-    assert RoleGroup.objects.get(key="PANCHAYAT_MEMBER").group.permissions.count() == 4
+    assert RoleGroup.objects.get(key="PANCHAYAT_MEMBER").group.permissions.count() == 5
 
 
 def test_command_reports_audits_once_and_checks(db):
@@ -109,7 +109,7 @@ def test_group_permission_changes_outside_the_sync_are_audited(db):
     assert entry.data == {"change": "added", "permissions": ["audit.view_audit_log"]}
     group.permissions.clear()
     removed = AuditLog.objects.filter(action="setting.group_permissions_changed", data__change="removed").get()
-    assert len(removed.data["permissions"]) == 20
+    assert len(removed.data["permissions"]) == 22
 
 
 # --- Django admin ----------------------------------------------------------------------------------

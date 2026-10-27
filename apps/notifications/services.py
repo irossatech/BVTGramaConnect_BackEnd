@@ -185,6 +185,78 @@ def tell_citizen(post) -> bool:
     return True
 
 
+SERVICE_MANAGE = "service_requests.manage_service_requests"
+
+
+def notify_service_request(request) -> list[Notification]:
+    """A citizen's new service request: inbox item and push for the admins of its village, mandal and district.
+
+    Like posts, the Super Admin is not pinged for every request; they see the list in the console.
+    The text names the service and the citizen, never the phone number.
+    """
+    from apps.service_requests.models import label
+
+    village = AreaRef(AreaLevel.VILLAGE, request.village_id)
+    areas = [AreaRef(level, area_id) for level, area_id in ancestry(village).items()]
+    users = authz.holders(SERVICE_MANAGE, areas, platform_wide=False).distinct() if areas else User.objects.none()
+    created = []
+    for user in users:
+        language = user.preferred_language
+        area = AreaDescriber(language).describe(village)
+        text = render(
+            "service_request_new", language,
+            area=area["name"] if area else "", service=label(request.service, language), name=request.name,
+        )
+        created.append(
+            Notification.objects.create(
+                user=user,
+                kind=NotificationKind.SERVICE_REQUEST,
+                title=text[:255],
+                body=(request.details or label(request.service, language))[:500],
+                service_request=request,
+                area_level=AreaLevel.VILLAGE,
+                area_id=request.village_id,
+            )
+        )
+        async_task(
+            "apps.notifications.tasks.send_push_to_user",
+            str(user.pk),
+            text[:255],
+            label(request.service, language),
+            {
+                "type": NotificationKind.SERVICE_REQUEST,
+                "request_id": str(request.pk),
+                "area_level": AreaLevel.VILLAGE,
+                "area_id": request.village_id,
+            },
+            group="push",
+        )
+    return created
+
+
+def tell_citizen_service_request(request) -> bool:
+    """After a status change: push the new status (and the note) to the phone that sent the request."""
+    from apps.service_requests.models import label
+
+    device = request.device
+    if not device.fcm_token:
+        return False
+    language = device.language
+    text = render(
+        "service_request_updated", language,
+        service=label(request.service, language), status=label(request.status, language), note=request.note,
+    )
+    async_task(
+        "apps.notifications.tasks.send_push_to_citizen",
+        str(device.pk),
+        text[:255],
+        (request.note or label(request.status, language))[:500],
+        {"type": "SERVICE_REQUEST_UPDATED", "request_id": str(request.pk), "status": request.status},
+        group="push",
+    )
+    return True
+
+
 def alert_escalation(post, level: str, hours: int) -> list[Notification]:
     if level == AreaLevel.STATE:
         users = admins_over(post.target, levels=set(), include_super_admins=True)
