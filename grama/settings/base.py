@@ -300,6 +300,8 @@ NEAREST_VILLAGE_MAX_KM = env.float("NEAREST_VILLAGE_MAX_KM", default=50.0)
 # Uploaded photos: checked, re-encoded (drops EXIF), stored as WebP.
 MAX_IMAGE_UPLOAD_MB = env.int("MAX_IMAGE_UPLOAD_MB", default=10)
 POST_IMAGE_MAX_PX = 1280
+# Big cards in the app (the feed's image_url): sharp on a phone, a third of the bytes on 2G/3G.
+POST_MEDIUM_PX = env.int("POST_MEDIUM_PX", default=640)
 POST_THUMB_PX = 320
 POST_IMAGE_QUALITY = 80
 # Video posts (owner decision Q8): MP4 or MOV, one per post, never with photos.

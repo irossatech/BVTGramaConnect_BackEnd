@@ -227,6 +227,7 @@ def test_video_with_ffmpeg_on_the_server(api, world, make_post, ffmpeg, media_ro
     assert ffmpeg["poster_at"] == 1.0
     media = PostMedia.objects.get()
     assert media.kind == MediaKind.VIDEO and (media_root / media.video.name).exists()
+    assert media.medium.name.endswith("-poster-640.webp") and (media_root / media.medium.name).exists()
     detail = api(world.users["pm_kolakaluru"]).get(f"{POSTS}{post.id}/").json()
     assert detail["media"][0]["kind"] == "video"
 
@@ -329,7 +330,7 @@ def test_removing_the_video_deletes_every_file(api, world, make_post, ffmpeg, me
     post = make_post("pm_kolakaluru", "kolakaluru", submit=False)
     media_id = send_video(api, world, post).json()["id"]
     media = PostMedia.objects.get(pk=media_id)
-    files = [media_root / name for name in (media.video.name, media.image.name, media.thumbnail.name)]
+    files = [media_root / name for name in (media.video.name, media.image.name, media.medium.name, media.thumbnail.name)]
     assert all(path.exists() for path in files)
     response = api(world.users["pm_kolakaluru"]).delete(f"{POSTS}{post.id}/media/{media_id}/")
     assert response.status_code == 204

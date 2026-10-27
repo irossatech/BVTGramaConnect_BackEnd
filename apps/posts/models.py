@@ -157,14 +157,17 @@ class MediaKind(models.TextChoices):
 class PostMedia(models.Model):
     """A photo, or a video (owner decision Q8).
 
-    Photo: `image` is the WebP at most 1280 px on the long side, `thumbnail` 320 px.
-    Video: `video` is the MP4 as uploaded; `image` and `thumbnail` hold its poster frame.
+    Photo: `image` is the WebP at most 1280 px on the long side, `medium` 640 px
+    (for big cards on slow networks), `thumbnail` 320 px.
+    Video: `video` is the MP4 as uploaded; `image`, `medium` and `thumbnail` hold its poster frame.
+    `medium` is empty on media uploaded before it existed until `backfill_medium_images` runs.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="media")
     kind = models.CharField(max_length=5, choices=MediaKind.choices, default=MediaKind.IMAGE)
     image = models.FileField(upload_to=media_upload_path, max_length=200)
+    medium = models.FileField(upload_to=media_upload_path, max_length=200, blank=True)
     video = models.FileField(upload_to=media_upload_path, max_length=200, blank=True)
     duration_s = models.PositiveSmallIntegerField(null=True, blank=True)
     thumbnail = models.FileField(upload_to=media_upload_path, max_length=200)
@@ -178,9 +181,9 @@ class PostMedia(models.Model):
         ordering = ["order", "created_at"]
 
     def delete(self, *args, **kwargs):
-        image, thumbnail, video = self.image, self.thumbnail, self.video
+        files = (self.image, self.medium, self.thumbnail, self.video)
         result = super().delete(*args, **kwargs)
-        for field in (image, thumbnail, video):
+        for field in files:
             if field:
                 field.storage.delete(field.name)
         return result
