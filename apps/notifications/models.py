@@ -47,6 +47,7 @@ class NotificationKind(models.TextChoices):
     REVIEW_PENDING = "REVIEW_PENDING", _("New post to review")
     ESCALATION = "ESCALATION", _("Escalated post")
     ACCOUNT = "ACCOUNT", _("Account")
+    SERVICE_REQUEST = "SERVICE_REQUEST", _("New service request")
 
 
 class Notification(models.Model):
@@ -58,6 +59,10 @@ class Notification(models.Model):
     title = models.CharField(max_length=255)
     body = models.CharField(max_length=500, blank=True)
     post = models.ForeignKey("posts.Post", on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    #: For kind SERVICE_REQUEST: the request to open (docs/api-contract.md, section 16).
+    service_request = models.ForeignKey(
+        "service_requests.ServiceRequest", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
     area_level = models.CharField(max_length=10, blank=True)
     area_id = models.PositiveIntegerField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -83,6 +88,7 @@ class Recipient(models.TextChoices):
     CITIZENS = "citizens", _("Citizens of the area")
     REVIEWERS = "reviewers", _("Reviewers of the area")
     HIGHER_ADMIN = "higher_admin", _("Admins one level up")
+    CITIZEN = "citizen", _("The citizen who sent it")
 
 
 class NotificationTemplate(models.Model):

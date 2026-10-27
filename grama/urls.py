@@ -28,6 +28,7 @@ api_v1 = [
     path("", include("apps.web_admin.api_urls")),
     path("", include("apps.contacts.urls")),
     path("", include("apps.citizens.urls")),
+    path("", include("apps.service_requests.urls")),
 ]
 
 urlpatterns = [

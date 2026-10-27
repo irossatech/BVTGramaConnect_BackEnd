@@ -70,6 +70,7 @@ LOCAL_APPS = [
     "apps.web_admin",
     "apps.contacts",
     "apps.citizens",
+    "apps.service_requests",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -377,6 +378,10 @@ CITIZEN_POSTS_PER_DAY = env.int("CITIZEN_POSTS_PER_DAY", default=5)
 # Photos per post and new phones per IP address in 24 hours: 0 (the default) is no limit.
 CITIZEN_MAX_PHOTOS = env.int("CITIZEN_MAX_PHOTOS", default=0)
 CITIZEN_REGISTRATIONS_PER_IP_PER_DAY = env.int("CITIZEN_REGISTRATIONS_PER_IP_PER_DAY", default=0)
+
+# --- Service requests (apps.service_requests, docs/api-contract.md section 16) ---
+# Requests one citizen phone (all its installs) may send in 24 hours; 0 is no limit.
+SERVICE_REQUESTS_PER_DAY = env.int("SERVICE_REQUESTS_PER_DAY", default=10)
 
 # Help-line numbers for the app (owner decision Q19), labels from the approved prototype.
 # Statewide contacts in apps.contacts replace them once loaded; this list is the fallback.
