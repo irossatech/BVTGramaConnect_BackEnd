@@ -100,7 +100,9 @@ class PostsView(CitizenView):
     )
     def post(self, request):
         device = services.device_from_request(request)
-        payload = request.data.copy() if hasattr(request.data, "copy") else dict(request.data)
+        # Copy only the text fields: copying request.data deep-copies the uploaded files, which fails
+        # for any file Django saved to a temporary file (over FILE_UPLOAD_MAX_MEMORY_SIZE, 2.5 MB).
+        payload = request.POST.copy() if hasattr(request.data, "getlist") else dict(request.data)
         if hasattr(request.data, "getlist"):
             payload.setlist("photos", request.FILES.getlist("photos"))
             payload.setlist("videos", request.FILES.getlist("videos"))

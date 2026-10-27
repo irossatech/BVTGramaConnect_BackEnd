@@ -46,7 +46,7 @@ gc showmigrations
 Common problems:
 - **502 Bad Gateway:** Gunicorn is down or still starting. Check its log; `deploy.sh` prints the cause of a failed start.
 - **Telugu shows as `????`:** the database or the connection is not utf8mb4. `setup.sh` creates the database with utf8mb4 and Django adds `charset=utf8mb4`; check `SHOW CREATE DATABASE grama;`.
-- **413 Request Entity Too Large:** uploads over 60 MB are refused by Nginx (`client_max_body_size` in `templates/nginx-locations.conf`). Django then limits photos to `MAX_IMAGE_UPLOAD_MB` and videos to `MAX_VIDEO_UPLOAD_MB` (50).
+- **413 Request Entity Too Large:** uploads over 60 MB are refused by Nginx (`client_max_body_size` in `templates/nginx-locations.conf`); citizen posts (`/api/v1/citizen/posts/`), which can carry several videos at once, allow 200 MB per request. Django then limits photos to `MAX_IMAGE_UPLOAD_MB` and videos to `MAX_VIDEO_UPLOAD_MB` (50).
 - **403 on `/django-admin/`:** the address is not in `OFFICE_IPS`. Check `grep allow /etc/nginx/snippets/gramaconnect-locations.conf`.
 - **Video uploads ask for `duration_s` or a `poster`:** ffmpeg is missing, so the server cannot measure the video or make its poster. `sudo apt-get install ffmpeg`, then restart Gunicorn.
 - **429 on login:** Nginx allows 10 login or password-change requests a minute per IP (zone `gc_login`). Django (django-axes) also locks a username for 15 minutes after 5 failed tries from one IP (`locked_out`). An admin above the person can unlock them early ("Unlock" in the console or the app), or from the shell: `gc axes_reset_username <username>`.
