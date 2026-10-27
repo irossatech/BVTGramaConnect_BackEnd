@@ -125,6 +125,7 @@ class EventSerializer(serializers.Serializer):
 class CitizenSummarySerializer(serializers.Serializer):
     device_id = serializers.UUIDField()
     blocked = serializers.BooleanField()
+    blocked_until = serializers.DateTimeField(allow_null=True)
     posts_total = serializers.IntegerField()
     posts_discarded = serializers.IntegerField()
 
@@ -132,6 +133,12 @@ class CitizenSummarySerializer(serializers.Serializer):
 class CitizenBlockSerializer(serializers.Serializer):
     """The reason is required (contract section 15); it is also the discard reason of the phone's pending posts."""
 
+    comment = serializers.CharField(max_length=500)
+    #: A block is temporary; the Super Admin picks its length each time (lead's decision of 2026-10-27).
+    days = serializers.IntegerField(min_value=1, max_value=365)
+
+
+class CitizenDiscardAllSerializer(serializers.Serializer):
     comment = serializers.CharField(max_length=500)
 
 
@@ -209,17 +216,21 @@ class PostSerializer(serializers.ModelSerializer):
         """The phone behind a citizen post (contract section 15); null on officials' posts."""
         if not obj.citizen_id:
             return None
-        counts = self.context.setdefault("citizen_counts", {})
-        if obj.citizen_id not in counts:
-            posts = Post.objects.filter(citizen_id=obj.citizen_id)
-            counts[obj.citizen_id] = (posts.count(), posts.filter(status=PostStatus.DISCARDED).count())
-        total, discarded = counts[obj.citizen_id]
-        return {
-            "device_id": str(obj.citizen_id),
-            "blocked": obj.citizen.blocked,
-            "posts_total": total,
-            "posts_discarded": discarded,
-        }
+        from apps.citizens.services import active_block, same_phone
+
+        summaries = self.context.setdefault("citizen_summaries", {})
+        if obj.citizen_id not in summaries:
+            posts = Post.objects.filter(citizen__in=same_phone(obj.citizen))
+            block = active_block(obj.citizen)
+            summaries[obj.citizen_id] = {
+                "device_id": str(obj.citizen_id),
+                "blocked": block is not None,
+                "blocked_until": serializers.DateTimeField().to_representation(block.blocked_until)
+                if block and block.blocked_until else None,
+                "posts_total": posts.count(),
+                "posts_discarded": posts.filter(status=PostStatus.DISCARDED).count(),
+            }
+        return summaries[obj.citizen_id]
 
     def get_allowed_actions(self, obj) -> list[str]:
         request = self.context.get("request")
@@ -296,6 +307,8 @@ class TargetsSerializer(serializers.Serializer):
 class SettingsSerializer(serializers.Serializer):
     review_escalation_hours = serializers.IntegerField(min_value=6, max_value=168)
     languages = serializers.DictField(child=serializers.BooleanField())
+    #: Posts one citizen phone may send in 24 hours; 0 is no limit (contract section 15).
+    citizen_posts_per_day = serializers.IntegerField(min_value=0, max_value=1000)
     admin_posts_auto_publish = serializers.BooleanField(read_only=True)
     review_first_decision_wins = serializers.BooleanField(read_only=True)
     super_admin_can_post = serializers.BooleanField(read_only=True)

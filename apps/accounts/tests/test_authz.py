@@ -41,7 +41,6 @@ MANAGE_PERMISSION = {
 REVIEW = {
     "posts.review_post", "posts.publish_post", "posts.recheck_post", "posts.discard_post",
     "posts.takedown_post", "posts.reverse_decision", "posts.view_review_queue", "posts.mark_urgent",
-    "posts.block_citizen",  # whoever reviews a citizen post's village may block the phone (contract section 15)
 }
 USER_ACTIONS = {"accounts.block_user", "accounts.reset_password", "accounts.reassign_user", "accounts.unlock_user"}
 SUPER_ONLY = {
@@ -49,6 +48,7 @@ SUPER_ONLY = {
     "web_admin.access_web_console", "web_admin.view_dashboard", "web_admin.view_reports",
     "notifications.manage_templates", "web_public.manage_contact_messages", "posts.manage_categories",
     "posts.manage_settings", "contacts.manage_contact_types",
+    "posts.block_citizen",  # only the Super Admin blocks a citizen's phone (contract section 15)
 }
 
 

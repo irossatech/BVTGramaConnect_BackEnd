@@ -32,6 +32,7 @@ from .serializers import (
     AdminCategorySerializer,
     CategorySerializer,
     CitizenBlockSerializer,
+    CitizenDiscardAllSerializer,
     MediaSerializer,
     MediaUploadSerializer,
     PostSerializer,
@@ -112,7 +113,32 @@ POST_FILTERS = [
     OpenApiParameter("target_level", OpenApiTypes.STR, enum=[lv.value for lv in AreaLevel]),
     OpenApiParameter("escalated", OpenApiTypes.BOOL),
     OpenApiParameter("q", OpenApiTypes.STR, description="Search title and body"),
+    OpenApiParameter(
+        "source", OpenApiTypes.STR, enum=["official", "citizen"],
+        description="official: posts by officials; citizen: citizen posts (contract section 15)",
+    ),
 ]
+
+
+SOURCE_PARAM = OpenApiParameter(
+    "source", OpenApiTypes.STR, enum=["official", "citizen"],
+    description="official: posts by officials; citizen: citizen posts (contract section 15)",
+)
+SOURCE_Q = {"official": Q(citizen__isnull=True), "citizen": Q(citizen__isnull=False)}
+
+
+def source_filter(request, queryset):
+    """Citizen posts in their own queue (lead's decision of 2026-10-27): ?source=official|citizen."""
+    source = request.query_params.get("source", "").strip().lower()
+    if not source:
+        return queryset
+    if source not in SOURCE_Q:
+        raise ApiError("validation_error", _("Unknown source."), fields={"source": [_("official or citizen")]})
+    return queryset.filter(SOURCE_Q[source])
+
+
+def source_counts(queryset) -> dict:
+    return {name: queryset.filter(query).count() for name, query in SOURCE_Q.items()}
 
 
 def area_filter(request, queryset):
@@ -158,7 +184,7 @@ class PostViewSet(viewsets.GenericViewSet):
         query = params.get("q", "").strip()
         if query:
             queryset = queryset.filter(Q(title__icontains=query) | Q(body__icontains=query))
-        return area_filter(self.request, queryset)
+        return source_filter(self.request, area_filter(self.request, queryset))
 
     @extend_schema(summary="Posts you can see", parameters=POST_FILTERS)
     def list(self, request):
@@ -266,7 +292,7 @@ class PostViewSet(viewsets.GenericViewSet):
         return self._out(services.set_urgent(request.user, post, data.validated_data["is_urgent"]))
 
     @extend_schema(
-        summary="Block the phone that wrote this citizen post; its other pending posts in your area are discarded",
+        summary="Super Admin: block the phone that wrote this citizen post for some days; its pending posts are discarded",
         request=CitizenBlockSerializer,
         responses=PostSerializer,
     )
@@ -275,15 +301,27 @@ class PostViewSet(viewsets.GenericViewSet):
         post = self.get_object()
         data = CitizenBlockSerializer(data=request.data)
         data.is_valid(raise_exception=True)
-        citizen_services.block(request.user, post, data.validated_data["comment"])
+        citizen_services.block(request.user, post, data.validated_data["comment"], data.validated_data["days"])
         return self._out(post)
 
-    @extend_schema(summary="Let the phone that wrote this citizen post post again", request=None, responses=PostSerializer)
+    @extend_schema(summary="Super Admin: lift the block on the phone that wrote this citizen post", request=None, responses=PostSerializer)
     @action(detail=True, methods=["post"], url_path="unblock-citizen")
     def unblock_citizen(self, request, pk=None):
         post = self.get_object()
         citizen_services.unblock(request.user, post)
         return self._out(post)
+
+    @extend_schema(
+        summary="Super Admin: discard every pending post of the phone that wrote this citizen post",
+        request=CitizenDiscardAllSerializer,
+        responses={200: OpenApiTypes.OBJECT},
+    )
+    @action(detail=True, methods=["post"], url_path="discard-citizen-posts")
+    def discard_citizen_posts(self, request, pk=None):
+        post = self.get_object()
+        data = CitizenDiscardAllSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        return Response({"discarded": citizen_services.discard_all(request.user, post, data.validated_data["comment"])})
 
     @extend_schema(summary='"Visible to" choices for compose (owner decision Q5)', responses=TargetsSerializer)
     @action(detail=False, methods=["get"], url_path="targets")
@@ -311,25 +349,32 @@ class ReviewQueueView(generics.ListAPIView):
         parameters=[
             OpenApiParameter("level", OpenApiTypes.STR), OpenApiParameter("area_id", OpenApiTypes.INT),
             OpenApiParameter("category", OpenApiTypes.STR), OpenApiParameter("escalated", OpenApiTypes.BOOL),
+            SOURCE_PARAM,
         ],
     )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
 
-    def get_queryset(self):
+    def _queue(self):
+        """The queue with every filter except source, for the tab counts."""
         queryset = services.review_queue(self.request.user)
         params = self.request.query_params
         if params.get("category"):
             queryset = queryset.filter(category__key=params["category"])
         if params.get("escalated") in ("1", "true", "True"):
             queryset = queryset.filter(escalated_at__isnull=False)
-        return post_queryset(area_filter(self.request, queryset))
+        return area_filter(self.request, queryset)
+
+    def get_queryset(self):
+        return post_queryset(source_filter(self.request, self._queue()))
 
     def list(self, request, *args, **kwargs):
         page = self.paginate_queryset(self.get_queryset())
         context = self.get_serializer_context()
         prime_posts(context, page)
-        return self.get_paginated_response(PostSerializer(page, many=True, context=context).data)
+        response = self.get_paginated_response(PostSerializer(page, many=True, context=context).data)
+        response.data["source_counts"] = source_counts(self._queue())
+        return response
 
 
 class StatsView(APIView):
@@ -374,6 +419,7 @@ def current_settings() -> dict:
     return {
         "review_escalation_hours": int(services.runtime("REVIEW_ESCALATION_HOURS")),
         "languages": {"te": True, "en": bool(services.runtime("LANGUAGE_EN_ENABLED"))},
+        "citizen_posts_per_day": int(services.runtime("CITIZEN_POSTS_PER_DAY")),
         "admin_posts_auto_publish": settings.ADMIN_POSTS_AUTO_PUBLISH,
         "review_first_decision_wins": settings.REVIEW_FIRST_DECISION_WINS,
         "super_admin_can_post": settings.SUPER_ADMIN_CAN_POST,
@@ -388,7 +434,11 @@ class AdminSettingsView(APIView):
     def get(self, request):
         return Response(current_settings())
 
-    @extend_schema(summary="Change escalation hours or switch English", request=SettingsSerializer, responses=SettingsSerializer)
+    @extend_schema(
+        summary="Change escalation hours, switch English, or set the citizen posts per day",
+        request=SettingsSerializer,
+        responses=SettingsSerializer,
+    )
     def patch(self, request):
         data = SettingsSerializer(data=request.data, partial=True)
         data.is_valid(raise_exception=True)
@@ -396,6 +446,8 @@ class AdminSettingsView(APIView):
         changes = {}
         if "review_escalation_hours" in data.validated_data:
             changes["REVIEW_ESCALATION_HOURS"] = data.validated_data["review_escalation_hours"]
+        if "citizen_posts_per_day" in data.validated_data:
+            changes["CITIZEN_POSTS_PER_DAY"] = data.validated_data["citizen_posts_per_day"]
         languages = data.validated_data.get("languages")
         if languages is not None:
             if languages.get("te") is False:

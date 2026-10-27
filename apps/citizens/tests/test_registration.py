@@ -34,7 +34,8 @@ def test_register_returns_the_token_once_and_stores_only_its_hash(world):
     token = data["token"]
     assert len(token) >= 40
     assert data["device"]["village"] == {"level": "VILLAGE", "id": world.areas["kolakaluru"].id, "name": "కొలకలూరు"}
-    assert data["device"]["blocked"] is False and data["device"]["posts_per_day"] is None  # no daily limit
+    assert data["device"]["blocked"] is False and data["device"]["posts_per_day"] == 5
+    assert data["device"]["block_reason"] is None and data["device"]["blocked_until"] is None
     device = CitizenDevice.objects.get()
     assert device.token_hash == hashlib.sha256(token.encode()).hexdigest()
     assert token not in str(CitizenDevice.objects.values().get())
@@ -47,8 +48,29 @@ def test_registration_is_audited_without_ip_or_token(world):
     token = register(world).json()["token"]
     entry = AuditLog.objects.get(action="citizen.registered")
     assert entry.via == "citizen" and entry.actor is None
-    assert entry.data == {"platform": "android", "integrity_checked": False}
+    assert entry.data == {"platform": "android", "integrity_checked": False, "reinstall": False}
     assert "10.20.30.40" not in str(entry.__dict__) and token not in str(entry.__dict__)
+
+
+def test_the_android_id_is_stored_only_hashed_and_marks_a_reinstall(world):
+    register(world, android_id="a1b2c3d4e5f60718")
+    register(world, android_id="A1B2C3D4E5F60718", ip="10.9.9.9")  # same phone after a reinstall
+    first, second = CitizenDevice.objects.order_by("created_at")
+    assert first.android_id_hash == second.android_id_hash and len(first.android_id_hash) == 64
+    assert "a1b2c3d4e5f60718" not in str(CitizenDevice.objects.values().first()).lower()
+    entries = list(AuditLog.objects.filter(action="citizen.registered").order_by("created_at").values_list("data", flat=True))
+    assert [e["reinstall"] for e in entries] == [False, True]
+
+
+def test_push_token_and_language_at_registration_and_later(world):
+    token = register(world, fcm_token="fcm-abc", language="en").json()["token"]
+    device = CitizenDevice.objects.get()
+    assert (device.fcm_token, device.language) == ("fcm-abc", "en")
+    client = APIClient(HTTP_X_CITIZEN_TOKEN=token)
+    response = client.patch(ME, {"fcm_token": "fcm-new", "language": "te"}, format="json")
+    assert response.status_code == 200 and response.json()["language"] == "te"
+    device.refresh_from_db()
+    assert (device.fcm_token, device.language) == ("fcm-new", "te")
 
 
 def test_a_nonce_works_once(world):

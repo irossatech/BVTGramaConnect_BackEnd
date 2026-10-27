@@ -205,7 +205,7 @@ Rank 0 is the highest. The groups, their levels, ranks and permissions are writt
 | `posts.reverse_decision` | yes | yes | yes | yes |  |
 | `posts.view_review_queue` | yes | yes | yes | yes |  |
 | `posts.mark_urgent` | yes | yes | yes | yes |  |
-| `posts.block_citizen` | yes | yes | yes | yes |  |
+| `posts.block_citizen` | yes |  |  |  |  |
 | `posts.view_stats` | yes | yes | yes | yes | yes |
 | `posts.manage_categories` | yes |  |  |  |  |
 | `posts.manage_settings` | yes |  |  |  |  |
@@ -349,8 +349,9 @@ python manage.py sync_role_permissions
 | `contact.created`, `contact.updated`, `contact.removed` | An important number added, edited or verified, or removed; the phone is masked (`******0001`) |
 | `contact_type.created`, `contact_type.updated` | Contact types managed by the Super Admin |
 | `contacts.imported` | A CSV import of important numbers committed; counts only |
-| `citizen.registered` | A citizen's phone got its posting token; platform and whether Play Integrity was checked, never the IP or the token |
-| `citizen.blocked`, `citizen.unblocked` | An official blocked or unblocked the phone behind a citizen post; the post and the reason |
+| `citizen.registered` | A citizen's phone got its posting token; platform, whether Play Integrity was checked and whether it is a reinstall; never the IP, the Android ID or the token |
+| `citizen.blocked`, `citizen.unblocked` | The Super Admin blocked (reason, days, end) or unblocked the phone behind a citizen post |
+| `citizen.posts_discarded` | The Super Admin discarded all pending posts of one phone; the reason and how many |
 
 No audit entry holds a password. The console shows these under Audit Log, tab Logins and tab Users.
 

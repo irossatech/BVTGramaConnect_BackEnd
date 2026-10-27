@@ -224,7 +224,8 @@ def probe(world, client, actor: User, perm: str, area_key: str | None) -> bool:
         return outcome(client.get(f"/api/v1/stats/?level={area.level}&area_id={area.id}"))
     if perm == "posts.block_citizen":
         citizen_post = citizen_post_at(world, area_key)
-        return outcome(client.post(f"/api/v1/posts/{citizen_post.id}/block-citizen/", {"comment": "probe"}, format="json"))
+        body = {"comment": "probe", "days": 7}
+        return outcome(client.post(f"/api/v1/posts/{citizen_post.id}/block-citizen/", body, format="json"))
     if perm == "contacts.manage_contact":
         if area.level == "STATE":
             body = {"type": "health", "name": "Ambulance", "phone": "108"}

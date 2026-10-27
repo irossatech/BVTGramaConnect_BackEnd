@@ -10,7 +10,8 @@
   escalations that reach state level.
 - Reviewers one level up: inbox item + push when a post is escalated.
 - The author: inbox item + push when a reviewer publishes, sends back,
-  discards or takes down their post.
+  discards or takes down their post. A citizen post's phone gets the same
+  push, without an inbox item (tell_citizen).
 
 Texts come from NotificationTemplate (editable in the console), rendered in
 each recipient's preferred language. Topic pushes use the post's own language,
@@ -157,6 +158,31 @@ def tell_author(post, actor=None) -> list[Notification]:
     kind, template_key = message
     author = User.objects.filter(pk=post.author_id, is_active=True)
     return notify_users(author, post=post, kind=kind, template_key=template_key, comment=latest_comment(post))
+
+
+def tell_citizen(post) -> bool:
+    """After a decision on a citizen post: push the result to the phone that wrote it (contract section 15, CP4).
+
+    Same texts as tell_author, in the phone's language. No inbox item: citizens have no account.
+    Returns whether a push was queued (the phone sent an FCM token and the status is one to report).
+    """
+    if not post.citizen_id:
+        return False
+    message = AUTHOR_MESSAGES.get(post.status)
+    device = post.citizen
+    if message is None or not device.fcm_token:
+        return False
+    kind, template_key = message
+    text = render(template_key, device.language, **_values(post, device.language, comment=latest_comment(post)))
+    async_task(
+        "apps.notifications.tasks.send_push_to_citizen",
+        str(device.pk),
+        text[:255],
+        post.title,
+        _push_data(post, kind),
+        group="push",
+    )
+    return True
 
 
 def alert_escalation(post, level: str, hours: int) -> list[Notification]:

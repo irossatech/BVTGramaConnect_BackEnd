@@ -68,11 +68,37 @@ def test_an_officials_login_is_not_a_citizen_token(world):
     assert response.status_code == 401 and code(response) == "citizen_token_invalid"
 
 
-def test_no_daily_limit_by_default(world, phone):
+def test_five_posts_a_day_by_default(world, phone):
     citizen = phone()
-    for index in range(12):
+    for index in range(5):
         assert citizen.post(title=f"సమస్య {index}").status_code == 201
+    sixth = citizen.post(title="ఆరవ")
+    assert sixth.status_code == 429 and code(sixth) == "throttled"
+    assert citizen.client.get(ME).json()["posts_per_day"] == 5
+
+
+def test_the_super_admin_changes_the_daily_limit_in_settings(api, world, phone):
+    client = api(world.users["super"])
+    response = client.patch("/api/v1/admin/settings/", {"citizen_posts_per_day": 2}, format="json")
+    assert response.status_code == 200 and response.json()["citizen_posts_per_day"] == 2
+    citizen = phone()
+    assert citizen.post(title="ఒకటి").status_code == 201 and citizen.post(title="రెండు").status_code == 201
+    assert citizen.post(title="మూడు").status_code == 429
+    client.patch("/api/v1/admin/settings/", {"citizen_posts_per_day": 0}, format="json")  # 0: no limit
+    assert citizen.post(title="మూడు").status_code == 201
     assert citizen.client.get(ME).json()["posts_per_day"] is None
+    others = api(world.users["da_guntur"]).patch("/api/v1/admin/settings/", {"citizen_posts_per_day": 9}, format="json")
+    assert others.status_code == 403
+
+
+def test_reinstalling_does_not_reset_the_daily_limit(world, phone, settings):
+    settings.CITIZEN_POSTS_PER_DAY = 2
+    first = phone(android_id="a1b2c3d4e5f60718")
+    first.post(title="ఒకటి")
+    first.post(title="రెండు")
+    again = phone(android_id="a1b2c3d4e5f60718", ip="10.8.8.8")  # same phone, new install, new token
+    assert again.token != first.token
+    assert again.post(title="మూడు").status_code == 429
 
 
 def test_a_daily_limit_can_be_switched_on(world, phone, settings):

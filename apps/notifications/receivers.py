@@ -42,6 +42,7 @@ def on_post_submitted(sender, post, **kwargs):
 @receiver(post_decided, dispatch_uid="notifications.post_decided")
 def on_post_decided(sender, post, action=None, actor=None, **kwargs):
     _safely(services.tell_author, post, actor)
+    _safely(services.tell_citizen, post)
 
 
 def _escalation_hours() -> int:
