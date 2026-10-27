@@ -169,8 +169,13 @@ def posts_today(device: CitizenDevice, now=None):
     return Post.objects.filter(citizen=device, created_at__gt=now - DAY)
 
 
-def create_post(device: CitizenDevice, *, category, language: str, title: str, body: str, photos=()) -> Post:
-    """Checks, then posts.services.create_citizen_post with the photos attached in its transaction."""
+def create_post(
+    device: CitizenDevice, *, category, language: str, title: str, body: str, photos=(), videos=()
+) -> Post:
+    """Checks, then posts.services.create_citizen_post with the photos and videos attached in its transaction.
+
+    Photos and videos may be mixed, any number of each (decision of 2026-10-27).
+    """
     if not settings.CITIZEN_POSTS_ENABLED:
         raise permission_denied(_("Citizen posts are switched off."))
     if device.blocked:
@@ -188,12 +193,17 @@ def create_post(device: CitizenDevice, *, category, language: str, title: str, b
             )
     if settings.CITIZEN_MAX_PHOTOS and len(photos) > settings.CITIZEN_MAX_PHOTOS:
         raise _validation("photos", _("At most %(n)d photos.") % {"n": settings.CITIZEN_MAX_PHOTOS})
-    # Photos are checked and re-encoded before anything is written (413/415 leave no post behind).
+    if videos and not settings.VIDEO_POSTS_ENABLED:
+        raise permission_denied(_("Video posts are switched off."))
+    # Every file is checked (and photos re-encoded) before anything is written: 413/415 leave no post behind.
     processed = [media.process_image(photo) for photo in photos]
+    prepared = [media.prepare_video(video, lenient=True) for video in videos]
 
     def attach(post):
         for order, item in enumerate(processed):
             media.store_photo(post, item, order)
+        for order, item in enumerate(prepared, start=len(processed)):
+            media.store_video(post, item, order)
 
     data = post_services.PostInput(
         category=category, language=language, title=title, body=body,

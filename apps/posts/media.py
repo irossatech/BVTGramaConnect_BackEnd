@@ -21,6 +21,7 @@ import subprocess
 import tempfile
 import warnings
 from contextlib import contextmanager
+from dataclasses import dataclass
 
 from django.conf import settings
 from django.core.files.base import ContentFile
@@ -214,12 +215,30 @@ def _sniff_video(upload) -> str:
     return VIDEO_EXTENSIONS[extension]
 
 
-def add_video(user, post: Post, upload, *, duration_s=None, poster=None) -> PostMedia:
-    if not settings.VIDEO_POSTS_ENABLED:
-        raise permission_denied(_("Video posts are switched off."))
-    _check_can_add(user, post)
-    if post.media.exists():
-        raise _media_conflict(_("A post has either photos or one video."))
+@dataclass
+class PreparedVideo:
+    """A checked video, ready to store: its container, length (None if unknown) and processed poster."""
+
+    upload: object
+    container: str
+    duration: float | None
+    poster: tuple
+
+
+def _placeholder_poster() -> ContentFile:
+    """A plain 16:9 picture for a video whose frame the server cannot cut (no ffmpeg) and the phone did not send."""
+    buffer = io.BytesIO()
+    Image.new("RGB", (1280, 720), (38, 50, 56)).save(buffer, "PNG")
+    return ContentFile(buffer.getvalue(), name="placeholder.png")
+
+
+def prepare_video(upload, *, duration_s=None, poster=None, lenient: bool = False) -> PreparedVideo:
+    """Check a video upload and make its poster. Writes nothing.
+
+    Officials (lenient=False): without ffprobe and ffmpeg the phone must send
+    duration_s and a poster. Citizens (lenient=True, contract section 15): the
+    length may stay unknown and a placeholder poster is used instead.
+    """
     if upload.size > settings.MAX_VIDEO_UPLOAD_MB * 1024 * 1024:
         raise _too_large(settings.MAX_VIDEO_UPLOAD_MB, _("Videos"))
     container = _sniff_video(upload)
@@ -227,49 +246,66 @@ def add_video(user, post: Post, upload, *, duration_s=None, poster=None) -> Post
     with _local_path(upload, f".{container}") as path:
         measured = probe_duration(path)
         duration = measured if measured is not None else duration_s
-        if duration is None:
+        if duration is None and not lenient:
             raise ApiError(
                 "validation_error",
                 _("Send the video length in seconds."),
                 fields={"duration_s": [_("Required when the server cannot measure the video.")]},
             )
-        if float(duration) > settings.VIDEO_MAX_SECONDS + DURATION_SLACK_S:
+        if duration is not None and float(duration) > settings.VIDEO_MAX_SECONDS + DURATION_SLACK_S:
             raise ApiError(
                 "video_too_long",
                 _("Videos can be at most %(s)d seconds.") % {"s": settings.VIDEO_MAX_SECONDS},
                 fields={"file": [_("Too long.")]},
             )
-        frame = extract_poster(path, min(1.0, float(duration) / 2))
+        frame = extract_poster(path, min(1.0, float(duration) / 2) if duration is not None else 1.0)
 
     if frame is not None:
         poster_file = ContentFile(frame, name="poster.png")
     elif poster is not None:
         poster_file = poster
+    elif lenient:
+        poster_file = _placeholder_poster()
     else:
         raise ApiError(
             "validation_error",
             _("Send a poster photo for the video."),
             fields={"poster": [_("Required when the server cannot make a poster.")]},
         )
-    large, medium, thumb, width, height = process_image(poster_file)
+    return PreparedVideo(upload, container, float(duration) if duration is not None else None, process_image(poster_file))
 
-    with transaction.atomic():
-        media = PostMedia(
-            post=post,
-            kind=MediaKind.VIDEO,
-            width=width,
-            height=height,
-            bytes=upload.size,
-            duration_s=max(1, round(float(duration))),
-            order=0,
-        )
-        upload.seek(0)
-        media.video.save(f"{media.id}.{container}", upload, save=False)
-        media.image.save(f"{media.id}-poster-{settings.POST_IMAGE_MAX_PX}.webp", ContentFile(large), save=False)
-        media.medium.save(f"{media.id}-poster-{settings.POST_MEDIUM_PX}.webp", ContentFile(medium), save=False)
-        media.thumbnail.save(f"{media.id}-poster-{settings.POST_THUMB_PX}.webp", ContentFile(thumb), save=False)
-        media.save()
+
+def store_video(post: Post, prepared: PreparedVideo, order: int) -> PostMedia:
+    """Save a prepare_video() result as the post's media number `order`. Checks are the caller's."""
+    large, medium, thumb, width, height = prepared.poster
+    upload = prepared.upload
+    media = PostMedia(
+        post=post,
+        kind=MediaKind.VIDEO,
+        width=width,
+        height=height,
+        bytes=upload.size,
+        duration_s=max(1, round(prepared.duration)) if prepared.duration is not None else None,
+        order=order,
+    )
+    upload.seek(0)
+    media.video.save(f"{media.id}.{prepared.container}", upload, save=False)
+    media.image.save(f"{media.id}-poster-{settings.POST_IMAGE_MAX_PX}.webp", ContentFile(large), save=False)
+    media.medium.save(f"{media.id}-poster-{settings.POST_MEDIUM_PX}.webp", ContentFile(medium), save=False)
+    media.thumbnail.save(f"{media.id}-poster-{settings.POST_THUMB_PX}.webp", ContentFile(thumb), save=False)
+    media.save()
     return media
+
+
+def add_video(user, post: Post, upload, *, duration_s=None, poster=None) -> PostMedia:
+    if not settings.VIDEO_POSTS_ENABLED:
+        raise permission_denied(_("Video posts are switched off."))
+    _check_can_add(user, post)
+    if post.media.exists():
+        raise _media_conflict(_("A post has either photos or one video."))
+    prepared = prepare_video(upload, duration_s=duration_s, poster=poster)
+    with transaction.atomic():
+        return store_video(post, prepared, order=0)
 
 
 def remove_photo(user, post: Post, media: PostMedia) -> None:

@@ -8,7 +8,7 @@ from rest_framework import serializers
 from apps.feed.serializers import AreaSlimSerializer
 from apps.geography.areas import AreaDescriber, AreaRef
 from apps.geography.models import AreaLevel
-from apps.posts.models import Category, PostStatus, ReviewAction
+from apps.posts.models import Category, MediaKind, PostStatus, ReviewAction
 
 from .models import CitizenDevice
 
@@ -77,6 +77,7 @@ class CitizenPostWriteSerializer(serializers.Serializer):
     title = serializers.CharField(max_length=150)
     body = serializers.CharField(max_length=5000)
     photos = serializers.ListField(child=serializers.FileField(), required=False, default=list)
+    videos = serializers.ListField(child=serializers.FileField(), required=False, default=list)
 
     def validate_title(self, value):
         value = " ".join(value.split())
@@ -96,6 +97,13 @@ class CitizenPhotoSerializer(serializers.Serializer):
     thumb_url = serializers.CharField()
 
 
+class CitizenVideoSerializer(serializers.Serializer):
+    url = serializers.CharField()
+    poster_url = serializers.CharField()
+    thumb_url = serializers.CharField()
+    duration_s = serializers.IntegerField(allow_null=True)
+
+
 class CitizenPostSerializer(serializers.Serializer):
     id = serializers.UUIDField()
     status = serializers.CharField()
@@ -105,6 +113,7 @@ class CitizenPostSerializer(serializers.Serializer):
     body = serializers.CharField()
     area = serializers.SerializerMethodField()
     photos = serializers.SerializerMethodField()
+    videos = serializers.SerializerMethodField()
     created_at = serializers.DateTimeField()
     decided_at = serializers.DateTimeField(allow_null=True)
     reason = serializers.SerializerMethodField()
@@ -118,6 +127,20 @@ class CitizenPostSerializer(serializers.Serializer):
         return [
             {"url": default_storage.url(item.image.name), "thumb_url": default_storage.url(item.thumbnail.name)}
             for item in obj.media.all()
+            if item.kind == MediaKind.IMAGE
+        ]
+
+    @extend_schema_field(CitizenVideoSerializer(many=True))
+    def get_videos(self, obj):
+        return [
+            {
+                "url": default_storage.url(item.video.name),
+                "poster_url": default_storage.url(item.image.name),
+                "thumb_url": default_storage.url(item.thumbnail.name),
+                "duration_s": item.duration_s,
+            }
+            for item in obj.media.all()
+            if item.kind == MediaKind.VIDEO
         ]
 
     def get_reason(self, obj) -> str | None:
