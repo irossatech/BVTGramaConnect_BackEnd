@@ -976,7 +976,7 @@ Every citizen endpoint answers `401 citizen_token_invalid` without a valid token
 |---|---|---|
 | `CITIZEN_POSTS_ENABLED` | on | `off` answers `403 permission_denied` on `POST /citizen/posts/` |
 | `CITIZEN_INTEGRITY_REQUIRED` | on in `prod.py`, off in `dev.py` and tests | Off: registration skips the Google check (for debug builds and the qa server). Never off in production. |
-| `PLAY_INTEGRITY_PACKAGE` | — | The app's package name, e.g. `com.bvt.gramaconnect` |
+| `PLAY_INTEGRITY_PACKAGE` | — | The app's package name, e.g. `com.bvt.app` |
 | `PLAY_INTEGRITY_CREDENTIALS_FILE` | `FCM_CREDENTIALS_FILE` | Service account allowed to call the Play Integrity API |
 | `CITIZEN_POSTS_PER_DAY` | 0 (no limit) | Posts per phone in 24 hours, when set |
 | `CITIZEN_MAX_PHOTOS` | 0 (no limit) | Photos per citizen post, when set |

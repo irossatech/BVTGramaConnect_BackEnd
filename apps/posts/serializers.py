@@ -130,7 +130,9 @@ class CitizenSummarySerializer(serializers.Serializer):
 
 
 class CitizenBlockSerializer(serializers.Serializer):
-    comment = serializers.CharField(max_length=500, required=False, allow_blank=True, default="")
+    """The reason is required (contract section 15); it is also the discard reason of the phone's pending posts."""
+
+    comment = serializers.CharField(max_length=500)
 
 
 class PostSerializer(serializers.ModelSerializer):

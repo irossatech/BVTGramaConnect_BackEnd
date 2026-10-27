@@ -145,10 +145,10 @@ def test_iphones_wait_for_app_attest_while_integrity_is_required(world, required
 def verdict(nonce_value, **changes):
     payload = {
         "requestDetails": {
-            "requestPackageName": "com.bvt.gramaconnect", "nonce": nonce_value,
+            "requestPackageName": "com.bvt.app", "nonce": nonce_value,
             "timestampMillis": str(int(time.time() * 1000)),
         },
-        "appIntegrity": {"appRecognitionVerdict": "PLAY_RECOGNIZED", "packageName": "com.bvt.gramaconnect"},
+        "appIntegrity": {"appRecognitionVerdict": "PLAY_RECOGNIZED", "packageName": "com.bvt.app"},
         "deviceIntegrity": {"deviceRecognitionVerdict": ["MEETS_DEVICE_INTEGRITY"]},
     }
     for path, value in changes.items():
@@ -159,7 +159,7 @@ def verdict(nonce_value, **changes):
 
 @pytest.fixture
 def play(settings, monkeypatch):
-    settings.PLAY_INTEGRITY_PACKAGE = "com.bvt.gramaconnect"
+    settings.PLAY_INTEGRITY_PACKAGE = "com.bvt.app"
     verifier = integrity.PlayIntegrityVerifier()
     box = {}
     monkeypatch.setattr(verifier, "decode", lambda token: box["payload"])
