@@ -20,6 +20,8 @@ the brief, so this file checks that the API enforces it everywhere.
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 from axes.models import AccessAttempt
 from django.test import Client
@@ -29,7 +31,8 @@ from rest_framework.test import APIClient
 from apps.accounts.models import RoleAssignment, User
 from apps.accounts.role_matrix import ALL_PERMISSIONS, ROLE_GROUPS
 from apps.accounts.sync import wanted_permissions
-from apps.posts.models import Category, Post, PostStatus
+from apps.citizens.models import CitizenDevice
+from apps.posts.models import CITIZEN_ROLE, Category, Post, PostStatus
 from conftest import MAP, PARENT, TEST_PASSWORD, inside
 
 pytestmark = pytest.mark.django_db
@@ -87,11 +90,15 @@ PLATFORM_PROBES = {
 }
 
 
+#: Probes whose target is always a village: a member's village, or a citizen post's village.
+VILLAGE_PROBES = USER_PROBES | {"posts.block_citizen"}
+
+
 def target_for(perm: str, position: str, home: str) -> str | None:
     where = POSITIONS[home][position]
     if perm in MANAGE_ROLE:
         return area_at(ROLE_LEVEL[MANAGE_ROLE[perm]], position, where, home)
-    if perm in USER_PROBES:
+    if perm in VILLAGE_PROBES:
         return area_at("VILLAGE", position, where, home)
     return where
 
@@ -135,6 +142,27 @@ def post_at(world, area_key: str, status: str, *, author: str = "pm_nidamanuru",
         published_at=now if status == PostStatus.PUBLISHED else None,
         decided_at=now if decided else None,
         decided_by_role=decided_by_role,
+    )
+
+
+def citizen_post_at(world, village_key: str) -> Post:
+    """A pending citizen post (contract section 15) in that village, from a fresh phone."""
+    village = world.ref(village_key)
+    phone = CitizenDevice.objects.create(
+        token_hash=uuid.uuid4().hex, platform="android", village_id=village.id, nonce=uuid.uuid4().hex
+    )
+    return Post.objects.create(
+        citizen=phone,
+        posted_as_role=CITIZEN_ROLE,
+        posted_as_level=village.level,
+        posted_as_area_id=village.id,
+        category=Category.objects.get(key="announce"),
+        title="Citizen probe",
+        body="Probe text.",
+        target_level=village.level,
+        target_area_id=village.id,
+        status=PostStatus.PENDING,
+        submitted_at=timezone.now(),
     )
 
 
@@ -194,6 +222,9 @@ def probe(world, client, actor: User, perm: str, area_key: str | None) -> bool:
         return outcome(client.post(f"/api/v1/posts/{published.id}/urgent/", {"is_urgent": True}, format="json"))
     if perm == "posts.view_stats":
         return outcome(client.get(f"/api/v1/stats/?level={area.level}&area_id={area.id}"))
+    if perm == "posts.block_citizen":
+        citizen_post = citizen_post_at(world, area_key)
+        return outcome(client.post(f"/api/v1/posts/{citizen_post.id}/block-citizen/", {"comment": "probe"}, format="json"))
     if perm == "contacts.manage_contact":
         if area.level == "STATE":
             body = {"type": "health", "name": "Ambulance", "phone": "108"}

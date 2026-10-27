@@ -16,6 +16,9 @@ from apps.accounts.roles import Role
 from apps.geography.areas import AreaRef
 from apps.geography.models import AreaLevel
 
+#: posted_as_role of a citizen post. Not a group: citizens have no account (contract section 15).
+CITIZEN_ROLE = "CITIZEN"
+
 
 class Category(models.Model):
     key = models.SlugField(max_length=20, unique=True)
@@ -64,7 +67,15 @@ class PostStatus(models.TextChoices):
 
 class Post(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="posts")
+    #: The official who wrote it; empty for a citizen post, which has `citizen` instead.
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="posts"
+    )
+    #: The phone that wrote a citizen post (docs/api-contract.md, section 15); empty for officials' posts.
+    citizen = models.ForeignKey(
+        "citizens.CitizenDevice", on_delete=models.PROTECT, null=True, blank=True, related_name="posts"
+    )
+    #: A group key, or CITIZEN_ROLE for a citizen post.
     posted_as_role = models.CharField(max_length=20, choices=Role.choices)
     posted_as_level = models.CharField(max_length=10, choices=AreaLevel.choices)
     posted_as_area_id = models.PositiveIntegerField()
@@ -107,6 +118,12 @@ class Post(models.Model):
                 condition=models.Q(event_end__isnull=True) | models.Q(event_end__gte=models.F("event_start")),
                 name="post_event_end_after_start",
             ),
+            # Exactly one of: an official author, or a citizen's phone.
+            models.CheckConstraint(
+                condition=models.Q(author__isnull=False, citizen__isnull=True)
+                | models.Q(author__isnull=True, citizen__isnull=False),
+                name="post_author_or_citizen",
+            ),
         ]
         # Checked per area by accounts.authz (docs/authorization.md).
         permissions = [
@@ -121,6 +138,7 @@ class Post(models.Model):
             ("view_review_queue", "See the review queue of the area"),
             ("mark_urgent", "Mark posts urgent"),
             ("view_stats", "See the counts for an area dashboard"),
+            ("block_citizen", "Block or unblock the phone that wrote a citizen post"),
         ]
 
     def __str__(self):

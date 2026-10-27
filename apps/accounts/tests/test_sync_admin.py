@@ -109,7 +109,7 @@ def test_group_permission_changes_outside_the_sync_are_audited(db):
     assert entry.data == {"change": "added", "permissions": ["audit.view_audit_log"]}
     group.permissions.clear()
     removed = AuditLog.objects.filter(action="setting.group_permissions_changed", data__change="removed").get()
-    assert len(removed.data["permissions"]) == 20
+    assert len(removed.data["permissions"]) == 21
 
 
 # --- Django admin ----------------------------------------------------------------------------------

@@ -122,6 +122,17 @@ class EventSerializer(serializers.Serializer):
         return attrs
 
 
+class CitizenSummarySerializer(serializers.Serializer):
+    device_id = serializers.UUIDField()
+    blocked = serializers.BooleanField()
+    posts_total = serializers.IntegerField()
+    posts_discarded = serializers.IntegerField()
+
+
+class CitizenBlockSerializer(serializers.Serializer):
+    comment = serializers.CharField(max_length=500, required=False, allow_blank=True, default="")
+
+
 class PostSerializer(serializers.ModelSerializer):
     category = CategorySerializer()
     translation = serializers.SerializerMethodField()
@@ -133,6 +144,7 @@ class PostSerializer(serializers.ModelSerializer):
     escalated = serializers.SerializerMethodField()
     decided_by = serializers.SerializerMethodField()
     last_review = serializers.SerializerMethodField()
+    citizen = serializers.SerializerMethodField()
     allowed_actions = serializers.SerializerMethodField()
 
     class Meta:
@@ -142,7 +154,7 @@ class PostSerializer(serializers.ModelSerializer):
             "target_level", "target_area", "event", "is_urgent", "media", "author", "posted_as",
             "created_at", "updated_at", "submitted_at", "published_at",
             "escalated", "escalated_at", "escalation_level",
-            "decided_by", "decided_at", "last_review", "allowed_actions",
+            "decided_by", "decided_at", "last_review", "citizen", "allowed_actions",
         ]
 
     def get_translation(self, obj) -> None:
@@ -188,6 +200,23 @@ class PostSerializer(serializers.ModelSerializer):
             "comment": latest.comment,
             "actor": person(latest.actor, latest.actor_role),
             "at": serializers.DateTimeField().to_representation(latest.created_at),
+        }
+
+    @extend_schema_field(CitizenSummarySerializer(allow_null=True))
+    def get_citizen(self, obj):
+        """The phone behind a citizen post (contract section 15); null on officials' posts."""
+        if not obj.citizen_id:
+            return None
+        counts = self.context.setdefault("citizen_counts", {})
+        if obj.citizen_id not in counts:
+            posts = Post.objects.filter(citizen_id=obj.citizen_id)
+            counts[obj.citizen_id] = (posts.count(), posts.filter(status=PostStatus.DISCARDED).count())
+        total, discarded = counts[obj.citizen_id]
+        return {
+            "device_id": str(obj.citizen_id),
+            "blocked": obj.citizen.blocked,
+            "posts_total": total,
+            "posts_discarded": discarded,
         }
 
     def get_allowed_actions(self, obj) -> list[str]:

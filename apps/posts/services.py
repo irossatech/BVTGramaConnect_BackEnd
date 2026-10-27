@@ -2,7 +2,8 @@
 
 State machine (CLAUDE.md, contract section 10):
     DRAFT -> PENDING | PUBLISHED (admin auto-publish)
-    PENDING -> PUBLISHED | RECHECK | DISCARDED
+    (new) -> PENDING for a citizen's phone (create_citizen_post; contract section 15)
+    PENDING -> PUBLISHED | RECHECK | DISCARDED (never RECHECK for a citizen post)
     RECHECK -> PENDING | PUBLISHED (admin auto-publish)
     PUBLISHED -> UNPUBLISHED
     any decided state -> REVERSE by a strictly higher level
@@ -43,7 +44,7 @@ from apps.geography.models import AreaLevel
 from grama.exceptions import ApiError, out_of_area, permission_denied
 
 from . import signals
-from .models import Category, Post, PostStatus, ReviewAction, SettingOverride
+from .models import CITIZEN_ROLE, Category, Post, PostStatus, ReviewAction, SettingOverride
 
 CREATE = "posts.create_post"
 SUBMIT = "posts.submit_post"
@@ -51,6 +52,7 @@ REVIEW = "posts.review_post"
 PUBLISH = "posts.publish_post"
 URGENT = "posts.mark_urgent"
 QUEUE = "posts.view_review_queue"
+BLOCK_CITIZEN = "posts.block_citizen"
 #: Review action -> the permission it needs over the post's target.
 DECISION_PERMISSION = {
     "publish": "posts.publish_post",
@@ -119,6 +121,15 @@ def invalid_transition(post: Post, action: str) -> ApiError:
     )
 
 
+def citizen_cannot_recheck(post: Post) -> ApiError:
+    return ApiError(
+        "invalid_transition",
+        _("A citizen cannot edit a post, so it cannot be sent for recheck. Publish or discard it."),
+        status=http.HTTP_409_CONFLICT,
+        current_status=post.status,
+    )
+
+
 def comment_required() -> ApiError:
     return ApiError(
         "validation_error",
@@ -179,28 +190,34 @@ def can_reverse(user, reviewer: Grant | None, post: Post) -> bool:
 
 def allowed_actions(user, post: Post) -> list[str]:
     actions: list[str] = []
-    if post.author_id == user.id:
+    if post.author_id is not None and post.author_id == user.id:
         if post.status in EDITABLE:
             actions += ["edit", "add_media", "submit"]
         if post.status == PostStatus.DRAFT:
             actions.append("delete")
     target = post.target
     if post.status == PostStatus.PENDING and post.author_id != user.id:
-        actions += [name for name in ("publish", "recheck", "discard") if authz.can(user, DECISION_PERMISSION[name], target)]
+        # A citizen cannot edit a post, so it is never sent back for recheck (contract section 15).
+        decisions = ("publish", "discard") if post.citizen_id else ("publish", "recheck", "discard")
+        actions += [name for name in decisions if authz.can(user, DECISION_PERMISSION[name], target)]
     if post.status == PostStatus.PUBLISHED and authz.can(user, DECISION_PERMISSION["unpublish"], target):
         actions.append("unpublish")
     if can_reverse(user, reviewer_assignment(user, post, DECISION_PERMISSION["reverse"]), post):
         actions.append("reverse")
     if post.status != PostStatus.DRAFT and authz.can(user, URGENT, target):
         actions.append("set_urgent")
+    if post.citizen_id and authz.can(user, BLOCK_CITIZEN, target):
+        actions.append("unblock_citizen" if post.citizen.blocked else "block_citizen")
     return actions
 
 
 # --- Helpers -------------------------------------------------------------------------------------
 
 
-def _log(post: Post, action: str, from_status: str, to_status: str, actor, role: str, comment: str = "") -> None:
-    """role: the key of the group the actor acted under."""
+def _log(
+    post: Post, action: str, from_status: str, to_status: str, actor, role: str, comment: str = "", via: str = ""
+) -> None:
+    """role: the key of the group the actor acted under (CITIZEN_ROLE for a citizen's phone)."""
     ReviewAction.objects.create(
         post=post,
         action=action,
@@ -217,8 +234,13 @@ def _log(post: Post, action: str, from_status: str, to_status: str, actor, role:
         target=post,
         target_label=post.title,
         area=post.target,
-        via="system" if actor is None else "app",
-        data={"from": from_status, "to": to_status, **({"comment": comment} if comment else {})},
+        via=via or ("system" if actor is None else "app"),
+        data={
+            "from": from_status,
+            "to": to_status,
+            **({"comment": comment} if comment else {}),
+            **({"citizen": str(post.citizen_id)} if post.citizen_id else {}),
+        },
     )
 
 
@@ -227,7 +249,7 @@ def _after_commit(signal, **kwargs) -> None:
 
 
 def _reload(post: Post) -> Post:
-    return Post.objects.select_related("author", "category", "decided_by").get(pk=post.pk)
+    return Post.objects.select_related("author", "citizen", "category", "decided_by").get(pk=post.pk)
 
 
 def _check_target(target: AreaRef) -> None:
@@ -343,6 +365,41 @@ def create_post(user, data: PostInput, *, submit: bool = True) -> Post:
     return _reload(post)
 
 
+def create_citizen_post(device, data: PostInput, attach=None) -> Post:
+    """A citizen's post: straight to PENDING for every reviewer of its village (contract section 15).
+
+    `device` is the citizens.CitizenDevice that wrote it; the caller has checked its token,
+    block and daily limit. `attach(post)` stores the photos inside the same transaction, so
+    reviewers are alerted (post_submitted, after commit) only once the photos exist.
+    """
+    _check_target(data.target)
+    now = timezone.now()
+    with transaction.atomic():
+        post = Post.objects.create(
+            citizen=device,
+            posted_as_role=CITIZEN_ROLE,
+            posted_as_level=data.target.level,
+            posted_as_area_id=data.target.id,
+            category=data.category,
+            language=data.language,
+            title=data.title,
+            body=data.body,
+            target_level=data.target.level,
+            target_area_id=data.target.id,
+            status=PostStatus.PENDING,
+            submitted_at=now,
+        )
+        record(
+            "post.created", target=post, target_label=post.title, area=post.target, via="citizen",
+            data={"citizen": str(device.pk)},
+        )
+        if attach is not None:
+            attach(post)
+        _log(post, ReviewAction.Action.SUBMIT, PostStatus.DRAFT, PostStatus.PENDING, None, CITIZEN_ROLE, via="citizen")
+        _after_commit(signals.post_submitted, post=post)
+    return _reload(post)
+
+
 def _own_editable(user, post: Post, action: str) -> None:
     if post.author_id != user.id:
         raise permission_denied(_("Only the author can change this post."))
@@ -394,7 +451,7 @@ def delete_post(user, post: Post) -> None:
             raise invalid_transition(_reload(post), "deleted")
         record("post.deleted", actor=user, target_label=post.title, area=post.target, data={"post_id": str(post.pk)})
     for item in media:
-        for field in (item.image, item.thumbnail):
+        for field in (item.image, item.medium, item.thumbnail):
             if field:
                 field.storage.delete(field.name)
 
@@ -433,6 +490,8 @@ def review(user, post: Post, action: str, comment: str = "", to_status: str | No
         raise ApiError("validation_error", _("Unknown action."), fields={"action": [_("Unknown action.")]})
 
     from_status, new_status, logged_action, needs_comment = DECISIONS[action]
+    if new_status == PostStatus.RECHECK and post.citizen_id:
+        raise citizen_cannot_recheck(post)
     if needs_comment and not comment:
         raise comment_required()
     if from_status == PostStatus.PENDING and post.author_id == user.id:
@@ -477,6 +536,8 @@ def _reverse(user, reviewer: Grant, post: Post, comment: str, to_status: str | N
         )
     if post.status not in DECIDED:
         raise invalid_transition(post, "reversed")
+    if to_status == PostStatus.RECHECK and post.citizen_id:
+        raise citizen_cannot_recheck(post)
     if not can_reverse(user, reviewer, post):
         raise permission_denied(_("Only a higher level can reverse this decision."))
 
