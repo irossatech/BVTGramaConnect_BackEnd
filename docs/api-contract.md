@@ -104,6 +104,9 @@ All errors share one shape:
 | 401 | `not_authenticated` | No token or session, or the console session ended after 30 idle minutes |
 | 401 | `token_expired` | Access token expired; refresh and retry |
 | 401 | `session_revoked` | Token or session version changed (block, reset, password change elsewhere), or refresh token blacklisted |
+| 401 | `citizen_token_invalid` | A citizen endpoint without a valid `X-Citizen-Token` (section 15) |
+| 403 | `citizen_blocked` | The phone was blocked by an official and cannot post (section 15) |
+| 403 | `integrity_failed` | Google Play Integrity did not confirm a genuine app on a real phone (section 15) |
 | 403 | `account_blocked` | Blocked user tries to log in |
 | 403 | `not_console_user` | Console login without `web_admin.access_web_console`; no session is created |
 | 403 | `password_change_required` | The official must choose a new password first; only `GET /me/`, `POST /auth/password/change/`, `/auth/session/logout/`, `/auth/refresh/` and `/auth/logout/` work, for sessions and tokens alike |
@@ -122,7 +125,7 @@ All errors share one shape:
 
 | Name | Values |
 |---|---|
-| `role` | A group's key: `SUPER_ADMIN`, `DISTRICT_ADMIN`, `MANDAL_ADMIN`, `VILLAGE_ADMIN`, `PANCHAYAT_MEMBER` (`docs/authorization.md`, section 6). Citizens have no account. `SYSTEM` appears only as an actor in history and audit. |
+| `role` | A group's key: `SUPER_ADMIN`, `DISTRICT_ADMIN`, `MANDAL_ADMIN`, `VILLAGE_ADMIN`, `PANCHAYAT_MEMBER` (`docs/authorization.md`, section 6). Citizens have no account. `CITIZEN` appears only as the role a citizen post was written under (`posted_as.role`, `source_role`; section 15). `SYSTEM` appears only as an actor in history and audit. |
 | `level` | `STATE`, `DISTRICT`, `MANDAL`, `VILLAGE` |
 | `post.status` | `DRAFT`, `PENDING`, `PUBLISHED`, `RECHECK`, `DISCARDED`, `UNPUBLISHED`. The prototypes call `UNPUBLISHED` "Taken down". |
 | `review_action.action` | `SUBMIT`, `RESUBMIT`, `PUBLISH`, `AUTO_PUBLISH`, `RECHECK`, `DISCARD`, `UNPUBLISH`, `ESCALATE`, `REVERSE` |
@@ -255,7 +258,8 @@ Returned by `GET /me/`, inside the app login response and inside the console ses
 - `event`: `null` or `{"kind", "start_date", "end_date"}`. `kind` is one of `deadline`, `camp`, `distribution`, `closure`, `meeting`; dates are `YYYY-MM-DD`; `end_date` is `null` for one-day events and never before `start_date` (owner decision Q7).
 - `is_urgent`: set by admins; urgent posts are pinned in the app and their push goes out at high priority (owner decision Q19).
 - `posted_as` is the role assignment the author used, so admin posts show under the official role, as the website FAQ promises.
-- `allowed_actions` values: `edit`, `submit`, `delete`, `add_media`, `publish`, `recheck`, `discard`, `unpublish`, `reverse`, `set_urgent`.
+- `allowed_actions` values: `edit`, `submit`, `delete`, `add_media`, `publish`, `recheck`, `discard`, `unpublish`, `reverse`, `set_urgent`, `block_citizen`, `unblock_citizen`.
+- `citizen`: `null`, or for a citizen post `{"device_id", "blocked", "posts_total", "posts_discarded"}`; its `author` is then `{"id": null, "name": "", "role": "CITIZEN"}` (section 15).
 
 ### FeedPost (public view)
 Lean on purpose, for 2G.
@@ -687,8 +691,9 @@ Built (web_admin app). `days` is 1 to 366, default 30, and counts posts created 
 | (new) | `DRAFT` | — | any posting role, `submit: false` | — |
 | (new) or `DRAFT` | `PENDING` | `SUBMIT` | Panchayat member, or an admin when auto-publish is off | — |
 | (new) or `DRAFT` | `PUBLISHED` | `AUTO_PUBLISH` | District, Mandal or Village Admin when `ADMIN_POSTS_AUTO_PUBLISH=True`; Super Admin only when also `SUPER_ADMIN_CAN_POST=True` | — |
+| (new) | `PENDING` | `SUBMIT` | a citizen's phone with a posting token (section 15); never `DRAFT` or published at once | — |
 | `PENDING` | `PUBLISHED` | `PUBLISH` | reviewer whose area contains the target, not the author | optional |
-| `PENDING` | `RECHECK` | `RECHECK` | same | required |
+| `PENDING` | `RECHECK` | `RECHECK` | same; never for a citizen post | required |
 | `PENDING` | `DISCARDED` | `DISCARD` | same | required |
 | `RECHECK` | `PENDING` | `RESUBMIT` | author | — |
 | `PUBLISHED` | `UNPUBLISHED` | `UNPUBLISH` | reviewer whose area contains the target, including the author's superiors (Pending Q18) | required |
@@ -708,7 +713,8 @@ Roles are Django groups and actions are Django permissions. The full group × pe
 | Action | Permission | Super Admin | District Admin | Mandal Admin | Village Admin | Panchayat member | Citizen |
 |---|---|---|---|---|---|---|---|
 | Read feed, categories, geography | public | yes | yes | yes | yes | yes | yes |
-| Create and submit a post | `posts.create_post`, `posts.submit_post` | only if `SUPER_ADMIN_CAN_POST`; the only group that may target the state | district, a mandal or a village inside it | mandal, or a village inside it | own village | own village, goes to review | no |
+| Create and submit a post | `posts.create_post`, `posts.submit_post` | only if `SUPER_ADMIN_CAN_POST`; the only group that may target the state | district, a mandal or a village inside it | mandal, or a village inside it | own village | own village, goes to review | the phone's village, with a posting token, always goes to review (section 15) |
+| Block or unblock a citizen's phone | `posts.block_citizen` | any | inside the district | inside the mandal | inside the village | no | no |
 | Review queue | `posts.view_review_queue`, `posts.review_post` | any post | posts targeted inside the district | inside the mandal | inside the village | no | no |
 | Publish, recheck, discard | `posts.publish_post`, `posts.recheck_post`, `posts.discard_post` | any | inside the district | inside the mandal | inside the village | no | no |
 | Take down a published post | `posts.takedown_post` | any | inside the district | inside the mandal | inside the village | no | no |
@@ -763,6 +769,9 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Super Admin: reports, audit, settings | `GET /admin/reports/*`, `GET /audit`, `/admin/settings`, `/admin/categories`, `/admin/notification-templates` |
 | App start | `POST /devices` |
 | Contacts tab (citizens) | `GET /contacts?village_id=`; `GET /contact-types` for chips and icons |
+| Citizen: first post (once per install) | `POST /citizen/challenge/`, Play Integrity on the phone, `POST /citizen/register/` |
+| Citizen: write a post, my posts | `POST /citizen/posts/`, `GET /citizen/posts/`, `GET /citizen/me/`; `PATCH /citizen/me/` after a village change |
+| Review a citizen post | as Review; plus `POST /posts/{id}/block-citizen/`, `POST /posts/{id}/unblock-citizen/` |
 | Important numbers (every official) | `GET /admin/contacts` (`section=AREA\|HELPLINE`), `POST /admin/contacts`, `PATCH /admin/contacts/{id}`, `DELETE /admin/contacts/{id}`, `GET /admin/contacts/targets` |
 
 ### Super Admin console
@@ -806,6 +815,7 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Video | one per post, `VIDEO_MAX_SECONDS` 60, `MAX_VIDEO_UPLOAD_MB` default 50 |
 | Page size | feed 20, admin lists 100 |
 | Important numbers | 200 active per area (`CONTACTS_MAX_PER_AREA`); name 150, custom type 40 characters; CSV import 2 MB and 5,000 rows |
+| Citizen posts | No limit on posts or photos (switchable: `CITIZEN_POSTS_PER_DAY`, `CITIZEN_MAX_PHOTOS`); each photo at most `MAX_IMAGE_UPLOAD_MB`; no video; no limit on new phones (switchable: `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY`) |
 
 ---
 
@@ -904,3 +914,75 @@ All need `contacts.manage_contact`, which every official holds in their own area
 - CSV columns: `type`, `name`, `phone` (required), `custom_type`, `name_te`, `email`, `sort_order`, `consent` (`yes`/`1`/`true`), and the area as `district_lgd`, `mandal_lgd`, `village_lgd` or the names `district`, `mandal`, `village` (LGD code first, else the name within the parent; the deepest one given sets the level). Helpline rows leave the area columns empty and go to the state. A row matching an active number's type, phone and area updates it instead of adding one. `python manage.py import_contacts file.csv [--dry-run]` does the same.
 - `python manage.py seed_helplines` loads `apps/contacts/sample_data/helplines.csv`, the six numbers of `SITE_HELPLINES`, until the owner signs off a longer list (decision C3).
 - `GET /public/site-config/` reads `helplines` from the statewide numbers (`label_en` = `name`, `label_te` = `name_te` or the type's Telugu name, in `sort_order`), and falls back to `SITE_HELPLINES` while none are loaded.
+
+---
+
+## 15. citizens: citizen posts
+
+Built (`apps.citizens`). A citizen posts news or an issue for the village chosen in the app. Citizens never sign in (decision of 2026-10-27): each app install gets its own **posting token** from the server, issued only after Google Play Integrity confirms our genuine app on a real phone. Every citizen post goes to review; nothing a citizen writes is public before an official of that area publishes it. Open decisions and their defaults are at the end of this section.
+
+### How a phone gets its token (once)
+
+1. `POST /citizen/challenge/` returns a one-time `nonce`.
+2. The app asks Play Integrity for a token with that nonce (classic request).
+3. `POST /citizen/register/` with the nonce and the integrity token. The server checks Google's verdict: our package name, `PLAY_RECOGNIZED` app, `MEETS_DEVICE_INTEGRITY`, the same nonce, issued in the last few minutes. On success it returns the posting `token`, **shown once**. The server keeps only its SHA-256 hash.
+4. The app stores the token in encrypted storage (Android Keystore) and sends it as `X-Citizen-Token: <token>` on every citizen call. It is not a login: `Authorization` stays free and officials' tokens are never accepted here.
+
+| Method and path | Request | Response |
+|---|---|---|
+| `POST /citizen/challenge/` | — | `{"nonce": "…", "expires_in": 300}`. The nonce is signed by the server, valid for `CITIZEN_CHALLENGE_SECONDS` (300) and usable once. |
+| `POST /citizen/register/` | `{"nonce", "integrity_token", "platform": "android", "village_id", "app_version"?}` | `201 {"token": "…", "device": CitizenDevice}`. `400 validation_error` (expired or reused nonce: `fields.nonce`; unknown or inactive village: `fields.village_id`); `403 integrity_failed` (Google's verdict is not genuine). No limit on registrations by default; only if `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY` is set: `429 throttled` with `retry_after_s` after that many from one IP address in 24 hours. |
+| `GET /citizen/me/` | token | `CitizenDevice` |
+| `PATCH /citizen/me/` | token; `{"village_id"}` | `CitizenDevice`. The village posts go to. |
+| `POST /citizen/posts/` | token; multipart `category`, `language`, `title`, `body`, `photos` (any number; repeat the field per photo) | `201 CitizenPost`, already `PENDING`. `400 validation_error`; `403 citizen_blocked`; `413`/`415` as for officials' photos (each photo at most `MAX_IMAGE_UPLOAD_MB`). No daily limit by default; only if `CITIZEN_POSTS_PER_DAY` or `CITIZEN_MAX_PHOTOS` is set: `429 throttled` with `retry_after_s`, or `400` on `photos`. |
+| `GET /citizen/posts/` | token | `[CitizenPost]`, this phone's posts, newest first, at most 50 |
+
+Every citizen endpoint answers `401 citizen_token_invalid` without a valid token. A blocked phone can still read `GET /citizen/me/` and its posts, but cannot post.
+
+```jsonc
+// CitizenDevice
+{"id": "3b7e…", "village": {"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు"},
+ "blocked": false, "posts_today": 1,
+ "posts_per_day": null,   // null: no daily limit (CITIZEN_POSTS_PER_DAY unset)
+ "created_at": "2026-10-27T10:00:00+05:30"}
+
+// CitizenPost
+{"id": "c2d4…", "status": "PENDING", "category": "news", "language": "te",
+ "title": "…", "body": "…", "area": {"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు"},
+ "photos": [{"url": "/media/…-1280.webp", "thumb_url": "/media/…-320.webp"}],
+ "created_at": "…", "decided_at": null,
+ "reason": null}        // the reviewer's comment when DISCARDED or UNPUBLISHED, else null
+```
+
+### Rules
+
+- **Target:** always the phone's village (`village_id` of the device), never a mandal, district or the state. `event` and `is_urgent` are not available to citizens.
+- **Fields:** `category` an active category key; `language` `te` or `en`; `title` 1 to 150 characters; `body` 1 to 5,000; photos as officials' photos (JPEG, PNG or WebP, at most `MAX_IMAGE_UPLOAD_MB`, re-encoded to WebP with EXIF and GPS removed). Videos are not accepted.
+- **Review:** the post goes straight to `PENDING` and into the review queue of every official whose area contains the village: the Village Admin, the Mandal Admin, the District Admin and the Super Admin, at the same time. The first decision wins; after `REVIEW_ESCALATION_HOURS` without a decision the next level up is alerted, exactly as for Panchayat members' posts (owner decision Q1).
+- **Decisions:** `publish` or `discard` (reason required). `recheck` is not offered, because a citizen cannot edit a post. Take-down and reversal work as for any post, except that a reversal cannot move a citizen post to `RECHECK`.
+- **Public view:** a published citizen post shows `source_role: "CITIZEN"` in the feed. No name, phone or device is ever shown.
+- **Officials' view (`Post`):** `author` is `{"id": null, "name": "", "role": "CITIZEN"}` and `posted_as.role` is `CITIZEN`; a new field `citizen` holds `{"device_id", "blocked", "posts_total", "posts_discarded"}` (null on officials' posts). `allowed_actions` may include `block_citizen` or `unblock_citizen`.
+- **Blocking:** `POST /posts/{id}/block-citizen/` `{"comment"}` (required) blocks the phone that wrote the post; its token stops working for posting, and its other `PENDING` posts inside the actor's area are discarded with the same comment. `POST /posts/{id}/unblock-citizen/` undoes the block. Both need `posts.block_citizen` over the post's village: Village, Mandal and District Admins and the Super Admin. Audited as `citizen.blocked` and `citizen.unblocked`.
+- **Audit:** `citizen.registered` (no IP address, no integrity token), `post.created` and `post.submitted` with the device id in `data` and no actor.
+- **Privacy:** the server stores no IP address in the clear: only a keyed hash of it, for the optional registration limit. The posting token is stored only as a hash.
+
+### Settings
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `CITIZEN_POSTS_ENABLED` | on | `off` answers `403 permission_denied` on `POST /citizen/posts/` |
+| `CITIZEN_INTEGRITY_REQUIRED` | on in `prod.py`, off in `dev.py` and tests | Off: registration skips the Google check (for debug builds and the qa server). Never off in production. |
+| `PLAY_INTEGRITY_PACKAGE` | — | The app's package name, e.g. `com.bvt.gramaconnect` |
+| `PLAY_INTEGRITY_CREDENTIALS_FILE` | `FCM_CREDENTIALS_FILE` | Service account allowed to call the Play Integrity API |
+| `CITIZEN_POSTS_PER_DAY` | 0 (no limit) | Posts per phone in 24 hours, when set |
+| `CITIZEN_MAX_PHOTOS` | 0 (no limit) | Photos per citizen post, when set |
+| `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY` | 0 (no limit) | New phones per IP address in 24 hours, when set. Mobile networks put many phones behind one IP, so keep it high if used. |
+
+### Open decisions and defaults
+
+| # | Question | Default until decided |
+|---|---|---|
+| CP1 | Do all levels see a citizen post at once, or one level at a time? | At once, with escalation after 24 h (owner decision Q1) |
+| CP2 | Photos only, or video too? | Photos only, any number (no limit on posts or photos, decided 2026-10-27) |
+| CP3 | iPhones: Play Integrity is Android only. Apple App Attest is needed for iOS. | iOS registration works only while `CITIZEN_INTEGRITY_REQUIRED` is off |
+| CP4 | Is the citizen told when the post is published or discarded? | Shown in `GET /citizen/posts/` (`status`, `reason`); no push |

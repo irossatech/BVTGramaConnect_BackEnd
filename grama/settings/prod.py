@@ -29,3 +29,6 @@ SECURE_HSTS_SECONDS = env.int("SECURE_HSTS_SECONDS", default=0)
 SECURE_REFERRER_POLICY = "same-origin"
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
+
+# Citizen posting tokens only for our genuine app on a real phone (docs/api-contract.md, section 15).
+CITIZEN_INTEGRITY_REQUIRED = env.bool("CITIZEN_INTEGRITY_REQUIRED", default=True)

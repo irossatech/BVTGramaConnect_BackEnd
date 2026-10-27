@@ -131,13 +131,19 @@ def add_photo(user, post: Post, upload, focus_y=None) -> PostMedia:
             _("A post can have at most %(n)d photos.") % {"n": settings.MAX_PHOTOS_PER_POST},
             fields={"file": [_("Too many photos.")]},
         )
-    large, medium, thumb, width, height = process_image(upload)
+    processed = process_image(upload)
     with transaction.atomic():
-        media = PostMedia(post=post, width=width, height=height, bytes=len(large), order=post.media.count())
-        media.image.save(f"{media.id}-{settings.POST_IMAGE_MAX_PX}.webp", ContentFile(large), save=False)
-        media.medium.save(f"{media.id}-{settings.POST_MEDIUM_PX}.webp", ContentFile(medium), save=False)
-        media.thumbnail.save(f"{media.id}-{settings.POST_THUMB_PX}.webp", ContentFile(thumb), save=False)
-        media.save()
+        return store_photo(post, processed, order=post.media.count())
+
+
+def store_photo(post: Post, processed: tuple, order: int) -> PostMedia:
+    """Save a process_image() result as the post's photo number `order`. Checks are the caller's."""
+    large, medium, thumb, width, height = processed
+    media = PostMedia(post=post, width=width, height=height, bytes=len(large), order=order)
+    media.image.save(f"{media.id}-{settings.POST_IMAGE_MAX_PX}.webp", ContentFile(large), save=False)
+    media.medium.save(f"{media.id}-{settings.POST_MEDIUM_PX}.webp", ContentFile(medium), save=False)
+    media.thumbnail.save(f"{media.id}-{settings.POST_THUMB_PX}.webp", ContentFile(thumb), save=False)
+    media.save()
     return media
 
 

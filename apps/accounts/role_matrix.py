@@ -37,6 +37,8 @@ REVIEWING = [
     "posts.reverse_decision",
     "posts.view_review_queue",
     "posts.mark_urgent",
+    # Citizen posts (docs/api-contract.md, section 15): whoever reviews the village may block the phone.
+    "posts.block_citizen",
 ]
 USER_ACTIONS = [
     "accounts.block_user",

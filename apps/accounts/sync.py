@@ -30,19 +30,27 @@ def ensure_permissions(apps=global_apps, using: str = DEFAULT_DB_ALIAS) -> None:
 
 
 def _app_not_migrated_yet(apps, perm: str) -> bool:
-    """True inside a migration whose historical state has no models of the permission's app yet.
+    """True inside a migration whose historical state does not declare the permission yet.
 
     Data migration 0005 runs this sync with the dict as it is today, so an app
-    added later (contacts) is not migrated at that point. Its permissions are
-    applied by the post_migrate sync at the end of the same `migrate`.
+    added later (contacts) is not migrated at that point, and a permission added
+    later to an existing model (posts.block_citizen, in posts.0006) is not in its
+    Meta yet. Both are applied by the post_migrate sync at the end of the same `migrate`.
     """
     if apps is global_apps:
         return False
+    app_label, codename = perm.split(".", 1)
     try:
-        apps.get_app_config(perm.split(".", 1)[0])
+        app_config = apps.get_app_config(app_label)
     except LookupError:
         return True
-    return False
+    for model in app_config.get_models():
+        opts = model._meta
+        declared = {name for name, _label in opts.permissions}
+        declared |= {f"{action}_{opts.model_name}" for action in opts.default_permissions}
+        if codename in declared:
+            return False
+    return True
 
 
 def wanted_permissions(spec: dict) -> set[str]:

@@ -1,6 +1,6 @@
 # Backend architecture
 
-Django 5.2 + Django REST Framework. One project package, `grama`, and nine apps inside the `apps/` package. Apps are imported as `apps.<name>`; each keeps its short label (`accounts`, `posts`, …), so tables, migrations, URL namespaces and `AUTH_USER_MODEL = "accounts.User"` use the short name.
+Django 5.2 + Django REST Framework. One project package, `grama`, and ten apps inside the `apps/` package. Apps are imported as `apps.<name>`; each keeps its short label (`accounts`, `posts`, …), so tables, migrations, URL namespaces and `AUTH_USER_MODEL = "accounts.User"` use the short name.
 
 Top level of the repo: `apps/`, `grama/` (settings, URLs, shared helpers, project tests in `grama/tests/`), `deploy/` (server scripts; `deploy/loadtest/` for Locust), `docs/`, plus `manage.py`, `conftest.py`, `pytest.ini` and the single `requirements.txt` used in every environment.
 
@@ -17,11 +17,12 @@ Top level of the repo: `apps/`, `grama/` (settings, URLs, shared helpers, projec
 | `web_public` | ContactMessage. Site-config (with help lines and the website link), showcase and contact API, and the Super Admin's contact-messages API for the console. Serves the website files while DEBUG is on. |
 | `web_admin` | Console-only dashboard and reports API (`api.py`). Serves the console files while DEBUG is on. |
 | `contacts` | ContactType, Contact: the app's important numbers (area numbers and statewide helplines). Phone grammar (`phones.py`), the only writer (`services.py`: create, update, soft remove, CSV import, types), read queries (`selectors.py`), citizen and official views (`views_public.py`, `views_admin.py`), `seed_helplines` and `import_contacts` commands. `web_public` site-config reads its statewide helplines. |
+| `citizens` | CitizenDevice: a citizen's phone with its posting token (stored as a hash). Citizens never sign in: the token is issued after a Google Play Integrity check (`integrity.py`: signed one-time nonces, the verdict). Registration, the phone's village, posting with daily limits, block and unblock (`services.py`); the citizen API under `citizen/` (`views.py`). Citizen posts themselves are made by `posts.services.create_citizen_post`. |
 | `grama` | Project package: settings, URLs, error shape (`exceptions.py`), pagination, retry with backoff (`retry.py`), client IP (`http.py`), web file serving (`sitefiles.py`), health check. |
 
 ## Rules that live in exactly one place
 
-- **Post status changes** happen only in `apps/posts/services.py`. Each move is one conditional UPDATE (`filter(id=..., status=...).update(...)`), so the first decision wins on any database. It writes a ReviewAction and an audit entry in the same transaction, then sends a signal after commit.
+- **Post status changes** happen only in `apps/posts/services.py`. Each move is one conditional UPDATE (`filter(id=..., status=...).update(...)`), so the first decision wins on any database. It writes a ReviewAction and an audit entry in the same transaction, then sends a signal after commit. Citizen posts too: `create_citizen_post` puts them straight into PENDING; they have no `author`, a `citizen` device instead, `posted_as_role` `CITIZEN`, and are never sent for recheck.
 - **Area containment** lives in `apps/geography/areas.py` (`AreaRef`, `area_is_within`, `within_q`). Who may do what, and where, lives in `apps/accounts/authz.py` (`can`, `areas_for`, `area_q`, `can_act_on`, `can_assign`, `manageable_users`) and the DRF class `HasPerm` in `apps/accounts/permissions.py`. Never re-implement either in a view, and never test a group's name or key.
 - **Role matrix**: which group holds which permission, and each group's level and rank, is written only in `apps/accounts/role_matrix.py`. `sync_role_permissions`, also run after `migrate`, makes the database match it.
 - **Audit entries** are written only through `apps.audit.services.record(...)`, inside the transaction of the change.

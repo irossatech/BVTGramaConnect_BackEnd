@@ -69,6 +69,7 @@ LOCAL_APPS = [
     "apps.web_public",
     "apps.web_admin",
     "apps.contacts",
+    "apps.citizens",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -355,6 +356,25 @@ CONTACTS_VERIFY_DAYS = env.int("CONTACTS_VERIFY_DAYS", default=180)
 CONTACTS_REQUIRE_MOBILE_CONSENT = env.bool("CONTACTS_REQUIRE_MOBILE_CONSENT", default=True)
 CONTACTS_IMPORT_MAX_BYTES = env.int("CONTACTS_IMPORT_MAX_BYTES", default=2 * 1024 * 1024)
 CONTACTS_IMPORT_MAX_ROWS = env.int("CONTACTS_IMPORT_MAX_ROWS", default=5000)
+
+# --- Citizen posts (apps.citizens, docs/api-contract.md section 15) -----------
+# Citizens never sign in: each phone gets a posting token after Google Play Integrity
+# confirms our genuine app. Every citizen post goes to review.
+CITIZEN_POSTS_ENABLED = env.bool("CITIZEN_POSTS_ENABLED", default=True)
+# Off skips Google's check (debug builds, the qa server); prod.py turns it on and it stays on.
+CITIZEN_INTEGRITY_REQUIRED = env.bool("CITIZEN_INTEGRITY_REQUIRED", default=False)
+PLAY_INTEGRITY_PACKAGE = env.str("PLAY_INTEGRITY_PACKAGE", default="")
+PLAY_INTEGRITY_CREDENTIALS_FILE = env.str("PLAY_INTEGRITY_CREDENTIALS_FILE", default="")
+CITIZEN_INTEGRITY_VERIFIER = env.str(
+    "CITIZEN_INTEGRITY_VERIFIER", default="apps.citizens.integrity.PlayIntegrityVerifier"
+)
+# How long a challenge nonce, and Google's verdict on it, stays valid.
+CITIZEN_CHALLENGE_SECONDS = env.int("CITIZEN_CHALLENGE_SECONDS", default=300)
+# Posts per phone in 24 hours, photos per post, and new phones per IP address in 24 hours:
+# 0 is no limit (the default for all three). Set one in .env to switch that limit on.
+CITIZEN_POSTS_PER_DAY = env.int("CITIZEN_POSTS_PER_DAY", default=0)
+CITIZEN_MAX_PHOTOS = env.int("CITIZEN_MAX_PHOTOS", default=0)
+CITIZEN_REGISTRATIONS_PER_IP_PER_DAY = env.int("CITIZEN_REGISTRATIONS_PER_IP_PER_DAY", default=0)
 
 # Help-line numbers for the app (owner decision Q19), labels from the approved prototype.
 # Statewide contacts in apps.contacts replace them once loaded; this list is the fallback.

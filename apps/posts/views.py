@@ -20,6 +20,7 @@ from apps.accounts import authz
 from apps.accounts.models import RoleAssignment, User
 from apps.accounts.permissions import PLATFORM, HasPerm
 from apps.audit.services import record
+from apps.citizens import services as citizen_services
 from apps.geography.areas import AreaRef, within_q
 from apps.geography.models import AreaLevel
 from grama.exceptions import ApiError, out_of_area
@@ -30,6 +31,7 @@ from .models import Category, Post, PostMedia, PostStatus, ReviewAction, Setting
 from .serializers import (
     AdminCategorySerializer,
     CategorySerializer,
+    CitizenBlockSerializer,
     MediaSerializer,
     MediaUploadSerializer,
     PostSerializer,
@@ -45,7 +47,7 @@ from .serializers import (
 
 
 def post_queryset(queryset):
-    return queryset.select_related("author", "category", "decided_by").prefetch_related(
+    return queryset.select_related("author", "citizen", "category", "decided_by").prefetch_related(
         "media", Prefetch("review_actions", queryset=ReviewAction.objects.select_related("actor"))
     )
 
@@ -262,6 +264,26 @@ class PostViewSet(viewsets.GenericViewSet):
         data = UrgentSerializer(data=request.data)
         data.is_valid(raise_exception=True)
         return self._out(services.set_urgent(request.user, post, data.validated_data["is_urgent"]))
+
+    @extend_schema(
+        summary="Block the phone that wrote this citizen post; its other pending posts in your area are discarded",
+        request=CitizenBlockSerializer,
+        responses=PostSerializer,
+    )
+    @action(detail=True, methods=["post"], url_path="block-citizen")
+    def block_citizen(self, request, pk=None):
+        post = self.get_object()
+        data = CitizenBlockSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        citizen_services.block(request.user, post, data.validated_data["comment"])
+        return self._out(post)
+
+    @extend_schema(summary="Let the phone that wrote this citizen post post again", request=None, responses=PostSerializer)
+    @action(detail=True, methods=["post"], url_path="unblock-citizen")
+    def unblock_citizen(self, request, pk=None):
+        post = self.get_object()
+        citizen_services.unblock(request.user, post)
+        return self._out(post)
 
     @extend_schema(summary='"Visible to" choices for compose (owner decision Q5)', responses=TargetsSerializer)
     @action(detail=False, methods=["get"], url_path="targets")

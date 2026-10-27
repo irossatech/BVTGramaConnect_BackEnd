@@ -41,6 +41,7 @@ MANAGE_PERMISSION = {
 REVIEW = {
     "posts.review_post", "posts.publish_post", "posts.recheck_post", "posts.discard_post",
     "posts.takedown_post", "posts.reverse_decision", "posts.view_review_queue", "posts.mark_urgent",
+    "posts.block_citizen",  # whoever reviews a citizen post's village may block the phone (contract section 15)
 }
 USER_ACTIONS = {"accounts.block_user", "accounts.reset_password", "accounts.reassign_user", "accounts.unlock_user"}
 SUPER_ONLY = {
