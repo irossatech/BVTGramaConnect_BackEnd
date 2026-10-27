@@ -153,6 +153,16 @@ AXES_LOCKOUT_CALLABLE = "apps.accounts.lockout.lockout_response"
 # Successful logins are in the audit log already.
 AXES_DISABLE_ACCESS_LOG = True
 AXES_VERBOSE = False
+# One row per failed login (username, IP, time), read by the IP-wide cap below.
+# Housekeeping deletes rows older than the cap's window.
+AXES_ENABLE_ACCESS_FAILURE_LOG = True
+
+# IP-wide cap against password spraying: this many failed logins from one IP
+# address, for any usernames, within the window block every login from that IP
+# until the oldest of them leaves the window. 0 switches the cap off. Mobile
+# networks share IPs, so keep it well above what one office mistypes in an hour.
+LOGIN_IP_MAX_FAILURES = env.int("LOGIN_IP_MAX_FAILURES", default=50)
+LOGIN_IP_WINDOW_MINUTES = env.int("LOGIN_IP_WINDOW_MINUTES", default=60)
 
 # Web console sessions: HttpOnly cookie, CSRF token, ended after this much idle time.
 CONSOLE_SESSION_IDLE_MINUTES = env.int("CONSOLE_SESSION_IDLE_MINUTES", default=30)

@@ -152,7 +152,7 @@ On the server, `grama.settings.prod` needs these environment variables and refus
 
 - **Database:** any engine Django supports, chosen by `DATABASE_URL`. For MySQL the settings add `utf8mb4` and strict mode automatically. Create the database with `CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci` so Telugu is stored correctly.
 - **Platform rules** from CLAUDE.md can be overridden in env: `ADMIN_POSTS_AUTO_PUBLISH`, `REVIEW_FIRST_DECISION_WINS`, `REVIEW_ESCALATION_HOURS`, `SUPER_ADMIN_CAN_POST`.
-- **Login:** `LOGIN_MAX_FAILURES` (5), `LOGIN_LOCKOUT_MINUTES` (15), `CONSOLE_SESSION_IDLE_MINUTES` (30). On the server set `CSRF_TRUSTED_ORIGINS` to the site's https address; `SESSION_COOKIE_SECURE` and `CSRF_COOKIE_SECURE` stay on.
+- **Login:** `LOGIN_MAX_FAILURES` (5), `LOGIN_LOCKOUT_MINUTES` (15), `LOGIN_IP_MAX_FAILURES` (50, 0 = off), `LOGIN_IP_WINDOW_MINUTES` (60), `CONSOLE_SESSION_IDLE_MINUTES` (30). On the server set `CSRF_TRUSTED_ORIGINS` to the site's https address; `SESSION_COOKIE_SECURE` and `CSRF_COOKIE_SECURE` stay on.
 - `.env.example` lists every variable.
 
 ## On the server

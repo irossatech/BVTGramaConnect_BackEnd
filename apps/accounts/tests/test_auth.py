@@ -4,7 +4,7 @@ admin resets, blocking. docs/authorization.md, sections 1 to 4."""
 from datetime import timedelta
 
 import pytest
-from axes.models import AccessAttempt
+from axes.models import AccessAttempt, AccessFailureLog
 from django.conf import settings
 from django.contrib.auth.hashers import identify_hasher
 from django.utils import timezone
@@ -203,6 +203,74 @@ def test_lockout_is_audited_once(world):
     assert entry.target_id == str(world.users["va_kolakaluru"].id)
     assert entry.data == {"username": "va_kolakaluru", "minutes": 15}
     assert AuditLog.objects.filter(action="auth.login_failed").count() == 7
+
+
+# --- IP-wide cap (password spraying) -----------------------------------------------------------
+
+
+def spray(times, ip="127.0.0.1"):
+    """One wrong password on `times` different usernames from one IP: never 5 for one username."""
+    http = APIClient(REMOTE_ADDR=ip)
+    return [login(f"nobody{index}", "Gram@2026", http=http) for index in range(times)]
+
+
+def test_failures_on_many_usernames_block_the_ip(world, settings):
+    settings.LOGIN_IP_MAX_FAILURES = 6
+    responses = spray(6)
+    assert [code(r) for r in responses] == ["invalid_credentials"] * 5 + ["locked_out"]
+    blocked = login("va_kolakaluru")  # even a real official with the right password, from that IP
+    assert blocked.status_code == 429
+    error = blocked.json()["error"]
+    assert error["code"] == "locked_out" and 3500 < error["retry_after_s"] <= 3601
+    # Another address is not blocked.
+    assert login("va_kolakaluru", http=APIClient(REMOTE_ADDR="10.9.9.8")).status_code == 200
+    # An hour later the address may try again.
+    AccessFailureLog.objects.update(attempt_time=timezone.now() - timedelta(minutes=61))
+    assert login("va_kolakaluru").status_code == 200
+
+
+def test_ip_block_is_audited_once_without_the_ip(world, settings):
+    settings.LOGIN_IP_MAX_FAILURES = 6
+    spray(9)
+    entry = AuditLog.objects.get(action="auth.ip_locked_out")
+    assert entry.data == {"failures": 6, "minutes": 60}
+    assert "127.0.0.1" not in str(entry.data) and entry.target_label == ""
+    # Tries while blocked never reach the password check: no more failures are logged.
+    assert AuditLog.objects.filter(action="auth.login_failed").count() == 6
+
+
+def test_tries_during_an_ip_block_do_not_extend_it(world, settings):
+    settings.LOGIN_IP_MAX_FAILURES = 6
+    spray(6)
+    count = AccessFailureLog.objects.count()
+    spray(3)
+    login("va_kolakaluru")
+    assert AccessFailureLog.objects.count() == count
+
+
+def test_a_success_does_not_reset_the_ip_count(world, settings):
+    settings.LOGIN_IP_MAX_FAILURES = 6
+    spray(5)
+    assert login("va_kolakaluru").status_code == 200  # an attacker's own account cannot clear it
+    assert code(login("ma_tenali", "wrong")) == "locked_out"
+
+
+def test_the_ip_cap_covers_the_console_login(world, settings):
+    settings.LOGIN_IP_MAX_FAILURES = 6
+    spray(6)
+    _client, response = console_session("super")
+    assert response.status_code == 429 and code(response) == "locked_out"
+
+
+def test_ip_cap_zero_switches_it_off(world, settings):
+    settings.LOGIN_IP_MAX_FAILURES = 0
+    spray(60)
+    assert login("va_kolakaluru").status_code == 200
+
+
+def test_default_ip_cap_is_fifty_failures_an_hour():
+    assert settings.LOGIN_IP_MAX_FAILURES == 50 and settings.LOGIN_IP_WINDOW_MINUTES == 60
+    assert settings.AXES_ENABLE_ACCESS_FAILURE_LOG is True
 
 
 def lock(username):

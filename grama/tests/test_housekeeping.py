@@ -5,6 +5,7 @@ import uuid
 from datetime import timedelta
 
 import pytest
+from axes.models import AccessFailureLog
 from django.contrib.sessions.models import Session
 from django.core.management import call_command
 from django.utils import timezone
@@ -38,6 +39,12 @@ def session(*, expires_in_minutes):
     )
 
 
+def login_failure(*, minutes_ago):
+    row = AccessFailureLog.objects.create(username="x", ip_address="10.1.1.1", user_agent="", http_accept="", path_info="")
+    AccessFailureLog.objects.filter(pk=row.pk).update(attempt_time=timezone.now() - timedelta(minutes=minutes_ago))
+    return row
+
+
 def test_old_failed_tasks_go_recent_ones_and_successes_stay():
     old_failure = task(KEEP_DAYS + 1, success=False)
     recent_failure = task(KEEP_DAYS - 1, success=False)
@@ -68,13 +75,24 @@ def test_expired_sessions_go_live_ones_stay():
     assert list(Session.objects.values_list("session_key", flat=True)) == [live.session_key]
 
 
+def test_login_failures_older_than_the_ip_window_go(settings):
+    settings.LOGIN_IP_WINDOW_MINUTES = 60
+    login_failure(minutes_ago=61)
+    recent = login_failure(minutes_ago=30)
+
+    assert run_housekeeping()["login_failures"] == 1
+    assert list(AccessFailureLog.objects.values_list("id", flat=True)) == [recent.id]
+
+
 def test_running_twice_is_safe(world):
     task(KEEP_DAYS + 1, success=False)
     token(world.users["pm_kaza"], expires_in_days=-1)
     session(expires_in_minutes=-1)
 
-    assert run_housekeeping() == {"failed_tasks": 1, "expired_tokens": 1, "expired_sessions": 1}
-    assert run_housekeeping() == {"failed_tasks": 0, "expired_tokens": 0, "expired_sessions": 0}
+    login_failure(minutes_ago=61)
+
+    assert run_housekeeping() == {"failed_tasks": 1, "expired_tokens": 1, "expired_sessions": 1, "login_failures": 1}
+    assert run_housekeeping() == {"failed_tasks": 0, "expired_tokens": 0, "expired_sessions": 0, "login_failures": 0}
 
 
 def test_keep_days_setting(settings):

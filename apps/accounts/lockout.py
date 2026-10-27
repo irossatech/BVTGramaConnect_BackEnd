@@ -8,7 +8,14 @@ password reset clears it too.
 
 Failed logins and lockouts are written to the audit log here, for the API and
 for Django admin alike. The audit entry never holds the password; the IP
-address stays in axes' own table only.
+address stays in axes' own tables only.
+
+On top of that, an IP-wide cap against password spraying (one password tried on
+many usernames): LOGIN_IP_MAX_FAILURES failed logins from one IP within
+LOGIN_IP_WINDOW_MINUTES block every app and console login from that IP until
+the oldest of them leaves the window. It counts axes' AccessFailureLog rows. A
+successful login does not reset it, so an attacker's own account cannot clear
+it, and an admin's unlock does not either: it is about an address, not a user.
 """
 
 from __future__ import annotations
@@ -17,8 +24,9 @@ from datetime import timedelta
 
 from axes.handlers.proxy import AxesProxyHandler
 from axes.helpers import get_cool_off, get_failure_limit
-from axes.models import AccessAttempt
+from axes.models import AccessAttempt, AccessFailureLog
 from axes.signals import user_locked_out
+from django.conf import settings
 from django.contrib.auth.signals import user_logged_in, user_login_failed
 from django.dispatch import receiver
 from django.http import HttpResponse, JsonResponse
@@ -72,6 +80,28 @@ def locked_usernames(usernames) -> set[str]:
             username__in=list(usernames), attempt_time__gte=since, failures_since_start__gte=limit
         ).values_list("username", flat=True)
     )
+
+
+def ip_window() -> timedelta:
+    return timedelta(minutes=settings.LOGIN_IP_WINDOW_MINUTES)
+
+
+def ip_seconds_left(ip: str | None, now=None) -> int:
+    """0 while this IP is under the IP-wide cap; else how long it stays blocked, in whole seconds (at least 1)."""
+    limit = settings.LOGIN_IP_MAX_FAILURES
+    if not limit or not ip:
+        return 0
+    now = now or timezone.now()
+    times = list(
+        AccessFailureLog.objects.filter(ip_address=ip, attempt_time__gt=now - ip_window())
+        .order_by("-attempt_time")
+        .values_list("attempt_time", flat=True)[:limit]
+    )
+    if len(times) < limit:
+        return 0
+    # Blocked until the oldest of the newest `limit` failures leaves the window.
+    remaining = times[-1] + ip_window() - now
+    return max(1, int(remaining.total_seconds()) + 1)
 
 
 def unlock(user: User) -> int:
