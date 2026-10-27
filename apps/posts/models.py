@@ -175,8 +175,8 @@ class MediaKind(models.TextChoices):
 class PostMedia(models.Model):
     """A photo, or a video (owner decision Q8).
 
-    Photo: `image` is the WebP at most 1280 px on the long side, `medium` 640 px
-    (for big cards on slow networks), `thumbnail` 320 px.
+    Photo: `image` is the WebP at most 1280 px on the long side (also the feed's image_url),
+    `medium` 640 px (kept for a possible low-data mode; not sent by the API today), `thumbnail` 320 px.
     Video: `video` is the MP4 as uploaded; `image`, `medium` and `thumbnail` hold its poster frame.
     `medium` is empty on media uploaded before it existed until `backfill_medium_images` runs.
     """

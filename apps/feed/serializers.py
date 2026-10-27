@@ -79,7 +79,7 @@ class FeedItemSerializer(serializers.Serializer):
         return default_storage.url(name) if name else None
 
     def get_image_url(self, obj) -> str | None:
-        """First photo for big cards: POST_MEDIUM_PX, else POST_IMAGE_MAX_PX; null without a photo or for a video post."""
+        """First photo at full size (POST_IMAGE_MAX_PX, 1280 px); null without a photo or for a video post."""
         name = getattr(obj, "image_name", None)
         return default_storage.url(name) if name else None
 

@@ -14,8 +14,7 @@ import uuid
 from datetime import timedelta
 
 from django.conf import settings
-from django.db.models import CharField, Count, Exists, OuterRef, Q, Subquery, Value
-from django.db.models.functions import Coalesce, NullIf
+from django.db.models import Count, Exists, OuterRef, Q, Subquery
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import cache_control
@@ -49,14 +48,9 @@ class FeedCursorPagination(CursorPagination):
 def published_posts():
     media = PostMedia.objects.filter(post=OuterRef("pk"))
     first_thumb = media.order_by("order", "created_at").values("thumbnail")[:1]
-    # The first photo for big cards: its 640 px file, or the 1280 px one for media from before
-    # the medium size existed. A video's poster stays in video.poster_url.
-    first_image = (
-        media.filter(kind=MediaKind.IMAGE)
-        .order_by("order", "created_at")
-        .annotate(card=Coalesce(NullIf("medium", Value("")), "image", output_field=CharField()))
-        .values("card")[:1]
-    )
+    # The first photo for big cards, at full size (1280 px): the 640 px file looked soft on
+    # 1080 px phone screens. A video's poster stays in video.poster_url.
+    first_image = media.filter(kind=MediaKind.IMAGE).order_by("order", "created_at").values("image")[:1]
     video = media.filter(kind=MediaKind.VIDEO)
     return (
         Post.objects.filter(status=PostStatus.PUBLISHED)
