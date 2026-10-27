@@ -815,7 +815,7 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Video | one per post, `VIDEO_MAX_SECONDS` 60, `MAX_VIDEO_UPLOAD_MB` default 50 |
 | Page size | feed 20, admin lists 100 |
 | Important numbers | 200 active per area (`CONTACTS_MAX_PER_AREA`); name 150, custom type 40 characters; CSV import 2 MB and 5,000 rows |
-| Citizen posts | No limit on posts or photos (switchable: `CITIZEN_POSTS_PER_DAY`, `CITIZEN_MAX_PHOTOS`); each photo at most `MAX_IMAGE_UPLOAD_MB`; no video; no limit on new phones (switchable: `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY`) |
+| Citizen posts | No limit on posts, photos or videos (switchable: `CITIZEN_POSTS_PER_DAY`, `CITIZEN_MAX_PHOTOS`); each photo at most `MAX_IMAGE_UPLOAD_MB`, each video at most `MAX_VIDEO_UPLOAD_MB` and `VIDEO_MAX_SECONDS`; no limit on new phones (switchable: `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY`) |
 
 ---
 
@@ -934,7 +934,7 @@ Built (`apps.citizens`). A citizen posts news or an issue for the village chosen
 | `POST /citizen/register/` | `{"nonce", "integrity_token", "platform": "android", "village_id", "app_version"?}` | `201 {"token": "…", "device": CitizenDevice}`. `400 validation_error` (expired or reused nonce: `fields.nonce`; unknown or inactive village: `fields.village_id`); `403 integrity_failed` (Google's verdict is not genuine). No limit on registrations by default; only if `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY` is set: `429 throttled` with `retry_after_s` after that many from one IP address in 24 hours. |
 | `GET /citizen/me/` | token | `CitizenDevice` |
 | `PATCH /citizen/me/` | token; `{"village_id"}` | `CitizenDevice`. The village posts go to. |
-| `POST /citizen/posts/` | token; multipart `category`, `language`, `title`, `body`, `photos` (any number; repeat the field per photo) | `201 CitizenPost`, already `PENDING`. `400 validation_error`; `403 citizen_blocked`; `413`/`415` as for officials' photos (each photo at most `MAX_IMAGE_UPLOAD_MB`). No daily limit by default; only if `CITIZEN_POSTS_PER_DAY` or `CITIZEN_MAX_PHOTOS` is set: `429 throttled` with `retry_after_s`, or `400` on `photos`. |
+| `POST /citizen/posts/` | token; multipart `category`, `language`, `title`, `body`, `photos` and `videos` (any number of each, together or alone; repeat the field per file) | `201 CitizenPost`, already `PENDING`. `400 validation_error`; `400 video_too_long`; `403 citizen_blocked`; `403 permission_denied` for videos while `VIDEO_POSTS_ENABLED` is off; `413 file_too_large` (a photo over `MAX_IMAGE_UPLOAD_MB`, a video over `MAX_VIDEO_UPLOAD_MB`); `415 unsupported_media`. One bad file refuses the whole post and stores nothing. No daily limit by default; only if `CITIZEN_POSTS_PER_DAY` or `CITIZEN_MAX_PHOTOS` is set: `429 throttled` with `retry_after_s`, or `400` on `photos`. |
 | `GET /citizen/posts/` | token | `[CitizenPost]`, this phone's posts, newest first, at most 50 |
 
 Every citizen endpoint answers `401 citizen_token_invalid` without a valid token. A blocked phone can still read `GET /citizen/me/` and its posts, but cannot post.
@@ -950,6 +950,8 @@ Every citizen endpoint answers `401 citizen_token_invalid` without a valid token
 {"id": "c2d4…", "status": "PENDING", "category": "news", "language": "te",
  "title": "…", "body": "…", "area": {"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు"},
  "photos": [{"url": "/media/…-1280.webp", "thumb_url": "/media/…-320.webp"}],
+ "videos": [{"url": "/media/….mp4", "poster_url": "/media/…-poster-1280.webp",
+             "thumb_url": "/media/…-poster-320.webp", "duration_s": 42}],   // duration_s null when unknown
  "created_at": "…", "decided_at": null,
  "reason": null}        // the reviewer's comment when DISCARDED or UNPUBLISHED, else null
 ```
@@ -957,7 +959,9 @@ Every citizen endpoint answers `401 citizen_token_invalid` without a valid token
 ### Rules
 
 - **Target:** always the phone's village (`village_id` of the device), never a mandal, district or the state. `event` and `is_urgent` are not available to citizens.
-- **Fields:** `category` an active category key; `language` `te` or `en`; `title` 1 to 150 characters; `body` 1 to 5,000; photos as officials' photos (JPEG, PNG or WebP, at most `MAX_IMAGE_UPLOAD_MB`, re-encoded to WebP with EXIF and GPS removed). Videos are not accepted.
+- **Fields:** `category` an active category key; `language` `te` or `en`; `title` 1 to 150 characters; `body` 1 to 5,000; photos as officials' photos (JPEG, PNG or WebP, at most `MAX_IMAGE_UPLOAD_MB`, re-encoded to WebP with EXIF and GPS removed).
+- **Videos:** MP4 or MOV, each at most `MAX_VIDEO_UPLOAD_MB` (50) and, when the server can measure it, `VIDEO_MAX_SECONDS` (60). Any number, mixed with any number of photos (decision of 2026-10-27); stored photos first, then videos, in the order sent. The app never sends a length or a poster: with ffmpeg the server measures the video and cuts a poster frame; without it the length stays `null` and a plain placeholder poster is used. (Officials' video upload is unchanged: one video, never with photos, and without ffmpeg the phone sends `duration_s` and a `poster`.)
+- **Feed:** a published citizen post shows like any post: `media_count` counts photos and videos, `video` is its first video, `image_url` its first photo, and `GET /feed/posts/{id}/` lists every photo and video in `media`.
 - **Review:** the post goes straight to `PENDING` and into the review queue of every official whose area contains the village: the Village Admin, the Mandal Admin, the District Admin and the Super Admin, at the same time. The first decision wins; after `REVIEW_ESCALATION_HOURS` without a decision the next level up is alerted, exactly as for Panchayat members' posts (owner decision Q1).
 - **Decisions:** `publish` or `discard` (reason required). `recheck` is not offered, because a citizen cannot edit a post. Take-down and reversal work as for any post, except that a reversal cannot move a citizen post to `RECHECK`.
 - **Public view:** a published citizen post shows `source_role: "CITIZEN"` in the feed. No name, phone or device is ever shown.
@@ -983,6 +987,6 @@ Every citizen endpoint answers `401 citizen_token_invalid` without a valid token
 | # | Question | Default until decided |
 |---|---|---|
 | CP1 | Do all levels see a citizen post at once, or one level at a time? | At once, with escalation after 24 h (owner decision Q1) |
-| CP2 | Photos only, or video too? | Photos only, any number (no limit on posts or photos, decided 2026-10-27) |
+| CP2 | Photos only, or video too? | **Decided 2026-10-27:** photos and videos, any number of each, together in one post; no limit on posts or files |
 | CP3 | iPhones: Play Integrity is Android only. Apple App Attest is needed for iOS. | iOS registration works only while `CITIZEN_INTEGRITY_REQUIRED` is off |
 | CP4 | Is the citizen told when the post is published or discarded? | Shown in `GET /citizen/posts/` (`status`, `reason`); no push |

@@ -98,6 +98,7 @@ class PostsView(CitizenView):
         payload = request.data.copy() if hasattr(request.data, "copy") else dict(request.data)
         if hasattr(request.data, "getlist"):
             payload.setlist("photos", request.FILES.getlist("photos"))
+            payload.setlist("videos", request.FILES.getlist("videos"))
         data = CitizenPostWriteSerializer(data=payload)
         data.is_valid(raise_exception=True)
         values = data.validated_data
@@ -108,6 +109,7 @@ class PostsView(CitizenView):
             title=values["title"],
             body=values["body"],
             photos=values["photos"],
+            videos=values["videos"],
         )
         post = my_posts(device).get(pk=post.pk)
         return Response(CitizenPostSerializer(post).data, status=status.HTTP_201_CREATED)
