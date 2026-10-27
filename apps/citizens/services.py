@@ -1,9 +1,9 @@
 """Citizen phones: posting tokens, registration, posting and blocking. docs/api-contract.md, section 15.
 
 - A token is issued once per install, after Google Play Integrity confirms our
-  genuine app on a real phone (integrity.py), at most
-  CITIZEN_REGISTRATIONS_PER_IP_PER_DAY per IP address. Only its SHA-256 hash is
-  stored; the IP address only as a keyed hash.
+  genuine app on a real phone (integrity.py). CITIZEN_REGISTRATIONS_PER_IP_PER_DAY
+  limits new phones per IP address only when set (0, the default, is no limit).
+  Only the token's SHA-256 hash is stored; the IP address only as a keyed hash.
 - Posts go through posts.services.create_citizen_post: straight to PENDING
   for every reviewer of the phone's village. CITIZEN_POSTS_PER_DAY and
   CITIZEN_MAX_PHOTOS limit them only when set (0, the default, is no limit).
@@ -108,9 +108,9 @@ def register(*, nonce: str, integrity_token: str, platform: str, village_id: int
     village_id = _active_village(village_id)
 
     ip_hash = hash_ip(ip)
-    if ip_hash:
+    limit = settings.CITIZEN_REGISTRATIONS_PER_IP_PER_DAY
+    if ip_hash and limit:
         recent = CitizenDevice.objects.filter(registered_ip_hash=ip_hash, created_at__gt=now - DAY)
-        limit = settings.CITIZEN_REGISTRATIONS_PER_IP_PER_DAY
         if recent.count() >= limit:
             oldest = recent.order_by("-created_at").values_list("created_at", flat=True)[limit - 1]
             raise throttled(_("Too many new registrations from this network today."), _seconds_until(oldest, now))

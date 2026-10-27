@@ -79,7 +79,14 @@ def test_the_village_must_be_active(world):
     assert register(world, village="nandivelugu").status_code == 201
 
 
-def test_five_registrations_per_ip_a_day(world):
+def test_no_registration_limit_by_default(world):
+    for _ in range(12):
+        assert register(world, ip="10.0.0.1").status_code == 201
+    assert CitizenDevice.objects.count() == 12
+
+
+def test_a_registration_limit_per_ip_can_be_switched_on(world, settings):
+    settings.CITIZEN_REGISTRATIONS_PER_IP_PER_DAY = 5
     for _ in range(5):
         assert register(world, ip="10.0.0.1").status_code == 201
     sixth = register(world, ip="10.0.0.1")

@@ -815,7 +815,7 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Video | one per post, `VIDEO_MAX_SECONDS` 60, `MAX_VIDEO_UPLOAD_MB` default 50 |
 | Page size | feed 20, admin lists 100 |
 | Important numbers | 200 active per area (`CONTACTS_MAX_PER_AREA`); name 150, custom type 40 characters; CSV import 2 MB and 5,000 rows |
-| Citizen posts | No limit on posts or photos (switchable: `CITIZEN_POSTS_PER_DAY`, `CITIZEN_MAX_PHOTOS`); each photo at most `MAX_IMAGE_UPLOAD_MB`; no video; 5 posting tokens per IP address in 24 hours |
+| Citizen posts | No limit on posts or photos (switchable: `CITIZEN_POSTS_PER_DAY`, `CITIZEN_MAX_PHOTOS`); each photo at most `MAX_IMAGE_UPLOAD_MB`; no video; no limit on new phones (switchable: `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY`) |
 
 ---
 
@@ -931,7 +931,7 @@ Built (`apps.citizens`). A citizen posts news or an issue for the village chosen
 | Method and path | Request | Response |
 |---|---|---|
 | `POST /citizen/challenge/` | — | `{"nonce": "…", "expires_in": 300}`. The nonce is signed by the server, valid for `CITIZEN_CHALLENGE_SECONDS` (300) and usable once. |
-| `POST /citizen/register/` | `{"nonce", "integrity_token", "platform": "android", "village_id", "app_version"?}` | `201 {"token": "…", "device": CitizenDevice}`. `400 validation_error` (expired or reused nonce: `fields.nonce`; unknown or inactive village: `fields.village_id`); `403 integrity_failed` (Google's verdict is not genuine); `429 throttled` after `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY` (5) registrations from one IP address in 24 hours. |
+| `POST /citizen/register/` | `{"nonce", "integrity_token", "platform": "android", "village_id", "app_version"?}` | `201 {"token": "…", "device": CitizenDevice}`. `400 validation_error` (expired or reused nonce: `fields.nonce`; unknown or inactive village: `fields.village_id`); `403 integrity_failed` (Google's verdict is not genuine). No limit on registrations by default; only if `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY` is set: `429 throttled` with `retry_after_s` after that many from one IP address in 24 hours. |
 | `GET /citizen/me/` | token | `CitizenDevice` |
 | `PATCH /citizen/me/` | token; `{"village_id"}` | `CitizenDevice`. The village posts go to. |
 | `POST /citizen/posts/` | token; multipart `category`, `language`, `title`, `body`, `photos` (any number; repeat the field per photo) | `201 CitizenPost`, already `PENDING`. `400 validation_error`; `403 citizen_blocked`; `413`/`415` as for officials' photos (each photo at most `MAX_IMAGE_UPLOAD_MB`). No daily limit by default; only if `CITIZEN_POSTS_PER_DAY` or `CITIZEN_MAX_PHOTOS` is set: `429 throttled` with `retry_after_s`, or `400` on `photos`. |
@@ -964,7 +964,7 @@ Every citizen endpoint answers `401 citizen_token_invalid` without a valid token
 - **Officials' view (`Post`):** `author` is `{"id": null, "name": "", "role": "CITIZEN"}` and `posted_as.role` is `CITIZEN`; a new field `citizen` holds `{"device_id", "blocked", "posts_total", "posts_discarded"}` (null on officials' posts). `allowed_actions` may include `block_citizen` or `unblock_citizen`.
 - **Blocking:** `POST /posts/{id}/block-citizen/` `{"comment"}` (required) blocks the phone that wrote the post; its token stops working for posting, and its other `PENDING` posts inside the actor's area are discarded with the same comment. `POST /posts/{id}/unblock-citizen/` undoes the block. Both need `posts.block_citizen` over the post's village: Village, Mandal and District Admins and the Super Admin. Audited as `citizen.blocked` and `citizen.unblocked`.
 - **Audit:** `citizen.registered` (no IP address, no integrity token), `post.created` and `post.submitted` with the device id in `data` and no actor.
-- **Privacy:** the server stores no IP address in the clear: the registration limit counts a keyed hash of it. The posting token is stored only as a hash.
+- **Privacy:** the server stores no IP address in the clear: only a keyed hash of it, for the optional registration limit. The posting token is stored only as a hash.
 
 ### Settings
 
@@ -976,7 +976,7 @@ Every citizen endpoint answers `401 citizen_token_invalid` without a valid token
 | `PLAY_INTEGRITY_CREDENTIALS_FILE` | `FCM_CREDENTIALS_FILE` | Service account allowed to call the Play Integrity API |
 | `CITIZEN_POSTS_PER_DAY` | 0 (no limit) | Posts per phone in 24 hours, when set |
 | `CITIZEN_MAX_PHOTOS` | 0 (no limit) | Photos per citizen post, when set |
-| `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY` | 5 | Tokens per IP address in 24 hours |
+| `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY` | 0 (no limit) | New phones per IP address in 24 hours, when set. Mobile networks put many phones behind one IP, so keep it high if used. |
 
 ### Open decisions and defaults
 
