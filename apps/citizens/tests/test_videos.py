@@ -103,7 +103,7 @@ def test_reviewers_see_and_publish_the_videos(api, world, phone, media_root, ffm
     assert [m["kind"] for m in detail["media"]] == ["image", "video", "video"]
     row = APIClient().get(f"/api/v1/feed/?village_id={world.areas['kolakaluru'].id}").json()["results"][0]
     assert row["media_count"] == 3 and row["video"]["url"].endswith(".mp4")
-    assert row["image_url"].endswith("-640.webp")  # the photo, for the big card
+    assert row["image_url"].endswith("-1280.webp")  # the photo at full size, for the big card
 
 
 def test_a_bad_video_leaves_no_post_behind(world, phone, media_root, ffmpeg):

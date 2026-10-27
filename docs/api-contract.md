@@ -155,7 +155,7 @@ Admin endpoints add `id`, `name_te`, `name_en`, `short_name_te`, `short_name_en`
 ```json
 {"id": "6f1c…", "kind": "image", "url": "https://<site>/media/posts/2026/10/6f1c-1280.webp", "thumb_url": "https://<site>/media/posts/2026/10/6f1c-320.webp", "width": 1280, "height": 853, "bytes": 84213}
 ```
-- Images: the server checks type and size, turns the photo upright, strips EXIF, converts to WebP and keeps three sizes: at most 1280 px, 640 px (the feed's `image_url`) and 320 px on the long side. The original is not kept. Media objects keep their shape: `url` is the 1280 px file and `thumb_url` the 320 px one. URLs are absolute.
+- Images: the server checks type and size, turns the photo upright, strips EXIF, converts to WebP and keeps three sizes: at most 1280 px (also the feed's `image_url`), 640 px (kept for a possible low-data mode, not sent by the API today) and 320 px on the long side. The original is not kept. Media objects keep their shape: `url` is the 1280 px file and `thumb_url` the 320 px one. URLs are absolute.
 - Video: `{"id", "kind": "video", "url", "poster_url", "thumb_url", "width", "height", "duration_s", "bytes"}`. `url` is the MP4, `poster_url` the poster frame as WebP (at most 1280 px), `thumb_url` its 320 px thumbnail, `width` and `height` the poster's size, `bytes` the video's size. Photo media carry `"poster_url": null` and `"duration_s": null`.
 - `focus_y` (0 to 1) is the crop focus the prototypes use for cover images. Optional.
 
@@ -477,7 +477,7 @@ What `POST /posts` does:
 | `DELETE /posts/{id}/media/{media_id}` | author | — | `204` |
 
 - Allowed while the post is `DRAFT` or `RECHECK`. Because `POST /posts` submits by default, the app creates the post with `submit: false`, uploads media, then calls `/submit`.
-- Images: JPEG, PNG, WebP or HEIC, at most `MAX_IMAGE_UPLOAD_MB` (default 10) and `MAX_PHOTOS_PER_POST` (default 5) per post. Stored as WebP at most 1280 px, with a 640 px copy for big cards and a 320 px thumbnail. Too large: `413 file_too_large`. Not a photo: `415 unsupported_media`.
+- Images: JPEG, PNG, WebP or HEIC, at most `MAX_IMAGE_UPLOAD_MB` (default 10) and `MAX_PHOTOS_PER_POST` (default 5) per post. Stored as WebP at most 1280 px, with a 640 px copy and a 320 px thumbnail. Too large: `413 file_too_large`. Not a photo: `415 unsupported_media`.
 - **Video (owner decision Q8):** multipart `file` (MP4 or MOV), `kind=video`, optional `duration_s`, optional `poster` image. At most `MAX_VIDEO_UPLOAD_MB` (default 50; larger: `413 file_too_large`) and `VIDEO_MAX_SECONDS` (60; longer: `400 video_too_long`). Other files: `415 unsupported_media`. One video per post, never together with photos: `409 media_conflict`.
   - Duration: measured with `ffprobe` when it is installed (the server has it). Without `ffprobe` the client's `duration_s` is required and still checked.
   - Poster: made with `ffmpeg` from the first second when it is installed. Otherwise `poster` (a photo) is required and processed like photos.
@@ -544,7 +544,7 @@ No login. These views ignore any `Authorization` header, so a stale token on a c
   "area": {"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు"},
   "published_at": "2026-10-14T10:32:00+05:30",
   "thumbnail_url": "/media/posts/2026/10/…-320.webp",
-  "image_url": "/media/posts/2026/10/…-640.webp",
+  "image_url": "/media/posts/2026/10/…-1280.webp",
   "media_count": 3,
   "source_role": "VILLAGE_ADMIN",
   "event": {"kind": "meeting", "start_date": "2026-10-20", "end_date": null},
@@ -555,7 +555,7 @@ No login. These views ignore any `Authorization` header, so a stale token on a c
 - `event` and `is_urgent` as on Post. `video`: `null`, or for a video post `{"url", "poster_url", "duration_s"}`, so the reels screen needs no extra call; `thumbnail_url` is then the poster's thumbnail.
 - The list carries the full `body`, not an excerpt. The app's news deck shows the body on the card, and one larger page costs less on 2G than a request per card.
 - `thumbnail_url` is the first photo's 320 px WebP, or `null`. URLs are relative to the server.
-- `image_url` is the first photo sized for big cards: its 640 px WebP (`POST_MEDIUM_PX`, about 30–50 KB), or the 1280 px one for photos from before that size existed. `null` for a post without a photo and for a video post (use `video.poster_url`). Use it for large cards and `thumbnail_url` for small rows. Clients fall back to `thumbnail_url` when the field is missing.
+- `image_url` is the first photo at full size: its 1280 px WebP (`POST_IMAGE_MAX_PX`). `null` for a post without a photo and for a video post (use `video.poster_url`). (For a few days it pointed at the 640 px copy, which looked soft on big cards; that was reverted on 2026-10-28.) Use it for large cards and `thumbnail_url` for small rows. Clients fall back to `thumbnail_url` when the field is missing.
 - `category` is the key only; the app caches `GET /categories`.
 
 `FeedPost` (detail) is `FeedItem` plus `"path": "కొలకలూరు · తెనాలి · గుంటూరు"` and `"media": [{"id", "kind", "url", "thumb_url", "poster_url", "width", "height", "duration_s"}]`.

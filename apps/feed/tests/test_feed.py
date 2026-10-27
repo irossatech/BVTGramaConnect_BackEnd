@@ -84,12 +84,13 @@ def test_slim_shape_with_thumbnail(world, make_post):
     assert second["image_url"] is None
 
 
-def test_image_url_prefers_the_medium_file(world, make_post):
+def test_image_url_is_the_full_size_photo_even_with_a_medium_file(world, make_post):
+    """The 640 px file looked soft on big cards, so image_url stays the 1280 px photo."""
     post = make_post("kolakaluru", media=2)
     first = post.media.order_by("order").first()
     PostMedia.objects.filter(pk=first.pk).update(medium=f"posts/2026/10/{post.pk}-0-640.webp")
     row = feed(world).json()["results"][0]
-    assert row["image_url"] == f"/media/posts/2026/10/{post.pk}-0-640.webp"
+    assert row["image_url"] == f"/media/posts/2026/10/{post.pk}-0.webp"
     assert row["thumbnail_url"] == f"/media/posts/2026/10/{post.pk}-0-320.webp"
 
 
