@@ -66,6 +66,16 @@ def test_photos_and_videos_together_any_number(world, phone, media_root, ffmpeg)
     assert all(m.medium for m in PostMedia.objects.all())
 
 
+def test_a_file_saved_to_a_temporary_file_is_accepted(world, phone, media_root, ffmpeg, settings):
+    """Phone videos are over FILE_UPLOAD_MAX_MEMORY_SIZE (2.5 MB), so Django keeps them in a temporary
+    file. Copying request.data deep-copied that open file and failed: "cannot pickle 'BufferedRandom'"."""
+    settings.FILE_UPLOAD_MAX_MEMORY_SIZE = 0  # every upload becomes a TemporaryUploadedFile
+    response = send(phone(), photos=[photo()], videos=[mp4()])
+    assert response.status_code == 201, response.content[:300]
+    data = response.json()
+    assert len(data["photos"]) == 1 and len(data["videos"]) == 1
+
+
 def test_a_video_only_post(world, phone, media_root, ffmpeg):
     response = send(phone(), videos=[mp4()])
     assert response.status_code == 201
