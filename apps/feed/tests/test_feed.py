@@ -6,7 +6,7 @@ import pytest
 from rest_framework.test import APIClient
 
 from apps.geography.models import Village
-from apps.posts.models import PostStatus
+from apps.posts.models import PostMedia, PostStatus
 
 pytestmark = pytest.mark.django_db
 
@@ -82,6 +82,15 @@ def test_slim_shape_with_thumbnail(world, make_post):
     assert first["source_role"] == "VILLAGE_ADMIN"
     assert second["thumbnail_url"] is None and second["media_count"] == 0
     assert second["image_url"] is None
+
+
+def test_image_url_prefers_the_medium_file(world, make_post):
+    post = make_post("kolakaluru", media=2)
+    first = post.media.order_by("order").first()
+    PostMedia.objects.filter(pk=first.pk).update(medium=f"posts/2026/10/{post.pk}-0-640.webp")
+    row = feed(world).json()["results"][0]
+    assert row["image_url"] == f"/media/posts/2026/10/{post.pk}-0-640.webp"
+    assert row["thumbnail_url"] == f"/media/posts/2026/10/{post.pk}-0-320.webp"
 
 
 def test_area_names_follow_accept_language(world, make_post):

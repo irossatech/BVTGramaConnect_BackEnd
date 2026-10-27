@@ -2,7 +2,8 @@
 
 Photos: JPEG, PNG and WebP up to MAX_IMAGE_UPLOAD_MB, turned upright from their
 EXIF orientation, re-encoded as WebP (which drops all metadata), large side at
-most POST_IMAGE_MAX_PX (1280) plus a POST_THUMB_PX (320) thumbnail.
+most POST_IMAGE_MAX_PX (1280), plus a POST_MEDIUM_PX (640) copy for big cards
+and a POST_THUMB_PX (320) thumbnail.
 
 Videos (owner decision Q8): MP4 or MOV up to MAX_VIDEO_UPLOAD_MB and
 VIDEO_MAX_SECONDS, one per post and never together with photos. The file is
@@ -70,8 +71,8 @@ def _encode(image: Image.Image, max_px: int) -> tuple[bytes, int, int]:
     return buffer.getvalue(), copy.width, copy.height
 
 
-def process_image(upload) -> tuple[bytes, bytes, int, int]:
-    """(large WebP, thumbnail WebP, width, height) for an uploaded photo."""
+def process_image(upload) -> tuple[bytes, bytes, bytes, int, int]:
+    """(large WebP, medium WebP, thumbnail WebP, width, height) for an uploaded photo."""
     if upload.size > settings.MAX_IMAGE_UPLOAD_MB * 1024 * 1024:
         raise _too_large(settings.MAX_IMAGE_UPLOAD_MB, _("Photos"))
     try:
@@ -90,8 +91,27 @@ def process_image(upload) -> tuple[bytes, bytes, int, int]:
     has_alpha = image.mode in ("RGBA", "LA") or (image.mode == "P" and "transparency" in image.info)
     image = image.convert("RGBA" if has_alpha else "RGB")
     large, width, height = _encode(image, settings.POST_IMAGE_MAX_PX)
+    medium, _w, _h = _encode(image, settings.POST_MEDIUM_PX)
     thumb, _w, _h = _encode(image, settings.POST_THUMB_PX)
-    return large, thumb, width, height
+    return large, medium, thumb, width, height
+
+
+def add_medium(media: PostMedia) -> bool:
+    """Make the POST_MEDIUM_PX file from the stored large one (backfill_medium_images).
+
+    False when the large file is missing or unreadable; the row then keeps no medium file.
+    """
+    try:
+        with media.image.open("rb") as handle, Image.open(handle) as stored:
+            stored.load()
+            image = stored.convert("RGBA" if stored.mode in ("RGBA", "LA") else "RGB")
+    except (OSError, UnidentifiedImageError, ValueError):
+        return False
+    medium, _w, _h = _encode(image, settings.POST_MEDIUM_PX)
+    prefix = "poster-" if media.kind == MediaKind.VIDEO else ""
+    media.medium.save(f"{media.id}-{prefix}{settings.POST_MEDIUM_PX}.webp", ContentFile(medium), save=False)
+    PostMedia.objects.filter(pk=media.pk).update(medium=media.medium.name)
+    return True
 
 
 def _check_can_add(user, post: Post) -> None:
@@ -111,10 +131,11 @@ def add_photo(user, post: Post, upload, focus_y=None) -> PostMedia:
             _("A post can have at most %(n)d photos.") % {"n": settings.MAX_PHOTOS_PER_POST},
             fields={"file": [_("Too many photos.")]},
         )
-    large, thumb, width, height = process_image(upload)
+    large, medium, thumb, width, height = process_image(upload)
     with transaction.atomic():
         media = PostMedia(post=post, width=width, height=height, bytes=len(large), order=post.media.count())
         media.image.save(f"{media.id}-{settings.POST_IMAGE_MAX_PX}.webp", ContentFile(large), save=False)
+        media.medium.save(f"{media.id}-{settings.POST_MEDIUM_PX}.webp", ContentFile(medium), save=False)
         media.thumbnail.save(f"{media.id}-{settings.POST_THUMB_PX}.webp", ContentFile(thumb), save=False)
         media.save()
     return media
@@ -224,7 +245,7 @@ def add_video(user, post: Post, upload, *, duration_s=None, poster=None) -> Post
             _("Send a poster photo for the video."),
             fields={"poster": [_("Required when the server cannot make a poster.")]},
         )
-    large, thumb, width, height = process_image(poster_file)
+    large, medium, thumb, width, height = process_image(poster_file)
 
     with transaction.atomic():
         media = PostMedia(
@@ -239,6 +260,7 @@ def add_video(user, post: Post, upload, *, duration_s=None, poster=None) -> Post
         upload.seek(0)
         media.video.save(f"{media.id}.{container}", upload, save=False)
         media.image.save(f"{media.id}-poster-{settings.POST_IMAGE_MAX_PX}.webp", ContentFile(large), save=False)
+        media.medium.save(f"{media.id}-poster-{settings.POST_MEDIUM_PX}.webp", ContentFile(medium), save=False)
         media.thumbnail.save(f"{media.id}-poster-{settings.POST_THUMB_PX}.webp", ContentFile(thumb), save=False)
         media.save()
     return media

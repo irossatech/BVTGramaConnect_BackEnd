@@ -47,15 +47,23 @@ def test_photo_is_resized_to_webp_with_a_thumbnail_and_no_exif(api, world, make_
         assert not large.getexif()
     with Image.open(media.thumbnail.path) as thumb:
         assert thumb.format == "WEBP" and max(thumb.size) == 320
+    assert media.medium.name.endswith(f"{media.id}-640.webp")
+    with Image.open(media.medium.path) as medium:
+        assert medium.format == "WEBP" and medium.size == (640, 427)
+        assert not medium.getexif()
 
-    detail = api(world.users["pm_kolakaluru"]).get(f"/api/v1/posts/{post.id}/").json()
+    detail =api(world.users["pm_kolakaluru"]).get(f"/api/v1/posts/{post.id}/").json()
     assert detail["media"][0]["id"] == data["id"]
 
 
-def test_small_photos_are_not_enlarged(api, world, make_post):
+def test_small_photos_are_not_enlarged(api, world, make_post, media_root):
     post = make_post("pm_kolakaluru", "kolakaluru", submit=False)
     data = upload(api, world, "pm_kolakaluru", post, jpeg(800, 600, exif=False)).json()
     assert (data["width"], data["height"]) == (800, 600)
+    small = make_post("pm_kolakaluru", "kolakaluru", submit=False, title="చిన్న ఫోటో")
+    upload(api, world, "pm_kolakaluru", small, jpeg(500, 400, exif=False))
+    with Image.open(small.media.get().medium.path) as medium:
+        assert medium.size == (500, 400)
 
 
 def test_at_most_five_photos(api, world, make_post):
