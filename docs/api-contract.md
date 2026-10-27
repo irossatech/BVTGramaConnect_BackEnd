@@ -115,7 +115,7 @@ All errors share one shape:
 | 409 | `duplicate` | Username, email, mobile or name already used; `fields` says which |
 | 413 | `file_too_large` | Upload over the limit |
 | 415 | `unsupported_media` | File type not allowed |
-| 429 | `locked_out` | 5 failed logins for this username from this IP address; `retry_after_s` gives the seconds left of the 15-minute lockout |
+| 429 | `locked_out` | 5 failed logins for this username from this IP address, or 50 failed logins from this IP address for any usernames within an hour; `retry_after_s` gives the seconds left |
 | 429 | `throttled` | Rate limit; `Retry-After` header set |
 
 ### Enumerations
@@ -319,8 +319,9 @@ Login rules:
 - `username` matches the username only, ignoring case and surrounding spaces. Usernames are stored in lower case.
 - A wrong password and an unknown username give the same `400 invalid_credentials`.
 - **Lockout** (django-axes): 5 failures for one username from one IP address lock that pair for 15 minutes. Every try then answers `429 locked_out` with `retry_after_s`, even with the right password. A success clears the count. An admin can unlock early (`POST /users/{id}/unlock/`). Nginx adds 10 requests a minute per IP.
+- **IP-wide cap:** 50 failed logins from one IP address, for any usernames, within 60 minutes block every login from that address with the same `429 locked_out` and `retry_after_s` (at most an hour). A success does not reset it and unlock does not lift it. Clients need no change: they already handle `locked_out`.
 - After the password check: blocked → `403 account_blocked`; no active role → `403 permission_denied`; console login without `web_admin.access_web_console` → `403 not_console_user`, and no session.
-- A successful login updates `last_login_at` and writes `auth.login` with `via` (`app` or `console`). Failures write `auth.login_failed`, refusals `auth.login_refused`, lockouts `auth.locked_out`.
+- A successful login updates `last_login_at` and writes `auth.login` with `via` (`app` or `console`). Failures write `auth.login_failed`, refusals `auth.login_refused`, lockouts `auth.locked_out`, IP blocks `auth.ip_locked_out`.
 
 Passwords:
 - Hashed with Argon2. New passwords pass Django's validators: at least 8 characters, not common, not all digits, not like the username, and at least one capital letter, one small letter, one number and one special character (anything not a letter, number or space, such as `@ # $ % & * ! ?`). Generated temporary passwords follow the same rules. Existing passwords keep working until next changed. A new password must differ from the current one. Errors come as `400 validation_error` with `fields.new_password` (or `fields.password` for admin-set passwords).

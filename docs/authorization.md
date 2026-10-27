@@ -110,12 +110,16 @@ django-axes counts failed logins per **username and IP address together**:
 - A successful login clears the count.
 - A lockout is audited as `auth.locked_out`, and each failure as `auth.login_failed`.
 
+**IP-wide cap (password spraying):** 50 failed logins (`LOGIN_IP_MAX_FAILURES`) from one IP address, for any usernames, within 60 minutes (`LOGIN_IP_WINDOW_MINUTES`) block every app and console login from that address until the oldest of them is an hour old. The answer is the same `429 locked_out` with `retry_after_s`, checked before the password. Tries while blocked are not counted, a successful login does not reset the count, and an admin's unlock does not lift it: it is about an address, not a user, and ends by itself. It is audited once as `auth.ip_locked_out` with the limit and window only, never the IP. Mobile networks share IP addresses, so keep the limit well above what one office mistypes in an hour; `0` switches it off. To lift a block early, delete that IP's rows from axes' access failures (Django admin, or the shell command below).
+
 **Unlocking early:** an admin with `accounts.unlock_user` over the user's area, ranked above them, calls `POST /api/v1/users/{id}/unlock/`. This clears every lockout for that username and is audited as `user.unlocked`. A password reset (section 4) clears it too. User objects carry `"locked_out": true` and `unlock` in `allowed_actions` while a lockout is active. In the console the button is in the user panel.
 
 From a shell on the server:
 
 ```bash
 python manage.py axes_reset_username <username>
+# Lift an IP block early:
+python manage.py shell -c "from axes.models import AccessFailureLog; print(AccessFailureLog.objects.filter(ip_address='<ip>').delete())"
 ```
 
 ---
@@ -333,6 +337,7 @@ python manage.py sync_role_permissions
 | `auth.login_failed` | Wrong password or unknown username |
 | `auth.login_refused` | Right password, but blocked, no role, or not a console user |
 | `auth.locked_out` | A username and IP pair is locked |
+| `auth.ip_locked_out` | An IP address reached the IP-wide cap; data holds the limit and window, not the IP |
 | `user.unlocked` | An admin unlocked a user |
 | `user.password_changed` | An official changed their own password |
 | `user.password_reset` | An admin reset someone's password |
@@ -354,6 +359,8 @@ No audit entry holds a password. The console shows these under Audit Log, tab Lo
 |---|---|---|
 | `LOGIN_MAX_FAILURES` | 5 | Failures before a username and IP pair is locked |
 | `LOGIN_LOCKOUT_MINUTES` | 15 | Lockout length |
+| `LOGIN_IP_MAX_FAILURES` | 50 | Failures from one IP, any usernames, before the IP is blocked; 0 switches the cap off |
+| `LOGIN_IP_WINDOW_MINUTES` | 60 | The IP cap's window and its longest block |
 | `CONSOLE_SESSION_IDLE_MINUTES` | 30 | Console idle timeout |
 | `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE` | on (off in dev) | Cookies only over HTTPS |
 | `CSRF_TRUSTED_ORIGINS` | none | The server's https origin, in `prod.py` |
