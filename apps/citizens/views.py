@@ -23,9 +23,9 @@ from .serializers import (
     CitizenDeviceSerializer,
     CitizenPostSerializer,
     CitizenPostWriteSerializer,
+    DeviceUpdateSerializer,
     RegisteredSerializer,
     RegisterSerializer,
-    VillageChangeSerializer,
 )
 
 TOKEN_PARAM = [OpenApiParameter("X-Citizen-Token", OpenApiTypes.STR, OpenApiParameter.HEADER, required=True)]
@@ -62,12 +62,17 @@ class MeView(CitizenView):
     def get(self, request):
         return Response(CitizenDeviceSerializer(services.device_from_request(request)).data)
 
-    @extend_schema(summary="Change the village this phone posts to", parameters=TOKEN_PARAM, request=VillageChangeSerializer, responses=CitizenDeviceSerializer)
+    @extend_schema(
+        summary="Change the village this phone posts to, its push token or its language",
+        parameters=TOKEN_PARAM,
+        request=DeviceUpdateSerializer,
+        responses=CitizenDeviceSerializer,
+    )
     def patch(self, request):
         device = services.device_from_request(request)
-        data = VillageChangeSerializer(data=request.data)
+        data = DeviceUpdateSerializer(data=request.data)
         data.is_valid(raise_exception=True)
-        return Response(CitizenDeviceSerializer(services.change_village(device, data.validated_data["village_id"])).data)
+        return Response(CitizenDeviceSerializer(services.update_device(device, **data.validated_data)).data)
 
 
 def my_posts(device):

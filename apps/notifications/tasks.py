@@ -41,6 +41,26 @@ def send_push_to_topic(topic: str, title: str, body: str, data: dict, priority: 
     return True
 
 
+def send_push_to_citizen(device_id: str, title: str, body: str, data: dict) -> bool:
+    """Push to the phone that wrote a citizen post. An unregistered token is forgotten."""
+    from apps.citizens.models import CitizenDevice
+
+    gateway = get_push_gateway()
+    device = CitizenDevice.objects.filter(pk=device_id).exclude(fcm_token="").first()
+    if not gateway.enabled or device is None:
+        return False
+    message = PushMessage(title=title, body=body, data=data, token=device.fcm_token)
+    try:
+        with_retries(lambda: gateway.send(message))
+    except InvalidDeviceToken:
+        CitizenDevice.objects.filter(pk=device.pk).update(fcm_token="")
+        return False
+    except Exception as exc:
+        _audit_failure(f"citizen phone {device.pk}", exc)
+        return False
+    return True
+
+
 def send_push_to_user(user_id: str, title: str, body: str, data: dict) -> int:
     """Push to every device of one official. Returns how many devices got it."""
     gateway = get_push_gateway()

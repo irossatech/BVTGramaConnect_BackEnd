@@ -55,8 +55,8 @@ class Phone:
 def phone(world):
     """make_phone("kolakaluru") registers a phone for that village."""
 
-    def make(village="kolakaluru", ip="10.20.30.40") -> Phone:
-        data = register(world, village, ip).json()
+    def make(village="kolakaluru", ip="10.20.30.40", **extra) -> Phone:
+        data = register(world, village, ip, **extra).json()
         return Phone(data["token"], data["device"]["id"])
 
     return make

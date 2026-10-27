@@ -88,6 +88,7 @@ AUDIT_ACTIONS = {
 RUNTIME_SETTINGS = {
     "REVIEW_ESCALATION_HOURS": int,
     "LANGUAGE_EN_ENABLED": bool,
+    "CITIZEN_POSTS_PER_DAY": int,
 }
 
 
@@ -207,7 +208,10 @@ def allowed_actions(user, post: Post) -> list[str]:
     if post.status != PostStatus.DRAFT and authz.can(user, URGENT, target):
         actions.append("set_urgent")
     if post.citizen_id and authz.can(user, BLOCK_CITIZEN, target):
-        actions.append("unblock_citizen" if post.citizen.blocked else "block_citizen")
+        from apps.citizens.services import active_block  # citizens builds on this module
+
+        actions.append("unblock_citizen" if active_block(post.citizen) else "block_citizen")
+        actions.append("discard_citizen_posts")
     return actions
 
 

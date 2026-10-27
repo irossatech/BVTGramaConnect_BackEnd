@@ -370,9 +370,10 @@ CITIZEN_INTEGRITY_VERIFIER = env.str(
 )
 # How long a challenge nonce, and Google's verdict on it, stays valid.
 CITIZEN_CHALLENGE_SECONDS = env.int("CITIZEN_CHALLENGE_SECONDS", default=300)
-# Posts per phone in 24 hours, photos per post, and new phones per IP address in 24 hours:
-# 0 is no limit (the default for all three). Set one in .env to switch that limit on.
-CITIZEN_POSTS_PER_DAY = env.int("CITIZEN_POSTS_PER_DAY", default=0)
+# Posts per phone in 24 hours: 5 by default (lead's decision of 2026-10-27). The Super Admin
+# changes it in the console (Settings, stored as a SettingOverride); 0 is no limit.
+CITIZEN_POSTS_PER_DAY = env.int("CITIZEN_POSTS_PER_DAY", default=5)
+# Photos per post and new phones per IP address in 24 hours: 0 (the default) is no limit.
 CITIZEN_MAX_PHOTOS = env.int("CITIZEN_MAX_PHOTOS", default=0)
 CITIZEN_REGISTRATIONS_PER_IP_PER_DAY = env.int("CITIZEN_REGISTRATIONS_PER_IP_PER_DAY", default=0)
 

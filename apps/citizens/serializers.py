@@ -1,6 +1,5 @@
 """Shapes from docs/api-contract.md, section 15."""
 
-from django.conf import settings
 from django.core.files.storage import default_storage
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
@@ -31,30 +30,67 @@ class ChallengeSerializer(serializers.Serializer):
     expires_in = serializers.IntegerField()
 
 
+LANGUAGES = [("te", "te"), ("en", "en")]
+
+
 class RegisterSerializer(serializers.Serializer):
     nonce = serializers.CharField(max_length=200)
     integrity_token = serializers.CharField(max_length=20000, required=False, allow_blank=True, default="")
     platform = serializers.ChoiceField(choices=["android", "ios"])
     village_id = serializers.IntegerField(min_value=1)
     app_version = serializers.CharField(max_length=20, required=False, allow_blank=True, default="")
+    #: Android's Settings.Secure.ANDROID_ID: links reinstalls, so a block survives them. Stored only hashed.
+    android_id = serializers.CharField(max_length=100, required=False, allow_blank=True, default="")
+    #: FCM token for "your post was published / discarded" (CP4).
+    fcm_token = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
+    language = serializers.ChoiceField(choices=LANGUAGES, required=False, default="te")
 
 
-class VillageChangeSerializer(serializers.Serializer):
-    village_id = serializers.IntegerField(min_value=1)
+class DeviceUpdateSerializer(serializers.Serializer):
+    village_id = serializers.IntegerField(min_value=1, required=False)
+    fcm_token = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    language = serializers.ChoiceField(choices=LANGUAGES, required=False)
 
 
 class CitizenDeviceSerializer(serializers.ModelSerializer):
     village = serializers.SerializerMethodField()
+    blocked = serializers.SerializerMethodField()
+    block_reason = serializers.SerializerMethodField()
+    blocked_until = serializers.SerializerMethodField()
     posts_today = serializers.SerializerMethodField()
     posts_per_day = serializers.SerializerMethodField()
 
     class Meta:
         model = CitizenDevice
-        fields = ["id", "village", "blocked", "posts_today", "posts_per_day", "created_at"]
+        fields = [
+            "id", "village", "language", "blocked", "block_reason", "blocked_until",
+            "posts_today", "posts_per_day", "created_at",
+        ]
+
+    def _block(self, obj):
+        from .services import active_block
+
+        cache = self.context.setdefault("blocks", {})
+        if obj.pk not in cache:
+            cache[obj.pk] = active_block(obj)
+        return cache[obj.pk]
 
     @extend_schema_field(AreaSlimSerializer)
     def get_village(self, obj):
         return _village(_describer(self.context), obj.village_id)
+
+    def get_blocked(self, obj) -> bool:
+        """Blocked on this install or any earlier install of the same phone."""
+        return self._block(obj) is not None
+
+    def get_block_reason(self, obj) -> str | None:
+        block = self._block(obj)
+        return block.block_reason if block else None
+
+    @extend_schema_field(serializers.DateTimeField(allow_null=True))
+    def get_blocked_until(self, obj):
+        block = self._block(obj)
+        return serializers.DateTimeField().to_representation(block.blocked_until) if block and block.blocked_until else None
 
     def get_posts_today(self, obj) -> int:
         from .services import posts_today
@@ -63,7 +99,9 @@ class CitizenDeviceSerializer(serializers.ModelSerializer):
 
     def get_posts_per_day(self, obj) -> int | None:
         """null: no daily limit."""
-        return settings.CITIZEN_POSTS_PER_DAY or None
+        from .services import posts_per_day
+
+        return posts_per_day() or None
 
 
 class RegisteredSerializer(serializers.Serializer):

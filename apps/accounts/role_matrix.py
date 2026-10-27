@@ -37,8 +37,6 @@ REVIEWING = [
     "posts.reverse_decision",
     "posts.view_review_queue",
     "posts.mark_urgent",
-    # Citizen posts (docs/api-contract.md, section 15): whoever reviews the village may block the phone.
-    "posts.block_citizen",
 ]
 USER_ACTIONS = [
     "accounts.block_user",
@@ -75,6 +73,9 @@ ROLE_GROUPS: dict[str, dict] = {
         "permissions": [
             *POSTING,
             *REVIEWING,
+            # Citizen posts (docs/api-contract.md, section 15): only the Super Admin blocks or unblocks
+            # a citizen's phone and discards all its pending posts (lead's decision of 2026-10-27).
+            "posts.block_citizen",
             "posts.view_stats",
             "accounts.manage_district_admin",
             "accounts.manage_mandal_admin",

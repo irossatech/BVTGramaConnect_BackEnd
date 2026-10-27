@@ -258,8 +258,9 @@ Returned by `GET /me/`, inside the app login response and inside the console ses
 - `event`: `null` or `{"kind", "start_date", "end_date"}`. `kind` is one of `deadline`, `camp`, `distribution`, `closure`, `meeting`; dates are `YYYY-MM-DD`; `end_date` is `null` for one-day events and never before `start_date` (owner decision Q7).
 - `is_urgent`: set by admins; urgent posts are pinned in the app and their push goes out at high priority (owner decision Q19).
 - `posted_as` is the role assignment the author used, so admin posts show under the official role, as the website FAQ promises.
-- `allowed_actions` values: `edit`, `submit`, `delete`, `add_media`, `publish`, `recheck`, `discard`, `unpublish`, `reverse`, `set_urgent`, `block_citizen`, `unblock_citizen`.
-- `citizen`: `null`, or for a citizen post `{"device_id", "blocked", "posts_total", "posts_discarded"}`; its `author` is then `{"id": null, "name": "", "role": "CITIZEN"}` (section 15).
+- `allowed_actions` values: `edit`, `submit`, `delete`, `add_media`, `publish`, `recheck`, `discard`, `unpublish`, `reverse`, `set_urgent`, `block_citizen`, `unblock_citizen`, `discard_citizen_posts`.
+- `citizen`: `null`, or for a citizen post `{"device_id", "blocked", "blocked_until", "posts_total", "posts_discarded"}`; its `author` is then `{"id": null, "name": "", "role": "CITIZEN"}` (section 15).
+- `set_urgent` is offered on citizen posts too: an admin may mark a citizen's post urgent, as any post in their area. Citizens themselves cannot send `is_urgent`.
 
 ### FeedPost (public view)
 Lean on purpose, for 2G.
@@ -509,13 +510,14 @@ What `POST /posts` does:
 {
   "review_escalation_hours": 24,
   "languages": {"te": true, "en": true},
+  "citizen_posts_per_day": 5,
   "admin_posts_auto_publish": true,
   "review_first_decision_wins": true,
   "super_admin_can_post": false
 }
 ```
 - Values start from Django settings and environment variables, as CLAUDE.md defines. A value saved here overrides the default and is audited as `setting.changed`.
-- Only `review_escalation_hours` (6 to 168) and `languages.en` are editable, matching the prototypes. Telugu cannot be switched off. The other three are read-only here.
+- Editable: `review_escalation_hours` (6 to 168), `languages.en`, and `citizen_posts_per_day` (0 to 1000, 0 is no limit; section 15). Telugu cannot be switched off. The other three are read-only here.
 
 ---
 
@@ -714,7 +716,7 @@ Roles are Django groups and actions are Django permissions. The full group × pe
 |---|---|---|---|---|---|---|---|
 | Read feed, categories, geography | public | yes | yes | yes | yes | yes | yes |
 | Create and submit a post | `posts.create_post`, `posts.submit_post` | only if `SUPER_ADMIN_CAN_POST`; the only group that may target the state | district, a mandal or a village inside it | mandal, or a village inside it | own village | own village, goes to review | the phone's village, with a posting token, always goes to review (section 15) |
-| Block or unblock a citizen's phone | `posts.block_citizen` | any | inside the district | inside the mandal | inside the village | no | no |
+| Block or unblock a citizen's phone, discard all its pending posts | `posts.block_citizen` | any | no | no | no | no | no |
 | Review queue | `posts.view_review_queue`, `posts.review_post` | any post | posts targeted inside the district | inside the mandal | inside the village | no | no |
 | Publish, recheck, discard | `posts.publish_post`, `posts.recheck_post`, `posts.discard_post` | any | inside the district | inside the mandal | inside the village | no | no |
 | Take down a published post | `posts.takedown_post` | any | inside the district | inside the mandal | inside the village | no | no |
@@ -771,7 +773,7 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Contacts tab (citizens) | `GET /contacts?village_id=`; `GET /contact-types` for chips and icons |
 | Citizen: first post (once per install) | `POST /citizen/challenge/`, Play Integrity on the phone, `POST /citizen/register/` |
 | Citizen: write a post, my posts | `POST /citizen/posts/`, `GET /citizen/posts/`, `GET /citizen/me/`; `PATCH /citizen/me/` after a village change |
-| Review a citizen post | as Review; plus `POST /posts/{id}/block-citizen/`, `POST /posts/{id}/unblock-citizen/` |
+| Review a citizen post | as Review; tabs from `GET /review/queue/?source=official\|citizen` and `source_counts`. Super Admin also: `POST /posts/{id}/block-citizen/`, `/unblock-citizen/`, `/discard-citizen-posts/` |
 | Important numbers (every official) | `GET /admin/contacts` (`section=AREA\|HELPLINE`), `POST /admin/contacts`, `PATCH /admin/contacts/{id}`, `DELETE /admin/contacts/{id}`, `GET /admin/contacts/targets` |
 
 ### Super Admin console
@@ -815,7 +817,7 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Video | one per post, `VIDEO_MAX_SECONDS` 60, `MAX_VIDEO_UPLOAD_MB` default 50 |
 | Page size | feed 20, admin lists 100 |
 | Important numbers | 200 active per area (`CONTACTS_MAX_PER_AREA`); name 150, custom type 40 characters; CSV import 2 MB and 5,000 rows |
-| Citizen posts | No limit on posts, photos or videos (switchable: `CITIZEN_POSTS_PER_DAY`, `CITIZEN_MAX_PHOTOS`); each photo at most `MAX_IMAGE_UPLOAD_MB`, each video at most `MAX_VIDEO_UPLOAD_MB` and `VIDEO_MAX_SECONDS`; no limit on new phones (switchable: `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY`) |
+| Citizen posts | 5 posts per phone in 24 hours (the Super Admin changes it in Settings; 0 is no limit); any number of photos and videos per post (switchable: `CITIZEN_MAX_PHOTOS`); each photo at most `MAX_IMAGE_UPLOAD_MB`, each video at most `MAX_VIDEO_UPLOAD_MB` and `VIDEO_MAX_SECONDS`; no limit on new phones (switchable: `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY`) |
 
 ---
 
@@ -931,19 +933,25 @@ Built (`apps.citizens`). A citizen posts news or an issue for the village chosen
 | Method and path | Request | Response |
 |---|---|---|
 | `POST /citizen/challenge/` | — | `{"nonce": "…", "expires_in": 300}`. The nonce is signed by the server, valid for `CITIZEN_CHALLENGE_SECONDS` (300) and usable once. |
-| `POST /citizen/register/` | `{"nonce", "integrity_token", "platform": "android", "village_id", "app_version"?}` | `201 {"token": "…", "device": CitizenDevice}`. `400 validation_error` (expired or reused nonce: `fields.nonce`; unknown or inactive village: `fields.village_id`); `403 integrity_failed` (Google's verdict is not genuine). No limit on registrations by default; only if `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY` is set: `429 throttled` with `retry_after_s` after that many from one IP address in 24 hours. |
+| `POST /citizen/register/` | `{"nonce", "integrity_token", "platform": "android", "village_id", "app_version"?, "android_id"?, "fcm_token"?, "language"?}`. `android_id` is Android's `Settings.Secure.ANDROID_ID` (stored only as a keyed hash; it links reinstalls of the same phone, so a block and the daily limit survive them). `fcm_token` lets the server push the decision on each post (CP4). `language` `te` (default) or `en`, for those pushes. | `201 {"token": "…", "device": CitizenDevice}`. `400 validation_error` (expired or reused nonce: `fields.nonce`; unknown or inactive village: `fields.village_id`); `403 integrity_failed` (Google's verdict is not genuine). No limit on registrations by default; only if `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY` is set: `429 throttled` with `retry_after_s` after that many from one IP address in 24 hours. |
 | `GET /citizen/me/` | token | `CitizenDevice` |
-| `PATCH /citizen/me/` | token; `{"village_id"}` | `CitizenDevice`. The village posts go to. |
-| `POST /citizen/posts/` | token; multipart `category`, `language`, `title`, `body`, `photos` and `videos` (any number of each, together or alone; repeat the field per file) | `201 CitizenPost`, already `PENDING`. `400 validation_error`; `400 video_too_long`; `403 citizen_blocked`; `403 permission_denied` for videos while `VIDEO_POSTS_ENABLED` is off; `413 file_too_large` (a photo over `MAX_IMAGE_UPLOAD_MB`, a video over `MAX_VIDEO_UPLOAD_MB`); `415 unsupported_media`. One bad file refuses the whole post and stores nothing. No daily limit by default; only if `CITIZEN_POSTS_PER_DAY` or `CITIZEN_MAX_PHOTOS` is set: `429 throttled` with `retry_after_s`, or `400` on `photos`. |
+| `PATCH /citizen/me/` | token; any of `{"village_id", "fcm_token", "language"}` | `CitizenDevice`. The village posts go to; a new FCM token when Firebase rotates it; the language of pushes. |
+| `POST /citizen/posts/` | token; multipart `category`, `language`, `title`, `body`, `photos` and `videos` (any number of each, together or alone; repeat the field per file) | `201 CitizenPost`, already `PENDING`. `400 validation_error`; `400 video_too_long`; `403 citizen_blocked` with `reason` and `blocked_until` (show both to the citizen); `403 permission_denied` for videos while `VIDEO_POSTS_ENABLED` is off; `413 file_too_large` (a photo over `MAX_IMAGE_UPLOAD_MB`, a video over `MAX_VIDEO_UPLOAD_MB`); `415 unsupported_media`; `429 throttled` with `retry_after_s` after the daily limit (5 posts per phone in 24 hours by default, all installs of the phone together; the Super Admin changes it in Settings). One bad file refuses the whole post and stores nothing. |
 | `GET /citizen/posts/` | token | `[CitizenPost]`, this phone's posts, newest first, at most 50 |
 
 Every citizen endpoint answers `401 citizen_token_invalid` without a valid token. A blocked phone can still read `GET /citizen/me/` and its posts, but cannot post.
 
 ```jsonc
+// 403 on POST /citizen/posts/ from a blocked phone
+{"error": {"code": "citizen_blocked",
+           "message": "This phone is blocked from posting. Reason: తప్పుడు సమాచారం",
+           "reason": "తప్పుడు సమాచారం", "blocked_until": "2026-11-03T16:40:00+05:30"}}
+
 // CitizenDevice
-{"id": "3b7e…", "village": {"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు"},
- "blocked": false, "posts_today": 1,
- "posts_per_day": null,   // null: no daily limit (CITIZEN_POSTS_PER_DAY unset)
+{"id": "3b7e…", "village": {"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు"}, "language": "te",
+ "blocked": false, "block_reason": null, "blocked_until": null,   // filled while a block runs
+ "posts_today": 1,
+ "posts_per_day": 5,      // null: no daily limit (the Super Admin set 0)
  "created_at": "2026-10-27T10:00:00+05:30"}
 
 // CitizenPost
@@ -962,13 +970,16 @@ Every citizen endpoint answers `401 citizen_token_invalid` without a valid token
 - **Fields:** `category` an active category key; `language` `te` or `en`; `title` 1 to 150 characters; `body` 1 to 5,000; photos as officials' photos (JPEG, PNG or WebP, at most `MAX_IMAGE_UPLOAD_MB`, re-encoded to WebP with EXIF and GPS removed).
 - **Videos:** MP4 or MOV, each at most `MAX_VIDEO_UPLOAD_MB` (50) and, when the server can measure it, `VIDEO_MAX_SECONDS` (60). Any number, mixed with any number of photos (decision of 2026-10-27); stored photos first, then videos, in the order sent. The app never sends a length or a poster: with ffmpeg the server measures the video and cuts a poster frame; without it the length stays `null` and a plain placeholder poster is used. (Officials' video upload is unchanged: one video, never with photos, and without ffmpeg the phone sends `duration_s` and a `poster`.)
 - **Feed:** a published citizen post shows like any post: `media_count` counts photos and videos, `video` is its first video, `image_url` its first photo, and `GET /feed/posts/{id}/` lists every photo and video in `media`.
-- **Review:** the post goes straight to `PENDING` and into the review queue of every official whose area contains the village: the Village Admin, the Mandal Admin, the District Admin and the Super Admin, at the same time. The first decision wins; after `REVIEW_ESCALATION_HOURS` without a decision the next level up is alerted, exactly as for Panchayat members' posts (owner decision Q1).
+- **Review:** the post goes straight to `PENDING` and into the review queue of every official whose area contains the village: the Village Admin, the Mandal Admin, the District Admin and the Super Admin, at the same time (CP1). The Village, Mandal and District Admins are notified. The first decision wins; after `REVIEW_ESCALATION_HOURS` without a decision the next level up is alerted, exactly as for Panchayat members' posts (owner decision Q1).
+- **Separate queue:** `GET /review/queue/` and `GET /posts/` take `source=citizen` or `source=official`; without it they list both. The review queue also returns `"source_counts": {"official": 3, "citizen": 7}` (every other filter applied, `source` ignored) for the two tabs.
+- **The citizen hears the decision (CP4):** when a citizen post is published, discarded or taken down, the phone gets a push (the `post_approved`, `post_discarded` or `post_unpublished` text in the phone's `language`, with the reviewer's comment), with `data.type` `POST_PUBLISHED`, `POST_DISCARDED` or `POST_UNPUBLISHED` and `data.post_id`. Only if the phone sent an `fcm_token`. "My posts" shows the same result.
 - **Decisions:** `publish` or `discard` (reason required). `recheck` is not offered, because a citizen cannot edit a post. Take-down and reversal work as for any post, except that a reversal cannot move a citizen post to `RECHECK`.
 - **Public view:** a published citizen post shows `source_role: "CITIZEN"` in the feed. No name, phone or device is ever shown.
-- **Officials' view (`Post`):** `author` is `{"id": null, "name": "", "role": "CITIZEN"}` and `posted_as.role` is `CITIZEN`; a new field `citizen` holds `{"device_id", "blocked", "posts_total", "posts_discarded"}` (null on officials' posts). `allowed_actions` may include `block_citizen` or `unblock_citizen`.
-- **Blocking:** `POST /posts/{id}/block-citizen/` `{"comment"}` (required) blocks the phone that wrote the post; its token stops working for posting, and its other `PENDING` posts inside the actor's area are discarded with the same comment. `POST /posts/{id}/unblock-citizen/` undoes the block. Both need `posts.block_citizen` over the post's village: Village, Mandal and District Admins and the Super Admin. Audited as `citizen.blocked` and `citizen.unblocked`.
-- **Audit:** `citizen.registered` (no IP address, no integrity token), `post.created` and `post.submitted` with the device id in `data` and no actor.
-- **Privacy:** the server stores no IP address in the clear: only a keyed hash of it, for the optional registration limit. The posting token is stored only as a hash.
+- **Officials' view (`Post`):** `author` is `{"id": null, "name": "", "role": "CITIZEN"}` and `posted_as.role` is `CITIZEN`; a new field `citizen` holds `{"device_id", "blocked", "blocked_until", "posts_total", "posts_discarded"}` (null on officials' posts; the counts cover every install of the phone). For the Super Admin, `allowed_actions` also holds `block_citizen` or `unblock_citizen`, and `discard_citizen_posts`.
+- **Blocking (Super Admin only, `posts.block_citizen`):** `POST /posts/{id}/block-citizen/` `{"comment", "days"}`, both required, `days` 1 to 365. Blocks the phone that wrote the post, every install of it (same `android_id`), until now + `days`; the block then ends by itself. The phone's other `PENDING` posts are discarded with the same comment. The citizen sees the comment and the end in `403 citizen_blocked` and in `GET /citizen/me/`. Blocking again replaces the reason and the end. `POST /posts/{id}/unblock-citizen/` lifts it at once. Other officials get `403 permission_denied`. Audited as `citizen.blocked` (with `days` and `until`) and `citizen.unblocked`.
+- **Discard all (Super Admin only):** `POST /posts/{id}/discard-citizen-posts/` `{"comment"}` (required) discards every `PENDING` post of that phone (every install) in one action and answers `{"discarded": 3}`. It does not block the phone. Audited as `citizen.posts_discarded`.
+- **Audit:** `citizen.registered` (platform, whether Play Integrity was checked, whether it is a reinstall; no IP address, Android ID or token), `post.created` and `post.submitted` with the device id in `data` and no actor.
+- **Privacy:** the server stores no IP address or Android ID in the clear, only keyed hashes. The posting token is stored only as a SHA-256 hash.
 
 ### Settings
 
@@ -976,9 +987,9 @@ Every citizen endpoint answers `401 citizen_token_invalid` without a valid token
 |---|---|---|
 | `CITIZEN_POSTS_ENABLED` | on | `off` answers `403 permission_denied` on `POST /citizen/posts/` |
 | `CITIZEN_INTEGRITY_REQUIRED` | on in `prod.py`, off in `dev.py` and tests | Off: registration skips the Google check (for debug builds and the qa server). Never off in production. |
-| `PLAY_INTEGRITY_PACKAGE` | — | The app's package name, e.g. `com.bvt.gramaconnect` |
+| `PLAY_INTEGRITY_PACKAGE` | — | The app's package name, e.g. `com.bvt.app` |
 | `PLAY_INTEGRITY_CREDENTIALS_FILE` | `FCM_CREDENTIALS_FILE` | Service account allowed to call the Play Integrity API |
-| `CITIZEN_POSTS_PER_DAY` | 0 (no limit) | Posts per phone in 24 hours, when set |
+| `CITIZEN_POSTS_PER_DAY` | 5 | Posts per phone in 24 hours; 0 is no limit. The Super Admin changes it at runtime: `PATCH /admin/settings/` `{"citizen_posts_per_day"}` (0 to 1000), stored over this default. |
 | `CITIZEN_MAX_PHOTOS` | 0 (no limit) | Photos per citizen post, when set |
 | `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY` | 0 (no limit) | New phones per IP address in 24 hours, when set. Mobile networks put many phones behind one IP, so keep it high if used. |
 
@@ -986,7 +997,8 @@ Every citizen endpoint answers `401 citizen_token_invalid` without a valid token
 
 | # | Question | Default until decided |
 |---|---|---|
-| CP1 | Do all levels see a citizen post at once, or one level at a time? | At once, with escalation after 24 h (owner decision Q1) |
-| CP2 | Photos only, or video too? | **Decided 2026-10-27:** photos and videos, any number of each, together in one post; no limit on posts or files |
+| CP1 | Do all levels see a citizen post at once, or one level at a time? | **Decided 2026-10-27:** all at once, all notified, escalation after 24 h (owner decision Q1) |
+| CP2 | Photos only, or video too? | **Decided 2026-10-27:** photos and videos, any number of each, together in one post |
 | CP3 | iPhones: Play Integrity is Android only. Apple App Attest is needed for iOS. | iOS registration works only while `CITIZEN_INTEGRITY_REQUIRED` is off |
-| CP4 | Is the citizen told when the post is published or discarded? | Shown in `GET /citizen/posts/` (`status`, `reason`); no push |
+| CP4 | Is the citizen told when the post is published or discarded? | **Decided 2026-10-27:** yes, a push to the phone (see Rules), and "My posts" |
+| CP5 | Limits and blocking | **Decided 2026-10-27:** 5 posts per phone a day (Super Admin changes it); blocks are temporary, set and lifted only by the Super Admin, shown to the citizen with the reason, and survive a reinstall; the Super Admin may discard all of a phone's pending posts |

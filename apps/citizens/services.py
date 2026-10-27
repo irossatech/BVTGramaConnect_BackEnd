@@ -4,11 +4,15 @@
   genuine app on a real phone (integrity.py). CITIZEN_REGISTRATIONS_PER_IP_PER_DAY
   limits new phones per IP address only when set (0, the default, is no limit).
   Only the token's SHA-256 hash is stored; the IP address only as a keyed hash.
+- One phone may have had several installs, so several tokens. They are linked
+  by a keyed hash of Android's app-scoped device ID (same_phone), which survives
+  a reinstall: the daily limit and a block apply to the phone, not the install.
 - Posts go through posts.services.create_citizen_post: straight to PENDING
-  for every reviewer of the phone's village. CITIZEN_POSTS_PER_DAY and
-  CITIZEN_MAX_PHOTOS limit them only when set (0, the default, is no limit).
-- Officials holding posts.block_citizen over a citizen post's village block
-  the phone; its other pending posts in their area are discarded.
+  for every reviewer of the phone's village, at most CITIZEN_POSTS_PER_DAY a
+  day (a runtime setting the Super Admin changes; 0 is no limit).
+- Only the Super Admin (posts.block_citizen) blocks a phone, for a number of
+  days chosen each time, and may discard all its pending posts at once. The
+  citizen sees the reason and the end of the block.
 """
 
 from __future__ import annotations
@@ -21,8 +25,10 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.translation import gettext as _
+from rest_framework import serializers as drf_serializers
 from rest_framework import status as http
 
 from apps.accounts import authz
@@ -59,21 +65,41 @@ def throttled(message, seconds: int) -> ApiError:
     return error
 
 
+def blocked_error(block_row: CitizenDevice) -> ApiError:
+    """403 citizen_blocked with the reason and the end of the block, for the app to show."""
+    until = drf_serializers.DateTimeField().to_representation(block_row.blocked_until) if block_row.blocked_until else None
+    return ApiError(
+        "citizen_blocked",
+        _("This phone is blocked from posting. Reason: %(reason)s") % {"reason": block_row.block_reason},
+        status=http.HTTP_403_FORBIDDEN,
+        reason=block_row.block_reason,
+        blocked_until=until,
+    )
+
+
 def _validation(field: str, message) -> ApiError:
     return ApiError("validation_error", message, fields={field: [message]})
 
 
-# --- Tokens -------------------------------------------------------------------------------------
+# --- Tokens and phones ------------------------------------------------------------------------------
 
 
 def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def hash_ip(ip: str | None) -> str:
-    if not ip:
+def _keyed_hash(kind: bytes, value: str | None) -> str:
+    if not value:
         return ""
-    return hmac.new(settings.SECRET_KEY.encode(), b"citizen-ip:" + ip.encode(), hashlib.sha256).hexdigest()
+    return hmac.new(settings.SECRET_KEY.encode(), kind + b":" + value.encode(), hashlib.sha256).hexdigest()
+
+
+def hash_ip(ip: str | None) -> str:
+    return _keyed_hash(b"citizen-ip", ip)
+
+
+def hash_android_id(android_id: str | None) -> str:
+    return _keyed_hash(b"citizen-android-id", (android_id or "").strip().lower())
 
 
 def device_from_request(request) -> CitizenDevice:
@@ -85,6 +111,26 @@ def device_from_request(request) -> CitizenDevice:
     if device is None:
         raise token_invalid()
     return device
+
+
+def same_phone(device: CitizenDevice):
+    """Every install of this phone: the same row, plus rows with the same Android device ID."""
+    query = Q(pk=device.pk)
+    if device.android_id_hash:
+        query |= Q(android_id_hash=device.android_id_hash)
+    return CitizenDevice.objects.filter(query)
+
+
+def active_block(device: CitizenDevice, now=None) -> CitizenDevice | None:
+    """The running block on this phone (any of its installs), or None. The longest one wins."""
+    now = now or timezone.now()
+    return (
+        same_phone(device)
+        .filter(blocked_at__isnull=False)
+        .filter(Q(blocked_until__isnull=True) | Q(blocked_until__gt=now))
+        .order_by("-blocked_until")
+        .first()
+    )
 
 
 # --- Registration -------------------------------------------------------------------------------
@@ -100,8 +146,11 @@ def _seconds_until(oldest, now) -> int:
     return max(1, int((oldest + DAY - now).total_seconds()) + 1)
 
 
-def register(*, nonce: str, integrity_token: str, platform: str, village_id: int, app_version: str, ip: str | None):
-    """A new phone: returns (device, token). The token is shown once and never stored."""
+def register(
+    *, nonce: str, integrity_token: str, platform: str, village_id: int, app_version: str, ip: str | None,
+    android_id: str = "", fcm_token: str = "", language: str = "te",
+):
+    """A new install: returns (device, token). The token is shown once and never stored."""
     now = timezone.now()
     if not integrity.nonce_is_fresh(nonce) or CitizenDevice.objects.filter(nonce=nonce).exists():
         raise _validation("nonce", _("This challenge expired or was already used. Ask for a new one."))
@@ -138,6 +187,9 @@ def register(*, nonce: str, integrity_token: str, platform: str, village_id: int
                 app_version=(app_version or "")[:20],
                 village_id=village_id,
                 registered_ip_hash=ip_hash,
+                android_id_hash=hash_android_id(android_id),
+                fcm_token=(fcm_token or "")[:255],
+                language=language,
                 nonce=nonce,
                 integrity_checked=checked,
             )
@@ -147,7 +199,11 @@ def register(*, nonce: str, integrity_token: str, platform: str, village_id: int
                 target_label=str(device),
                 area=AreaRef(AreaLevel.VILLAGE, village_id),
                 via="citizen",
-                data={"platform": platform, "integrity_checked": checked},
+                data={
+                    "platform": platform,
+                    "integrity_checked": checked,
+                    "reinstall": same_phone(device).exclude(pk=device.pk).exists(),
+                },
             )
     except IntegrityError:
         # The same nonce in two requests at once: only one gets a token.
@@ -155,18 +211,34 @@ def register(*, nonce: str, integrity_token: str, platform: str, village_id: int
     return device, token
 
 
-def change_village(device: CitizenDevice, village_id) -> CitizenDevice:
-    device.village_id = _active_village(village_id)
-    device.save(update_fields=["village_id", "last_seen"])
+def update_device(device: CitizenDevice, *, village_id=None, fcm_token=None, language=None) -> CitizenDevice:
+    """PATCH /citizen/me/: the village posts go to, the push token, the language of pushes."""
+    fields = ["last_seen"]
+    if village_id is not None:
+        device.village_id = _active_village(village_id)
+        fields.append("village_id")
+    if fcm_token is not None:
+        device.fcm_token = fcm_token[:255]
+        fields.append("fcm_token")
+    if language is not None:
+        device.language = language
+        fields.append("language")
+    device.save(update_fields=fields)
     return device
 
 
 # --- Posting ---------------------------------------------------------------------------------------
 
 
+def posts_per_day() -> int:
+    """The Super Admin's value (console Settings), else CITIZEN_POSTS_PER_DAY; 0 is no limit."""
+    return int(post_services.runtime("CITIZEN_POSTS_PER_DAY"))
+
+
 def posts_today(device: CitizenDevice, now=None):
+    """Posts from this phone, any of its installs, in the last 24 hours."""
     now = now or timezone.now()
-    return Post.objects.filter(citizen=device, created_at__gt=now - DAY)
+    return Post.objects.filter(citizen__in=same_phone(device), created_at__gt=now - DAY)
 
 
 def create_post(
@@ -178,12 +250,11 @@ def create_post(
     """
     if not settings.CITIZEN_POSTS_ENABLED:
         raise permission_denied(_("Citizen posts are switched off."))
-    if device.blocked:
-        raise ApiError(
-            "citizen_blocked", _("This phone has been blocked from posting."), status=http.HTTP_403_FORBIDDEN
-        )
     now = timezone.now()
-    limit = settings.CITIZEN_POSTS_PER_DAY
+    block_row = active_block(device, now)
+    if block_row is not None:
+        raise blocked_error(block_row)
+    limit = posts_per_day()
     if limit:
         recent = posts_today(device, now)
         if recent.count() >= limit:
@@ -212,60 +283,88 @@ def create_post(
     return post_services.create_citizen_post(device, data, attach=attach)
 
 
-# --- Blocking (officials) --------------------------------------------------------------------------
+# --- Super Admin: block, unblock, discard all ---------------------------------------------------
 
 
-def _blocker_or_raise(user, post: Post):
+def _super_admin_or_raise(user, post: Post):
     if not post.citizen_id:
         raise ApiError("validation_error", _("This is not a citizen post."), fields={"post": [_("Not a citizen post.")]})
     grant = authz.best_grant(user, post_services.BLOCK_CITIZEN, post.target)
     if grant is None:
         if authz.can(user, post_services.BLOCK_CITIZEN):
             raise out_of_area(_("This post is outside your area."))
-        raise permission_denied(_("Your role cannot block citizens."))
+        raise permission_denied(_("Only the Super Admin can block citizens or discard all their posts."))
     return grant
 
 
-def block(user, post: Post, comment: str) -> CitizenDevice:
-    """Block the phone that wrote `post`, then discard its other pending posts inside the actor's area."""
-    grant = _blocker_or_raise(user, post)
+def _comment_or_raise(comment: str) -> str:
     comment = (comment or "").strip()
     if not comment:
         raise post_services.comment_required()
-    device = post.citizen
-    with transaction.atomic():
-        newly = CitizenDevice.objects.filter(pk=device.pk, blocked_at__isnull=True).update(
-            blocked_at=timezone.now(), blocked_by=user, block_reason=comment[:500]
-        )
-        device.refresh_from_db()
-        if newly:
-            record(
-                "citizen.blocked", actor=user, actor_role=grant.key, target=device, target_label=str(device),
-                area=post.target, data={"post_id": str(post.pk), "comment": comment},
-            )
+    return comment
+
+
+def _discard_pending(user, device: CitizenDevice, comment: str) -> int:
+    """Discard every pending post of this phone (all installs) inside the actor's area. Returns how many."""
     pending = (
-        Post.objects.filter(citizen=device, status=PostStatus.PENDING)
+        Post.objects.filter(citizen__in=same_phone(device), status=PostStatus.PENDING)
         .filter(post_services.review_scope_q(user, post_services.DECISION_PERMISSION["discard"]))
+        .order_by("submitted_at")
     )
+    count = 0
     for item in pending:
         try:
             post_services.review(user, item, "discard", comment)
         except (post_services.AlreadyDecided, ApiError):
             continue  # another reviewer decided it first
+        count += 1
+    return count
+
+
+def block(user, post: Post, comment: str, days: int) -> CitizenDevice:
+    """Block the phone that wrote `post` (all its installs) for `days`, then discard its pending posts."""
+    grant = _super_admin_or_raise(user, post)
+    comment = _comment_or_raise(comment)
+    device = post.citizen
+    now = timezone.now()
+    until = now + timedelta(days=days)
+    with transaction.atomic():
+        same_phone(device).update(blocked_at=now, blocked_until=until, blocked_by=user, block_reason=comment[:500])
+        record(
+            "citizen.blocked", actor=user, actor_role=grant.key, target=device, target_label=str(device),
+            area=post.target,
+            data={"post_id": str(post.pk), "comment": comment, "days": days,
+                  "until": drf_serializers.DateTimeField().to_representation(until)},
+        )
+    _discard_pending(user, device, comment)
+    device.refresh_from_db()
     return device
 
 
 def unblock(user, post: Post) -> CitizenDevice:
-    grant = _blocker_or_raise(user, post)
+    grant = _super_admin_or_raise(user, post)
     device = post.citizen
     with transaction.atomic():
-        lifted = CitizenDevice.objects.filter(pk=device.pk, blocked_at__isnull=False).update(
-            blocked_at=None, blocked_by=None, block_reason=""
+        lifted = same_phone(device).filter(blocked_at__isnull=False).update(
+            blocked_at=None, blocked_until=None, blocked_by=None, block_reason=""
         )
-        device.refresh_from_db()
         if lifted:
             record(
                 "citizen.unblocked", actor=user, actor_role=grant.key, target=device, target_label=str(device),
                 area=post.target, data={"post_id": str(post.pk)},
             )
+    device.refresh_from_db()
     return device
+
+
+def discard_all(user, post: Post, comment: str) -> int:
+    """Discard every pending post of the phone that wrote `post`, in one action. Returns how many."""
+    grant = _super_admin_or_raise(user, post)
+    comment = _comment_or_raise(comment)
+    count = _discard_pending(user, post.citizen, comment)
+    record(
+        "citizen.posts_discarded", actor=user, actor_role=grant.key, target=post.citizen,
+        target_label=str(post.citizen), area=post.target,
+        data={"post_id": str(post.pk), "comment": comment, "discarded": count},
+    )
+    return count
