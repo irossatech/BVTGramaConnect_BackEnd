@@ -73,13 +73,17 @@ class Area(models.Model):
         abstract = True
         ordering = ["name_en"]
 
-    def save(self, *args, **kwargs):
+    def normalize(self) -> None:
+        """What save() fills in. Bulk writes skip save(), so they call this themselves."""
         self.name_en = clean_name(self.name_en)
         # A missing Telugu name copies the English one, so Telugu screens
         # always have something to show.
         self.name_te = clean_name(self.name_te) or self.name_en
         self.name_key = name_key(self.name_en)
         self.lgd_code = (self.lgd_code or "").strip() or None
+
+    def save(self, *args, **kwargs):
+        self.normalize()
         super().save(*args, **kwargs)
 
     def display_name(self, language: str | None = None) -> str:

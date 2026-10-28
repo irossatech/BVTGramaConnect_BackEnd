@@ -34,7 +34,7 @@ Top level of the repo: `apps/`, `grama/` (settings, URLs, shared helpers, projec
 - **Runtime settings**: `apps.posts.services.runtime(name)` reads a SettingOverride row first, then the Django setting.
 - **Urgent** is set at create or edit by admins, or later by a reviewer through `apps.posts.services.set_urgent`, which audits it. Urgent posts push at high priority; others at normal.
 - **"Visible to"**: what an author may target is checked in `posting_assignment`; the choices the app shows come from `posting_targets`. Both live in `apps/posts/services.py`. The area picker itself is `authz.area_targets(user, perm)`, shared with the important numbers' "Who sees it".
-- **Districts, mandals and villages** are written only by `apps/geography/services.py` (`create_area`, `update_area`), for the API and the CSV import alike: parent check, unique names (the database constraint is the real guard), audit with old and new values, and `warnings`.
+- **Districts, mandals and villages** are written only by `apps/geography/services.py` (`create_area`, `update_area`), for the API and the CSV import alike: parent check, unique names (the database constraint is the real guard), audit with old and new values, and `warnings`. The import writes its villages through `import_villages`: the same checks and warnings, in bulk, so a state's 18,000 villages take seconds.
 - **Important numbers** are written only by `apps/contacts/services.py`: permission over the area, validation, write and audit (phones masked) in one transaction.
 
 ## Settings

@@ -5,6 +5,8 @@ from io import StringIO
 
 import pytest
 from django.core.management import CommandError, call_command
+from django.db import IntegrityError, connection
+from django.test.utils import CaptureQueriesContext
 
 from apps.geography.importer import GeographyImporter
 from apps.geography.models import District, Mandal, State, Village
@@ -148,6 +150,54 @@ def test_lgd_code_under_another_parent_is_refused():
     report = run(lgd + "Andhra Pradesh,,Guntur,,Mangalagiri,,Kolakaluru,,,,,594122\n")
     assert any("Moving areas is not supported" in error for error in report.errors)
     assert Village.objects.get().mandal.name_en == "Tenali"
+
+
+def test_a_rename_onto_a_sibling_names_its_line_and_writes_nothing():
+    lgd = HEADER.strip() + ",village_lgd_code\n"
+    run(lgd + "Andhra Pradesh,,Guntur,,Tenali,,Kolakaluru,,,,,594122\nAndhra Pradesh,,Guntur,,Tenali,,Pedaravuru,,,,,\n")
+    report = run(lgd + "Andhra Pradesh,,Guntur,,Tenali,,Nandivelugu,,,,522306,\n"
+                       "Andhra Pradesh,,Guntur,,Tenali,,pedaravuru,,,,,594122\n")
+    assert report.errors == ["Line 3: village 'Andhra Pradesh > Guntur > Tenali > pedaravuru': This name already exists here."]
+    assert sorted(Village.objects.values_list("name_en", flat=True)) == ["Kolakaluru", "Pedaravuru"]
+
+
+def test_a_lost_race_undoes_the_whole_file(monkeypatch):
+    def clash(*args, **kwargs):
+        raise IntegrityError("UNIQUE constraint failed")
+
+    monkeypatch.setattr(Village.objects, "bulk_create", clash)
+    report = run(GOOD)
+    assert report.errors == ["Villages: This name already exists here."]
+    assert totals() == (0, 0, 0, 0)
+
+
+def test_updates_write_only_what_changed_and_stamp_the_time():
+    run(GOOD)
+    before = {v.name_en: v for v in Village.objects.all()}
+    run(HEADER + "Andhra Pradesh,,Guntur,,Tenali,,Kolakaluru,,,,522307\n")
+    after = {v.name_en: v for v in Village.objects.all()}
+    assert after["Kolakaluru"].pin_code == "522307" and after["Kolakaluru"].updated_at > before["Kolakaluru"].updated_at
+    assert after["Kolakaluru"].name_te == "కొలకలూరు" and after["Kolakaluru"].name_key == "kolakaluru"
+    assert after["Nandivelugu"].updated_at == before["Nandivelugu"].updated_at
+
+
+def village_rows(count: int, pin: str) -> str:
+    return HEADER + "".join(f"Andhra Pradesh,,Guntur,,Tenali,,Village {n},గ్రామం {n},16.2,80.5,{pin}\n" for n in range(count))
+
+
+@pytest.mark.parametrize("pin", ["522306", "522307"], ids=["create", "update"])
+def test_the_number_of_queries_does_not_grow_with_the_villages(pin):
+    """A state has about 18,000 villages: one query per village does not finish within a request."""
+    def queries(count):
+        Village.objects.all().delete()
+        if pin == "522307":
+            run(village_rows(count, "522306"))
+        with CaptureQueriesContext(connection) as captured:
+            assert run(village_rows(count, pin)).ok
+        return len(captured)
+
+    run(village_rows(1, "522306"))  # the state, district and mandal already exist
+    assert queries(5) == queries(50)  # one batch: SQLite's 999 values a statement hold about 80 villages
 
 
 def test_swapped_coordinates_are_flagged():
