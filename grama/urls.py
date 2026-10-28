@@ -29,6 +29,7 @@ api_v1 = [
     path("", include("apps.contacts.urls")),
     path("", include("apps.citizens.urls")),
     path("", include("apps.service_requests.urls")),
+    path("", include("apps.ads.urls")),
 ]
 
 urlpatterns = [

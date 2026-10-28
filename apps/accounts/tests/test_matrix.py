@@ -88,6 +88,7 @@ PLATFORM_PROBES = {
     "contacts.manage_contact_types": "/api/v1/admin/contact-types/",
     "posts.manage_categories": "/api/v1/admin/categories/",
     "posts.manage_settings": "/api/v1/admin/settings/",
+    "ads.manage_ad": "/api/v1/admin/ads/",
 }
 
 

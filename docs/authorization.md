@@ -230,6 +230,7 @@ Rank 0 is the highest. The groups, their levels, ranks and permissions are writt
 | `notifications.manage_templates` | yes |  |  |  |  |
 | `web_public.manage_contact_messages` | yes |  |  |  |  |
 | `contacts.manage_contact_types` | yes |  |  |  |  |
+| `ads.manage_ad` | yes |  |  |  |  |
 
 Rules on top of the table:
 
@@ -357,6 +358,7 @@ python manage.py sync_role_permissions
 | `service_request.created` | A citizen's phone sent a service request; the service and the device id, never the name, phone or email |
 | `service_request.status_changed` | An official changed a service request's status; from, to and the note |
 | `service_request.assigned` | An official assigned or unassigned a service request; the new assignee |
+| `ad.created`, `ad.updated`, `ad.deleted` | The Super Admin made, changed (the changed field names) or deleted a Home banner ad, with its area |
 
 No audit entry holds a password. The console shows these under Audit Log, tab Logins and tab Users.
 

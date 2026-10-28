@@ -64,6 +64,8 @@ PLATFORM_ADMIN = [
     "contacts.manage_contact_types",
     "posts.manage_categories",
     "posts.manage_settings",
+    # Home banner ads (docs/api-contract.md, section 17).
+    "ads.manage_ad",
 ]
 
 ROLE_GROUPS: dict[str, dict] = {
