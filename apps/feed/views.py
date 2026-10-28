@@ -55,6 +55,7 @@ def published_posts():
     return (
         Post.objects.filter(status=PostStatus.PUBLISHED)
         .select_related("category")
+        .prefetch_related("translations")
         .annotate(
             thumbnail_name=Subquery(first_thumb),
             image_name=Subquery(first_image),

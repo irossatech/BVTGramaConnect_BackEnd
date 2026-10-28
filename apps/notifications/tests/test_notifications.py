@@ -14,7 +14,7 @@ from apps.posts.services import PostInput, create_post, escalate_overdue, review
 pytestmark = pytest.mark.django_db
 
 
-def post_as(world, name, area_key, capture, *, language="te", title="గ్రామ సభ"):
+def post_as(world, name, area_key, capture, *, language="te", title="గ్రామ సభ", body="రేపు ఉదయం 10 గంటలకు."):
     with capture(execute=True):
         return create_post(
             world.users[name],
@@ -22,7 +22,7 @@ def post_as(world, name, area_key, capture, *, language="te", title="గ్ర�
                 category=Category.objects.get(key="announce"),
                 language=language,
                 title=title,
-                body="రేపు ఉదయం 10 గంటలకు.",
+                body=body,
                 target=world.ref(area_key),
             ),
         )
@@ -118,7 +118,8 @@ def test_admin_post_publishes_at_once_to_its_target_topic(world, devices, push_o
 
 
 def test_topic_push_uses_the_posts_language(world, push_outbox, django_capture_on_commit_callbacks):
-    post_as(world, "ma_tenali", "tenali", django_capture_on_commit_callbacks, language="en", title="Gram Sabha")
+    post_as(world, "ma_tenali", "tenali", django_capture_on_commit_callbacks, language="en", title="Gram Sabha",
+            body="Tomorrow at 10 AM.")
     [message] = [m for m in push_outbox if m.topic]
     assert message.title == "Tenali: new Announcements"
 

@@ -45,6 +45,7 @@ from grama.exceptions import ApiError, out_of_area, permission_denied
 
 from . import signals
 from .models import CITIZEN_ROLE, Category, Post, PostStatus, ReviewAction, SettingOverride
+from .translation import detect_language
 
 CREATE = "posts.create_post"
 SUBMIT = "posts.submit_post"
@@ -336,6 +337,11 @@ def _event_values(event: dict | None) -> dict:
     }
 
 
+def _language_of(title: str, body: str, given: str) -> str:
+    """What the text is written in, whatever the app sent: the translation's direction depends on it."""
+    return detect_language(f"{title}\n{body}", given)
+
+
 def _check_urgent_allowed(assignment: Grant, wants_urgent: bool) -> None:
     """Only groups with posts.mark_urgent mark their own posts urgent (owner decision Q19)."""
     if wants_urgent and URGENT not in assignment.permissions:
@@ -354,7 +360,7 @@ def create_post(user, data: PostInput, *, submit: bool = True) -> Post:
             posted_as_level=assignment.area.level,
             posted_as_area_id=assignment.area.id,
             category=data.category,
-            language=data.language,
+            language=_language_of(data.title, data.body, data.language),
             title=data.title,
             body=data.body,
             target_level=data.target.level,
@@ -385,7 +391,7 @@ def create_citizen_post(device, data: PostInput, attach=None) -> Post:
             posted_as_level=data.target.level,
             posted_as_area_id=data.target.id,
             category=data.category,
-            language=data.language,
+            language=_language_of(data.title, data.body, data.language),
             title=data.title,
             body=data.body,
             target_level=data.target.level,
@@ -417,6 +423,10 @@ def update_post(user, post: Post, changes: dict) -> Post:
     for name in ("title", "body", "language", "category"):
         if name in changes:
             values[name] = changes[name]
+    if {"title", "body", "language"} & set(values):
+        values["language"] = _language_of(
+            values.get("title", post.title), values.get("body", post.body), values.get("language", post.language)
+        )
     assignment = None
     if "target" in changes:
         target = changes["target"]

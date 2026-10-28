@@ -433,6 +433,17 @@ PUSH_GATEWAY = env.str("PUSH_GATEWAY", default="apps.notifications.push.FcmGatew
 FCM_CREDENTIALS_FILE = env.str("FCM_CREDENTIALS_FILE", default="")
 FCM_PROJECT_ID = env.str("FCM_PROJECT_ID", default="")
 
+# Machine translation of published posts, Telugu <-> English (apps.posts.translation; contract
+# section 6): "off", "google" or "bhashini". Off: nothing is sent anywhere and `translation` is null.
+TRANSLATION_PROVIDER = env.str("TRANSLATION_PROVIDER", default="off")
+GOOGLE_TRANSLATE_KEY = env.str("GOOGLE_TRANSLATE_KEY", default="")
+BHASHINI_USER_ID = env.str("BHASHINI_USER_ID", default="")
+BHASHINI_API_KEY = env.str("BHASHINI_API_KEY", default="")
+BHASHINI_PIPELINE_ID = env.str("BHASHINI_PIPELINE_ID", default="")
+TRANSLATION_TIMEOUT_S = env.int("TRANSLATION_TIMEOUT_S", default=20)
+# Waits before trying a failed translation again; after the last, the post stays untranslated.
+TRANSLATION_RETRY_MINUTES = [1, 5, 15]
+
 # Email and push retries: tries and the first wait in seconds (then x4 each time).
 DELIVERY_RETRY_ATTEMPTS = env.int("DELIVERY_RETRY_ATTEMPTS", default=3)
 DELIVERY_RETRY_BASE_SECONDS = env.float("DELIVERY_RETRY_BASE_SECONDS", default=1.0)

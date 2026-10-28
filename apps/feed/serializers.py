@@ -10,7 +10,7 @@ from rest_framework import serializers
 
 from apps.geography.areas import AreaDescriber
 from apps.posts.models import MediaKind
-from apps.posts.serializers import EventSerializer
+from apps.posts.serializers import EventSerializer, TranslationSerializer, translation_of
 
 
 class AreaSlimSerializer(serializers.Serializer):
@@ -51,6 +51,7 @@ class FeedItemSerializer(serializers.Serializer):
     language = serializers.CharField()
     title = serializers.CharField()
     body = serializers.CharField()
+    translation = serializers.SerializerMethodField()
     area = serializers.SerializerMethodField()
     published_at = serializers.DateTimeField()
     thumbnail_url = serializers.SerializerMethodField()
@@ -66,6 +67,10 @@ class FeedItemSerializer(serializers.Serializer):
         if describer is None:
             describer = self.context["describer"] = AreaDescriber()
         return describer
+
+    @extend_schema_field(TranslationSerializer(allow_null=True))
+    def get_translation(self, obj):
+        return translation_of(obj)
 
     @extend_schema_field(AreaSlimSerializer)
     def get_area(self, obj):

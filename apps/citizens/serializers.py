@@ -8,6 +8,7 @@ from apps.feed.serializers import AreaSlimSerializer
 from apps.geography.areas import AreaDescriber, AreaRef
 from apps.geography.models import AreaLevel
 from apps.posts.models import Category, MediaKind, PostStatus, ReviewAction
+from apps.posts.serializers import TranslationSerializer, translation_of
 
 from .models import CitizenDevice
 
@@ -149,12 +150,17 @@ class CitizenPostSerializer(serializers.Serializer):
     language = serializers.CharField()
     title = serializers.CharField()
     body = serializers.CharField()
+    translation = serializers.SerializerMethodField()
     area = serializers.SerializerMethodField()
     photos = serializers.SerializerMethodField()
     videos = serializers.SerializerMethodField()
     created_at = serializers.DateTimeField()
     decided_at = serializers.DateTimeField(allow_null=True)
     reason = serializers.SerializerMethodField()
+
+    @extend_schema_field(TranslationSerializer(allow_null=True))
+    def get_translation(self, obj):
+        return translation_of(obj)
 
     @extend_schema_field(AreaSlimSerializer)
     def get_area(self, obj):

@@ -43,7 +43,14 @@ Contents:
 - `Accept-Language: te` or `en`. Telugu is the default when the header is missing.
 - It picks the language of server-made text: category names, area names, error messages, notification text.
 - Area and category objects return `name` in the requested language. Admin endpoints also return `name_te` and `name_en` so both can be edited.
-- A post is written in one language, Telugu or English, stored in `language` (owner decision Q3). `translation` is always `null`; it stays in the shape so a later version can fill it without renaming.
+- A post is written in one language, Telugu or English, stored in `language` (owner decision Q3). The server sets `language` from the text: the script most of the title's and body's letters are in (Telugu letters U+0C00–U+0C7F against Latin ones), and what the app sent only when there are no letters. So an English post that names one Telugu village stays `en`.
+- **Translation** (proposed reversal of Q3; *awaiting the owner's decision*; off until `TRANSLATION_PROVIDER` is set): once a post is **published**, the server machine-translates its title and body into the other language in the background. `Post`, `FeedItem`, `FeedPost` and `CitizenPost` carry `translation`:
+  ```jsonc
+  "translation": {"language": "en", "title": "…", "body": "…", "machine": true}   // or null
+  ```
+  - `null` until the translation exists (seconds after publishing, or never when the provider is off or failed), and again after an edit until the re-published post is translated anew. A client never needs to compare languages: `translation.language` is always the one the post is not written in.
+  - `machine` is `false` only for a translation an official corrected (not built yet).
+  - Only published posts' title and body are sent to the provider (Google or Bhashini), never a name, phone number or device id. Show the translation as plain text, like the original.
 
 ### Authentication
 Officials log in with a **username and a password**. There is no OTP, no SMS and no email in any login or password flow. The username is unique and ignores case. Email and mobile are optional contact details and never work as a login name. Citizens never log in; every citizen read endpoint is public. `docs/authorization.md` describes the whole flow.
@@ -254,7 +261,7 @@ Returned by `GET /me/`, inside the app login response and inside the console ses
   "allowed_actions": ["publish", "recheck", "discard"]
 }
 ```
-- `translation` is always `null`: a post is written in one language (owner decision Q3).
+- `translation`: `null`, or the published post in its other language (section 1, "Language").
 - `event`: `null` or `{"kind", "start_date", "end_date"}`. `kind` is one of `deadline`, `camp`, `distribution`, `closure`, `meeting`; dates are `YYYY-MM-DD`; `end_date` is `null` for one-day events and never before `start_date` (owner decision Q7).
 - `is_urgent`: set by admins; urgent posts are pinned in the app and their push goes out at high priority (owner decision Q19).
 - `posted_as` is the role assignment the author used, so admin posts show under the official role, as the website FAQ promises.
@@ -542,6 +549,7 @@ No login. These views ignore any `Authorization` header, so a stale token on a c
   "language": "te",
   "title": "గ్రామ సభ సమావేశం – అక్టోబర్ 20",
   "body": "…",
+  "translation": {"language": "en", "title": "Gram Sabha meeting – 20 October", "body": "…", "machine": true},
   "area": {"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు"},
   "published_at": "2026-10-14T10:32:00+05:30",
   "thumbnail_url": "/media/posts/2026/10/…-320.webp",
@@ -553,6 +561,7 @@ No login. These views ignore any `Authorization` header, so a stale token on a c
   "video": null
 }
 ```
+- `translation`: `null`, or the post in its other language (section 1, "Language"); new on 2026-10-28, so older clients ignore it.
 - `event` and `is_urgent` as on Post. `video`: `null`, or for a video post `{"url", "poster_url", "duration_s"}`, so the reels screen needs no extra call; `thumbnail_url` is then the poster's thumbnail.
 - The list carries the full `body`, not an excerpt. The app's news deck shows the body on the card, and one larger page costs less on 2G than a request per card.
 - `thumbnail_url` is the first photo's 320 px WebP, or `null`. URLs are relative to the server.
@@ -972,7 +981,9 @@ Every citizen endpoint answers `401 citizen_token_invalid` without a valid token
 
 // CitizenPost
 {"id": "c2d4…", "status": "PENDING", "category": "news", "language": "te",
- "title": "…", "body": "…", "area": {"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు"},
+ "title": "…", "body": "…",
+ "translation": null,     // once published: the post in its other language (section 1, "Language")
+ "area": {"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు"},
  "photos": [{"url": "/media/…-1280.webp", "thumb_url": "/media/…-320.webp"}],
  "videos": [{"url": "/media/….mp4", "poster_url": "/media/…-poster-1280.webp",
              "thumb_url": "/media/…-poster-320.webp", "duration_s": 42}],   // duration_s null when unknown
