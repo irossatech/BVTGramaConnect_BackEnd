@@ -218,6 +218,8 @@ Rank 0 is the highest. The groups, their levels, ranks and permissions are writt
 | `accounts.reassign_user` | yes | yes | yes | yes |  |
 | `accounts.unlock_user` | yes | yes | yes | yes |  |
 | `contacts.manage_contact` | yes | yes | yes | yes | yes |
+| `service_requests.view_service_requests` | yes | yes | yes | yes | yes (only those assigned to them) |
+| `service_requests.manage_service_requests` | yes | yes | yes | yes |  |
 | `accounts.manage_groups` | yes |  |  |  |  |
 | `geography.manage_master_data` | yes |  |  |  |  |
 | `audit.view_audit_log` | yes |  |  |  |  |
@@ -229,6 +231,7 @@ Rank 0 is the highest. The groups, their levels, ranks and permissions are writt
 | `web_public.manage_contact_messages` | yes |  |  |  |  |
 | `contacts.manage_contact_types` | yes |  |  |  |  |
 | `ads.manage_ad` | yes |  |  |  |  |
+| `service_requests.manage_services` | yes |  |  |  |  |
 
 Rules on top of the table:
 
@@ -353,7 +356,12 @@ python manage.py sync_role_permissions
 | `citizen.registered` | A citizen's phone got its posting token; platform, whether Play Integrity was checked and whether it is a reinstall; never the IP, the Android ID or the token |
 | `citizen.blocked`, `citizen.unblocked` | The Super Admin blocked (reason, days, end) or unblocked the phone behind a citizen post |
 | `citizen.posts_discarded` | The Super Admin discarded all pending posts of one phone; the reason and how many |
-| `service_request.created`, `service_request.status_changed`, `service_request.assigned` | No longer written: service requests were removed on 2026-10-28. Entries from before stay in the log. |
+| `service.created`, `service.updated` | The Super Admin added a service (its key and whether it has a logo) or changed one (the changed field names, `logo` for a new or removed logo) |
+| `service.shown`, `service.hidden` | The Super Admin showed or hid a service on the citizens' Home |
+| `service.reordered` | The Super Admin put the services in a new order; the keys in order |
+| `service_request.created` | A citizen's phone sent a service request; the service and the device id, never the name, phone, email or address |
+| `service_request.status_changed` | An official changed a service request's status; from, to and the note |
+| `service_request.assigned` | The request was assigned or unassigned; the new assignee, and `auto` (true for the automatic assignment to the Village Admin on create) |
 | `ad.created`, `ad.updated`, `ad.deleted` | The Super Admin made, changed (the changed field names) or deleted a Home banner ad, with its area |
 
 No audit entry holds a password. The console shows these under Audit Log, tab Logins and tab Users.

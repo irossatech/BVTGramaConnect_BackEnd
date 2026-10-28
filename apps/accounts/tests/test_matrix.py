@@ -33,6 +33,7 @@ from apps.accounts.role_matrix import ALL_PERMISSIONS, ROLE_GROUPS
 from apps.accounts.sync import wanted_permissions
 from apps.citizens.models import CitizenDevice
 from apps.posts.models import CITIZEN_ROLE, Category, Post, PostStatus
+from apps.service_requests.models import ServiceRequest
 from conftest import MAP, PARENT, TEST_PASSWORD, inside
 
 pytestmark = pytest.mark.django_db
@@ -88,11 +89,16 @@ PLATFORM_PROBES = {
     "posts.manage_categories": "/api/v1/admin/categories/",
     "posts.manage_settings": "/api/v1/admin/settings/",
     "ads.manage_ad": "/api/v1/admin/ads/",
+    "service_requests.manage_services": "/api/v1/admin/services/",
 }
 
 
 #: Probes whose target is always a village: a member's village, or a citizen post's village.
-VILLAGE_PROBES = USER_PROBES | {"posts.block_citizen"}
+VILLAGE_PROBES = USER_PROBES | {
+    "posts.block_citizen",
+    "service_requests.view_service_requests",
+    "service_requests.manage_service_requests",
+}
 
 
 def target_for(perm: str, position: str, home: str) -> str | None:
@@ -167,6 +173,18 @@ def citizen_post_at(world, village_key: str) -> Post:
     )
 
 
+def service_request_at(world, village_key: str, assigned_to=None) -> ServiceRequest:
+    """A NEW service request (contract section 16) from a fresh phone in that village."""
+    village = world.ref(village_key)
+    phone = CitizenDevice.objects.create(
+        token_hash=uuid.uuid4().hex, platform="android", village_id=village.id, nonce=uuid.uuid4().hex
+    )
+    return ServiceRequest.objects.create(
+        service_id="aadhaar", name="Probe", phone="9876543210", address="Probe street", village_id=village.id,
+        device=phone, assigned_to=assigned_to,
+    )
+
+
 def member_at(world, village_key: str) -> User:
     user = User.objects.create_user(username="probe.member", name="Probe Member", password=TEST_PASSWORD)
     RoleAssignment.objects.assign(user, "PANCHAYAT_MEMBER", world.ref(village_key))
@@ -223,6 +241,16 @@ def probe(world, client, actor: User, perm: str, area_key: str | None) -> bool:
         return outcome(client.post(f"/api/v1/posts/{published.id}/urgent/", {"is_urgent": True}, format="json"))
     if perm == "posts.view_stats":
         return outcome(client.get(f"/api/v1/stats/?level={area.level}&area_id={area.id}"))
+    if perm == "service_requests.view_service_requests":
+        # Assigned to the actor: a Panchayat member sees exactly those, inside their own area.
+        request = service_request_at(world, area_key, assigned_to=actor)
+        response = client.get("/api/v1/service-requests/?page_size=100")
+        if not outcome(response):
+            return False
+        return request.id in {row["id"] for row in response.json()["results"]}
+    if perm == "service_requests.manage_service_requests":
+        request = service_request_at(world, area_key)
+        return outcome(client.patch(f"/api/v1/service-requests/{request.id}/", {"status": "APPROVED"}, format="json"))
     if perm == "posts.block_citizen":
         citizen_post = citizen_post_at(world, area_key)
         body = {"comment": "probe", "days": 7}
