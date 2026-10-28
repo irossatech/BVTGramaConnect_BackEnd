@@ -2,6 +2,7 @@
 
     create_area(actor, "VILLAGE", {"mandal_id": 12, "name_en": …}, via="console")
     update_area(actor, "VILLAGE", 77, {"pin_code": "522212"}, via="console")
+    import_villages([(None, mandal, {"name_en": …}), (village, mandal, {"pin_code": …})])
 
 Each checks the parent and the sibling names, writes and audits (old and new
 values; areas hold no personal data) in one transaction, and returns the
@@ -15,6 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from django.db import IntegrityError, transaction
+from django.utils import timezone
 from django.utils.translation import gettext as _
 from rest_framework import status
 
@@ -32,6 +34,10 @@ LEVELS = {
     "VILLAGE": (Village, "mandal", Mandal, "mandal_id"),
 }
 AUDITED_FIELDS = ("name_en", "name_te", "lgd_code", "is_active", "latitude", "longitude", "pin_code")
+# Rows per statement in import_villages (Django lowers them where the database needs). An UPDATE is
+# one CASE per field over its whole batch, so it costs batch² and stays smaller.
+BULK_CREATE_BATCH = 1000
+BULK_UPDATE_BATCH = 200
 
 
 @dataclass(frozen=True)
@@ -126,3 +132,56 @@ def update_area(actor, level: str, area_id: int, values: dict, *, via: str, audi
     except IntegrityError:
         raise _duplicate("name_en", _("This name already exists here.")) from None
     return Outcome(obj, warnings_for(level, _current(obj), getattr(obj, parent_field)), changed=bool(changes))
+
+
+def import_villages(rows: list[tuple[Village | None, Mandal, dict]]) -> list[Outcome | ApiError]:
+    """Create and update many villages at once, for the CSV import.
+
+    rows: (village, mandal, values) with village None for a new one. The same
+    checks, stored values and warnings as create_area and update_area, but in
+    a few queries for the whole file instead of several per village. No audit:
+    the import audits itself once. Answers one Outcome or ApiError per row, in
+    order; if any row has an error, nothing is written.
+    """
+    mandal_ids = {mandal.id for _village, mandal, _values in rows}
+    taken_names = {
+        (mandal_id, key): pk
+        for pk, mandal_id, key in Village.objects.filter(mandal_id__in=mandal_ids).values_list("id", "mandal_id", "name_key")
+    }
+    codes = {values["lgd_code"] for _village, _mandal, values in rows if values.get("lgd_code")}
+    taken_codes = dict(Village.objects.filter(lgd_code__in=codes).values_list("lgd_code", "id"))
+
+    results: list[Outcome | ApiError] = []
+    new, changed, fields = [], [], {"updated_at"}
+    now = timezone.now()
+    for village, mandal, values in rows:
+        if village is None:
+            village = Village(mandal=mandal, **values)
+        else:
+            for key, value in values.items():
+                setattr(village, key, value)
+            village.updated_at = now
+            fields.update(values)
+            if "name_en" in values:
+                fields.add("name_key")
+        village.normalize()
+        if "name_en" in values and taken_names.get((mandal.id, village.name_key), village.pk) != village.pk:
+            results.append(_duplicate("name_en", _("This name already exists here.")))
+            continue
+        if values.get("lgd_code") and taken_codes.get(village.lgd_code, village.pk) != village.pk:
+            results.append(_duplicate("lgd_code", _("This LGD code is already used.")))
+            continue
+        (changed if village.pk else new).append(village)
+        results.append(Outcome(village, warnings_for("VILLAGE", _current(village), mandal)))
+
+    if any(isinstance(result, ApiError) for result in results):
+        return results
+    try:
+        with transaction.atomic():
+            if changed:
+                Village.objects.bulk_update(changed, sorted(fields), batch_size=BULK_UPDATE_BATCH)
+            if new:
+                Village.objects.bulk_create(new, batch_size=BULK_CREATE_BATCH)
+    except IntegrityError:  # another admin added the same name a moment earlier
+        raise _duplicate("name_en", _("This name already exists here.")) from None
+    return results

@@ -14,8 +14,10 @@ Rules:
 - Nothing is deleted or deactivated; rows missing from the file are left alone.
 - Districts, mandals and villages are written through services.py, the same
   writer as the API, without one audit entry per row: the view audits the
-  whole import once (area.imported). The writer's data-quality warnings join
-  the report, except a missing Telugu name, which missing_telugu counts.
+  whole import once (area.imported). Villages go in one bulk call
+  (services.import_villages), which a state's 18,000 villages need to finish
+  in seconds. The writer's data-quality warnings join the report, except a
+  missing Telugu name, which missing_telugu counts.
 """
 
 from __future__ import annotations
@@ -339,24 +341,15 @@ class GeographyImporter:
                 self._save(node, District, {"state": node.parent.obj})
             for node in self.mandals.values():
                 self._save(node, Mandal, {"district": node.parent.obj})
-            for node in self.villages.values():
-                self._save(
-                    node,
-                    Village,
-                    {"mandal": node.parent.obj},
-                    extra={
-                        "latitude": node.latitude,
-                        "longitude": node.longitude,
-                        "pin_code": node.pin_code,
-                    },
-                )
+            self._save_villages()
             self._collect_missing()
             # A conflict found while writing (another admin added the same name) undoes the whole file.
             if self.report.dry_run or not self.report.ok:
                 transaction.set_rollback(True)
 
-    def _save(self, node: Node, model, parent: dict, extra: dict | None = None) -> None:
-        counts = self.report.counts[node.level]
+    @staticmethod
+    def _values(node: Node, extra: dict | None = None) -> dict:
+        """The fields the file gives for this area. Blank cells are left out, so they erase nothing."""
         values = {"name_en": node.name_en}
         if node.name_te:
             values["name_te"] = node.name_te
@@ -365,6 +358,56 @@ class GeographyImporter:
         for name, value in (extra or {}).items():
             if value not in (None, ""):
                 values[name] = value
+        return values
+
+    def _save_villages(self) -> None:
+        """Villages are most of the file: they go to the writer in one bulk call, not one call each."""
+        counts = self.report.counts["village"]
+        planned = []  # (node, existing village or None, values to write)
+        for node in self.villages.values():
+            if node.parent.obj is None:
+                continue  # its mandal failed: that error already fails the file
+            values = self._values(
+                node, {"latitude": node.latitude, "longitude": node.longitude, "pin_code": node.pin_code}
+            )
+            if node.obj is not None:
+                values = {name: value for name, value in values.items() if getattr(node.obj, name) != value}
+                if not values:
+                    counts.unchanged += 1
+                    self._count_telugu(node.obj)
+                    continue
+            planned.append((node, node.obj, values))
+
+        try:
+            results = services.import_villages([(obj, node.parent.obj, values) for node, obj, values in planned])
+        except ApiError as error:  # lost a race with another write: the whole file is undone
+            self.report.errors.append(f"Villages: {error.detail}")
+            return
+        for (node, existing, _written), result in zip(planned, results):
+            if isinstance(result, ApiError):
+                self._error(node.lines[0], f"village '{node.label()}': {result.detail}")
+                continue
+            node.obj = result.area
+            if existing is None:
+                counts.created += 1
+            else:
+                counts.updated += 1
+            self._report_warnings(node, result.warnings)
+            self._count_telugu(result.area)
+
+    def _count_telugu(self, obj) -> None:
+        # save() copies the English name when there is no Telugu one.
+        if obj.name_te == obj.name_en:
+            self.report.missing_telugu += 1
+
+    def _report_warnings(self, node: Node, warnings: list) -> None:
+        for warning in warnings:
+            if warning["code"] != "name_te_missing":  # missing_telugu counts these
+                self._warn(node.lines[0], f"{node.level} '{node.label()}': {warning['message']}")
+
+    def _save(self, node: Node, model, parent: dict) -> None:
+        counts = self.report.counts[node.level]
+        values = self._values(node)
 
         obj = node.obj
         if model is State:
@@ -391,9 +434,7 @@ class GeographyImporter:
                 counts.updated += 1
             else:
                 counts.unchanged += 1
-        # save() copies the English name when there is no Telugu one.
-        if obj.name_te == obj.name_en:
-            self.report.missing_telugu += 1
+        self._count_telugu(obj)
 
     def _save_state(self, node: Node, obj, values: dict, counts: Counts):
         """States are rare and outside services.py (only districts and below are edited in the app)."""
@@ -419,9 +460,7 @@ class GeographyImporter:
         except ApiError as error:
             self._error(node.lines[0], f"{node.level} '{node.label()}': {error.detail}")
             return None
-        for warning in outcome.warnings:
-            if warning["code"] != "name_te_missing":  # missing_telugu counts these
-                self._warn(node.lines[0], f"{node.level} '{node.label()}': {warning['message']}")
+        self._report_warnings(node, outcome.warnings)
         return outcome
 
     def _collect_missing(self) -> None:
