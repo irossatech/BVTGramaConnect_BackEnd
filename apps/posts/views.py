@@ -49,7 +49,7 @@ from .serializers import (
 
 def post_queryset(queryset):
     return queryset.select_related("author", "citizen", "category", "decided_by").prefetch_related(
-        "media", Prefetch("review_actions", queryset=ReviewAction.objects.select_related("actor"))
+        "media", "translations", Prefetch("review_actions", queryset=ReviewAction.objects.select_related("actor"))
     )
 
 

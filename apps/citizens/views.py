@@ -79,7 +79,7 @@ def my_posts(device):
     return (
         Post.objects.filter(citizen=device)
         .select_related("category")
-        .prefetch_related("media", "review_actions")
+        .prefetch_related("media", "review_actions", "translations")
         .order_by("-created_at")
     )
 

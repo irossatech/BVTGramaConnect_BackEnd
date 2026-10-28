@@ -1,10 +1,11 @@
-"""Posts, their photos, their review history, categories and runtime settings.
+"""Posts, their photos, their review history, translations, categories and runtime settings.
 
 Post.status changes only through posts.services. The target area is stored as
 (target_level, target_area_id), like role assignments, so containment checks
 use geography.areas.within_q(level_field="target_level", id_field="target_area_id").
 """
 
+import hashlib
 import uuid
 
 from django.conf import settings
@@ -162,6 +163,15 @@ class Post(models.Model):
             "end_date": self.event_end.isoformat() if self.event_end else None,
         }
 
+    @property
+    def source_hash(self) -> str:
+        """SHA-256 of the title and body: a translation of other text is stale."""
+        return hashlib.sha256(f"{self.title}\n\n{self.body}".encode()).hexdigest()
+
+    @property
+    def other_language(self) -> str:
+        return "en" if self.language == "te" else "te"
+
 
 def media_upload_path(instance, filename):
     return f"posts/{instance.post.created_at:%Y/%m}/{filename}"
@@ -234,6 +244,29 @@ class ReviewAction(models.Model):
     class Meta:
         ordering = ["-created_at"]
         indexes = [models.Index(fields=["post", "created_at"])]
+
+
+class PostTranslation(models.Model):
+    """A published post's machine translation into the language it is not written in.
+
+    Written only by tasks.translate_post. `source_hash` is the post's source_hash when
+    it was translated; after an edit they differ and the API sends no translation until
+    the re-published post is translated again.
+    """
+
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="translations")
+    language = models.CharField(max_length=2, choices=[("te", "తెలుగు"), ("en", "English")])
+    #: Longer than the post's 150: a translation can be longer than its original.
+    title = models.CharField(max_length=200)
+    body = models.TextField()
+    #: The service that translated it: "google" or "bhashini"; "manual" is kept for corrections by hand.
+    provider = models.CharField(max_length=20)
+    source_hash = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["post", "language"], name="post_translation_one_per_language")]
 
 
 class SettingOverride(models.Model):

@@ -142,6 +142,25 @@ class CitizenDiscardAllSerializer(serializers.Serializer):
     comment = serializers.CharField(max_length=500)
 
 
+class TranslationSerializer(serializers.Serializer):
+    language = serializers.CharField(help_text="Always the language the post is not written in")
+    title = serializers.CharField()
+    body = serializers.CharField()
+    machine = serializers.BooleanField(help_text="false once an official corrected it")
+
+
+def translation_of(post) -> dict | None:
+    """The post in its other language, or None: none yet, the provider is off, or the post changed since.
+
+    Reads post.translations.all(), so lists prefetch "translations".
+    """
+    for row in post.translations.all():
+        if (row.language == post.other_language and row.source_hash == post.source_hash
+                and row.title.strip() and row.body.strip()):
+            return {"language": row.language, "title": row.title, "body": row.body, "machine": row.provider != "manual"}
+    return None
+
+
 class PostSerializer(serializers.ModelSerializer):
     category = CategorySerializer()
     translation = serializers.SerializerMethodField()
@@ -166,8 +185,9 @@ class PostSerializer(serializers.ModelSerializer):
             "decided_by", "decided_at", "last_review", "citizen", "allowed_actions",
         ]
 
-    def get_translation(self, obj) -> None:
-        return None  # Owner decision Q3: a post is written in one language.
+    @extend_schema_field(TranslationSerializer(allow_null=True))
+    def get_translation(self, obj):
+        return translation_of(obj)
 
     @extend_schema_field(EventSerializer(allow_null=True))
     def get_event(self, obj):
