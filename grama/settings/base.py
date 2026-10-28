@@ -71,6 +71,7 @@ LOCAL_APPS = [
     "apps.contacts",
     "apps.citizens",
     "apps.service_requests",
+    "apps.ads",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -382,6 +383,15 @@ CITIZEN_REGISTRATIONS_PER_IP_PER_DAY = env.int("CITIZEN_REGISTRATIONS_PER_IP_PER
 # --- Service requests (apps.service_requests, docs/api-contract.md section 16) ---
 # Requests one citizen phone (all its installs) may send in 24 hours; 0 is no limit.
 SERVICE_REQUESTS_PER_DAY = env.int("SERVICE_REQUESTS_PER_DAY", default=10)
+
+# --- Home banner ads (apps.ads, docs/api-contract.md section 17) -------------
+ADS_MAX_UPLOAD_MB = env.int("ADS_MAX_UPLOAD_MB", default=5)
+ADS_MIN_WIDTH_PX = env.int("ADS_MIN_WIDTH_PX", default=800)
+# Stored as WebP with the longest side at most this.
+ADS_IMAGE_MAX_PX = env.int("ADS_IMAGE_MAX_PX", default=1600)
+# Ads one village's Home shows, and how long phones may reuse the list.
+ADS_PUBLIC_LIMIT = env.int("ADS_PUBLIC_LIMIT", default=10)
+ADS_PUBLIC_MAX_AGE = env.int("ADS_PUBLIC_MAX_AGE", default=300)
 
 # Help-line numbers for the app (owner decision Q19), labels from the approved prototype.
 # Statewide contacts in apps.contacts replace them once loaded; this list is the fallback.

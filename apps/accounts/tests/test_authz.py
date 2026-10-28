@@ -49,6 +49,7 @@ SUPER_ONLY = {
     "notifications.manage_templates", "web_public.manage_contact_messages", "posts.manage_categories",
     "posts.manage_settings", "contacts.manage_contact_types",
     "posts.block_citizen",  # only the Super Admin blocks a citizen's phone (contract section 15)
+    "ads.manage_ad",  # Home banner ads (contract section 17)
 }
 
 

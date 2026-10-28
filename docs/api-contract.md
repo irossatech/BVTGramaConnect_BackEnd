@@ -733,6 +733,7 @@ Roles are Django groups and actions are Django permissions. The full group × pe
 | Contact messages | `web_public.manage_contact_messages` | yes | no | no | no | no | no |
 | Important numbers (section 14) | `contacts.manage_contact` | any area, and the statewide helplines | inside the district | inside the mandal | the village | the village (decision C1) | read only, public |
 | Contact types | `contacts.manage_contact_types` | yes | no | no | no | no | no |
+| Home banner ads (section 17) | `ads.manage_ad` | yes | no | no | no | no | sees the ads for their village, public |
 | See service requests (section 16) | `service_requests.view_service_requests` | all | inside the district | inside the mandal | the village | only those assigned to them, in the village | their own phone's, with the posting token |
 | Change status, assign, write a note | `service_requests.manage_service_requests` | any | inside the district | inside the mandal | the village | no (only IN_PROGRESS and COMPLETED on their own) | no |
 | Web console login | `web_admin.access_web_console` | yes | no | no | no | no | no |
@@ -777,6 +778,8 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Citizen: write a post, my posts | `POST /citizen/posts/`, `GET /citizen/posts/`, `GET /citizen/me/`; `PATCH /citizen/me/` after a village change |
 | Review a citizen post | as Review; tabs from `GET /review/queue/?source=official\|citizen` and `source_counts`. Super Admin also: `POST /posts/{id}/block-citizen/`, `/unblock-citizen/`, `/discard-citizen-posts/` |
 | Important numbers (every official) | `GET /admin/contacts` (`section=AREA\|HELPLINE`), `POST /admin/contacts`, `PATCH /admin/contacts/{id}`, `DELETE /admin/contacts/{id}`, `GET /admin/contacts/targets` |
+| Citizen Home: banner ads | `GET /ads?village_id=` |
+| Super Admin: More → Ads | `GET /admin/ads`, `POST /admin/ads` (multipart), `PATCH /admin/ads/{id}` (multipart with a new image, else JSON), `DELETE /admin/ads/{id}`; areas from `/geo/*` |
 | Citizen: Home → Services, Profile → My service requests | `POST /citizen/service-requests/`, `GET /citizen/service-requests/` |
 | Service requests (officials) | `GET /service-requests/` (status tabs from `status_counts`), `GET /service-requests/{id}/`, `PATCH /service-requests/{id}/`; assignees from `GET /users/` |
 
@@ -822,6 +825,7 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Video | one per post, `VIDEO_MAX_SECONDS` 60, `MAX_VIDEO_UPLOAD_MB` default 50 |
 | Page size | feed 20, admin lists 100 |
 | Important numbers | 200 active per area (`CONTACTS_MAX_PER_AREA`); name 150, custom type 40 characters; CSV import 2 MB and 5,000 rows |
+| Home banner ads | Image at most 5 MB and at least 800 px wide, stored at most 1600 px; title 80, link 500 characters; at most 10 per village's Home |
 | Service requests | 10 per phone in 24 hours (`SERVICE_REQUESTS_PER_DAY`, 0 is no limit); name 100, details 500 characters |
 | Citizen posts | 5 posts per phone in 24 hours (the Super Admin changes it in Settings; 0 is no limit); any number of photos and videos per post (switchable: `CITIZEN_MAX_PHOTOS`); each photo at most `MAX_IMAGE_UPLOAD_MB`, each video at most `MAX_VIDEO_UPLOAD_MB` and `VIDEO_MAX_SECONDS`; no limit on new phones (switchable: `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY`) |
 
@@ -1099,3 +1103,75 @@ Area names follow `Accept-Language`, as everywhere else. A request belongs to th
 | Setting | Default | Meaning |
 |---|---|---|
 | `SERVICE_REQUESTS_PER_DAY` | 10 | Requests per phone, all its installs, in 24 hours; 0 is no limit |
+
+---
+
+## 17. ads: Home banner ads
+
+Built (`apps.ads`). The Super Admin makes banner ads in the app (**More → Ads**); a citizen's **Home** shows, at the top, a swipeable row of the ads meant for their village. Tapping one opens its link in the browser.
+
+### Citizens (public, no login)
+
+| Method and path | Request | Response |
+|---|---|---|
+| `GET /ads/?village_id=` | `village_id` (required) | `[PublicAd]`, newest first, at most `ADS_PUBLIC_LIMIT` (10). `400 validation_error` without a numeric `village_id`; `404` for an unknown or inactive village (as `/contacts/`). `Cache-Control: public, max-age=300` (`ADS_PUBLIC_MAX_AGE`). Ignores any `Authorization` header. |
+
+```jsonc
+// PublicAd: only what the banner needs
+{"id": 7, "title": "Free eye camp at Tenali",
+ "image": "https://<site>/media/ads/7-3fa9c2d1-1600.webp",   // absolute
+ "link": "https://example.org/eye-camp"}                     // "" when there is none
+```
+
+An ad is shown when it is switched on (`is_active`), today (India time) is inside its dates (`starts_on` null or not after today, `ends_on` null or not before today: both days included), and its area is the village, its mandal, its district or the state.
+
+### Super Admin (`ads.manage_ad`; everyone else gets `403 permission_denied`)
+
+| Method and path | Request | Response |
+|---|---|---|
+| `GET /admin/ads/` | `page`, `page_size` (at most 100) | Page of `AdminAd`, newest first |
+| `POST /admin/ads/` | multipart: `image` (required), `title`, `link`, `area_level`, `area_id`, `starts_on`, `ends_on`, `is_active` | `201 AdminAd` |
+| `GET /admin/ads/{id}/` | — | `AdminAd`; `404` if there is no such ad |
+| `PATCH /admin/ads/{id}/` | any field above. Multipart when a new `image` is sent; otherwise JSON, e.g. `{"is_active": false}` | `AdminAd` |
+| `DELETE /admin/ads/{id}/` | — | `204`; the image file is removed too |
+
+```jsonc
+// AdminAd
+{
+  "id": 7,
+  "title": "Free eye camp at Tenali",
+  "image": "https://<site>/media/ads/7-3fa9c2d1-1600.webp",
+  "link": "https://example.org/eye-camp",
+  "area": {"level": "MANDAL", "id": 88, "name": "తెనాలి"},   // STATE: all villages; name follows Accept-Language
+  "starts_on": "2026-10-28",       // or null
+  "ends_on": "2026-11-04",         // or null
+  "is_active": true,
+  "created_at": "2026-10-28T10:00:00+05:30",
+  "updated_at": "2026-10-28T10:00:00+05:30"
+}
+```
+The app works out "Running", "Scheduled", "Paused" and "Ended" itself from the dates and `is_active`.
+
+### Rules
+
+| Field | Rule |
+|---|---|
+| `title` | Required, 1 to 80 characters after trimming. Shown in the admin list and read by screen readers. |
+| `image` | Required on create. JPEG, PNG or WebP, at most `ADS_MAX_UPLOAD_MB` (5) and at least `ADS_MIN_WIDTH_PX` (800) wide. Re-encoded by the server as WebP with the longest side at most `ADS_IMAGE_MAX_PX` (1600), which removes EXIF and GPS. The uploaded file name is never kept: the file is `ads/<id>-<random>-1600.webp`, with a new name on every replacement, because phones cache `/media/` for days. A wide 16:9 picture (e.g. 1600 × 900) suits the banner. |
+| `link` | Optional; `http://` or `https://` only (no `javascript:`, `intent:`, `file:` …); at most 500 characters |
+| `area_level`, `area_id` | `STATE`, `DISTRICT`, `MANDAL` or `VILLAGE`, and an existing active area of that level. "All villages" is the state, with its id from `/geo/states/`. |
+| `starts_on`, `ends_on` | `YYYY-MM-DD`, or null; an empty string in a multipart form or JSON also means none. `ends_on` before `starts_on`: `400` on `ends_on` (checked against the stored values on PATCH). |
+| `is_active` | `true` / `false`; default `true` |
+
+- Errors: `400 validation_error` with `fields` for the rules above (`title`, `image`, `link`, `area_level`, `area_id`, `ends_on`); `403 permission_denied` for anyone but the Super Admin; `404` for an unknown ad.
+- Audit: `ad.created`, `ad.updated` (the changed field names, `image` when it was replaced), `ad.deleted`, each with the area.
+
+### Settings
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `ADS_MAX_UPLOAD_MB` | 5 | Largest banner upload |
+| `ADS_MIN_WIDTH_PX` | 800 | Narrowest banner accepted |
+| `ADS_IMAGE_MAX_PX` | 1600 | Longest side of the stored WebP |
+| `ADS_PUBLIC_LIMIT` | 10 | Ads one village's Home shows |
+| `ADS_PUBLIC_MAX_AGE` | 300 | Seconds phones may reuse `/ads/` |
