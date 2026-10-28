@@ -84,6 +84,8 @@ class ImportReport:
     #: (state, district, mandal, village, village_lgd_code) of villages in
     #: the file that still have no coordinates after the import.
     missing_coordinates: list[tuple[str, str, str, str, str]] = field(default_factory=list)
+    #: Active villages in the whole database with no coordinates after the import (the file's and the others).
+    missing_coordinates_total: int = 0
     missing_telugu: int = 0
     dry_run: bool = False
 
@@ -343,6 +345,8 @@ class GeographyImporter:
                 self._save(node, Mandal, {"district": node.parent.obj})
             self._save_villages()
             self._collect_missing()
+            # Counted before a dry run rolls back, so the check shows what the import would leave.
+            self.report.missing_coordinates_total = Village.objects.active().without_coordinates().count()
             # A conflict found while writing (another admin added the same name) undoes the whole file.
             if self.report.dry_run or not self.report.ok:
                 transaction.set_rollback(True)

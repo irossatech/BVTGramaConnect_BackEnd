@@ -277,6 +277,7 @@ class VillageImportView(APIView):
                 for s, d, m, v, code in report.missing_coordinates[:MAX_MISSING_LISTED]
             ],
             "missing_coordinates_count": len(report.missing_coordinates),
+            "missing_coordinates_total": report.missing_coordinates_total,
             "missing_telugu": report.missing_telugu,
         }
         if not report.ok:

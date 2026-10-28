@@ -151,6 +151,10 @@ class VillageQuerySet(AreaQuerySet):
     def with_coordinates(self):
         return self.filter(latitude__isnull=False, longitude__isnull=False)
 
+    def without_coordinates(self):
+        """Villages "Use my location" (geo/nearest/) can never find."""
+        return self.filter(models.Q(latitude__isnull=True) | models.Q(longitude__isnull=True))
+
 
 class Village(Area):
     level = AreaLevel.VILLAGE

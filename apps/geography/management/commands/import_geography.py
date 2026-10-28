@@ -77,6 +77,11 @@ class Command(BaseCommand):
                 self.stdout.write(f"  … and {len(missing) - MAX_LISTED} more. Use --missing-report for all.")
         else:
             self.stdout.write("Every village in the file has coordinates.")
+        if report.missing_coordinates_total:
+            self.stdout.write(self.style.WARNING(
+                f"{report.missing_coordinates_total} active village(s) in the database have no coordinates. "
+                "List them with: manage.py geo_coordinates --csv PATH"
+            ))
 
         if missing_report:
             target = Path(missing_report)
