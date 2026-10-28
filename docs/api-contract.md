@@ -389,7 +389,7 @@ Writes, Super Admin only (`geography.manage_master_data`). `apps/geography/servi
 | `PATCH /geo/mandals/{id}` | same as districts |
 | `POST /geo/villages` | `{"mandal_id", "name_en", "name_te"?, "latitude", "longitude", "pin_code"?, "lgd_code"?}` |
 | `PATCH /geo/villages/{id}` | any of the above plus `is_active` |
-| `POST /geo/villages/import` | multipart `file` (UTF-8 CSV, same columns as `manage.py import_geography`); `?dry_run=1` saves nothing. `200 {"ok", "dry_run", "rows", "errors", "warnings", "counts": {"state"\|"district"\|"mandal"\|"village": {"created", "updated", "unchanged"}}, "missing_coordinates": [first 200], "missing_coordinates_count", "missing_telugu"}`. Any error: `400 validation_error` with the same object in `error.report`, and nothing is saved. |
+| `POST /geo/villages/import` | multipart `file` (UTF-8 CSV, same columns as `manage.py import_geography`); `?dry_run=1` saves nothing. `200 {"ok", "dry_run", "rows", "errors", "warnings", "counts": {"state"\|"district"\|"mandal"\|"village": {"created", "updated", "unchanged"}}, "missing_coordinates": [first 200], "missing_coordinates_count", "missing_coordinates_total", "missing_telugu"}`. `missing_coordinates` and `missing_coordinates_count` are the file's villages that still have no coordinates; `missing_coordinates_total` is every active village in the database without coordinates after the import (on a dry run, what the import would leave). "Use my location" (`GET /geo/nearest/`) can never find those villages, so the console should show the total. Any error: `400 validation_error` with the same object in `error.report`, and nothing is saved. |
 
 Every write answers, for example:
 ```json
@@ -416,6 +416,7 @@ Rules:
 - `lgd_code` is digits only, at most 20, and unique per level.
 - `latitude` is between -90 and 90 and `longitude` between -180 and 180, each with at most 6 decimals. `pin_code` is 6 digits.
 - Before migrating a server to `geography.0003`, run `python manage.py geo_duplicates` (read-only). It must print "No duplicates."; fix any it lists with the owner first.
+- Villages without coordinates are never returned by `GET /geo/nearest/`. `python manage.py geo_coordinates` (read-only) counts the active ones per district; `--csv PATH` lists them with the import's columns and empty `latitude` and `longitude`, to fill in and import back; `--fail-above 0` fails the release check while any is left.
 - Areas are never deleted. Deactivating an area hides it from public lists and blocks new users and posts there and in every area below it. Existing posts stay visible.
 - Nearest village: bounding-box filter in the ORM, then haversine distance in Python, per CLAUDE.md.
 

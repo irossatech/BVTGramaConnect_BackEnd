@@ -32,6 +32,8 @@ Scripts for one Ubuntu LTS server (22.04 or 24.04) in India. The database is MyS
 sudo bash /srv/gramaconnect/backend/deploy/deploy.sh
 ```
 
+Before a release to production, check that "Use my location" can find every village: `gc geo_coordinates --fail-above 0` (read-only). It fails while active villages have no coordinates; `--csv` lists them.
+
 ## What ends up where
 
 | Path | Contents |

@@ -36,6 +36,7 @@ Linux or macOS: the same with `python3 -m venv .venv` and `source .venv/bin/acti
 | New sample passwords | `python manage.py seed_sample_data --reset-passwords` |
 | Import villages | `python manage.py import_geography <file.csv> [--dry-run] [--missing-report out.csv]` |
 | Duplicate area names (before migrating `geography.0003`) | `python manage.py geo_duplicates` (read-only; must print "No duplicates.") |
+| Villages without coordinates ("Use my location" never finds them) | `python manage.py geo_coordinates [--csv out.csv] [--fail-above 0]` (read-only; the CSV is in import format with empty coordinates) |
 | 640 px photo files for media from before `posts.0005` | `python manage.py backfill_medium_images` (`--dry-run` counts only; safe to run again) |
 | Statewide helplines | `python manage.py seed_helplines [--file list.csv]` (safe to repeat; `seed_sample_data` runs it too) |
 | Import important numbers | `python manage.py import_contacts <file.csv> [--dry-run]` (all rows or none; columns in `docs/api-contract.md` section 14) |

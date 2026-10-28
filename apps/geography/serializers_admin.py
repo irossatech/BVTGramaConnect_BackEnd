@@ -123,7 +123,10 @@ class GeographyImportReport(serializers.Serializer):
     warnings = serializers.ListField(child=serializers.CharField())
     counts = serializers.DictField(child=ImportCounts(), help_text="state, district, mandal, village")
     missing_coordinates = MissingCoordinates(many=True)
-    missing_coordinates_count = serializers.IntegerField()
+    missing_coordinates_count = serializers.IntegerField(help_text="Villages in the file without coordinates")
+    missing_coordinates_total = serializers.IntegerField(
+        help_text="Active villages in the whole database without coordinates after the import"
+    )
     missing_telugu = serializers.IntegerField()
 
 
