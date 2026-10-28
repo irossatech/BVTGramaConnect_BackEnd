@@ -277,6 +277,8 @@ def test_the_new_assignee_is_told(api, world, request_from, django_capture_on_co
     note = Notification.objects.get(user=member)
     assert note.kind == NotificationKind.SERVICE_REQUEST and note.service_request_id == request_id
     assert "మీకు అప్పగించబడింది" in note.title
+    with django_capture_on_commit_callbacks(execute=True):
+        patch(api, world, "pm_kolakaluru", request_id, assigned_to=None)  # nobody holds it now
     before = Notification.objects.count()
     with django_capture_on_commit_callbacks(execute=True):
         patch(api, world, "ma_tenali", request_id, assigned_to=str(world.users["ma_tenali"].id))
@@ -286,13 +288,13 @@ def test_the_new_assignee_is_told(api, world, request_from, django_capture_on_co
 def test_history_lists_only_what_changed_oldest_first(api, world, request_from):
     _citizen, request_id = request_from()
     patch(api, world, "va_kolakaluru", request_id, status="APPROVED")
-    patch(api, world, "va_kolakaluru", request_id, assigned_to=str(world.users["pm_kolakaluru"].id))
     patch(api, world, "va_kolakaluru", request_id, note="Bring your ration card")
-    patch(api, world, "va_kolakaluru", request_id, assigned_to=None)
+    patch(api, world, "va_kolakaluru", request_id, assigned_to=str(world.users["pm_kolakaluru"].id))
+    patch(api, world, "pm_kolakaluru", request_id, assigned_to=None)
     history = detail(api, world, "va_kolakaluru", request_id).json()["history"]
     keys = [set(row) - {"at", "by", "note"} for row in history]
-    assert keys == [{"assigned_to"}, {"status"}, {"assigned_to"}, set(), {"assigned_to"}]
-    assert history[4]["assigned_to"] is None and history[3]["note"] == "Bring your ration card"
+    assert keys == [{"assigned_to"}, {"status"}, set(), {"assigned_to"}, {"assigned_to"}]
+    assert history[4]["assigned_to"] is None and history[2]["note"] == "Bring your ration card"
     assert ServiceRequestEvent.objects.count() == 5
 
 
@@ -305,7 +307,7 @@ def test_nothing_changed_writes_nothing(api, world, request_from):
 @pytest.mark.parametrize("assignee", ["pm_nandivelugu", "va_kaza", "da_krishna"])
 def test_only_an_official_of_the_area_can_be_assigned(api, world, request_from, assignee):
     _citizen, request_id = request_from("kolakaluru")
-    response = patch(api, world, "ma_tenali", request_id, assigned_to=str(world.users[assignee].id))
+    response = patch(api, world, "va_kolakaluru", request_id, assigned_to=str(world.users[assignee].id))
     assert response.status_code == 400 and "assigned_to" in response.json()["error"]["fields"]
 
 
@@ -318,35 +320,130 @@ def test_blocked_unknown_or_malformed_users_cannot_be_assigned(api, world, reque
         assert response.status_code == 400 and "assigned_to" in response.json()["error"]["fields"], value
 
 
-def test_admins_may_assign_themselves_or_a_higher_official(api, world, request_from):
+def test_the_assignee_may_pass_it_up_to_a_higher_official(api, world, request_from):
     _citizen, request_id = request_from()
-    assert patch(api, world, "ma_tenali", request_id, assigned_to=str(world.users["ma_tenali"].id)).status_code == 200
-    assert patch(api, world, "va_kolakaluru", request_id, assigned_to=str(world.users["da_guntur"].id)).status_code == 200
+    assert patch(api, world, "va_kolakaluru", request_id, assigned_to=str(world.users["ma_tenali"].id)).status_code == 200
+    assert patch(api, world, "ma_tenali", request_id, assigned_to=str(world.users["da_guntur"].id)).status_code == 200
+    assert ServiceRequest.objects.get(pk=request_id).assigned_to == world.users["da_guntur"]
 
 
 def test_rejecting_needs_a_reason_the_citizen_then_sees(api, world, request_from):
     citizen, request_id = request_from()
-    refused = patch(api, world, "da_guntur", request_id, status="REJECTED")
-    assert refused.status_code == 400 and "note" in refused.json()["error"]["fields"]
-    assert patch(api, world, "da_guntur", request_id, status="REJECTED", note="  ").status_code == 400
-    response = patch(api, world, "da_guntur", request_id, status="REJECTED", note="Please apply at the Mee Seva centre")
+    refused = patch(api, world, "va_kolakaluru", request_id, status="REJECTED")
+    assert refused.status_code == 400
+    assert refused.json()["error"]["fields"]["note"] == ["Write the reason to reject the request."]
+    assert patch(api, world, "va_kolakaluru", request_id, status="REJECTED", note="  ").status_code == 400
+    response = patch(api, world, "va_kolakaluru", request_id, status="REJECTED",
+                     note="Please apply at the Mee Seva centre")
     assert response.status_code == 200
     mine = citizen.client.get(MINE).json()[0]
     assert (mine["status"], mine["note"]) == ("REJECTED", "Please apply at the Mee Seva centre")
 
 
-def test_completing_with_a_description(api, world, request_from):
+def test_completing_needs_a_note_the_citizen_then_sees(api, world, request_from):
     citizen, request_id = request_from()
     patch(api, world, "va_kolakaluru", request_id, status="IN_PROGRESS")
+    refused = patch(api, world, "va_kolakaluru", request_id, status="COMPLETED")
+    assert refused.status_code == 400 and refused.json()["error"]["fields"]["note"] == ["Write a note for the citizen."]
+    assert patch(api, world, "va_kolakaluru", request_id, status="COMPLETED", note=" ").status_code == 400
     response = patch(api, world, "va_kolakaluru", request_id, status="COMPLETED", note="Card updated, collect it")
     assert response.status_code == 200
-    assert citizen.client.get(MINE).json()[0]["note"] == "Card updated, collect it"
+    mine = citizen.client.get(MINE).json()[0]
+    assert (mine["status"], mine["note"]) == ("COMPLETED", "Card updated, collect it")
 
 
 def test_unknown_status_is_refused(api, world, request_from):
     _citizen, request_id = request_from()
     response = patch(api, world, "va_kolakaluru", request_id, status="DONE")
     assert response.status_code == 400 and "status" in response.json()["error"]["fields"]
+
+
+# --- Only the assignee changes it -------------------------------------------------------------------
+
+HIGHER = ("ma_tenali", "da_guntur", "super")
+EVERY_CHANGE = ({"status": "IN_PROGRESS"}, {"note": "Visiting tomorrow"}, {"assigned_to": None})
+
+
+def actions(api, world, name, request_id):
+    return detail(api, world, name, request_id).json()["allowed_actions"]
+
+
+def refused_everything(api, world, name, request_id):
+    for body in EVERY_CHANGE:
+        response = patch(api, world, name, request_id, **body)
+        assert response.status_code == 403 and code(response) == "permission_denied", (name, body)
+    return True
+
+
+def test_only_the_village_admin_it_went_to_may_change_it(api, world, request_from):
+    _citizen, request_id = request_from()
+    assert actions(api, world, "va_kolakaluru", request_id) == ["set_status", "assign"]
+    for name in HIGHER:
+        assert actions(api, world, name, request_id) == [], name
+        assert refused_everything(api, world, name, request_id)
+    stored = ServiceRequest.objects.get(pk=request_id)
+    assert (stored.status, stored.note, stored.assigned_to) == ("NEW", "", world.users["va_kolakaluru"])
+    assert ServiceRequestEvent.objects.count() == 1
+
+
+def test_a_panchayat_member_it_is_passed_to_holds_it_and_the_admin_only_reads(api, world, request_from):
+    citizen, request_id = request_from()
+    member = world.users["pm_kolakaluru"]
+    assert patch(api, world, "va_kolakaluru", request_id, assigned_to=str(member.id)).status_code == 200
+
+    assert actions(api, world, "pm_kolakaluru", request_id) == ["set_status", "assign"]
+    assert actions(api, world, "va_kolakaluru", request_id) == []
+    assert refused_everything(api, world, "va_kolakaluru", request_id)
+    for body in ({"status": "APPROVED"}, {"status": "IN_PROGRESS", "note": "Visiting tomorrow"},
+                 {"status": "REJECTED", "note": "Apply at Mee Seva"}, {"status": "NEW"}):
+        assert patch(api, world, "pm_kolakaluru", request_id, **body).status_code == 200, body
+    assert ServiceRequestEvent.objects.filter(by=member).last().by_role == "PANCHAYAT_MEMBER"
+    assert citizen.client.get(MINE).json()[0]["note"] == "Apply at Mee Seva"
+
+    # Handing it back: the answer shows it saved, then the admin holds it and the member no longer sees it.
+    handed = patch(api, world, "pm_kolakaluru", request_id, assigned_to=str(world.users["va_kolakaluru"].id))
+    assert handed.status_code == 200 and handed.json()["allowed_actions"] == []
+    assert handed.json()["assigned_to"]["id"] == str(world.users["va_kolakaluru"].id)
+    assert actions(api, world, "va_kolakaluru", request_id) == ["set_status", "assign"]
+    assert detail(api, world, "pm_kolakaluru", request_id).status_code == 404
+
+
+def test_a_higher_admin_changes_it_only_once_it_is_theirs(api, world, request_from):
+    _citizen, request_id = request_from()
+    assert patch(api, world, "va_kolakaluru", request_id, assigned_to=str(world.users["ma_tenali"].id)).status_code == 200
+    assert actions(api, world, "ma_tenali", request_id) == ["set_status", "assign"]
+    assert patch(api, world, "ma_tenali", request_id, status="APPROVED").status_code == 200
+    assert actions(api, world, "va_kolakaluru", request_id) == []
+    assert refused_everything(api, world, "va_kolakaluru", request_id)
+    assert actions(api, world, "da_guntur", request_id) == []
+
+
+def test_a_request_nobody_holds_may_only_be_assigned(api, world, request_from):
+    RoleAssignment.objects.filter(user=world.users["va_kolakaluru"]).update(is_active=False)
+    _citizen, request_id = request_from()
+    for name in HIGHER:
+        assert actions(api, world, name, request_id) == ["assign"], name
+        for body in ({"status": "APPROVED"}, {"note": "Visiting tomorrow"},
+                     {"status": "APPROVED", "assigned_to": str(world.users[name].id)}):
+            response = patch(api, world, name, request_id, **body)
+            assert response.status_code == 403 and code(response) == "permission_denied", (name, body)
+    assert patch(api, world, "da_guntur", request_id, assigned_to=str(world.users["ma_tenali"].id)).status_code == 200
+    assert actions(api, world, "ma_tenali", request_id) == ["set_status", "assign"]
+    assert actions(api, world, "da_guntur", request_id) == []
+
+
+@pytest.mark.parametrize("gone", ["blocked", "role_removed"])
+def test_a_request_whose_assignee_left_is_not_stuck(api, world, request_from, gone):
+    _citizen, request_id = request_from()
+    admin = world.users["va_kolakaluru"]
+    if gone == "blocked":
+        User.objects.filter(pk=admin.pk).update(is_active=False)
+    else:
+        RoleAssignment.objects.filter(user=admin).update(is_active=False)
+    assert actions(api, world, "ma_tenali", request_id) == ["assign"]
+    assert patch(api, world, "ma_tenali", request_id, status="APPROVED").status_code == 403
+    assert patch(api, world, "ma_tenali", request_id, assigned_to=str(world.users["ma_tenali"].id)).status_code == 200
+    assert actions(api, world, "ma_tenali", request_id) == ["set_status", "assign"]
 
 
 # --- The assigned Panchayat member ------------------------------------------------------------------
@@ -360,22 +457,6 @@ def test_a_panchayat_member_sees_only_requests_assigned_to_them(api, world, requ
     ids = {row["id"] for row in api(member).get(LIST).json()["results"]}
     assert ids == {assigned}
     assert detail(api, world, "pm_kolakaluru", other).status_code == 404
-    assert detail(api, world, "pm_kolakaluru", assigned).json()["allowed_actions"] == ["set_status"]
-
-
-def test_the_assignee_moves_it_to_in_progress_and_completed_only(api, world, request_from):
-    citizen, request_id = request_from()
-    member = world.users["pm_kolakaluru"]
-    patch(api, world, "va_kolakaluru", request_id, status="APPROVED", assigned_to=str(member.id))
-    assert patch(api, world, "pm_kolakaluru", request_id, status="IN_PROGRESS", note="Visiting tomorrow").status_code == 200
-    for refused in ({"status": "REJECTED", "note": "x"}, {"status": "APPROVED"}, {"status": "NEW"},
-                    {"assigned_to": str(world.users["va_kolakaluru"].id)}):
-        response = patch(api, world, "pm_kolakaluru", request_id, **refused)
-        assert response.status_code == 403 and code(response) == "permission_denied", refused
-    assert patch(api, world, "pm_kolakaluru", request_id, status="COMPLETED").status_code == 200
-    event = ServiceRequestEvent.objects.filter(by=member).last()
-    assert event.by_role == "PANCHAYAT_MEMBER"
-    assert citizen.client.get(MINE).json()[0]["status"] == "COMPLETED"
 
 
 def test_a_panchayat_member_cannot_change_an_unassigned_request(api, world, request_from):
@@ -397,8 +478,8 @@ def test_status_counts_and_filters(api, world, request_from):
     _c, second = request_from(ip="10.3.3.3", name="Ravi Kumar", phone="9123456780")
     _c, third = request_from(ip="10.4.4.4", name="Sita", phone="9000000001")
     admin = api(world.users["ma_tenali"])
-    patch(api, world, "ma_tenali", second, status="APPROVED", assigned_to=str(world.users["ma_tenali"].id))
-    patch(api, world, "ma_tenali", third, status="REJECTED", note="Duplicate")
+    patch(api, world, "va_kolakaluru", second, status="APPROVED", assigned_to=str(world.users["ma_tenali"].id))
+    patch(api, world, "va_kolakaluru", third, status="REJECTED", note="Duplicate")
 
     data = admin.get(f"{LIST}?status=APPROVED").json()
     assert [row["id"] for row in data["results"]] == [second]

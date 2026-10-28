@@ -171,7 +171,10 @@ class ServiceRequestDetailView(APIView):
             assigned_to=values["assigned_to"] if "assigned_to" in values else services.UNSET,
             note=values.get("note"),
         )
-        return self._out(pk)
+        # Not through visible_requests again: a Panchayat member who passed it on no longer sees it,
+        # but still gets the saved request (with no allowed_actions) instead of a 404.
+        saved = with_related(ServiceRequest.objects.all()).get(pk=target.pk)
+        return Response(ServiceRequestSerializer(saved, context={"request": request}).data)
 
 
 # --- Super Admin: the services list -------------------------------------------------------------------

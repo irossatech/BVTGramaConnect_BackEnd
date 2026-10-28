@@ -249,8 +249,10 @@ def probe(world, client, actor: User, perm: str, area_key: str | None) -> bool:
             return False
         return request.id in {row["id"] for row in response.json()["results"]}
     if perm == "service_requests.manage_service_requests":
+        # It only lets an admin take a request nobody holds; changing it is the assignee's (section 16).
         request = service_request_at(world, area_key)
-        return outcome(client.patch(f"/api/v1/service-requests/{request.id}/", {"status": "APPROVED"}, format="json"))
+        body = {"assigned_to": str(actor.id)}
+        return outcome(client.patch(f"/api/v1/service-requests/{request.id}/", body, format="json"))
     if perm == "posts.block_citizen":
         citizen_post = citizen_post_at(world, area_key)
         body = {"comment": "probe", "days": 7}

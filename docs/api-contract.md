@@ -736,7 +736,8 @@ Roles are Django groups and actions are Django permissions. The full group × pe
 | Home banner ads (section 17) | `ads.manage_ad` | yes | no | no | no | no | sees the ads for their village, public |
 | Services list (section 16) | `service_requests.manage_services` | yes | no | no | no | no | sees the shown services, public |
 | See service requests (section 16) | `service_requests.view_service_requests` | all | inside the district | inside the mandal | the village | only those assigned to them, in the village | their own phone's, with the posting token |
-| Change status, assign, write a note | `service_requests.manage_service_requests` | any | inside the district | inside the mandal | the village | no (only IN_PROGRESS and COMPLETED on their own) | no |
+| Change status, assign on, write a note | being the request's **assignee** (any official of the area) | when assigned to them | when assigned to them | when assigned to them | when assigned to them | when assigned to them | no |
+| Assign a request nobody holds | `service_requests.manage_service_requests` | any | inside the district | inside the mandal | the village | no | no |
 | Web console login | `web_admin.access_web_console` | yes | no | no | no | no | no |
 | Groups and role assignments in Django admin | `accounts.manage_groups` | yes | no | no | no | no | no |
 
@@ -1026,7 +1027,7 @@ Built (`apps.service_requests`), from the mobile and web team's plan of 2026-10-
 - The Super Admin manages the **services** (**More → Services** in the app, **Services** in the console): add, edit, hide and reorder.
 - A citizen's **Home → Services** row shows the shown services in order. Tapping one opens a form: name, phone, optional email, and address.
 - The request belongs to the phone's village. It is **assigned to that village's Village Admin automatically**, and the Mandal and District Admins of the area and the Super Admin see it too.
-- Officials approve, reject (with a reason), start work and complete it (with a description). They can also re-assign it.
+- **Only the official it is assigned to changes it**: approve, reject (with a reason), start work, complete it (with a note for the citizen), or pass it on. Every other official who sees it only reads it.
 - The citizen sees the status and the latest note under **Profile → My service requests**.
 - The citizen side uses the phone's posting token from section 15 (no login).
 
@@ -1092,7 +1093,7 @@ A request belongs to the phone's village at the time it is sent; changing villag
 |---|---|---|---|
 | `GET /service-requests/` | `service_requests.view_service_requests` | `status` (one of the five, or empty), `q` (the citizen's name, or digits of the phone), `assigned=me` (optional), `page`, `page_size` (at most 100) | Page of `ServiceRequest`, latest change first, plus `status_counts` for all five statuses with every filter applied except `status` |
 | `GET /service-requests/{id}/` | same | — | `ServiceRequest`; `404` when it is outside reach |
-| `PATCH /service-requests/{id}/` | same, with the rules below | any of `{"status", "assigned_to", "note"}`; `assigned_to` is a user id as in `GET /users/` (a UUID string), or `null` to unassign | The updated `ServiceRequest`. One history event per call that changes something; a call that changes nothing writes nothing. |
+| `PATCH /service-requests/{id}/` | the assignee; the rules below | any of `{"status", "assigned_to", "note"}`; `assigned_to` is a user id as in `GET /users/` (a UUID string), or `null` to unassign | The updated `ServiceRequest`. One history event per call that changes something; a call that changes nothing writes nothing. After passing it on, the answer still comes back (with `allowed_actions: []`), even when the caller no longer sees the request. |
 
 ```jsonc
 // ServiceRequest (officials): CitizenServiceRequest plus
@@ -1130,18 +1131,27 @@ Permission `service_requests.manage_services` (Super Admin only); everyone else 
 
 **Who sees and does what:**
 
-| Role | Sees | `allowed_actions` |
-|---|---|---|
-| Super Admin | every request | `set_status`, `assign` |
-| District, Mandal, Village Admin | requests whose village is inside their area | `set_status`, `assign` |
-| Panchayat member | only requests **assigned to them**, inside their village | `set_status`, only to `IN_PROGRESS` or `COMPLETED` |
-| Others | nothing: `403` on the list, `404` on a request | — |
+| Role | Sees |
+|---|---|
+| Super Admin | every request |
+| District, Mandal, Village Admin | requests whose village is inside their area |
+| Panchayat member | only requests **assigned to them**, inside their village |
+| Others | nothing: `403` on the list, `404` on a request |
 
-- Permissions: `service_requests.view_service_requests` (the four admin groups and Panchayat members) and `service_requests.manage_service_requests` (the four admin groups), each over the request's village.
-- **Statuses:** `NEW` (default), `APPROVED`, `IN_PROGRESS`, `COMPLETED`, `REJECTED`. Admins may set any of them; the app suggests NEW → APPROVED → IN_PROGRESS → COMPLETED.
-- **`REJECTED` needs a `note`** (the reason): otherwise `400`, `fields.note`. On `COMPLETED` the note is the description of what was done.
-- **Assign to:** an active official whose area contains the request's village (any group holding the view permission there, including the admin themselves or a higher admin); otherwise `400`, `fields.assigned_to`, which is also the answer to an id that is not a user id. The app and the console pick from `GET /users/`.
-- **Panchayat member:** any other status, or `assigned_to`, gives `403 permission_denied`.
+**Only the assignee changes a request.** Everyone else who sees it reads it.
+
+| Who | `allowed_actions` |
+|---|---|
+| The assignee (the Village Admin at first, then whoever it is passed to, of any group) | `set_status`, `assign` |
+| An admin of the area, or the Super Admin, when **nobody holds** the request | `assign` only, so it is not stuck |
+| Everyone else who sees it (including the Village Admin after passing it on) | `[]` |
+
+- **Nobody holds it** when it was never assigned (the village has no Village Admin), or its assignee was later blocked or lost their role over the village.
+- Without the action: `403 permission_denied`. A `status` or a `note` needs `set_status`; `assigned_to` needs `assign`.
+- Permissions: `service_requests.view_service_requests` (the four admin groups and Panchayat members) and `service_requests.manage_service_requests` (the four admin groups), each over the request's village. `manage_service_requests` now only means "may assign a request nobody holds".
+- **Statuses:** `NEW` (default), `APPROVED`, `IN_PROGRESS`, `COMPLETED`, `REJECTED`. The assignee may set any of them; the app suggests NEW → APPROVED → IN_PROGRESS → COMPLETED.
+- **`REJECTED` and `COMPLETED` need a `note`**: the reason, or what the citizen should do next. Otherwise `400`, `fields.note`. A note sent with another status is saved too; the app does not ask for one.
+- **Assign to:** an active official whose area contains the request's village (any group holding the view permission there, including the caller themselves or a higher admin); otherwise `400`, `fields.assigned_to`, which is also the answer to an id that is not a user id. The app and the console pick from `GET /users/`. Whoever passes it on can no longer change it; the new assignee can hand it back.
 - **Notes:** `note` becomes the request's latest note, which the citizen sees, and is kept in the history.
 
 ### Notifications and audit
