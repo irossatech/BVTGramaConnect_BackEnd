@@ -385,6 +385,11 @@ CITIZEN_REGISTRATIONS_PER_IP_PER_DAY = env.int("CITIZEN_REGISTRATIONS_PER_IP_PER
 SERVICE_REQUESTS_PER_DAY = env.int("SERVICE_REQUESTS_PER_DAY", default=10)
 # Seconds phones may reuse the public services list.
 SERVICES_PUBLIC_MAX_AGE = env.int("SERVICES_PUBLIC_MAX_AGE", default=300)
+# Service logos: JPEG, PNG or WebP up to this size, at least the minimum on each side,
+# stored as WebP with the longest side at most SERVICE_LOGO_PX.
+SERVICE_LOGO_MAX_UPLOAD_MB = env.int("SERVICE_LOGO_MAX_UPLOAD_MB", default=2)
+SERVICE_LOGO_MIN_PX = env.int("SERVICE_LOGO_MIN_PX", default=64)
+SERVICE_LOGO_PX = env.int("SERVICE_LOGO_PX", default=256)
 
 # --- Home banner ads (apps.ads, docs/api-contract.md section 17) -------------
 ADS_MAX_UPLOAD_MB = env.int("ADS_MAX_UPLOAD_MB", default=5)

@@ -19,23 +19,38 @@ MOBILE = re.compile(r"^[6-9][0-9]{9}$")
 
 
 class ServiceSerializer(serializers.ModelSerializer):
+    logo = serializers.SerializerMethodField()
+
     class Meta:
         model = Service
-        fields = ["key", "name_en", "name_te", "icon", "color", "is_active"]
+        fields = ["key", "name_en", "name_te", "icon", "logo", "color", "is_active"]
+
+    def get_logo(self, obj) -> str | None:
+        """Absolute URL of the uploaded logo, or null: then the app draws `icon`."""
+        if not obj.logo:
+            return None
+        request = self.context.get("request")
+        return request.build_absolute_uri(obj.logo.url) if request is not None else obj.logo.url
 
 
-class AdminServiceSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Service
-        fields = ["key", "name_en", "name_te", "icon", "color", "is_active", "order", "created_at", "updated_at"]
+class AdminServiceSerializer(ServiceSerializer):
+    class Meta(ServiceSerializer.Meta):
+        fields = [*ServiceSerializer.Meta.fields, "order", "created_at", "updated_at"]
 
 
 class ServiceWriteSerializer(serializers.Serializer):
+    """POST and PATCH, as JSON or multipart (with `logo`, a file). The logo itself is checked in services."""
+
     name_en = serializers.CharField(max_length=60)
     name_te = serializers.CharField(max_length=60, required=False, allow_blank=True)
-    icon = serializers.ChoiceField(choices=ICONS)
+    icon = serializers.ChoiceField(choices=ICONS, required=False)
     color = serializers.ChoiceField(choices=COLORS)
     is_active = serializers.BooleanField(required=False)
+
+    def to_internal_value(self, data):
+        if hasattr(data, "dict"):  # multipart: plain values; the logo file is read by the view
+            data = {key: value for key, value in data.dict().items() if key != "logo"}
+        return super().to_internal_value(data)
 
     def validate_name_en(self, value):
         value = " ".join(value.split())

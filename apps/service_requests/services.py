@@ -2,7 +2,10 @@
 
 - Services: the Super Admin adds, changes, hides and reorders them. The key is
   made from the English name on create and never changes; services are never
-  deleted, so old requests stay readable.
+  deleted, so old requests stay readable. An optional logo (JPEG, PNG or WebP)
+  is re-encoded by Pillow as WebP at most SERVICE_LOGO_PX, which drops EXIF and
+  proves it is an image; the file is services/<key>-<random>-256.webp, new on
+  every replacement because phones cache /media/.
 - A citizen's phone (citizens.CitizenDevice, X-Citizen-Token) creates a request
   for its village; a blocked phone cannot, and SERVICE_REQUESTS_PER_DAY limits
   one phone (all its installs) per 24 hours. In the same transaction it is
@@ -21,21 +24,27 @@ address ever goes into the audit log.
 
 from __future__ import annotations
 
+import io
 import logging
+import secrets
+import warnings
 from datetime import timedelta
 
 from django.conf import settings
+from django.core.files.base import ContentFile
 from django.db import transaction
 from django.db.models import Max
 from django.utils import timezone
 from django.utils.text import slugify
 from django.utils.translation import gettext as _
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from apps.accounts import authz
 from apps.audit.services import record
 from apps.citizens import services as citizens
 from apps.geography.areas import AreaRef
 from apps.geography.models import AreaLevel, Village
+from apps.posts.media import ALLOWED_FORMATS, MAX_PIXELS
 from grama.exceptions import ApiError, permission_denied
 
 from .models import RequestStatus, Service, ServiceRequest, ServiceRequestEvent
@@ -97,8 +106,47 @@ def _check_name(name_en: str, service: Service | None = None) -> None:
         raise _validation("name_en", _("A service with this name already exists."))
 
 
-def create_service(user, values: dict) -> Service:
+def process_logo(upload) -> bytes:
+    """The upload as a WebP logo (transparency kept), or 400 on `logo`."""
+    if upload.size > settings.SERVICE_LOGO_MAX_UPLOAD_MB * 1024 * 1024:
+        raise _validation("logo", _("The logo can be at most %(mb)d MB.") % {"mb": settings.SERVICE_LOGO_MAX_UPLOAD_MB})
+    not_an_image = _("Upload a JPEG, PNG or WebP image.")
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            image = Image.open(upload)
+            if image.format not in ALLOWED_FORMATS or image.width * image.height > MAX_PIXELS:
+                raise _validation("logo", not_an_image)
+            image.load()
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError, Image.DecompressionBombWarning):
+        raise _validation("logo", not_an_image) from None
+    image = ImageOps.exif_transpose(image)
+    if min(image.width, image.height) < settings.SERVICE_LOGO_MIN_PX:
+        raise _validation(
+            "logo", _("The logo must be at least %(px)d pixels on each side.") % {"px": settings.SERVICE_LOGO_MIN_PX}
+        )
+    has_alpha = image.mode in ("RGBA", "LA") or (image.mode == "P" and "transparency" in image.info)
+    image = image.convert("RGBA" if has_alpha else "RGB")
+    image.thumbnail((settings.SERVICE_LOGO_PX, settings.SERVICE_LOGO_PX), Image.Resampling.LANCZOS)
+    buffer = io.BytesIO()
+    image.save(buffer, "WEBP", quality=settings.POST_IMAGE_QUALITY, method=4)
+    return buffer.getvalue()
+
+
+def _store_logo(service: Service, data: bytes) -> None:
+    name = f"{service.key}-{secrets.token_hex(4)}-{settings.SERVICE_LOGO_PX}.webp"
+    service.logo.save(name, ContentFile(data), save=False)
+
+
+def _delete_logo_after_commit(name: str) -> None:
+    if name:
+        storage = Service._meta.get_field("logo").storage
+        transaction.on_commit(lambda: storage.delete(name))
+
+
+def create_service(user, values: dict, logo=None) -> Service:
     _check_name(values["name_en"])
+    data = process_logo(logo) if logo is not None else None
     with transaction.atomic():
         last = Service.objects.aggregate(last=Max("order"))["last"]
         service = Service.objects.create(
@@ -106,20 +154,33 @@ def create_service(user, values: dict) -> Service:
             order=0 if last is None else last + 1,
             **{name: values[name] for name in SERVICE_FIELDS if name in values},
         )
+        if data is not None:
+            _store_logo(service, data)
+            service.save(update_fields=["logo"])
         record("service.created", actor=user, target=service, target_label=service.name_en,
-               data={"key": service.key})
+               data={"key": service.key, "logo": data is not None})
     return service
 
 
-def update_service(user, service: Service, changes: dict) -> Service:
+def update_service(user, service: Service, changes: dict, logo=None, remove_logo: bool = False) -> Service:
+    """Change fields; `logo` replaces the logo, `remove_logo` takes it away (the app then draws `icon`)."""
     if "name_en" in changes:
         _check_name(changes["name_en"], service)
+    data = process_logo(logo) if logo is not None else None
     changed = [name for name in SERVICE_FIELDS if name in changes and changes[name] != getattr(service, name)]
-    if not changed:
+    drop_logo = remove_logo and data is None and bool(service.logo)
+    if not changed and data is None and not drop_logo:
         return service
     with transaction.atomic():
         for name in changed:
             setattr(service, name, changes[name])
+        if data is not None or drop_logo:
+            _delete_logo_after_commit(service.logo.name)
+            if data is not None:
+                _store_logo(service, data)
+            else:
+                service.logo = ""
+            changed.append("logo")
         service.save()
         details = [name for name in changed if name != "is_active"]
         if details:

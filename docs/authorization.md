@@ -356,7 +356,7 @@ python manage.py sync_role_permissions
 | `citizen.registered` | A citizen's phone got its posting token; platform, whether Play Integrity was checked and whether it is a reinstall; never the IP, the Android ID or the token |
 | `citizen.blocked`, `citizen.unblocked` | The Super Admin blocked (reason, days, end) or unblocked the phone behind a citizen post |
 | `citizen.posts_discarded` | The Super Admin discarded all pending posts of one phone; the reason and how many |
-| `service.created`, `service.updated` | The Super Admin added a service (its key) or changed one (the changed field names) |
+| `service.created`, `service.updated` | The Super Admin added a service (its key and whether it has a logo) or changed one (the changed field names, `logo` for a new or removed logo) |
 | `service.shown`, `service.hidden` | The Super Admin showed or hid a service on the citizens' Home |
 | `service.reordered` | The Super Admin put the services in a new order; the keys in order |
 | `service_request.created` | A citizen's phone sent a service request; the service and the device id, never the name, phone, email or address |

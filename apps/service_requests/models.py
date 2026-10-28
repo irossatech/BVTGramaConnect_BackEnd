@@ -27,16 +27,27 @@ ICONS = [
     "help", "services",
 ]
 COLORS = ["orange", "blue", "green", "purple", "teal"]
+#: The icon a service gets when the Super Admin picks none (a logo usually replaces it).
+DEFAULT_ICON = "services"
+
+
+def service_logo_path(instance, filename):
+    return f"services/{filename}"
 
 
 class Service(models.Model):
-    """One service on the citizen's Home. Never deleted: hidden with is_active."""
+    """One service on the citizen's Home. Never deleted: hidden with is_active.
+
+    The app shows `logo` (an image the Super Admin uploaded) when there is one, else draws `icon`.
+    """
 
     #: Made by the server from name_en on create; never changes. Requests refer to it.
     key = models.SlugField(max_length=40, unique=True)
     name_en = models.CharField(max_length=60)
     name_te = models.CharField(max_length=60, blank=True)
-    icon = models.CharField(max_length=30, choices=[(icon, icon) for icon in ICONS])
+    icon = models.CharField(max_length=30, choices=[(icon, icon) for icon in ICONS], default=DEFAULT_ICON)
+    #: Optional uploaded logo, re-encoded as WebP by services.process_logo. Empty: the app draws `icon`.
+    logo = models.FileField(upload_to=service_logo_path, max_length=200, blank=True)
     color = models.CharField(max_length=10, choices=[(color, color) for color in COLORS])
     is_active = models.BooleanField(default=True)
     order = models.PositiveIntegerField(default=0)

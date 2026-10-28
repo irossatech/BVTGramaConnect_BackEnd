@@ -16,6 +16,7 @@ from django.views.decorators.cache import cache_control
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import generics, status
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -57,7 +58,7 @@ class PublicServicesView(APIView):
 
     @extend_schema(summary="The services citizens can ask for, in Home order", responses=ServiceSerializer(many=True))
     def get(self, request):
-        return Response(ServiceSerializer(selectors.active_services(), many=True).data)
+        return Response(ServiceSerializer(selectors.active_services(), many=True, context={"request": request}).data)
 
 
 class CitizenServiceRequestsView(CitizenView):
@@ -178,36 +179,50 @@ class ServiceRequestDetailView(APIView):
 MANAGE_SERVICES = HasPerm("service_requests.manage_services", PLATFORM, gettext_lazy("Only Super Admins can do this."))
 
 
-def _all_services():
-    return AdminServiceSerializer(selectors.all_services(), many=True).data
+def _all_services(request):
+    return AdminServiceSerializer(selectors.all_services(), many=True, context={"request": request}).data
+
+
+def _out(request, service, code=status.HTTP_200_OK):
+    return Response(AdminServiceSerializer(service, context={"request": request}).data, status=code)
+
+
+def _logo_removed(request) -> bool:
+    """`"logo": null` in JSON, or an empty `logo` field in a form, takes the logo away."""
+    return "logo" in request.data and not request.FILES.get("logo") and request.data.get("logo") in (None, "")
 
 
 class AdminServicesView(APIView):
     permission_classes = [IsAuthenticated, MANAGE_SERVICES]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     @extend_schema(summary="Every service, hidden ones too, in Home order", responses=AdminServiceSerializer(many=True))
     def get(self, request):
-        return Response(_all_services())
+        return Response(_all_services(request))
 
-    @extend_schema(summary="Add a service; the server makes its key and puts it last",
-                   request=ServiceWriteSerializer, responses={201: AdminServiceSerializer})
+    @extend_schema(summary="Add a service (JSON, or multipart with a `logo` image); the server makes its key and "
+                           "puts it last", request=ServiceWriteSerializer, responses={201: AdminServiceSerializer})
     def post(self, request):
         data = ServiceWriteSerializer(data=request.data)
         data.is_valid(raise_exception=True)
-        service = services.create_service(request.user, data.validated_data)
-        return Response(AdminServiceSerializer(service).data, status=status.HTTP_201_CREATED)
+        service = services.create_service(request.user, data.validated_data, request.FILES.get("logo"))
+        return _out(request, service, status.HTTP_201_CREATED)
 
 
 class AdminServiceDetailView(APIView):
     permission_classes = [IsAuthenticated, MANAGE_SERVICES]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
 
-    @extend_schema(summary="Change, hide or show a service", request=ServiceWriteSerializer,
-                   responses=AdminServiceSerializer)
+    @extend_schema(summary="Change, hide or show a service; multipart with `logo` replaces the logo, "
+                           '`"logo": null` removes it', request=ServiceWriteSerializer, responses=AdminServiceSerializer)
     def patch(self, request, key):
         service = get_object_or_404(Service, key=key)
         data = ServiceWriteSerializer(data=request.data, partial=True)
         data.is_valid(raise_exception=True)
-        return Response(AdminServiceSerializer(services.update_service(request.user, service, data.validated_data)).data)
+        service = services.update_service(
+            request.user, service, data.validated_data, request.FILES.get("logo"), remove_logo=_logo_removed(request)
+        )
+        return _out(request, service)
 
 
 class AdminServiceOrderView(APIView):
@@ -219,4 +234,4 @@ class AdminServiceOrderView(APIView):
         data = ServiceOrderSerializer(data=request.data)
         data.is_valid(raise_exception=True)
         services.reorder_services(request.user, data.validated_data["keys"])
-        return Response(_all_services())
+        return Response(_all_services(request))

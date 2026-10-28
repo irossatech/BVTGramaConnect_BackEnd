@@ -830,7 +830,7 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Important numbers | 200 active per area (`CONTACTS_MAX_PER_AREA`); name 150, custom type 40 characters; CSV import 2 MB and 5,000 rows |
 | Home banner ads | Image at most 5 MB and at least 800 px wide, stored at most 1600 px; title 80, link 500 characters; at most 10 per village's Home |
 | Service requests | 10 per phone in 24 hours (`SERVICE_REQUESTS_PER_DAY`, 0 is no limit); name 100, address 5–300, details 500 characters |
-| Services | name 2–60 characters (unique, any case); `icon` and `color` from the lists in section 16 |
+| Services | name 2–60 characters (unique, any case); `icon` and `color` from the lists in section 16; logo JPEG, PNG or WebP, at most 2 MB, at least 64 px a side, stored at most 256 px |
 | Citizen posts | 5 posts per phone in 24 hours (the Super Admin changes it in Settings; 0 is no limit); any number of photos and videos per post (switchable: `CITIZEN_MAX_PHOTOS`); each photo at most `MAX_IMAGE_UPLOAD_MB`, each video at most `MAX_VIDEO_UPLOAD_MB` and `VIDEO_MAX_SECONDS`; no limit on new phones (switchable: `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY`) |
 
 ---
@@ -1033,7 +1033,9 @@ Built (`apps.service_requests`), from the mobile and web team's plan of 2026-10-
 ### Service
 
 ```jsonc
-{"key": "aadhaar", "name_en": "Aadhaar Services", "name_te": "ఆధార్ సేవలు", "icon": "aadhaar", "color": "orange", "is_active": true}
+{"key": "aadhaar", "name_en": "Aadhaar Services", "name_te": "ఆధార్ సేవలు", "icon": "aadhaar",
+ "logo": "https://…/media/services/aadhaar-3fa9c2d1-256.webp",   // or null
+ "color": "orange", "is_active": true}
 ```
 
 | Field | Rule |
@@ -1041,7 +1043,8 @@ Built (`apps.service_requests`), from the mobile and web team's plan of 2026-10-
 | `key` | Made by the server from `name_en` on create ("Ration Card" → `ration_card`; `_2`, `_3`… when taken). **Never changes**; requests refer to it. |
 | `name_en` | Required, 2–60 characters, spaces collapsed, unique in any case |
 | `name_te` | Optional, at most 60; the app shows `name_en` when empty |
-| `icon` | One of `aadhaar`, `eci`, `id_badge`, `card`, `certificate`, `document`, `scheme`, `loan`, `land`, `farmer`, `house`, `ration`, `health`, `education`, `pension`, `women`, `job`, `water`, `power`, `police`, `help`, `services` (the app draws them) |
+| `icon` | One of `aadhaar`, `eci`, `id_badge`, `card`, `certificate`, `document`, `scheme`, `loan`, `land`, `farmer`, `house`, `ration`, `health`, `education`, `pension`, `women`, `job`, `water`, `power`, `police`, `help`, `services` (the app draws them). Optional; `services` when not given. |
+| `logo` | The logo the Super Admin uploaded, an absolute URL, or `null`. **The app shows the logo when there is one, else draws `icon`.** Uploaded as JPEG, PNG or WebP, at most 2 MB (`SERVICE_LOGO_MAX_UPLOAD_MB`) and at least 64 px on each side; the server re-encodes it as WebP with the longest side at most 256 px (shape and transparency kept, EXIF removed). The file name changes on every replacement, so a cached old logo is never shown. |
 | `color` | One of `orange`, `blue`, `green`, `purple`, `teal` |
 | `is_active` | `false` hides it from citizens; its old requests stay readable |
 
@@ -1114,8 +1117,8 @@ Permission `service_requests.manage_services` (Super Admin only); everyone else 
 | Method and path | Request | Response |
 |---|---|---|
 | `GET /admin/services/` | — | **Every** service, hidden ones too, in Home order: a plain list of `Service` plus `order`, `created_at`, `updated_at` |
-| `POST /admin/services/` | `{"name_en", "name_te"?, "icon", "color", "is_active"?}` | `201` with the service; the server makes `key` and puts it last. `400` with `fields` for a taken or bad name, an unknown `icon` or `color`. |
-| `PATCH /admin/services/{key}/` | any of the same fields (the list switch sends only `{"is_active": false}`) | The service; `404` for an unknown key. `key` cannot be changed. |
+| `POST /admin/services/` | JSON `{"name_en", "name_te"?, "icon"?, "color", "is_active"?}`, or the same fields as multipart with a `logo` image file | `201` with the service; the server makes `key` and puts it last. `400` with `fields` for a taken or bad name, an unknown `icon` or `color`, or a bad `logo` ("Upload a JPEG, PNG or WebP image.", too large, too small). |
+| `PATCH /admin/services/{key}/` | any of the same fields, as JSON or multipart (the list switch sends only `{"is_active": false}`). Multipart with `logo` replaces the logo; JSON `{"logo": null}` (or an empty `logo` form field) removes it. | The service; `404` for an unknown key. `key` cannot be changed. |
 | `POST /admin/services/order/` | `{"keys": [every key, in the new order]}` | `200` with the full list in the new order; `400` with `fields.keys` unless the keys are exactly the existing ones, each once |
 
 ### Rules
@@ -1160,6 +1163,9 @@ Permission `service_requests.manage_services` (Super Admin only); everyone else 
 |---|---|---|
 | `SERVICE_REQUESTS_PER_DAY` | 10 | Requests per phone, all its installs, in 24 hours; 0 is no limit |
 | `SERVICES_PUBLIC_MAX_AGE` | 300 | Seconds phones may reuse `GET /services/` |
+| `SERVICE_LOGO_MAX_UPLOAD_MB` | 2 | Largest logo upload |
+| `SERVICE_LOGO_MIN_PX` | 64 | Smallest logo side |
+| `SERVICE_LOGO_PX` | 256 | Longest side of the stored logo |
 
 ---
 
