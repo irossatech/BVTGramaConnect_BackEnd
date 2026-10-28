@@ -77,9 +77,7 @@ def test_inbox_lists_only_own_items_newest_first(api, notes):
     data = api(user).get("/api/v1/notifications/").json()
     assert [row["title"] for row in data["results"]] == ["n2", "n1", "n0"]
     assert data["unread_count"] == 3
-    assert set(data["results"][0]) == {
-        "id", "kind", "title", "body", "post_id", "service_request_id", "area", "created_at", "read_at",
-    }
+    assert set(data["results"][0]) == {"id", "kind", "title", "body", "post_id", "area", "created_at", "read_at"}
 
 
 def test_mark_one_and_all_read(api, notes):

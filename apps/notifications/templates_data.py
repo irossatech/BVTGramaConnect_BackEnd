@@ -83,28 +83,6 @@ DEFAULTS = [
         "variables": ["area", "hours", "title"],
         "editable": True,
     },
-    {
-        "key": "service_request_new",
-        "name_te": "కొత్త సేవా అభ్యర్థన",
-        "name_en": "New service request",
-        "channel": "push",
-        "recipient": "reviewers",
-        "text_te": "{area}: {name} నుండి కొత్త {service} అభ్యర్థన",
-        "text_en": "{area}: new {service} request from {name}",
-        "variables": ["area", "service", "name"],
-        "editable": True,
-    },
-    {
-        "key": "service_request_updated",
-        "name_te": "సేవా అభ్యర్థన స్థితి",
-        "name_en": "Service request status",
-        "channel": "push",
-        "recipient": "citizen",
-        "text_te": "మీ {service} అభ్యర్థన: {status}",
-        "text_en": "Your {service} request: {status}",
-        "variables": ["service", "status", "note"],
-        "editable": True,
-    },
 ]
 
 BY_KEY = {item["key"]: item for item in DEFAULTS}
