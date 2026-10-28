@@ -50,14 +50,17 @@ SUPER_ONLY = {
     "posts.manage_settings", "contacts.manage_contact_types",
     "posts.block_citizen",  # only the Super Admin blocks a citizen's phone (contract section 15)
     "ads.manage_ad",  # Home banner ads (contract section 17)
+    "service_requests.manage_services",  # the services citizens ask for (contract section 16)
 }
 
 
 def expected_permissions(key: str, super_admin_can_post: bool = False) -> set[str]:
     # Every official manages important numbers in their own area (contacts plan, decision C1).
     perms = {MANAGE_PERMISSION[role] for role in MANAGES[key]} | {"posts.view_stats", "contacts.manage_contact"}
+    # Service requests (contract section 16): everyone sees them; a Panchayat member only those assigned to them.
+    perms |= {"service_requests.view_service_requests"}
     if key != "PANCHAYAT_MEMBER":
-        perms |= REVIEW | USER_ACTIONS
+        perms |= REVIEW | USER_ACTIONS | {"service_requests.manage_service_requests"}
     if key != "SUPER_ADMIN" or super_admin_can_post:
         perms |= {"posts.create_post", "posts.submit_post"}
     if key == "SUPER_ADMIN":

@@ -290,9 +290,9 @@ Lean on purpose, for 2G.
 
 ### Notification (logged-in inbox)
 ```json
-{"id": "…", "kind": "POST_RECHECK", "title": "…", "body": "…", "post_id": "c2d4…", "area": Area, "created_at": "…", "read_at": null}
+{"id": "…", "kind": "POST_RECHECK", "title": "…", "body": "…", "post_id": "c2d4…", "service_request_id": null, "area": Area, "created_at": "…", "read_at": null}
 ```
-`kind` values: `POST_PUBLISHED`, `POST_RECHECK`, `POST_DISCARDED`, `POST_UNPUBLISHED`, `REVIEW_PENDING`, `ESCALATION`, `ACCOUNT`.
+`kind` values: `POST_PUBLISHED`, `POST_RECHECK`, `POST_DISCARDED`, `POST_UNPUBLISHED`, `REVIEW_PENDING`, `ESCALATION`, `ACCOUNT`, `SERVICE_REQUEST` (a citizen's new service request, or one assigned to you; `service_request_id` says which, section 16).
 
 ### AuditEntry
 ```json
@@ -734,6 +734,9 @@ Roles are Django groups and actions are Django permissions. The full group × pe
 | Important numbers (section 14) | `contacts.manage_contact` | any area, and the statewide helplines | inside the district | inside the mandal | the village | the village (decision C1) | read only, public |
 | Contact types | `contacts.manage_contact_types` | yes | no | no | no | no | no |
 | Home banner ads (section 17) | `ads.manage_ad` | yes | no | no | no | no | sees the ads for their village, public |
+| Services list (section 16) | `service_requests.manage_services` | yes | no | no | no | no | sees the shown services, public |
+| See service requests (section 16) | `service_requests.view_service_requests` | all | inside the district | inside the mandal | the village | only those assigned to them, in the village | their own phone's, with the posting token |
+| Change status, assign, write a note | `service_requests.manage_service_requests` | any | inside the district | inside the mandal | the village | no (only IN_PROGRESS and COMPLETED on their own) | no |
 | Web console login | `web_admin.access_web_console` | yes | no | no | no | no | no |
 | Groups and role assignments in Django admin | `accounts.manage_groups` | yes | no | no | no | no | no |
 
@@ -778,6 +781,9 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Important numbers (every official) | `GET /admin/contacts` (`section=AREA\|HELPLINE`), `POST /admin/contacts`, `PATCH /admin/contacts/{id}`, `DELETE /admin/contacts/{id}`, `GET /admin/contacts/targets` |
 | Citizen Home: banner ads | `GET /ads?village_id=` |
 | Super Admin: More → Ads | `GET /admin/ads`, `POST /admin/ads` (multipart), `PATCH /admin/ads/{id}` (multipart with a new image, else JSON), `DELETE /admin/ads/{id}`; areas from `/geo/*` |
+| Citizen: Home → Services, Profile → My service requests | `GET /services/`, `POST /citizen/service-requests/`, `GET /citizen/service-requests/` |
+| Service requests (officials) | `GET /service-requests/` (status tabs from `status_counts`), `GET /service-requests/{id}/`, `PATCH /service-requests/{id}/`; assignees from `GET /users/` |
+| Super Admin: More → Services | `GET /admin/services/`, `POST /admin/services/`, `PATCH /admin/services/{key}/`, `POST /admin/services/order/` |
 
 ### Super Admin console
 
@@ -794,6 +800,8 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Settings | `/admin/settings`, `/admin/categories`, `/admin/notification-templates` |
 | Contact messages | `GET /admin/contact-messages`, `PATCH /admin/contact-messages/{id}` |
 | Important numbers | `GET /admin/contacts` (area and helpline tabs), `POST /admin/contacts`, `PATCH /admin/contacts/{id}`, `DELETE /admin/contacts/{id}`, `GET /admin/contacts/targets`, `POST /admin/contacts/import`; types: `/admin/contact-types` |
+| Service requests | `GET /service-requests/`, `GET /service-requests/{id}/`, `PATCH /service-requests/{id}/`; assignees from `GET /users/` (shown to holders of `service_requests.view_service_requests`) |
+| Services | `GET /admin/services/`, `POST /admin/services/`, `PATCH /admin/services/{key}/`, `POST /admin/services/order/` |
 
 ### Public website
 
@@ -820,7 +828,10 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Video | one per post, `VIDEO_MAX_SECONDS` 60, `MAX_VIDEO_UPLOAD_MB` default 50 |
 | Page size | feed 20, admin lists 100 |
 | Important numbers | 200 active per area (`CONTACTS_MAX_PER_AREA`); name 150, custom type 40 characters; CSV import 2 MB and 5,000 rows |
-| Home banner ads | Image at most 5 MB and at least 800 px wide, stored at most 1600 px; title 80, link 500 characters; at most 10 per village's Home || Citizen posts | 5 posts per phone in 24 hours (the Super Admin changes it in Settings; 0 is no limit); any number of photos and videos per post (switchable: `CITIZEN_MAX_PHOTOS`); each photo at most `MAX_IMAGE_UPLOAD_MB`, each video at most `MAX_VIDEO_UPLOAD_MB` and `VIDEO_MAX_SECONDS`; no limit on new phones (switchable: `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY`) |
+| Home banner ads | Image at most 5 MB and at least 800 px wide, stored at most 1600 px; title 80, link 500 characters; at most 10 per village's Home |
+| Service requests | 10 per phone in 24 hours (`SERVICE_REQUESTS_PER_DAY`, 0 is no limit); name 100, address 5–300, details 500 characters |
+| Services | name 2–60 characters (unique, any case); `icon` and `color` from the lists in section 16 |
+| Citizen posts | 5 posts per phone in 24 hours (the Super Admin changes it in Settings; 0 is no limit); any number of photos and videos per post (switchable: `CITIZEN_MAX_PHOTOS`); each photo at most `MAX_IMAGE_UPLOAD_MB`, each video at most `MAX_VIDEO_UPLOAD_MB` and `VIDEO_MAX_SECONDS`; no limit on new phones (switchable: `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY`) |
 
 ---
 
@@ -1008,9 +1019,147 @@ Every citizen endpoint answers `401 citizen_token_invalid` without a valid token
 
 ---
 
-## 16. service_requests: removed
+## 16. service_requests: services and citizens' service requests
 
-**Removed 2026-10-28.** The citizens' service requests built on 2026-10-27 (`/citizen/service-requests/`, `/service-requests/`, the fixed service list, the `SERVICE_REQUEST` inbox item and the `service_request_new` and `service_request_updated` templates) are gone; every one of those paths now answers `404`. They will be rebuilt with services the Super Admin creates; this section will describe that when it is agreed.
+Built (`apps.service_requests`), from the mobile and web team's plan of 2026-10-28 (it replaces the first version of 2026-10-27, removed the same day).
+
+- The Super Admin manages the **services** (**More → Services** in the app, **Services** in the console): add, edit, hide and reorder.
+- A citizen's **Home → Services** row shows the shown services in order. Tapping one opens a form: name, phone, optional email, and address.
+- The request belongs to the phone's village. It is **assigned to that village's Village Admin automatically**, and the Mandal and District Admins of the area and the Super Admin see it too.
+- Officials approve, reject (with a reason), start work and complete it (with a description). They can also re-assign it.
+- The citizen sees the status and the latest note under **Profile → My service requests**.
+- The citizen side uses the phone's posting token from section 15 (no login).
+
+### Service
+
+```jsonc
+{"key": "aadhaar", "name_en": "Aadhaar Services", "name_te": "ఆధార్ సేవలు", "icon": "aadhaar", "color": "orange", "is_active": true}
+```
+
+| Field | Rule |
+|---|---|
+| `key` | Made by the server from `name_en` on create ("Ration Card" → `ration_card`; `_2`, `_3`… when taken). **Never changes**; requests refer to it. |
+| `name_en` | Required, 2–60 characters, spaces collapsed, unique in any case |
+| `name_te` | Optional, at most 60; the app shows `name_en` when empty |
+| `icon` | One of `aadhaar`, `eci`, `id_badge`, `card`, `certificate`, `document`, `scheme`, `loan`, `land`, `farmer`, `house`, `ration`, `health`, `education`, `pension`, `women`, `job`, `water`, `power`, `police`, `help`, `services` (the app draws them) |
+| `color` | One of `orange`, `blue`, `green`, `purple`, `teal` |
+| `is_active` | `false` hides it from citizens; its old requests stay readable |
+
+Services are never deleted. The 8 services the app ships with are seeded with the same keys: `aadhaar`, `pan`, `voter_id`, `certificates`, `loans_insurance`, `govt_schemes`, `land_records`, `farmer`.
+
+### Public and citizens
+
+| Method and path | Request | Response |
+|---|---|---|
+| `GET /services/` | public, no login | The **shown** services in Home order, a plain list of `Service`. `Cache-Control: max-age=300` (`SERVICES_PUBLIC_MAX_AGE`). |
+| `POST /citizen/service-requests/` | header `X-Citizen-Token`; JSON `{"service", "name", "phone", "email"?, "address", "details"?}` | `201 CitizenServiceRequest`, status `NEW`, for the phone's village. `400 validation_error` with `fields`: `service` ("This service is not available.": unknown or hidden), `name`, `phone`, `email`, `address` ("Enter your address."), `details`. `401 citizen_token_invalid`; `403 citizen_blocked` with `reason` and `blocked_until` (as for posts); `429 throttled` with `retry_after_s` after `SERVICE_REQUESTS_PER_DAY` (10) requests from one phone, all its installs, in 24 hours. |
+| `GET /citizen/service-requests/` | header `X-Citizen-Token` | `[CitizenServiceRequest]`, this phone's requests (all its installs), newest first, at most 50 |
+
+```jsonc
+// CitizenServiceRequest
+{
+  "id": 104512,                                   // an integer; the app shows the last 6 digits
+  "service": "aadhaar", "service_name": "ఆధార్ సేవలు",   // the name follows Accept-Language
+  "name": "Lakshmi Devi", "phone": "9876543210", "email": "", "address": "4-12, Temple Street",
+  "details": "",
+  "village":  {"id": 1042, "name": "కొలకలూరు"},
+  "mandal":   {"id": 88,   "name": "తెనాలి"},
+  "district": {"id": 7,    "name": "గుంటూరు"},
+  "status": "IN_PROGRESS",
+  "note": "Come to the Sachivalayam on Monday",  // the latest note; "" until one is written
+  "created_at": "2026-10-28T10:00:00+05:30",
+  "updated_at": "2026-10-28T12:30:00+05:30"
+}
+```
+
+| Field | Rule |
+|---|---|
+| `service` | The key of a shown service |
+| `name` | Required, at most 100 characters; spaces are collapsed; at least 2 characters remain |
+| `phone` | Required, an Indian mobile: spaces are removed, then `^[6-9][0-9]{9}$`. `+91` is not accepted. |
+| `email` | Optional, a valid address, stored in lower case |
+| `address` | **Required**, 5–300 characters after trimming |
+| `details` | Optional, at most 500 characters (the app no longer asks for it) |
+
+A request belongs to the phone's village at the time it is sent; changing village later does not move it.
+
+### Officials (JWT or console session)
+
+| Method and path | Who | Request | Response |
+|---|---|---|---|
+| `GET /service-requests/` | `service_requests.view_service_requests` | `status` (one of the five, or empty), `q` (the citizen's name, or digits of the phone), `assigned=me` (optional), `page`, `page_size` (at most 100) | Page of `ServiceRequest`, latest change first, plus `status_counts` for all five statuses with every filter applied except `status` |
+| `GET /service-requests/{id}/` | same | — | `ServiceRequest`; `404` when it is outside reach |
+| `PATCH /service-requests/{id}/` | same, with the rules below | any of `{"status", "assigned_to", "note"}`; `assigned_to` is a user id as in `GET /users/` (a UUID string), or `null` to unassign | The updated `ServiceRequest`. One history event per call that changes something; a call that changes nothing writes nothing. |
+
+```jsonc
+// ServiceRequest (officials): CitizenServiceRequest plus
+{
+  …,
+  "assigned_to": {"id": "5b1e…", "name": "Suresh Babu", "role": "VILLAGE_ADMIN"},   // or null
+  "allowed_actions": ["set_status", "assign"],
+  "history": [                                    // oldest first
+    {"at": "…", "by": null, "assigned_to": {"id": "5b1e…", "name": "Suresh Babu"},
+     "note": "Assigned to the Village Admin automatically"},
+    {"at": "…", "by": {"id": "5b1e…", "name": "Suresh Babu", "role": "VILLAGE_ADMIN"}, "status": "APPROVED", "note": ""}
+  ]
+}
+```
+- User ids are UUID strings, as in `GET /users/`.
+- In `history`, `by` is `null` for the system (the automatic assignment). `status` appears only when the status changed, and `assigned_to` only when the assignment changed (`null`: unassigned). `note` is always there (`""` when none).
+
+### Super Admin: the services list
+
+Permission `service_requests.manage_services` (Super Admin only); everyone else gets `403 permission_denied`.
+
+| Method and path | Request | Response |
+|---|---|---|
+| `GET /admin/services/` | — | **Every** service, hidden ones too, in Home order: a plain list of `Service` plus `order`, `created_at`, `updated_at` |
+| `POST /admin/services/` | `{"name_en", "name_te"?, "icon", "color", "is_active"?}` | `201` with the service; the server makes `key` and puts it last. `400` with `fields` for a taken or bad name, an unknown `icon` or `color`. |
+| `PATCH /admin/services/{key}/` | any of the same fields (the list switch sends only `{"is_active": false}`) | The service; `404` for an unknown key. `key` cannot be changed. |
+| `POST /admin/services/order/` | `{"keys": [every key, in the new order]}` | `200` with the full list in the new order; `400` with `fields.keys` unless the keys are exactly the existing ones, each once |
+
+### Rules
+
+**Automatic assignment** (on create, in the same transaction):
+- The request goes to the active official who manages service requests through an **active assignment on exactly this village**: the Village Admin. When there are several, the earliest assignment wins.
+- It writes a history event with `by: null`, the note "Assigned to the Village Admin automatically", and an audit entry `service_request.assigned` with `auto: true`.
+- With no such official (none, blocked, or an inactive assignment), the request stays unassigned; the Mandal and District Admins still see it.
+
+**Who sees and does what:**
+
+| Role | Sees | `allowed_actions` |
+|---|---|---|
+| Super Admin | every request | `set_status`, `assign` |
+| District, Mandal, Village Admin | requests whose village is inside their area | `set_status`, `assign` |
+| Panchayat member | only requests **assigned to them**, inside their village | `set_status`, only to `IN_PROGRESS` or `COMPLETED` |
+| Others | nothing: `403` on the list, `404` on a request | — |
+
+- Permissions: `service_requests.view_service_requests` (the four admin groups and Panchayat members) and `service_requests.manage_service_requests` (the four admin groups), each over the request's village.
+- **Statuses:** `NEW` (default), `APPROVED`, `IN_PROGRESS`, `COMPLETED`, `REJECTED`. Admins may set any of them; the app suggests NEW → APPROVED → IN_PROGRESS → COMPLETED.
+- **`REJECTED` needs a `note`** (the reason): otherwise `400`, `fields.note`. On `COMPLETED` the note is the description of what was done.
+- **Assign to:** an active official whose area contains the request's village (any group holding the view permission there, including the admin themselves or a higher admin); otherwise `400`, `fields.assigned_to`, which is also the answer to an id that is not a user id. The app and the console pick from `GET /users/`.
+- **Panchayat member:** any other status, or `assigned_to`, gives `403 permission_denied`.
+- **Notes:** `note` becomes the request's latest note, which the citizen sees, and is kept in the history.
+
+### Notifications and audit
+
+- **New request:** the Village, Mandal and District Admins of the village get an inbox item (`kind` `SERVICE_REQUEST`, with `service_request_id`) and a push (`data.type` `SERVICE_REQUEST`, `data.request_id`, `area_level`, `area_id`).
+  - The admin it was assigned to gets the template `service_request_assigned_you` ("New Aadhaar Services request from Lakshmi Devi, assigned to you").
+  - The others get `service_request_new` ("కొలకలూరు: Lakshmi Devi నుండి కొత్త ఆధార్ సేవలు అభ్యర్థన").
+  - The Super Admin is not pinged for each request (as for posts).
+- **Re-assignment:** the new assignee gets the same `service_request_assigned_you` inbox item and push, unless they assigned it to themselves.
+- **Status change:** the citizen's phone gets a push if it sent an `fcm_token` (section 15). It uses the template `service_request_updated` ("Your Aadhaar Services request: Rejected") with the note as the body, and `data` `{"type": "SERVICE_REQUEST_UPDATED", "request_id", "status"}`. A note or an assignment alone sends no push.
+- **Privacy:** the phone number, email and address never appear in a notification or the audit log. Notifications name the service and the citizen's name.
+- **Audit:**
+  - `service.created`, `service.updated` (changed fields), `service.shown`, `service.hidden`, `service.reordered`.
+  - `service_request.created` (service and device id only), `service_request.status_changed` (from, to, note), `service_request.assigned` (the new assignee's id and name, and `auto`).
+
+### Settings
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `SERVICE_REQUESTS_PER_DAY` | 10 | Requests per phone, all its installs, in 24 hours; 0 is no limit |
+| `SERVICES_PUBLIC_MAX_AGE` | 300 | Seconds phones may reuse `GET /services/` |
 
 ---
 
