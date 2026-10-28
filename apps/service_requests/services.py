@@ -11,11 +11,14 @@
   one phone (all its installs) per 24 hours. In the same transaction it is
   assigned to the village's Village Admin (selectors.village_admin_of).
 - Officials holding service_requests.manage_service_requests over the village
-  (Village, Mandal and District Admins, the Super Admin) see it, change its
-  status, assign it to an official of the area and write a note.
-- An official with only service_requests.view_service_requests (a Panchayat
-  member) sees the requests assigned to them inside their area, and may move
-  them to IN_PROGRESS or COMPLETED.
+  (Village, Mandal and District Admins, the Super Admin) see it. An official
+  with only service_requests.view_service_requests (a Panchayat member) sees
+  the requests assigned to them inside their area.
+- Only the assignee changes a request: any status, a note, and passing it on
+  to another official of the area. Everyone else reads it. A request nobody
+  holds (no Village Admin, or the assignee was blocked or lost their role
+  there) may only be assigned, by an official managing requests over it.
+- Rejecting and completing need a note for the citizen.
 
 Every change writes one ServiceRequestEvent and the audit entries in the same
 transaction; notifications go out after commit. No name, phone, email or
@@ -37,6 +40,7 @@ from django.db.models import Max
 from django.utils import timezone
 from django.utils.text import slugify
 from django.utils.translation import gettext as _
+from django.utils.translation import gettext_lazy
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from apps.accounts import authz
@@ -52,8 +56,11 @@ from .selectors import MANAGE, VIEW, village_admin_of
 
 logger = logging.getLogger("grama.service_requests")
 
-#: What an assignee who cannot manage requests may move them to.
-ASSIGNEE_STATUSES = (RequestStatus.IN_PROGRESS, RequestStatus.COMPLETED)
+#: Statuses that close a request and so need a note for the citizen, with the message when it is missing.
+NOTE_REQUIRED = {
+    RequestStatus.REJECTED: gettext_lazy("Write the reason to reject the request."),
+    RequestStatus.COMPLETED: gettext_lazy("Write a note for the citizen."),
+}
 DAY = timedelta(hours=24)
 #: Service fields the Super Admin may change.
 SERVICE_FIELDS = ("name_en", "name_te", "icon", "color", "is_active")
@@ -63,11 +70,24 @@ def area_of(request: ServiceRequest) -> AreaRef:
     return AreaRef(AreaLevel.VILLAGE, request.village_id)
 
 
+def _holder_id(request: ServiceRequest):
+    """The assignee while they can still act on the request; None when nobody can (never assigned,
+    or the assignee was blocked or lost their role over the village), so it is not stuck."""
+    assignee = request.assigned_to
+    if assignee is None or not assignee.is_active or not authz.can(assignee, VIEW, area_of(request)):
+        return None
+    return assignee.pk
+
+
 def allowed_actions(user, request: ServiceRequest) -> list[str]:
-    if authz.can(user, MANAGE, area_of(request)):
+    """Only the assignee changes a request; the area's admins may only assign one nobody holds."""
+    area = area_of(request)
+    if not authz.can(user, VIEW, area):
+        return []
+    if request.assigned_to_id == user.pk:  # an active user who can view it: they hold it
         return ["set_status", "assign"]
-    if request.assigned_to_id == user.id and authz.can(user, VIEW, area_of(request)):
-        return ["set_status"]
+    if authz.can(user, MANAGE, area) and _holder_id(request) is None:
+        return ["assign"]
     return []
 
 
@@ -271,19 +291,18 @@ UNSET = object()
 def update_request(user, request: ServiceRequest, *, status=None, assigned_to=UNSET, note=None) -> ServiceRequest:
     """PATCH by an official: any of a new status, an assignee (a user id or None) and a note."""
     area = area_of(request)
-    grant = authz.best_grant(user, MANAGE, area)
-    if grant is None:
-        grant = authz.best_grant(user, VIEW, area)
-        if grant is None or request.assigned_to_id != user.id:
-            raise permission_denied(_("You cannot change this request."))
-        if assigned_to is not UNSET:
-            raise permission_denied(_("Only admins can assign service requests."))
-        if status is not None and status not in ASSIGNEE_STATUSES:
-            raise permission_denied(_("You can only mark this request as in progress or completed."))
-
+    actions = allowed_actions(user, request)
+    if not actions:
+        raise permission_denied(_("Only the person this request is assigned to can change it."))
     note = (note or "").strip() if note is not None else None
-    if status == RequestStatus.REJECTED and not note:
-        raise _validation("note", _("Write the reason to reject the request."))
+    if (status is not None or note) and "set_status" not in actions:
+        raise permission_denied(_("Assign the request first; then the assignee changes its status."))
+    if assigned_to is not UNSET and "assign" not in actions:
+        raise permission_denied(_("Only the person this request is assigned to can assign it."))
+    grant = authz.best_grant(user, MANAGE, area) or authz.best_grant(user, VIEW, area)
+
+    if status in NOTE_REQUIRED and not note:
+        raise _validation("note", str(NOTE_REQUIRED[status]))
 
     new_status = status if status is not None and status != request.status else None
     assignee = None
