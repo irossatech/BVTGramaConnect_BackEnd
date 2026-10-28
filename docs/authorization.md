@@ -218,8 +218,6 @@ Rank 0 is the highest. The groups, their levels, ranks and permissions are writt
 | `accounts.reassign_user` | yes | yes | yes | yes |  |
 | `accounts.unlock_user` | yes | yes | yes | yes |  |
 | `contacts.manage_contact` | yes | yes | yes | yes | yes |
-| `service_requests.view_service_requests` | yes | yes | yes | yes | yes (only those assigned to them) |
-| `service_requests.manage_service_requests` | yes | yes | yes | yes |  |
 | `accounts.manage_groups` | yes |  |  |  |  |
 | `geography.manage_master_data` | yes |  |  |  |  |
 | `audit.view_audit_log` | yes |  |  |  |  |
@@ -355,9 +353,7 @@ python manage.py sync_role_permissions
 | `citizen.registered` | A citizen's phone got its posting token; platform, whether Play Integrity was checked and whether it is a reinstall; never the IP, the Android ID or the token |
 | `citizen.blocked`, `citizen.unblocked` | The Super Admin blocked (reason, days, end) or unblocked the phone behind a citizen post |
 | `citizen.posts_discarded` | The Super Admin discarded all pending posts of one phone; the reason and how many |
-| `service_request.created` | A citizen's phone sent a service request; the service and the device id, never the name, phone or email |
-| `service_request.status_changed` | An official changed a service request's status; from, to and the note |
-| `service_request.assigned` | An official assigned or unassigned a service request; the new assignee |
+| `service_request.created`, `service_request.status_changed`, `service_request.assigned` | No longer written: service requests were removed on 2026-10-28. Entries from before stay in the log. |
 | `ad.created`, `ad.updated`, `ad.deleted` | The Super Admin made, changed (the changed field names) or deleted a Home banner ad, with its area |
 
 No audit entry holds a password. The console shows these under Audit Log, tab Logins and tab Users.

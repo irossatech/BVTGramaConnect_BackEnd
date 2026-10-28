@@ -380,10 +380,6 @@ CITIZEN_POSTS_PER_DAY = env.int("CITIZEN_POSTS_PER_DAY", default=5)
 CITIZEN_MAX_PHOTOS = env.int("CITIZEN_MAX_PHOTOS", default=0)
 CITIZEN_REGISTRATIONS_PER_IP_PER_DAY = env.int("CITIZEN_REGISTRATIONS_PER_IP_PER_DAY", default=0)
 
-# --- Service requests (apps.service_requests, docs/api-contract.md section 16) ---
-# Requests one citizen phone (all its installs) may send in 24 hours; 0 is no limit.
-SERVICE_REQUESTS_PER_DAY = env.int("SERVICE_REQUESTS_PER_DAY", default=10)
-
 # --- Home banner ads (apps.ads, docs/api-contract.md section 17) -------------
 ADS_MAX_UPLOAD_MB = env.int("ADS_MAX_UPLOAD_MB", default=5)
 ADS_MIN_WIDTH_PX = env.int("ADS_MIN_WIDTH_PX", default=800)

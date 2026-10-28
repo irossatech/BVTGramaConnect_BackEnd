@@ -33,12 +33,11 @@ class DeviceUpdateSerializer(DeviceSerializer):
 
 class NotificationSerializer(serializers.ModelSerializer):
     post_id = serializers.UUIDField(allow_null=True)
-    service_request_id = serializers.IntegerField(allow_null=True)
     area = serializers.SerializerMethodField()
 
     class Meta:
         model = Notification
-        fields = ["id", "kind", "title", "body", "post_id", "service_request_id", "area", "created_at", "read_at"]
+        fields = ["id", "kind", "title", "body", "post_id", "area", "created_at", "read_at"]
 
     def get_area(self, obj) -> dict | None:
         if not obj.area_level:
