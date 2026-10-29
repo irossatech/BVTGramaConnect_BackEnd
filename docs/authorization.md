@@ -244,6 +244,7 @@ Rules on top of the table:
 - **Console screens** follow the same permissions: Geography needs `geography.manage_master_data`, the Audit Log needs `audit.view_audit_log`, and so on. The console hides what the user lacks; the server still refuses it.
 - **Service requests: only the assignee changes one.** Changing the status, writing a note and passing it on belong to the official it is assigned to, whatever their group (a Panchayat Member included); every other official who sees it only reads it. `service_requests.manage_service_requests` over the village only lets an admin assign a request **nobody holds**: never assigned (the village has no Village Admin), or its assignee was blocked or lost their role over the village.
 - **Important numbers** need `contacts.manage_contact` over the number's area, so every official works inside their own area and below. Only a platform-wide assignment covers the STATE, so only the Super Admin edits the statewide helplines; everyone else reads them. The CSV import needs the permission over the whole platform.
+- **Number types** (add, rename, switch off and delete an unused one) need `contacts.manage_contact_types` over the whole platform: only the Super Admin.
 
 ---
 

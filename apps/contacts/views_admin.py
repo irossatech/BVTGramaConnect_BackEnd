@@ -4,7 +4,7 @@
 /api/v1/admin/contacts/{id}/           read, edit (also "verified": true), remove (soft delete)
 /api/v1/admin/contacts/targets/        the "Who sees it" choices
 /api/v1/admin/contacts/import/         CSV import, Super Admin
-/api/v1/admin/contact-types/           types, Super Admin
+/api/v1/admin/contact-types/           types, Super Admin (list, add, edit, delete when unused)
 
 Every write goes through services.py, which checks the permission over the area.
 """
@@ -175,10 +175,10 @@ class AdminContactTypeViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     ]
     serializer_class = AdminContactTypeSerializer
     pagination_class = None
-    http_method_names = ["get", "post", "patch", "head", "options"]
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
     def get_queryset(self):
-        return ContactType.objects.annotate(
+        return ContactType.objects.live().annotate(
             contact_count=Count("contacts", filter=Q(contacts__is_active=True))
         ).order_by("section", "sort_order", "id")
 
@@ -198,3 +198,8 @@ class AdminContactTypeViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         data.is_valid(raise_exception=True)
         contact_type = services.update_type(request.user, contact_type, data.validated_data, via=client_via(request))
         return Response(AdminContactTypeSerializer(contact_type).data)
+
+    @extend_schema(summary="Delete a contact type no active number uses (409 type_in_use otherwise)")
+    def destroy(self, request, pk=None):
+        services.delete_type(request.user, pk, via=client_via(request))
+        return Response(status=status.HTTP_204_NO_CONTENT)
