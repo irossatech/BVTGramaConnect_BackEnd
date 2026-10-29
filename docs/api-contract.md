@@ -572,11 +572,13 @@ No login. These views ignore any `Authorization` header, so a stale token on a c
   "image_url": "/media/posts/2026/10/…-1280.webp",
   "media_count": 3,
   "source_role": "VILLAGE_ADMIN",
+  "source_area": {"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు"},
   "event": {"kind": "meeting", "start_date": "2026-10-20", "end_date": null},
   "is_urgent": false,
   "video": null
 }
 ```
+- `source_area`: the poster's own area, for "Source: Kolakaluru Gram Panchayat" or "Shared by a citizen of Kolakaluru". It is the area of the role the post went out under (`posted_as`), or the phone's village for a citizen post, never where the post was sent: a Village Admin's post to a whole district still shows their village. `null` when that area no longer exists. Name in the `Accept-Language` language. New on 2026-10-29, so older clients ignore it.
 - `translation`: `null`, or the post in its other language (section 1, "Language"); new on 2026-10-28, so older clients ignore it.
 - `targets`: every area the post is for (section 3, "Posts"); `area` is the first of them. New on 2026-10-28.
 - `event` and `is_urgent` as on Post. `video`: `null`, or for a video post `{"url", "poster_url", "duration_s"}`, so the reels screen needs no extra call; `thumbnail_url` is then the poster's thumbnail.
