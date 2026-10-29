@@ -10,6 +10,7 @@ from apps.accounts.models import User
 from apps.audit.models import AuditLog
 from apps.geography.models import District, Mandal, Village
 from apps.posts.models import Category, Post, PostStatus, ReviewAction
+from conftest import make_bare_post
 
 pytestmark = pytest.mark.django_db
 
@@ -181,7 +182,7 @@ def make_post(world, author, area, status, *, hours_ago=1, published=False, esca
     ref = world.ref(area)
     author_user = world.users[author]
     assignment = author_user.role_assignments.get()
-    post = Post.objects.create(
+    post = make_bare_post(
         author=author_user,
         posted_as_role=assignment.role,
         posted_as_level=assignment.area_level,
@@ -205,7 +206,7 @@ def test_dashboard_numbers(api, world):
     make_post(world, "pm_nidamanuru", "nidamanuru", PostStatus.PENDING, hours_ago=25)
     make_post(world, "va_kolakaluru", "kolakaluru", PostStatus.PUBLISHED, hours_ago=1, published=True)
     make_post(world, "pm_nandivelugu", "nandivelugu", PostStatus.DISCARDED)
-    Post.objects.create(
+    make_bare_post(
         author=world.users["pm_kaza"], posted_as_role="PANCHAYAT_MEMBER", posted_as_level="VILLAGE",
         posted_as_area_id=world.ref("kaza").id, category=Category.objects.get(key="news"),
         title="draft", body="b", target_level="VILLAGE", target_area_id=world.ref("kaza").id, status=PostStatus.DRAFT,

@@ -14,7 +14,9 @@ position relative to the official's own area:
 
 Expected: allowed exactly when the group holds the permission (role_matrix.py,
 with SUPER_ADMIN_CAN_POST off) and the area lies inside the official's area,
-or the group is platform-wide. test_authz.py checks the dict itself against
+or the group is platform-wide. Posting is the exception: whoever may post may
+post to any area (owner decision of 2026-10-28), so writing and sending a post
+on need only the permission. test_authz.py checks the dict itself against
 the brief, so this file checks that the API enforces it everywhere.
 """
 
@@ -34,7 +36,7 @@ from apps.accounts.sync import wanted_permissions
 from apps.citizens.models import CitizenDevice
 from apps.posts.models import CITIZEN_ROLE, Category, Post, PostStatus
 from apps.service_requests.models import ServiceRequest
-from conftest import MAP, PARENT, TEST_PASSWORD, inside
+from conftest import MAP, PARENT, TEST_PASSWORD, inside, make_bare_post
 
 pytestmark = pytest.mark.django_db
 
@@ -134,7 +136,7 @@ def post_at(world, area_key: str, status: str, *, author: str = "pm_nidamanuru",
     target = world.ref(area_key)
     now = timezone.now()
     decided = status not in (PostStatus.DRAFT, PostStatus.PENDING)
-    return Post.objects.create(
+    return make_bare_post(
         author=world.users[author],
         posted_as_role="PANCHAYAT_MEMBER",
         posted_as_level="VILLAGE",
@@ -158,7 +160,7 @@ def citizen_post_at(world, village_key: str) -> Post:
     phone = CitizenDevice.objects.create(
         token_hash=uuid.uuid4().hex, platform="android", village_id=village.id, nonce=uuid.uuid4().hex
     )
-    return Post.objects.create(
+    return make_bare_post(
         citizen=phone,
         posted_as_role=CITIZEN_ROLE,
         posted_as_level=village.level,
@@ -284,6 +286,10 @@ def probe(world, client, actor: User, perm: str, area_key: str | None) -> bool:
     raise AssertionError(f"No probe for {perm}")
 
 
+#: Held anywhere means allowed for every area: a post may be for any area (owner decision of 2026-10-28).
+ANY_AREA_PROBES = {"posts.create_post", "posts.submit_post"}
+
+
 def expected(key: str, perm: str, area_key: str | None, home: str) -> bool:
     spec = ROLE_GROUPS[key]
     held = wanted_permissions(spec)
@@ -291,6 +297,8 @@ def expected(key: str, perm: str, area_key: str | None, home: str) -> bool:
         return False
     if perm in PLATFORM_PROBES:
         return spec["platform_wide"]
+    if perm in ANY_AREA_PROBES:
+        return True
     if perm in USER_PROBES and "accounts.manage_panchayat_member" not in held:
         return False  # the target is a Panchayat member: the actor must manage them too
     return spec["platform_wide"] or inside(area_key, home)

@@ -16,10 +16,13 @@ SQLite, MySQL and PostgreSQL and needs no row locks.
 Each move writes a ReviewAction and an AuditLog entry in the same transaction,
 then sends a signal from posts.signals once the transaction commits.
 
-Who may do what comes from permissions over the post's target area
-(accounts.authz): posts.create_post and submit_post to write and send on,
-publish_post (which also auto-publishes the admin's own posts), recheck_post,
-discard_post, takedown_post, reverse_decision and mark_urgent. Posts record
+Who may do what comes from permissions (accounts.authz): posts.create_post and
+submit_post to write and send on, publish_post (which also auto-publishes the
+admin's own posts), recheck_post, discard_post, takedown_post, reverse_decision
+and mark_urgent. A post is for one or more areas (PostTarget: "Everyone", or any
+districts, mandals and villages). Anyone who may post may post to any area; a
+reviewer acts when any of the post's areas lies inside their own, and the first
+decision counts for the whole post (owner decision of 2026-10-28). Posts record
 the key of the group they were written or decided under (posted_as_role,
 decided_by_role); a reversal needs a group ranked strictly higher.
 """
@@ -31,7 +34,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Q, QuerySet
+from django.db.models import Exists, OuterRef, Q, QuerySet
 from django.utils import timezone
 from django.utils.translation import gettext as _
 from rest_framework import status as http
@@ -39,12 +42,12 @@ from rest_framework import status as http
 from apps.accounts import authz
 from apps.accounts.authz import Grant
 from apps.audit.services import record
-from apps.geography.areas import AreaRef, area_exists, within_q
-from apps.geography.models import AreaLevel
+from apps.geography.areas import DEPTH, AreaRef, ancestries, within_q
+from apps.geography.models import MODEL_BY_LEVEL, AreaLevel
 from grama.exceptions import ApiError, out_of_area, permission_denied
 
 from . import signals
-from .models import CITIZEN_ROLE, Category, Post, PostStatus, ReviewAction, SettingOverride
+from .models import CITIZEN_ROLE, Category, Post, PostStatus, PostTarget, ReviewAction, SettingOverride
 from .translation import detect_language
 
 CREATE = "posts.create_post"
@@ -71,7 +74,6 @@ NEXT_LEVEL_UP = {
 EDITABLE = (PostStatus.DRAFT, PostStatus.RECHECK)
 DECIDED = (PostStatus.PUBLISHED, PostStatus.RECHECK, PostStatus.DISCARDED, PostStatus.UNPUBLISHED)
 REVERSE_TARGETS = (PostStatus.PUBLISHED, PostStatus.PENDING, PostStatus.RECHECK, PostStatus.DISCARDED)
-TARGET_Q = {"level_field": "target_level", "id_field": "target_area_id"}
 AUDIT_ACTIONS = {
     ReviewAction.Action.SUBMIT: "post.submitted",
     ReviewAction.Action.RESUBMIT: "post.resubmitted",
@@ -143,19 +145,42 @@ def comment_required() -> ApiError:
 # --- Who may do what --------------------------------------------------------------------------
 
 
-def posting_assignment(user, target: AreaRef, perm: str = CREATE) -> Grant | None:
-    """The assignment `user` posts under for `target`: the highest one granting `perm` there."""
-    return authz.best_grant(user, perm, target)
+def posting_assignment(user, targets: list[AreaRef] | AreaRef | None = None, perm: str = CREATE) -> Grant | None:
+    """The assignment `user` posts under: the highest one granting `perm` over the first target, else
+    the highest granting it anywhere. Anyone who may post may post to any area (owner decision of
+    2026-10-28), so the target only picks which of several roles the post goes out under."""
+    first = targets[0] if isinstance(targets, list) and targets else targets
+    if isinstance(first, AreaRef):
+        grant = authz.best_grant(user, perm, first)
+        if grant is not None:
+            return grant
+    return authz.best_grant(user, perm)
 
 
 def reviewer_assignment(user, post: Post, perm: str = REVIEW) -> Grant | None:
-    """The highest assignment of `user` granting `perm` over the post's target."""
-    return authz.best_grant(user, perm, post.target)
+    """The highest assignment of `user` granting `perm` over any of the post's areas."""
+    refs = post.target_refs
+    authz.prime(user, refs)
+    found = [grant for ref in refs if (grant := authz.best_grant(user, perm, ref)) is not None]
+    return min(found, key=lambda grant: grant.rank, default=None)
 
 
-def review_scope_q(user, perm: str = REVIEW) -> Q:
-    """Posts whose target lies inside an area where the user holds `perm`."""
-    return authz.area_q(user, perm, **TARGET_Q)
+def targets_match(condition: Q) -> Exists:
+    """Posts with at least one target (PostTarget.area_level, area_id) matching `condition`.
+
+    An EXISTS, so a post with many matching targets is still one row and needs no distinct().
+    """
+    return Exists(PostTarget.objects.filter(post=OuterRef("pk")).filter(condition))
+
+
+def targets_within(container: AreaRef) -> Exists:
+    """Posts with a target that is `container` or lies inside it."""
+    return targets_match(within_q(container))
+
+
+def review_scope_q(user, perm: str = REVIEW) -> Exists:
+    """Posts with a target inside an area where the user holds `perm`."""
+    return targets_match(authz.area_q(user, perm))
 
 
 def visible_posts(user) -> QuerySet:
@@ -197,18 +222,20 @@ def allowed_actions(user, post: Post) -> list[str]:
             actions += ["edit", "add_media", "submit"]
         if post.status == PostStatus.DRAFT:
             actions.append("delete")
-    target = post.target
+    def on_post(perm: str) -> bool:
+        return reviewer_assignment(user, post, perm) is not None
+
     if post.status == PostStatus.PENDING and post.author_id != user.id:
         # A citizen cannot edit a post, so it is never sent back for recheck (contract section 15).
         decisions = ("publish", "discard") if post.citizen_id else ("publish", "recheck", "discard")
-        actions += [name for name in decisions if authz.can(user, DECISION_PERMISSION[name], target)]
-    if post.status == PostStatus.PUBLISHED and authz.can(user, DECISION_PERMISSION["unpublish"], target):
+        actions += [name for name in decisions if on_post(DECISION_PERMISSION[name])]
+    if post.status == PostStatus.PUBLISHED and on_post(DECISION_PERMISSION["unpublish"]):
         actions.append("unpublish")
     if can_reverse(user, reviewer_assignment(user, post, DECISION_PERMISSION["reverse"]), post):
         actions.append("reverse")
-    if post.status != PostStatus.DRAFT and authz.can(user, URGENT, target):
+    if post.status != PostStatus.DRAFT and on_post(URGENT):
         actions.append("set_urgent")
-    if post.citizen_id and authz.can(user, BLOCK_CITIZEN, target):
+    if post.citizen_id and on_post(BLOCK_CITIZEN):
         from apps.citizens.services import active_block  # citizens builds on this module
 
         actions.append("unblock_citizen" if active_block(post.citizen) else "block_citizen")
@@ -257,20 +284,54 @@ def _reload(post: Post) -> Post:
     return Post.objects.select_related("author", "citizen", "category", "decided_by").get(pk=post.pk)
 
 
-def _check_target(target: AreaRef) -> None:
-    if not area_exists(target, active_only=True):
-        raise ApiError(
-            "validation_error",
-            _("No such active area."),
-            fields={"target": [_("No such active area.")]},
-        )
+def _targets_error(message) -> ApiError:
+    return ApiError("validation_error", message, fields={"targets": [message]})
 
 
-def _posting_or_raise(user, target: AreaRef, perm: str = CREATE) -> Grant:
-    assignment = posting_assignment(user, target, perm)
+def clean_targets(refs, *, max_targets: int | None = None, allow_state: bool = True) -> list[AreaRef]:
+    """The areas a post is for: checked, without duplicates or areas inside another chosen one.
+
+    "Everyone" is the STATE. Every area must exist and be active, else 400 fields.targets. Children
+    are never merged into their parent: what was sent is saved. One query per level for the active
+    check and one per level for the parents, whatever the number of areas.
+    """
+    limit = max_targets or settings.POST_MAX_TARGETS
+    refs = list(dict.fromkeys(refs or ()))  # duplicates out, order kept
+    if not refs:
+        raise _targets_error(_("Choose who will see the post."))
+    if len(refs) > limit:
+        raise _targets_error(_("Choose at most %(n)d areas, or a wider area.") % {"n": limit})
+    if not allow_state and any(ref.level == AreaLevel.STATE for ref in refs):
+        raise _targets_error(_("Choose districts, mandals or villages; posting to everyone is not allowed."))
+    by_level: dict[str, set[int]] = {}
+    for ref in refs:
+        by_level.setdefault(ref.level, set()).add(ref.id)
+    active = {
+        AreaRef(level, area_id)
+        for level, ids in by_level.items()
+        for area_id in MODEL_BY_LEVEL[level].objects.active().filter(id__in=ids).values_list("id", flat=True)
+    }
+    missing = [ref for ref in refs if ref not in active]
+    if missing:
+        names = ", ".join(f"{ref.level} {ref.id}" for ref in missing[:5])
+        raise _targets_error(_("No such active area: %(areas)s.") % {"areas": names})
+    chosen = set(refs)
+    parents = ancestries(refs)
+    return [
+        ref for ref in refs
+        if not any(AreaRef(level, area_id) in chosen for level, area_id in parents[ref].items() if level != ref.level)
+    ]
+
+
+def _set_targets(post: Post, refs: list[AreaRef]) -> None:
+    """Replace the post's areas with one bulk insert; the first is also kept on the post itself."""
+    PostTarget.objects.filter(post=post).delete()
+    PostTarget.objects.bulk_create(PostTarget(post=post, area_level=ref.level, area_id=ref.id) for ref in refs)
+
+
+def _posting_or_raise(user, targets: list[AreaRef] | AreaRef | None = None, perm: str = CREATE) -> Grant:
+    assignment = posting_assignment(user, targets, perm)
     if assignment is None:
-        if authz.can(user, perm):
-            raise out_of_area(_("You can post only to your own area."))
         raise permission_denied(_("Your role cannot post."))
     return assignment
 
@@ -321,10 +382,16 @@ class PostInput:
     language: str
     title: str
     body: str
-    target: AreaRef
+    #: One area (older clients); `targets` wins when both are given.
+    target: AreaRef | None = None
     #: {"kind", "start_date", "end_date"} with date objects, or None (owner decision Q7).
     event: dict | None = None
     is_urgent: bool = False
+    #: Every area the post is for: STATE alone is "Everyone" (owner decision of 2026-10-28).
+    targets: list[AreaRef] | None = None
+
+    def areas(self) -> list[AreaRef]:
+        return list(self.targets) if self.targets else ([self.target] if self.target else [])
 
 
 def _event_values(event: dict | None) -> dict:
@@ -342,6 +409,11 @@ def _language_of(title: str, body: str, given: str) -> str:
     return detect_language(f"{title}\n{body}", given)
 
 
+def _targets_data(targets: list[AreaRef]) -> dict:
+    """The areas for the audit entry: how many, and the first few (a post may have 200)."""
+    return {"targets": [[ref.level, ref.id] for ref in targets[:20]], "target_count": len(targets)}
+
+
 def _check_urgent_allowed(assignment: Grant, wants_urgent: bool) -> None:
     """Only groups with posts.mark_urgent mark their own posts urgent (owner decision Q19)."""
     if wants_urgent and URGENT not in assignment.permissions:
@@ -349,10 +421,13 @@ def _check_urgent_allowed(assignment: Grant, wants_urgent: bool) -> None:
 
 
 def create_post(user, data: PostInput, *, submit: bool = True) -> Post:
-    _check_target(data.target)
-    assignment = _posting_or_raise(user, data.target)
+    """An official's post for any areas. Admins' posts publish at once whatever the areas: that
+    depends on the poster's role, not on where the post goes (owner decision of 2026-10-28)."""
+    _posting_or_raise(user)  # a role that cannot post hears that before any area check
+    targets = clean_targets(data.areas())
+    assignment = _posting_or_raise(user, targets)
     _check_urgent_allowed(assignment, data.is_urgent)
-    sender = _posting_or_raise(user, data.target, SUBMIT) if submit else None
+    sender = _posting_or_raise(user, targets, SUBMIT) if submit else None
     with transaction.atomic():
         post = Post.objects.create(
             author=user,
@@ -363,13 +438,15 @@ def create_post(user, data: PostInput, *, submit: bool = True) -> Post:
             language=_language_of(data.title, data.body, data.language),
             title=data.title,
             body=data.body,
-            target_level=data.target.level,
-            target_area_id=data.target.id,
+            target_level=targets[0].level,
+            target_area_id=targets[0].id,
             status=PostStatus.DRAFT,
             is_urgent=data.is_urgent,
             **_event_values(data.event),
         )
-        record("post.created", actor=user, actor_role=assignment.key, target=post, target_label=post.title, area=post.target)
+        _set_targets(post, targets)
+        record("post.created", actor=user, actor_role=assignment.key, target=post, target_label=post.title,
+               area=post.target, data=_targets_data(targets))
         if submit:
             post = _move_on_submit(post, user, sender, resubmit=False)
     return _reload(post)
@@ -381,27 +458,36 @@ def create_citizen_post(device, data: PostInput, attach=None) -> Post:
     `device` is the citizens.CitizenDevice that wrote it; the caller has checked its token,
     block and daily limit. `attach(post)` stores the photos inside the same transaction, so
     reviewers are alerted (post_submitted, after commit) only once the photos exist.
+    The post is for the areas the citizen chose, else the phone's village; it is always
+    posted from the phone's village. CITIZEN_MAX_TARGETS and CITIZEN_CAN_TARGET_STATE narrow
+    what a citizen may choose.
     """
-    _check_target(data.target)
+    home = AreaRef(AreaLevel.VILLAGE, device.village_id)
+    targets = clean_targets(
+        data.areas() or [home],
+        max_targets=settings.CITIZEN_MAX_TARGETS or None,
+        allow_state=settings.CITIZEN_CAN_TARGET_STATE,
+    )
     now = timezone.now()
     with transaction.atomic():
         post = Post.objects.create(
             citizen=device,
             posted_as_role=CITIZEN_ROLE,
-            posted_as_level=data.target.level,
-            posted_as_area_id=data.target.id,
+            posted_as_level=home.level,
+            posted_as_area_id=home.id,
             category=data.category,
             language=_language_of(data.title, data.body, data.language),
             title=data.title,
             body=data.body,
-            target_level=data.target.level,
-            target_area_id=data.target.id,
+            target_level=targets[0].level,
+            target_area_id=targets[0].id,
             status=PostStatus.PENDING,
             submitted_at=now,
         )
+        _set_targets(post, targets)
         record(
             "post.created", target=post, target_label=post.title, area=post.target, via="citizen",
-            data={"citizen": str(device.pk)},
+            data={"citizen": str(device.pk), **_targets_data(targets)},
         )
         if attach is not None:
             attach(post)
@@ -428,13 +514,13 @@ def update_post(user, post: Post, changes: dict) -> Post:
             values.get("title", post.title), values.get("body", post.body), values.get("language", post.language)
         )
     assignment = None
-    if "target" in changes:
-        target = changes["target"]
-        _check_target(target)
-        assignment = _posting_or_raise(user, target)
+    targets = None
+    if changes.get("targets") or changes.get("target"):
+        targets = clean_targets(changes.get("targets") or [changes["target"]])
+        assignment = _posting_or_raise(user, targets)
         values.update(
-            target_level=target.level,
-            target_area_id=target.id,
+            target_level=targets[0].level,
+            target_area_id=targets[0].id,
             posted_as_role=assignment.key,
             posted_as_level=assignment.area.level,
             posted_as_area_id=assignment.area.id,
@@ -443,7 +529,7 @@ def update_post(user, post: Post, changes: dict) -> Post:
         values.update(_event_values(changes["event"]))
     if "is_urgent" in changes:
         if changes["is_urgent"]:
-            _check_urgent_allowed(assignment or _posting_or_raise(user, post.target), True)
+            _check_urgent_allowed(assignment or _posting_or_raise(user, post.target_refs), True)
         values["is_urgent"] = changes["is_urgent"]
     if values:
         values["updated_at"] = timezone.now()
@@ -451,7 +537,10 @@ def update_post(user, post: Post, changes: dict) -> Post:
             if not Post.objects.filter(pk=post.pk, status__in=EDITABLE).update(**values):
                 raise invalid_transition(_reload(post), "edited")
             post = _reload(post)
-            record("post.updated", actor=user, target=post, target_label=post.title, area=post.target)
+            if targets is not None:
+                _set_targets(post, targets)
+            record("post.updated", actor=user, target=post, target_label=post.title, area=post.target,
+                   data=_targets_data(targets) if targets is not None else {})
     return _reload(post)
 
 
@@ -472,7 +561,7 @@ def delete_post(user, post: Post) -> None:
 
 def submit_post(user, post: Post) -> Post:
     _own_editable(user, post, "submitted")
-    assignment = _posting_or_raise(user, post.target, SUBMIT)
+    assignment = _posting_or_raise(user, post.target_refs, SUBMIT)
     with transaction.atomic():
         return _move_on_submit(post, user, assignment, resubmit=post.status == PostStatus.RECHECK)
 
@@ -619,21 +708,28 @@ def posting_targets(user) -> dict:
     return authz.area_targets(user, CREATE)
 
 
+def lowest_level(refs: list[AreaRef]) -> str:
+    """The deepest level among a post's areas: VILLAGE when any is a village."""
+    return max((ref.level for ref in refs), key=lambda level: DEPTH[level])
+
+
 def escalate_overdue(now=None) -> int:
     """Flag PENDING posts nobody decided within REVIEW_ESCALATION_HOURS.
 
     Each run moves an overdue post one level up: a village post first alerts
     the mandal's admins, REVIEW_ESCALATION_HOURS later the district's, then
-    the state's. Lower reviewers keep the post in their queue.
+    the state's. Lower reviewers keep the post in their queue. A post for
+    several areas climbs from its lowest one; the alert reaches the admins
+    above each of its areas (notifications.services.alert_escalation).
     """
     now = now or timezone.now()
     cutoff = now - timedelta(hours=int(runtime("REVIEW_ESCALATION_HOURS")))
     candidates = Post.objects.filter(status=PostStatus.PENDING).filter(
         Q(escalated_at__isnull=True, submitted_at__lte=cutoff) | Q(escalated_at__lte=cutoff)
-    )
+    ).prefetch_related("targets")
     count = 0
     for post in candidates:
-        current = post.escalation_level or post.target_level
+        current = post.escalation_level or lowest_level(post.target_refs)
         next_level = NEXT_LEVEL_UP.get(current)
         if next_level is None:
             continue

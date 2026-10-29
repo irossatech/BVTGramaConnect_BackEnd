@@ -138,6 +138,16 @@ def make_official(world: World, name: str, role: str, area_key: str, mobile: str
     return user
 
 
+def make_bare_post(**fields):
+    """Post.objects.create() with its one target row (posts.PostTarget), as posts.services and
+    migration posts.0008 give every post. For tests that build a post without the services."""
+    from apps.posts.models import Post, PostTarget
+
+    post = Post.objects.create(**fields)
+    PostTarget.objects.create(post=post, area_level=post.target_level, area_id=post.target_area_id)
+    return post
+
+
 def assign(world: World, name: str, role: str, area_key: str, **kwargs) -> RoleAssignment:
     """Give an official another role: assign(world, "pm_kolakaluru", Role.PANCHAYAT_MEMBER, "kaza")."""
     return RoleAssignment.objects.assign(world.users[name], role, world.ref(area_key), **kwargs)

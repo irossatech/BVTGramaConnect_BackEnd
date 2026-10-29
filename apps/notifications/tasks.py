@@ -41,6 +41,11 @@ def send_push_to_topic(topic: str, title: str, body: str, data: dict, priority: 
     return True
 
 
+def send_push_to_topics(topics: list[str], title: str, body: str, data: dict, priority: str = "high") -> int:
+    """The same push to several topics in one job (a post for many areas). Returns how many went out."""
+    return sum(send_push_to_topic(topic, title, body, data, priority) for topic in topics)
+
+
 def send_push_to_citizen(device_id: str, title: str, body: str, data: dict) -> bool:
     """Push to the phone that wrote a citizen post. An unregistered token is forgotten."""
     from apps.citizens.models import CitizenDevice

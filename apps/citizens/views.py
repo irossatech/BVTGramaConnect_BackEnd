@@ -79,7 +79,7 @@ def my_posts(device):
     return (
         Post.objects.filter(citizen=device)
         .select_related("category")
-        .prefetch_related("media", "review_actions", "translations")
+        .prefetch_related("media", "review_actions", "translations", "targets")
         .order_by("-created_at")
     )
 
@@ -117,6 +117,7 @@ class PostsView(CitizenView):
             body=values["body"],
             photos=values["photos"],
             videos=values["videos"],
+            targets=values.get("targets"),
         )
         post = my_posts(device).get(pk=post.pk)
         return Response(CitizenPostSerializer(post).data, status=status.HTTP_201_CREATED)

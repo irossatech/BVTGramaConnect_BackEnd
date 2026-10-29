@@ -284,6 +284,9 @@ SUPER_ADMIN_CAN_POST = env.bool("SUPER_ADMIN_CAN_POST", default=False)
 
 # Limits shown to the apps through /me (docs/api-contract.md).
 MAX_PHOTOS_PER_POST = env.int("MAX_PHOTOS_PER_POST", default=5)
+# Areas one post may be for (owner decision of 2026-10-28). Unticking one village of a whole
+# district already gives 60-100 areas, so not 50.
+POST_MAX_TARGETS = env.int("POST_MAX_TARGETS", default=200)
 # Owner decision Q8: 60-second video posts are in version 1.
 VIDEO_POSTS_ENABLED = env.bool("VIDEO_POSTS_ENABLED", default=True)
 
@@ -376,6 +379,11 @@ CITIZEN_CHALLENGE_SECONDS = env.int("CITIZEN_CHALLENGE_SECONDS", default=300)
 # Posts per phone in 24 hours: 5 by default (lead's decision of 2026-10-27). The Super Admin
 # changes it in the console (Settings, stored as a SettingOverride); 0 is no limit.
 CITIZEN_POSTS_PER_DAY = env.int("CITIZEN_POSTS_PER_DAY", default=5)
+# Areas a citizen's post may be for: 0 is the same as POST_MAX_TARGETS. And whether a citizen may
+# post to Everyone, which puts the post in the Super Admin's queue. The owner's decision of
+# 2026-10-28 lets citizens choose like officials; these narrow it without a code change.
+CITIZEN_MAX_TARGETS = env.int("CITIZEN_MAX_TARGETS", default=0)
+CITIZEN_CAN_TARGET_STATE = env.bool("CITIZEN_CAN_TARGET_STATE", default=True)
 # Photos per post and new phones per IP address in 24 hours: 0 (the default) is no limit.
 CITIZEN_MAX_PHOTOS = env.int("CITIZEN_MAX_PHOTOS", default=0)
 CITIZEN_REGISTRATIONS_PER_IP_PER_DAY = env.int("CITIZEN_REGISTRATIONS_PER_IP_PER_DAY", default=0)

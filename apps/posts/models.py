@@ -147,7 +147,13 @@ class Post(models.Model):
 
     @property
     def target(self) -> AreaRef:
+        """The first of the post's areas; `targets` holds all of them (owner decision of 2026-10-28)."""
         return AreaRef(self.target_level, self.target_area_id)
+
+    @property
+    def target_refs(self) -> list[AreaRef]:
+        """Every area the post is for, in the order chosen. Lists prefetch "targets"."""
+        return [AreaRef(row.area_level, row.area_id) for row in self.targets.all()] or [self.target]
 
     @property
     def posted_as(self) -> AreaRef:
@@ -244,6 +250,31 @@ class ReviewAction(models.Model):
     class Meta:
         ordering = ["-created_at"]
         indexes = [models.Index(fields=["post", "created_at"])]
+
+
+class PostTarget(models.Model):
+    """One area a post is for: the whole state ("Everyone"), or any districts, mandals and villages.
+
+    Written only by posts.services, after it removed duplicates and areas inside another chosen one.
+    A post shows in a village's feed, and waits in a reviewer's queue, when any of its areas is that
+    village or above it, or inside the reviewer's area. Post.target_level and target_area_id keep the
+    first one for older readers.
+    """
+
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="targets")
+    area_level = models.CharField(max_length=10, choices=AreaLevel.choices)
+    area_id = models.PositiveIntegerField()
+
+    class Meta:
+        ordering = ["id"]
+        constraints = [
+            models.UniqueConstraint(fields=["post", "area_level", "area_id"], name="post_target_once_per_area")
+        ]
+        indexes = [models.Index(fields=["area_level", "area_id", "post"])]  # the feed
+
+    @property
+    def area(self) -> AreaRef:
+        return AreaRef(self.area_level, self.area_id)
 
 
 class PostTranslation(models.Model):

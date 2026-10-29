@@ -30,6 +30,7 @@ from apps.geography.areas import AreaDescriber, AreaRef, ancestry
 from apps.geography.models import AreaLevel, Village
 from grama.exceptions import ApiError
 from apps.posts.models import MediaKind, Post, PostMedia, PostStatus
+from apps.posts.services import targets_match
 
 from .serializers import FeedItemSerializer, FeedPostSerializer
 
@@ -55,7 +56,7 @@ def published_posts():
     return (
         Post.objects.filter(status=PostStatus.PUBLISHED)
         .select_related("category")
-        .prefetch_related("translations")
+        .prefetch_related("translations", "targets")
         .annotate(
             thumbnail_name=Subquery(first_thumb),
             image_name=Subquery(first_image),
@@ -86,13 +87,13 @@ def village_feed(village_id: int):
     return published_posts().filter(targets_for_village(village_id))
 
 
-def targets_for_village(village_id: int) -> Q:
-    """Posts aimed at the village or any area above it."""
+def targets_for_village(village_id: int) -> Exists:
+    """Posts with any area that is the village or above it (its mandal, district or the state)."""
     chain = ancestry(AreaRef(AreaLevel.VILLAGE, village_id))
     query = Q(pk__in=[])
     for level, area_id in chain.items():
-        query |= Q(target_level=level, target_area_id=area_id)
-    return query
+        query |= Q(area_level=level, area_id=area_id)
+    return targets_match(query)
 
 
 class PublicView:
@@ -102,7 +103,7 @@ class PublicView:
 
 def describer_with(posts) -> AreaDescriber:
     describer = AreaDescriber()
-    describer.prime([post.target for post in posts])
+    describer.prime([ref for post in posts for ref in (post.target, *post.target_refs)])
     return describer
 
 

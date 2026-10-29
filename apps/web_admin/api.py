@@ -28,12 +28,13 @@ from apps.accounts.models import RoleAssignment, User
 from apps.accounts.permissions import PLATFORM, HasPerm
 from apps.audit.models import AuditLog
 from apps.audit.services import record
-from apps.geography.areas import AreaDescriber, AreaRef, within_q
+from apps.geography.areas import AreaDescriber, AreaRef
 from apps.geography.models import AreaLevel, District, Mandal, Village
 from grama.exceptions import ApiError
 from grama.pagination import PageNumberPagination
 from grama.renderers import JSONRenderer
 from apps.posts.models import Post, PostStatus, ReviewAction, SettingOverride
+from apps.posts.services import targets_within
 
 from .permissions import client_via
 
@@ -121,7 +122,7 @@ class DashboardView(SuperAdminView):
         pending_by_district = []
         for district in District.objects.active().order_by("name_en"):
             ref = AreaRef(AreaLevel.DISTRICT, district.id)
-            inside = pending.filter(within_q(ref, "target_level", "target_area_id"))
+            inside = pending.filter(targets_within(ref))
             submitted = list(inside.values_list("submitted_at", flat=True))
             oldest = min((s for s in submitted if s), default=None)
             pending_by_district.append(
@@ -203,11 +204,12 @@ def report_posts_by_area(days: int) -> list[dict]:
     rows = []
     for district in District.objects.order_by("name_en"):
         ref = AreaRef(AreaLevel.DISTRICT, district.id)
-        row = {"district": describer.describe(ref), **posts_counts(posts.filter(within_q(ref, "target_level", "target_area_id")))}
+        # A post for several areas counts once in each district and mandal it reaches.
+        row = {"district": describer.describe(ref), **posts_counts(posts.filter(targets_within(ref)))}
         mandals = []
         for mandal in Mandal.objects.filter(district=district).order_by("name_en"):
             mref = AreaRef(AreaLevel.MANDAL, mandal.id)
-            counts = posts_counts(posts.filter(within_q(mref, "target_level", "target_area_id")))
+            counts = posts_counts(posts.filter(targets_within(mref)))
             if counts["total"]:
                 mandals.append({"mandal": describer.describe(mref), **counts})
         row["mandals"] = mandals
