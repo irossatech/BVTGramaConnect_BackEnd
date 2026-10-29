@@ -1,4 +1,4 @@
-"""Console-only API: dashboard and reports (docs/api-contract.md, section 8). Under /api/v1/."""
+"""Console API: dashboard and reports (section 8), Telugu name suggestions (section 19). Under /api/v1/."""
 
 from django.urls import path
 
@@ -13,4 +13,5 @@ urlpatterns = [
     path("admin/reports/review-time/", api.ReportView.as_view(report="review-time"), name="report-review-time"),
     path("admin/reports/admin-activity/", api.ReportView.as_view(report="admin-activity"), name="report-admin-activity"),
     path("admin/reports/<slug:report>/export/", api.ReportExportView.as_view(), name="report-export"),
+    path("admin/transliterate/", api.TransliterateView.as_view(), name="transliterate"),
 ]

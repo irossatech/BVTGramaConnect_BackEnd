@@ -6,6 +6,8 @@ Raise ApiError for anything with a contract code. Raise AuthError for 401s,
 so DRF keeps the WWW-Authenticate header and the 401 status.
 """
 
+import math
+
 from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
 from django.http import Http404
 from django.utils.translation import gettext_lazy as _
@@ -105,6 +107,8 @@ def exception_handler(exc, context):
         code = next((name for kind, name in _CODE_BY_TYPE if isinstance(exc, kind)), "error")
         detail = response.data.get("detail") if isinstance(response.data, dict) else response.data
         message = str(detail) if detail else str(exc)
+        if isinstance(exc, exceptions.Throttled) and exc.wait is not None:
+            extra = {"retry_after_s": math.ceil(exc.wait)}  # also in the Retry-After header
 
     error = {"code": code, "message": message}
     if fields:

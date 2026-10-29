@@ -239,6 +239,8 @@ REST_FRAMEWORK = {
     # Telugu goes out as raw UTF-8, not \u escapes: half the bytes on 2G.
     "UNICODE_JSON": True,
     "TEST_REQUEST_DEFAULT_FORMAT": "json",
+    # Only views that name a throttle class are limited; there is no default throttle.
+    "DEFAULT_THROTTLE_RATES": {"transliterate": env.str("TRANSLITERATION_RATE", default="60/min")},
 }
 
 SIMPLE_JWT = {
@@ -452,6 +454,12 @@ BHASHINI_PIPELINE_ID = env.str("BHASHINI_PIPELINE_ID", default="")
 TRANSLATION_TIMEOUT_S = env.int("TRANSLATION_TIMEOUT_S", default=20)
 # Waits before trying a failed translation again; after the last, the post stays untranslated.
 TRANSLATION_RETRY_MINUTES = [1, 5, 15]
+
+# Telugu spelling of names typed in English, suggested in the admins' Telugu name boxes
+# (apps.web_admin.transliteration; contract section 19): "google_input_tools" or "off".
+TRANSLITERATION_PROVIDER = env.str("TRANSLITERATION_PROVIDER", default="google_input_tools")
+TRANSLITERATION_TIMEOUT_S = env.float("TRANSLITERATION_TIMEOUT_S", default=4.0)
+TRANSLITERATION_CACHE_S = env.int("TRANSLITERATION_CACHE_S", default=60 * 60 * 24 * 30)  # 30 days
 
 # Email and push retries: tries and the first wait in seconds (then x4 each time).
 DELIVERY_RETRY_ATTEMPTS = env.int("DELIVERY_RETRY_ATTEMPTS", default=3)
