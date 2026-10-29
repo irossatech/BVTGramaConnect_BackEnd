@@ -1305,7 +1305,7 @@ The citizen's Home has a second row next to Services: Electricity, Water, Mobile
 | `key` | Made by the server from `name_en` on create ("Gas Booking" → `gas_booking`; `_2`, `_3`… when taken). **Never changes.** Unique among bills only. |
 | `name_en` | Required, 2–60 characters, spaces collapsed, unique among bills in any case. A bill may have the same name as a service. |
 | `name_te` | Optional, at most 60 |
-| `icon` | One of `power`, `water`, `mobile`, `dth`, `broadband`, `gas`, `fastag`, `house`, `card`, `help`, `services`. Optional; `power` when not given. |
+| `icon` | One of `power`, `water`, `gas`, `mobile`, `landline`, `dth`, `broadband`, `fastag`, `credit_card`, `bill` (the app and the console draw them). Optional; `bill` when not given. Bills saved with an icon of the first list (`card`, `house`, `help`, `services`) were moved to `credit_card` or `bill`. |
 | `logo` | As for services (section 16): an uploaded JPEG, PNG or WebP, at most 2 MB (`SERVICE_LOGO_MAX_UPLOAD_MB`) and at least 64 px a side (`SERVICE_LOGO_MIN_PX`), re-encoded as WebP with the longest side at most 256 px. Stored as `media/bills/<key>-<random>-256.webp`; the name changes on every replacement. |
 | `color` | One of `orange`, `blue`, `green`, `purple`, `teal` |
 | `is_active` | `false` hides it from Home |
