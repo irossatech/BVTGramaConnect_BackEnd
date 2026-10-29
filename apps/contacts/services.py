@@ -8,6 +8,7 @@ audits inside one transaction, like posts/services.py does for post status.
     remove_contact(actor, contact_id, via="app")       # soft delete
     import_contacts(actor, text, dry_run=..., via=...)  # all rows or none
     create_type(actor, data) / update_type(actor, contact_type, data)
+    delete_type(actor, type_id)                         # soft delete, only when no active number uses it
 
 Rules the model does not express (docs/api-contract.md, section 14):
 section and level agree (HELPLINE at STATE, AREA below it), the area exists
@@ -55,8 +56,11 @@ def default_state() -> State | None:
 # --- Checks shared by the API and the CSV import ------------------------------------------------
 
 
-def active_type(key: str) -> ContactType:
-    contact_type = ContactType.objects.filter(key=(key or "").strip(), is_active=True).first()
+def active_type(key: str, *, lock: bool = False) -> ContactType:
+    """An active, not deleted type. lock=True (inside a transaction) holds its row until commit,
+    so a delete_type running at the same moment waits for this write, or this write sees the delete."""
+    types = ContactType.objects.live().filter(key=(key or "").strip(), is_active=True)
+    contact_type = (types.select_for_update() if lock else types).first()
     if contact_type is None:
         raise invalid("type", _("Unknown contact type."))
     return contact_type
@@ -168,12 +172,18 @@ def _audit_data(contact: Contact, **extra) -> dict:
     return {"type": contact.type.key, "phone": mask(contact.phone), **extra}
 
 
+def _check_type_still_live(contact_type: ContactType) -> None:
+    """Second guard next to the row lock: a number never ends up on a type deleted meanwhile."""
+    if not ContactType.objects.live().filter(id=contact_type.id).exists():
+        raise invalid("type", _("Unknown contact type."))
+
+
 # --- Numbers --------------------------------------------------------------------------------------
 
 
 @transaction.atomic
 def create_contact(actor, data: dict, *, via: str = "app") -> Contact:
-    contact_type = active_type(data.get("type", ""))
+    contact_type = active_type(data.get("type", ""), lock=True)
     area = data["area"]
     check_section_level(contact_type, area)
     check_area(area)
@@ -194,6 +204,7 @@ def create_contact(actor, data: dict, *, via: str = "app") -> Contact:
         email=email, area_level=area.level, area_id=area.id, sort_order=sort_order, consent_recorded=consent,
         verified_at=timezone.now(), created_by=actor, updated_by=actor,
     )
+    _check_type_still_live(contact_type)
     record("contact.created", actor=actor, target=contact, target_label=contact.name, area=area, via=via,
            data=_audit_data(contact))
     return contact
@@ -205,7 +216,7 @@ def update_contact(actor, contact_id, data: dict, *, via: str = "app") -> Contac
     old_phone = contact.phone
     values: dict = {}
 
-    contact_type = active_type(data["type"]) if "type" in data else contact.type
+    contact_type = active_type(data["type"], lock=True) if "type" in data else contact.type
     area = data.get("area", contact.area)
     if area != contact.area:
         check_area(area)
@@ -261,6 +272,8 @@ def update_contact(actor, contact_id, data: dict, *, via: str = "app") -> Contac
         setattr(contact, name, value)
     contact.type = contact_type
     contact.save()
+    if "type_id" in values:
+        _check_type_still_live(contact_type)
     extra = {"fields": changed}
     if contact.phone != old_phone:
         extra["phone"] = {"from": mask(old_phone), "to": mask(contact.phone)}
@@ -289,9 +302,11 @@ TYPE_FIELDS = ("name_en", "name_te", "is_other", "sort_order", "is_active")
 
 @transaction.atomic
 def create_type(actor, data: dict, *, via: str = "console") -> ContactType:
-    if ContactType.objects.filter(key=data["key"]).exists():
-        raise ApiError("duplicate", _("This key is taken."), status=status.HTTP_409_CONFLICT,
-                       fields={"key": [_("Already used.")]})
+    taken = ContactType.objects.filter(key=data["key"]).first()
+    if taken is not None:
+        # A deleted type keeps its key, so old audit entries never point to a different type.
+        message = _("This key was used by a deleted type.") if taken.deleted_at else _("This key is taken.")
+        raise ApiError("duplicate", message, status=status.HTTP_409_CONFLICT, fields={"key": [_("Already used.")]})
     contact_type = ContactType.objects.create(**{k: data[k] for k in ("key", "section", *TYPE_FIELDS) if k in data})
     record("contact_type.created", actor=actor, target=contact_type, target_label=contact_type.key, via=via,
            data={"key": contact_type.key, "section": contact_type.section})
@@ -309,6 +324,53 @@ def update_type(actor, contact_type: ContactType, data: dict, *, via: str = "con
         record("contact_type.updated", actor=actor, target=contact_type, target_label=contact_type.key, via=via,
                data={"key": contact_type.key, "fields": changed})
     return contact_type
+
+
+def _active_count(contact_type: ContactType) -> int:
+    return Contact.objects.filter(type=contact_type, is_active=True).count()
+
+
+def _type_in_use(count: int) -> ApiError:
+    return ApiError(
+        "type_in_use",
+        _("%(count)d numbers use this type. Change their type or remove them first, or switch the type off.")
+        % {"count": count},
+        status=status.HTTP_409_CONFLICT,
+        count=count,
+    )
+
+
+@transaction.atomic
+def delete_type(actor, type_id, *, via: str = "console") -> None:
+    """Soft delete a type no active number uses. Removed numbers keep pointing to it (Contact.type is PROTECT).
+
+    The row lock makes a number added at the same moment wait (or this delete wait for it); the
+    conditional update and the second count keep it safe where locks are not enforced, as on SQLite.
+    """
+    contact_type = ContactType.objects.live().select_for_update().filter(pk=type_id).first()
+    if contact_type is None:
+        raise ApiError("not_found", _("No such type."), status=status.HTTP_404_NOT_FOUND)
+    if contact_type.is_other:
+        raise ApiError(
+            "protected",
+            _("The Other type cannot be deleted: the CSV import and existing Other numbers rely on it. "
+              "Switch it off when no number uses it."),
+            status=status.HTTP_409_CONFLICT,
+        )
+    count = _active_count(contact_type)
+    if count:
+        raise _type_in_use(count)
+    now = timezone.now()
+    deleted = ContactType.objects.live().filter(pk=contact_type.pk).update(
+        deleted_at=now, deleted_by=actor, updated_at=now
+    )
+    if not deleted:
+        raise ApiError("not_found", _("No such type."), status=status.HTTP_404_NOT_FOUND)
+    count = _active_count(contact_type)
+    if count:
+        raise _type_in_use(count)  # rolls the delete back
+    record("contact_type.deleted", actor=actor, target=contact_type, target_label=contact_type.key, via=via,
+           data={"key": contact_type.key, "section": contact_type.section, "name_en": contact_type.name_en})
 
 
 # --- CSV import -------------------------------------------------------------------------------------
@@ -459,6 +521,11 @@ def import_contacts(actor, text: str, *, dry_run: bool = False, via: str = "cons
         return report
     now = timezone.now()
     with transaction.atomic():
+        # A type deleted or switched off since the rows were checked fails the whole import.
+        type_ids = {values["type"].id for _a, _c, values in planned}
+        if len(set(ContactType.objects.live().select_for_update().filter(id__in=type_ids, is_active=True)
+                   .values_list("id", flat=True))) != len(type_ids):
+            raise invalid("type", _("Unknown contact type."))
         for action, contact, values in planned:
             if action == "create":
                 Contact.objects.create(**values, verified_at=now, created_by=actor, updated_by=actor)

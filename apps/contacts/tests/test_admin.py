@@ -264,6 +264,6 @@ def test_super_admin_adds_renames_and_switches_off_types(world, admin, number):
     assert (renamed["name_en"], renamed["key"], renamed["section"]) == ("Government office", "official", "AREA")
     assert admin.patch(url, {"is_active": False}, format="json").json()["is_active"] is False
     assert next(t for t in admin.get(TYPES_URL).json() if t["key"] == "official")["contact_count"] == 1
-    assert admin.delete(url).status_code == 405  # switched off, never deleted
+    assert admin.delete(url).status_code == 409  # in use: switched off, not deleted
     actions = list(AuditLog.objects.filter(action__startswith="contact_type.").values_list("action", flat=True))
     assert sorted(actions) == ["contact_type.created", "contact_type.updated", "contact_type.updated"]

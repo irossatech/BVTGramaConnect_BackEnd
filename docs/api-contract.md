@@ -123,6 +123,8 @@ All errors share one shape:
 | 409 | `invalid_transition` | Post state does not allow the action |
 | 409 | `already_decided` | Another reviewer acted first (`REVIEW_FIRST_DECISION_WINS`); `post` included |
 | 409 | `duplicate` | Username, email, mobile or name already used; `fields` says which |
+| 409 | `type_in_use` | A contact type that active numbers use cannot be deleted; `count` gives how many (section 14) |
+| 409 | `protected` | The "Other" contact type cannot be deleted (section 14) |
 | 413 | `file_too_large` | Upload over the limit |
 | 415 | `unsupported_media` | File type not allowed |
 | 429 | `locked_out` | 5 failed logins for this username from this IP address, or 50 failed logins from this IP address for any usernames within an hour; `retry_after_s` gives the seconds left |
@@ -876,7 +878,7 @@ Built (`apps.contacts`). The app's Contacts tab: phone numbers officials publish
 | Method and path | Request | Response |
 |---|---|---|
 | `GET /contacts/?village_id=` | `village_id` (required) | `CitizenContacts` (below). `400` without `village_id`; `404` for an unknown or inactive village. `ETag` and `Cache-Control: public, max-age=300` (`CONTACTS_PUBLIC_MAX_AGE`); `If-None-Match` gets `304`. Ignores any `Authorization` header, like the feed. Rate-limited by Nginx like the rest of the API. |
-| `GET /contact-types/` | — | `[{"key", "section", "name", "is_other", "sort_order"}]`, active types only. `max-age=3600`. |
+| `GET /contact-types/` | — | `[{"key", "section", "name", "is_other", "sort_order"}]`, active types only (never deleted ones). `Cache-Control: public, max-age=300` (`CONTACTS_PUBLIC_MAX_AGE`), so a new, renamed, switched-off or deleted type shows within 5 minutes. |
 
 ```jsonc
 // CitizenContacts: one call fills the whole Contacts tab
@@ -918,9 +920,12 @@ All need `contacts.manage_contact`, which every official holds in their own area
 | `DELETE /admin/contacts/{id}/` | over its area | — | `204`. Soft delete: hidden from citizens, kept for the audit trail. A second delete answers `404`. |
 | `GET /admin/contacts/targets/` | `manage_contact` anywhere | — | "Who sees it" choices, in the shape of `GET /posts/targets/` (`levels`, `areas`, `pick_via: "geo"`), never `STATE` |
 | `POST /admin/contacts/import/` | Super Admin (`manage_contact` over the platform) | multipart `file` (UTF-8 CSV, BOM allowed, at most `CONTACTS_IMPORT_MAX_BYTES` 2 MB and `CONTACTS_IMPORT_MAX_ROWS` 5,000 rows); `?dry_run=1` checks only | `200 {"dry_run", "created", "updated", "skipped", "errors": []}`. Any bad row: `400 validation_error` with `report` holding the same object and `errors: [{"row", "field", "message"}]`, and nothing is written. Too large: `413 file_too_large`. |
-| `GET /admin/contact-types/` | Super Admin (`contacts.manage_contact_types`) | — | `[{"id", "key", "section", "name_en", "name_te", "is_other", "sort_order", "is_active", "contact_count"}]` |
-| `POST /admin/contact-types/` | same | `{"key", "section", "name_en", "name_te", "is_other"?, "sort_order"?, "is_active"?}` | `201`; a used key: `409 duplicate` |
-| `PATCH /admin/contact-types/{id}/` | same | `name_en`, `name_te`, `is_other`, `sort_order`, `is_active` | The type. `key` and `section` never change. A type is switched off, never deleted. |
+| `GET /admin/contact-types/` | Super Admin (`contacts.manage_contact_types`) | — | `[{"id", "key", "section", "name_en", "name_te", "is_other", "sort_order", "is_active", "contact_count"}]`; `contact_count` counts active numbers. Deleted types are left out. |
+| `POST /admin/contact-types/` | same | `{"key", "section", "name_en", "name_te", "is_other"?, "sort_order"?, "is_active"?}` | `201`; a used key: `409 duplicate`. The key of a deleted type stays taken: `409 duplicate`, "This key was used by a deleted type". |
+| `PATCH /admin/contact-types/{id}/` | same | `name_en`, `name_te`, `is_other`, `sort_order`, `is_active` | The type. `key` and `section` never change. A deleted type: `404`. |
+| `DELETE /admin/contact-types/{id}/` | same | — | `204`. A type nobody uses can be deleted; one in use is switched off. Active numbers use it: `409 type_in_use` with `count` ("N numbers use this type. Change their type or remove them first, or switch the type off."). The "Other" type (`is_other`): `409 protected`. Unknown or already deleted: `404 not_found`. |
+
+**Deleting a type** is a soft delete (`deleted_at`, `deleted_by`): removed numbers still point to it and keep loading in the audit trail. A deleted type is hidden everywhere: `GET /contact-types/`, `GET /admin/contact-types/`, the CSV import and `POST`/`PATCH /admin/contacts/` ("Unknown contact type.", `400` on `type`). Its key stays taken, so old audit entries never point to a different type. A number added at the same moment as the delete never ends up on the deleted type: one of the two fails cleanly.
 
 `AdminContact`:
 ```jsonc
@@ -956,7 +961,7 @@ All need `contacts.manage_contact`, which every official holds in their own area
 | Duplicates | No two active numbers with the same type, phone and area: `409 duplicate`. Checked in the transaction; a removed number may be added again. |
 | Capacity | At most `CONTACTS_MAX_PER_AREA` (200) active numbers per area: `400 validation_error` on `area`. |
 
-- Audited, with the phone masked (`******0001`): `contact.created`, `contact.updated` (changed field names, and the masked old and new phone when it changed), `contact.removed`, `contact_type.created`, `contact_type.updated`, `contacts.imported` (counts only).
+- Audited, with the phone masked (`******0001`): `contact.created`, `contact.updated` (changed field names, and the masked old and new phone when it changed), `contact.removed`, `contact_type.created`, `contact_type.updated`, `contact_type.deleted` (`key`, `section`, `name_en`), `contacts.imported` (counts only).
 - CSV columns: `type`, `name`, `phone` (required), `custom_type`, `name_te`, `email`, `sort_order`, `consent` (`yes`/`1`/`true`), and the area as `district_lgd`, `mandal_lgd`, `village_lgd` or the names `district`, `mandal`, `village` (LGD code first, else the name within the parent; the deepest one given sets the level). Helpline rows leave the area columns empty and go to the state. A row matching an active number's type, phone and area updates it instead of adding one. `python manage.py import_contacts file.csv [--dry-run]` does the same.
 - `python manage.py seed_helplines` loads `apps/contacts/sample_data/helplines.csv`, the six numbers of `SITE_HELPLINES`, until the owner signs off a longer list (decision C3).
 - `GET /public/site-config/` reads `helplines` from the statewide numbers (`label_en` = `name`, `label_te` = `name_te` or the type's Telugu name, in `sort_order`), and falls back to `SITE_HELPLINES` while none are loaded.

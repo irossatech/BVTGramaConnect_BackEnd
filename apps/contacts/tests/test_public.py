@@ -131,7 +131,8 @@ def test_a_stale_token_is_ignored(world, api, number):
 def test_contact_types(world, api):
     ContactType.objects.filter(key="railways").update(is_active=False)
     response = api().get("/api/v1/contact-types/", HTTP_ACCEPT_LANGUAGE="en")
-    assert response.status_code == 200 and "max-age=3600" in response["Cache-Control"]
+    assert response.status_code == 200 and "max-age=300" in response["Cache-Control"]  # changes show within 5 minutes
+    assert "public" in response["Cache-Control"]
     rows = response.json()
     assert [r["key"] for r in rows if r["section"] == "AREA"] == ["vro", "meeseva", "sachivalayam", "revenue", "official", "other"]
     assert "railways" not in {r["key"] for r in rows}

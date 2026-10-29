@@ -28,8 +28,17 @@ class PhoneKind(models.TextChoices):
     SHORT_CODE = "SHORT_CODE", _("Short code")  # 3-6 digits; helplines only
 
 
+class ContactTypeQuerySet(models.QuerySet):
+    def live(self):
+        """Types not deleted. A deleted type is hidden everywhere; its key stays taken."""
+        return self.filter(deleted_at__isnull=True)
+
+
 class ContactType(models.Model):
-    """VRO, Mee Seva … for area numbers; Health, Police … for helplines. Keys match the app's icons."""
+    """VRO, Mee Seva … for area numbers; Health, Police … for helplines. Keys match the app's icons.
+
+    A type nobody uses can be deleted: a soft delete, because removed numbers still point to it.
+    """
 
     key = models.SlugField(_("key"), max_length=40, unique=True)
     section = models.CharField(_("section"), max_length=10, choices=ContactSection.choices)
@@ -38,8 +47,14 @@ class ContactType(models.Model):
     is_other = models.BooleanField(_("admin types the name"), default=False)
     sort_order = models.PositiveSmallIntegerField(_("order"), default=100)
     is_active = models.BooleanField(_("active"), default=True)
+    deleted_at = models.DateTimeField(_("deleted"), null=True, blank=True)
+    deleted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    objects = ContactTypeQuerySet.as_manager()
 
     class Meta:
         verbose_name = _("contact type")

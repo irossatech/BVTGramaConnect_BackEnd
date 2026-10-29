@@ -62,9 +62,9 @@ class CitizenContactsView(PublicView):
         return Response(CitizenContactsSerializer(body, context={"describer": describer}).data)
 
 
-@method_decorator(cache_control(public=True, max_age=3600), name="dispatch")
+@method_decorator(cache_control(public=True, max_age=settings.CONTACTS_PUBLIC_MAX_AGE), name="dispatch")
 class ContactTypeListView(PublicView):
     @extend_schema(summary="Contact types (active)", responses=PublicContactTypeSerializer(many=True))
     def get(self, request):
-        types = ContactType.objects.filter(is_active=True).order_by("section", "sort_order", "id")
+        types = ContactType.objects.live().filter(is_active=True).order_by("section", "sort_order", "id")
         return Response(PublicContactTypeSerializer(types, many=True).data)

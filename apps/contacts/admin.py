@@ -5,8 +5,9 @@ from .models import Contact, ContactType
 
 @admin.register(ContactType)
 class ContactTypeAdmin(admin.ModelAdmin):
-    list_display = ("key", "section", "name_en", "name_te", "is_other", "sort_order", "is_active")
+    list_display = ("key", "section", "name_en", "name_te", "is_other", "sort_order", "is_active", "deleted_at")
     list_filter = ("section", "is_active")
+    readonly_fields = ("deleted_at", "deleted_by")
 
 
 @admin.register(Contact)
