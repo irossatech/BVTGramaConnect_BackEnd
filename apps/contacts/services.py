@@ -381,6 +381,8 @@ KNOWN_COLUMNS = REQUIRED_COLUMNS | {
     "district_lgd", "mandal_lgd", "village_lgd", "district", "mandal", "village",
 }
 TRUE = {"1", "yes", "y", "true"}
+#: Columns (named like the fields) whose blank cell leaves an existing number's value as it is.
+KEEP_WHEN_BLANK = ("name_te", "email", "sort_order", "custom_type")
 
 
 @dataclass
@@ -506,7 +508,12 @@ def import_contacts(actor, text: str, *, dry_run: bool = False, via: str = "cons
         if existing is None:
             added_per_area[area] = added_per_area.get(area, 0) + 1
             planned.append(("create", None, values))
-        elif any(getattr(existing, name) != value for name, value in values.items() if name != "type"):
+            continue
+        # Updating: a blank optional cell keeps what the number has, like the village import.
+        for name in KEEP_WHEN_BLANK:
+            if not row.get(name):
+                del values[name]
+        if any(getattr(existing, name) != value for name, value in values.items() if name != "type"):
             planned.append(("update", existing, values))
         else:
             report.skipped += 1
