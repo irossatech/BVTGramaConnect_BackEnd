@@ -34,6 +34,7 @@ Linux or macOS: the same with `python3 -m venv .venv` and `source .venv/bin/acti
 | Role groups and permissions | `python manage.py sync_role_permissions` (also runs after every `migrate`; safe to repeat) |
 | Unlock a username | `python manage.py axes_reset_username <username>`, or Unlock in the console |
 | New sample passwords | `python manage.py seed_sample_data --reset-passwords` |
+| Demo content for a real mandal (qa testing on the state's own villages) | `python manage.py load_demo_area [--district Prakasam] [--mandal Kandukuru] [--villages 4] [--village <name> …]`: "demo." officials (temporary passwords printed once), posts in every place a citizen looks, numbers with unassignable 0+STD+000 phones. Adds no geography; safe to repeat. Use it instead of `seed_sample_data` on a server with the real state list, which would import its own Guntur/Krishna places and coordinates over it. |
 | Import villages | `python manage.py import_geography <file.csv> [--dry-run] [--missing-report out.csv]` |
 | Duplicate area names, English or Telugu | `python manage.py geo_duplicates` (read-only; before migrating `geography.0003` it must print "No duplicates.") |
 | Census tags in village names ("(Ct)", "(Part)" …) | `python manage.py geo_clean_names` lists; `--apply` renames (audited; census spelling kept in `census_name`) |
