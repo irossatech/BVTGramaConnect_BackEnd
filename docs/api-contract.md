@@ -760,6 +760,7 @@ Roles are Django groups and actions are Django permissions. The full group × pe
 | Contact types | `contacts.manage_contact_types` | yes | no | no | no | no | no |
 | Home banner ads (section 17) | `ads.manage_ad` | yes | no | no | no | no | sees the ads for their village, public |
 | Services list (section 16) | `service_requests.manage_services` | yes | no | no | no | no | sees the shown services, public |
+| Bills & Recharges list (section 18) | `bills.manage_bills` | yes | no | no | no | no | sees the shown bills, public |
 | See service requests (section 16) | `service_requests.view_service_requests` | all | inside the district | inside the mandal | the village | only those assigned to them, in the village | their own phone's, with the posting token |
 | Change status, assign on, write a note | being the request's **assignee** (any official of the area) | when assigned to them | when assigned to them | when assigned to them | when assigned to them | when assigned to them | no |
 | Assign a request nobody holds | `service_requests.manage_service_requests` | any | inside the district | inside the mandal | the village | no | no |
@@ -810,6 +811,8 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Citizen: Home → Services, Profile → My service requests | `GET /services/`, `POST /citizen/service-requests/`, `GET /citizen/service-requests/` |
 | Service requests (officials) | `GET /service-requests/` (status tabs from `status_counts`), `GET /service-requests/{id}/`, `PATCH /service-requests/{id}/`; assignees from `GET /users/` |
 | Super Admin: More → Services | `GET /admin/services/`, `POST /admin/services/`, `PATCH /admin/services/{key}/`, `POST /admin/services/order/` |
+| Citizen: Home → Bills & Recharges | `GET /bills/` |
+| Super Admin: More → Bills & Recharges | `GET /admin/bills/`, `POST /admin/bills/`, `PATCH /admin/bills/{key}/`, `POST /admin/bills/order/` |
 
 ### Super Admin console
 
@@ -828,6 +831,7 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Important numbers | `GET /admin/contacts` (area and helpline tabs), `POST /admin/contacts`, `PATCH /admin/contacts/{id}`, `DELETE /admin/contacts/{id}`, `GET /admin/contacts/targets`, `POST /admin/contacts/import`; types: `/admin/contact-types` |
 | Service requests | `GET /service-requests/`, `GET /service-requests/{id}/`, `PATCH /service-requests/{id}/`; assignees from `GET /users/` (shown to holders of `service_requests.view_service_requests`) |
 | Services | `GET /admin/services/`, `POST /admin/services/`, `PATCH /admin/services/{key}/`, `POST /admin/services/order/` |
+| Bills & Recharges (to build: a copy of Services) | `GET /admin/bills/`, `POST /admin/bills/`, `PATCH /admin/bills/{key}/`, `POST /admin/bills/order/` |
 
 ### Public website
 
@@ -1276,3 +1280,44 @@ The app works out "Running", "Scheduled", "Paused" and "Ended" itself from the d
 | `ADS_IMAGE_MAX_PX` | 1600 | Longest side of the stored WebP |
 | `ADS_PUBLIC_LIMIT` | 10 | Ads one village's Home shows |
 | `ADS_PUBLIC_MAX_AGE` | 300 | Seconds phones may reuse `/ads/` |
+
+---
+
+## 18. bills: Bills & Recharges on Home
+
+The citizen's Home has a second row next to Services: Electricity, Water, Mobile, DTH, Broadband and so on. It is **a list of its own** (`apps/bills`, table `Bill`), separate from services: its own endpoints, keys, names and order. The Super Admin manages it exactly like services (section 16): add, edit, upload a logo, hide or show, reorder. Tapping a bill in the app shows "coming soon": there is no payment, request, assignment or notification behind a bill yet.
+
+### Bill
+
+```jsonc
+{"key": "electricity", "name_en": "Electricity Bill", "name_te": "కరెంట్ బిల్లు", "icon": "power",
+ "logo": "https://…/media/bills/electricity-3f9a1c2e-256.webp",   // or null: the app draws `icon`
+ "color": "orange", "is_active": true}
+```
+
+| Field | Rule |
+|---|---|
+| `key` | Made by the server from `name_en` on create ("Gas Booking" → `gas_booking`; `_2`, `_3`… when taken). **Never changes.** Unique among bills only. |
+| `name_en` | Required, 2–60 characters, spaces collapsed, unique among bills in any case. A bill may have the same name as a service. |
+| `name_te` | Optional, at most 60 |
+| `icon` | One of `power`, `water`, `mobile`, `dth`, `broadband`, `gas`, `fastag`, `house`, `card`, `help`, `services`. Optional; `power` when not given. |
+| `logo` | As for services (section 16): an uploaded JPEG, PNG or WebP, at most 2 MB (`SERVICE_LOGO_MAX_UPLOAD_MB`) and at least 64 px a side (`SERVICE_LOGO_MIN_PX`), re-encoded as WebP with the longest side at most 256 px. Stored as `media/bills/<key>-<random>-256.webp`; the name changes on every replacement. |
+| `color` | One of `orange`, `blue`, `green`, `purple`, `teal` |
+| `is_active` | `false` hides it from Home |
+
+Bills are never deleted. The five the app used to ship are seeded with these keys: `electricity`, `water_bill`, `mobile_recharge`, `dth_recharge`, `broadband`.
+
+### Endpoints
+
+| Method and path | Who | Request | Response |
+|---|---|---|---|
+| `GET /bills/` | public, no login | — | The **shown** bills in Home order, a plain list of `Bill`. `Cache-Control: max-age=300` (`SERVICES_PUBLIC_MAX_AGE`). |
+| `GET /admin/bills/` | Super Admin | — | **Every** bill, hidden ones too, plus `order`, `created_at`, `updated_at` |
+| `POST /admin/bills/` | Super Admin | JSON `{"name_en", "name_te"?, "icon"?, "color", "is_active"?}`, or the same fields as multipart with a `logo` file | `201` with the bill, last in the order |
+| `PATCH /admin/bills/{key}/` | Super Admin | any of the same fields, JSON or multipart. Multipart `logo` replaces the logo (the old file is deleted once saved); JSON `{"logo": null}` or an empty `logo` form field removes it; without `logo` it is kept. | The bill; `404` for an unknown key (a service's key too) |
+| `POST /admin/bills/order/` | Super Admin | `{"keys": [every bill key, in the new order]}` | `200` with the full list; `400 fields.keys` unless the keys are exactly the bills' own, each once (a service key is refused). Bills and services keep separate orders. |
+
+- Permission `bills.manage_bills` (Super Admin only). Anyone else gets `403 permission_denied`; no login gets `401` on the admin endpoints.
+- Errors: `400 validation_error` with `fields`: `name_en` (taken or bad), `icon`, `color`, `logo` ("Upload a JPEG, PNG or WebP image.", too large, too small), `keys`.
+- Audit: `bill.created` (key, whether a logo came), `bill.updated` (changed fields, `logo` when it changed), `bill.shown`, `bill.hidden`, `bill.reordered` (the keys).
+- An app talking to a server without this section gets `404` on `GET /bills/` and keeps its built-in five.

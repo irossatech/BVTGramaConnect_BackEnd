@@ -68,6 +68,8 @@ PLATFORM_ADMIN = [
     "ads.manage_ad",
     # The services citizens ask for (docs/api-contract.md, section 16).
     "service_requests.manage_services",
+    # Bills and recharges on Home (docs/api-contract.md, section 18).
+    "bills.manage_bills",
 ]
 
 ROLE_GROUPS: dict[str, dict] = {

@@ -232,6 +232,7 @@ Rank 0 is the highest. The groups, their levels, ranks and permissions are writt
 | `contacts.manage_contact_types` | yes |  |  |  |  |
 | `ads.manage_ad` | yes |  |  |  |  |
 | `service_requests.manage_services` | yes |  |  |  |  |
+| `bills.manage_bills` | yes |  |  |  |  |
 
 Rules on top of the table:
 
