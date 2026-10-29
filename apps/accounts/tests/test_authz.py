@@ -51,6 +51,7 @@ SUPER_ONLY = {
     "posts.block_citizen",  # only the Super Admin blocks a citizen's phone (contract section 15)
     "ads.manage_ad",  # Home banner ads (contract section 17)
     "service_requests.manage_services",  # the services citizens ask for (contract section 16)
+    "bills.manage_bills",  # bills and recharges on Home (contract section 18)
 }
 
 

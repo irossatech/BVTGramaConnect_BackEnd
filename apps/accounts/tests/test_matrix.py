@@ -92,6 +92,7 @@ PLATFORM_PROBES = {
     "posts.manage_settings": "/api/v1/admin/settings/",
     "ads.manage_ad": "/api/v1/admin/ads/",
     "service_requests.manage_services": "/api/v1/admin/services/",
+    "bills.manage_bills": "/api/v1/admin/bills/",
 }
 
 
