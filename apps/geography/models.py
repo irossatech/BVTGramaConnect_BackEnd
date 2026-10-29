@@ -182,6 +182,10 @@ class Village(Area):
         blank=True,
         validators=[RegexValidator(r"^\d{6}$", _("A PIN code has 6 digits."))],
     )
+    #: The name as the census lists it ("Anantapur (Ct)") once `name_en` was cleaned
+    #: (geo_clean_names); empty otherwise. The CSV import matches on it too, so a later
+    #: census file neither duplicates the village nor puts the tag back.
+    census_name = models.CharField(_("census name"), max_length=120, blank=True)
 
     objects = VillageQuerySet.as_manager()
 

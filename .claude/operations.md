@@ -35,7 +35,9 @@ Linux or macOS: the same with `python3 -m venv .venv` and `source .venv/bin/acti
 | Unlock a username | `python manage.py axes_reset_username <username>`, or Unlock in the console |
 | New sample passwords | `python manage.py seed_sample_data --reset-passwords` |
 | Import villages | `python manage.py import_geography <file.csv> [--dry-run] [--missing-report out.csv]` |
-| Duplicate area names (before migrating `geography.0003`) | `python manage.py geo_duplicates` (read-only; must print "No duplicates.") |
+| Duplicate area names, English or Telugu | `python manage.py geo_duplicates` (read-only; before migrating `geography.0003` it must print "No duplicates.") |
+| Census tags in village names ("(Ct)", "(Part)" …) | `python manage.py geo_clean_names` lists; `--apply` renames (audited; census spelling kept in `census_name`) |
+| What still uses an area, before switching it off | `python manage.py geo_area_usage DISTRICT 6` (read-only) |
 | Villages without coordinates ("Use my location" never finds them) | `python manage.py geo_coordinates [--csv out.csv] [--fail-above 0]` (read-only; the CSV is in import format with empty coordinates) |
 | 640 px photo files for media from before `posts.0005` | `python manage.py backfill_medium_images` (`--dry-run` counts only; safe to run again) |
 | Translate published posts once `TRANSLATION_PROVIDER` is switched on | `python manage.py translate_published_posts [--since YYYY-MM-DD] [--limit N]` (queues for the worker; safe to run again) |
