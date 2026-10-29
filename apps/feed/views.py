@@ -103,7 +103,7 @@ class PublicView:
 
 def describer_with(posts) -> AreaDescriber:
     describer = AreaDescriber()
-    describer.prime([ref for post in posts for ref in (post.target, *post.target_refs)])
+    describer.prime([ref for post in posts for ref in (post.target, post.posted_as, *post.target_refs)])
     return describer
 
 

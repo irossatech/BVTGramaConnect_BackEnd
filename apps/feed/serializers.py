@@ -63,6 +63,7 @@ class FeedItemSerializer(serializers.Serializer):
     image_url = serializers.SerializerMethodField()
     media_count = serializers.SerializerMethodField()
     source_role = serializers.CharField(source="posted_as_role")
+    source_area = serializers.SerializerMethodField()
     event = serializers.SerializerMethodField()
     is_urgent = serializers.BooleanField()
     video = serializers.SerializerMethodField()
@@ -86,6 +87,14 @@ class FeedItemSerializer(serializers.Serializer):
         described = self._describer().describe(obj.target)
         if described is None:
             return {"level": obj.target_level, "id": obj.target_area_id, "name": ""}
+        return {"level": described["level"], "id": described["id"], "name": described["name"]}
+
+    @extend_schema_field(AreaSlimSerializer(allow_null=True))
+    def get_source_area(self, obj):
+        """The poster's own area ("Kolakaluru Gram Panchayat", "a citizen of Kolakaluru"), not where it was sent."""
+        described = self._describer().describe(obj.posted_as)
+        if described is None:
+            return None
         return {"level": described["level"], "id": described["id"], "name": described["name"]}
 
     def get_thumbnail_url(self, obj) -> str | None:

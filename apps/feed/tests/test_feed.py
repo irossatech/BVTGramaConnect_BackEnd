@@ -3,6 +3,8 @@
 import uuid
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 
 from apps.geography.models import Village
@@ -70,7 +72,7 @@ def test_slim_shape_with_thumbnail(world, make_post):
     first, second = rows
     assert set(first) == {
         "id", "category", "language", "title", "body", "translation", "area", "targets", "published_at",
-        "thumbnail_url", "image_url", "media_count", "source_role", "event", "is_urgent", "video",
+        "thumbnail_url", "image_url", "media_count", "source_role", "source_area", "event", "is_urgent", "video",
     }
     assert first["event"] is None and first["is_urgent"] is False and first["video"] is None
     assert first["id"] == str(post.id)
@@ -80,8 +82,32 @@ def test_slim_shape_with_thumbnail(world, make_post):
     assert first["image_url"] == f"/media/posts/2026/10/{post.pk}-0.webp"
     assert first["media_count"] == 3
     assert first["source_role"] == "VILLAGE_ADMIN"
+    assert first["source_area"] == {"level": "VILLAGE", "id": world.areas["kolakaluru"].id, "name": "కొలకలూరు"}
     assert second["thumbnail_url"] is None and second["media_count"] == 0
     assert second["image_url"] is None
+
+
+def test_source_area_is_the_posters_own_area_not_the_target(world, make_post):
+    """A Village Admin of Kolakaluru posting to the whole district: the card still says Kolakaluru."""
+    post = make_post("guntur", author="va_kolakaluru")
+    for url in (f"/api/v1/feed/?village_id={world.areas['nandivelugu'].id}", f"/api/v1/feed/posts/{post.pk}/"):
+        data = APIClient().get(url, HTTP_ACCEPT_LANGUAGE="en").json()
+        row = data["results"][0] if "results" in data else data
+        assert row["area"]["level"] == "DISTRICT"
+        assert row["source_area"] == {"level": "VILLAGE", "id": world.areas["kolakaluru"].id, "name": "Kolakaluru"}
+    by_ids = APIClient().get(f"/api/v1/feed/posts/?ids={post.pk}").json()
+    assert by_ids[0]["source_area"]["id"] == world.areas["kolakaluru"].id
+
+
+def test_source_area_adds_no_query_per_post(world, make_post, django_assert_max_num_queries):
+    make_post("guntur", author="va_kolakaluru")
+    with CaptureQueriesContext(connection) as one:
+        feed(world)
+    for author in ("va_nandivelugu", "va_kaza", "va_nidamanuru", "pm_kaza"):  # four more villages
+        make_post("guntur", author=author)
+    with django_assert_max_num_queries(len(one.captured_queries)):
+        rows = feed(world).json()["results"]
+    assert len({row["source_area"]["id"] for row in rows}) == 4
 
 
 def test_image_url_is_the_full_size_photo_even_with_a_medium_file(world, make_post):
