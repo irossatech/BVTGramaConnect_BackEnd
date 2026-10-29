@@ -69,6 +69,34 @@ def test_reimport_updates_or_skips_never_duplicates(world, admin):
     assert Contact.objects.filter(name="Anganwadi Centre Kolakaluru").exists()
 
 
+def test_reimport_with_blank_optional_cells_keeps_the_values(world, admin):
+    upload(admin, GOOD)
+    tahsildar = Contact.objects.get(phone="08644222333")
+    assert (tahsildar.email, tahsildar.sort_order) == ("mro@example.in", 10)
+    blank = HEADER + (
+        "vro,,K. Srinivasa Rao,,9000010001,,Guntur,Tenali,Kolakaluru,,yes\n"
+        "revenue,,\"Tahsildar Office, Tenali\",,08644222333,,Guntur,Tenali,,,\n"
+    )
+    report = upload(admin, blank).json()
+    assert (report["created"], report["updated"], report["skipped"]) == (0, 0, 2)  # nothing to change
+    assert Contact.objects.get(phone="9000010001").name_te == "కె. శ్రీనివాసరావు"
+    tahsildar.refresh_from_db()
+    assert (tahsildar.email, tahsildar.sort_order) == ("mro@example.in", 10)
+
+    # Columns left out of the file entirely are kept too; a filled cell still changes the value.
+    renamed = "type,name,phone,mandal,district\nrevenue,Tahsildar Office,08644222333,Tenali,Guntur\n"
+    assert upload(admin, renamed).json()["updated"] == 1
+    tahsildar.refresh_from_db()
+    assert (tahsildar.name, tahsildar.email, tahsildar.sort_order) == ("Tahsildar Office", "mro@example.in", 10)
+
+
+def test_a_new_number_with_blank_optional_cells_gets_the_defaults(world, admin):
+    text = "type,name,name_te,phone,sort_order,village\nrevenue,Office,,08644222390,,Kolakaluru\n"
+    assert upload(admin, text).json()["created"] == 1
+    contact = Contact.objects.get(phone="08644222390")
+    assert (contact.name_te, contact.email, contact.sort_order) == ("", "", 100)
+
+
 def test_bom_and_lgd_codes(world, admin):
     Village.objects.filter(pk=world.ref("kolakaluru").id).update(lgd_code="590123")
     text = "type,name,phone,village_lgd,consent\nvro,K. Srinivasa Rao,9000010001,590123,yes\n"
