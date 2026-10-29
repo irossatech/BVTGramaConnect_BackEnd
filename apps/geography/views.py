@@ -8,6 +8,7 @@ which are never cached.
 """
 
 from django.conf import settings
+from django.db.models import Exists, OuterRef
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import cache_control
 from drf_spectacular.types import OpenApiTypes
@@ -75,7 +76,10 @@ class DistrictListView(PublicGeoView, generics.ListAPIView):
     serializer_class = DistrictSerializer
 
     def get_queryset(self):
-        queryset = District.objects.active()
+        # A district with no active mandal leads a citizen to an empty list: not offered at all.
+        queryset = District.objects.active().filter(
+            Exists(Mandal.objects.filter(district=OuterRef("pk"), is_active=True))
+        )
         state = _int_param(self.request, "state", required=False)
         if state is not None:
             queryset = queryset.filter(state_id=state)

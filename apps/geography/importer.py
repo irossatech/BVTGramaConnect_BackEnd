@@ -300,16 +300,55 @@ class GeographyImporter:
         self._match_level(
             self.villages.values(), Village, parent_field="mandal_id",
         )
+        self._check_telugu_siblings()
+
+    def _check_telugu_siblings(self) -> None:
+        """No two villages of one mandal may share a Telugu name, in the file or with the database.
+
+        English names are unique in the database already (a constraint); Telugu ones are checked
+        here and in services.py, because an existing duplicate must not block unrelated edits.
+        """
+        seen: dict[tuple, Node] = {}
+        for node in self.villages.values():
+            if not node.name_te:
+                continue
+            key = (node.parent.key, node.name_te)
+            first = seen.setdefault(key, node)
+            if first is not node:
+                self._error(node.lines[0], f"village '{node.label()}' has the Telugu name {node.name_te!r}, "
+                                           f"like '{first.name_en}' on line {first.lines[0]}, in the same mandal.")
+        mandal_ids = {node.parent.obj.id for node in self.villages.values() if node.name_te and node.parent.obj}
+        renamed = {node.obj.id: node.name_te for node in self.villages.values() if node.obj and node.name_te}
+        in_db = {
+            (mandal_id, te): (pk, name)
+            for pk, mandal_id, te, name in Village.objects.filter(mandal_id__in=mandal_ids)
+            .values_list("id", "mandal_id", "name_te", "name_en")
+        }
+        for node in self.villages.values():
+            mandal = node.parent.obj
+            if not node.name_te or mandal is None:
+                continue
+            other = in_db.get((mandal.id, node.name_te))
+            if other is None or (node.obj is not None and other[0] == node.obj.id):
+                continue
+            if other[0] in renamed:
+                continue  # in this file too: renamed, or caught by the check above
+            self._error(node.lines[0], f"village '{node.label()}' has the Telugu name {node.name_te!r}, "
+                                       f"which '{other[1]}' in the same mandal already has.")
 
     def _match_level(self, nodes, model, *, parent_field: str) -> None:
         nodes = list(nodes)
         parent_ids = {node.parent.obj.id for node in nodes if node.parent.obj is not None}
         codes = {node.lgd_code for node in nodes if node.lgd_code}
         by_code = {obj.lgd_code: obj for obj in model.objects.filter(lgd_code__in=codes)}
+        siblings = list(model.objects.filter(**{f"{parent_field}__in": parent_ids}))
+        # A village renamed by geo_clean_names is still found by its census name ("Anantapur (Ct)").
         by_name = {
-            (getattr(obj, parent_field), obj.name_key): obj
-            for obj in model.objects.filter(**{f"{parent_field}__in": parent_ids})
+            (getattr(obj, parent_field), name_key(obj.census_name)): obj
+            for obj in siblings
+            if getattr(obj, "census_name", "")
         }
+        by_name.update({(getattr(obj, parent_field), obj.name_key): obj for obj in siblings})
         for node in nodes:
             parent = node.parent.obj
             match = by_code.get(node.lgd_code) if node.lgd_code else None
@@ -375,6 +414,8 @@ class GeographyImporter:
                 node, {"latitude": node.latitude, "longitude": node.longitude, "pin_code": node.pin_code}
             )
             if node.obj is not None:
+                if node.obj.census_name and name_key(node.name_en) == name_key(node.obj.census_name):
+                    del values["name_en"]  # the census spelling: keep the cleaned name
                 values = {name: value for name, value in values.items() if getattr(node.obj, name) != value}
                 if not values:
                     counts.unchanged += 1

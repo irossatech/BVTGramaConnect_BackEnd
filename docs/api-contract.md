@@ -373,7 +373,7 @@ Rules:
 | Method and path | Who | Request | Response |
 |---|---|---|---|
 | `GET /geo/states` | public | — | `[{"id", "name"}]` |
-| `GET /geo/districts?state={id}` | public | — | `[{"id", "name", "state_id"}]` |
+| `GET /geo/districts?state={id}` | public | — | `[{"id", "name", "state_id"}]`: active districts with at least one active mandal, so a citizen never opens an empty list. The console's `geo/tree/` still shows the rest. |
 | `GET /geo/mandals?district={id}` | public | — | `[{"id", "name", "district_id"}]` |
 | `GET /geo/villages?mandal={id}&q=` | public | `q` searches English and Telugu names | `[{"id", "name", "mandal_id", "pin_code"}]` |
 | `GET /geo/villages/{id}` | public | — | `{"id", "name", "pin_code", "latitude": "16.238100", "longitude": "80.592400", "mandal": {"id", "name"}, "district": {"id", "name"}, "state": {"id", "name"}, "path"}` |
@@ -416,7 +416,7 @@ Every write answers, for example:
 | `401` | `not_authenticated`, `token_expired` | No or expired login (writes only) |
 | `403` | `permission_denied` | Not a Super Admin. A console session write without `X-CSRFToken` is refused too. |
 | `404` | `not_found` | PATCH of an id that does not exist |
-| `409` | `duplicate` | Same name under the same parent (`fields.name_en`), also when another admin added it a moment earlier, or the LGD code is already used (`fields.lgd_code`) |
+| `409` | `duplicate` | Same name under the same parent (`fields.name_en`), also when another admin added it a moment earlier; the same Telugu name under the same parent (`fields.name_te`, checked only when `name_te` is sent); or the LGD code is already used (`fields.lgd_code`) |
 
 Warnings never block a save: `parent_inactive` (the parent is switched off), `name_te_missing` (no Telugu name, or the same as the English one), `name_te_not_telugu`, `coordinates_swapped`, `outside_state` (outside the `GEO_BOUNDS` box of Andhra Pradesh), `pin_outside_state` (not starting with 5). The CSV import lists them in its `warnings`, except `name_te_missing`, which `missing_telugu` counts.
 
@@ -425,6 +425,9 @@ Rules:
 - `lgd_code` is digits only, at most 20, and unique per level.
 - `latitude` is between -90 and 90 and `longitude` between -180 and 180, each with at most 6 decimals. `pin_code` is 6 digits.
 - Before migrating a server to `geography.0003`, run `python manage.py geo_duplicates` (read-only). It must print "No duplicates."; fix any it lists with the owner first.
+- **No two villages of one mandal share a name, in English or in Telugu.** English is a database constraint. Telugu is refused on every write that sets it (API `409 fields.name_te`, CSV import error), not by a constraint, so an old duplicate never blocks other edits; `python manage.py geo_duplicates` (read-only) lists both kinds.
+- **Census tags:** `python manage.py geo_clean_names` lists, and with `--apply` makes, the renames: `(Ct)`, `(Og)`, `(Part)` removed; `(R)`, `(Rural)` become "Rural"; `(Near)`, `(East)`, `(West)` plain words. The census spelling is kept in the village's `census_name`, and the CSV import matches on it too, so a later census file neither duplicates a village nor brings the tag back. A rename that would clash with another village of the mandal is listed for a person instead.
+- **Before switching an area off:** `python manage.py geo_area_usage DISTRICT 6` (read-only) counts what still uses it: areas below, role assignments, post areas, posts sent from it, important numbers, ads, service requests, citizen phones.
 - Villages without coordinates are never returned by `GET /geo/nearest/`. `python manage.py geo_coordinates` (read-only) counts the active ones per district; `--csv PATH` lists them with the import's columns and empty `latitude` and `longitude`, to fill in and import back; `--fail-above 0` fails the release check while any is left.
 - Areas are never deleted. Deactivating an area hides it from public lists and blocks new users and posts there and in every area below it. Existing posts stay visible.
 - Nearest village: bounding-box filter in the ORM, then haversine distance in Python, per CLAUDE.md.

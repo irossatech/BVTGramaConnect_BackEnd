@@ -24,7 +24,7 @@ from apps.audit.services import record
 from grama.exceptions import ApiError
 
 from .areas import AreaRef
-from .models import District, Mandal, State, Village, name_key
+from .models import District, Mandal, State, Village, clean_name, name_key
 from .validation import warnings_for
 
 # level -> (model, parent field, parent model, request key for the parent)
@@ -33,7 +33,7 @@ LEVELS = {
     "MANDAL": (Mandal, "district", District, "district_id"),
     "VILLAGE": (Village, "mandal", Mandal, "mandal_id"),
 }
-AUDITED_FIELDS = ("name_en", "name_te", "lgd_code", "is_active", "latitude", "longitude", "pin_code")
+AUDITED_FIELDS = ("name_en", "name_te", "lgd_code", "is_active", "latitude", "longitude", "pin_code", "census_name")
 # Rows per statement in import_villages (Django lowers them where the database needs). An UPDATE is
 # one CASE per field over its whole batch, so it costs batch² and stays smaller.
 BULK_CREATE_BATCH = 1000
@@ -51,14 +51,19 @@ def _duplicate(field: str, message) -> ApiError:
     return ApiError("duplicate", message, status=status.HTTP_409_CONFLICT, fields={field: [message]})
 
 
-def _check_unique(model, parent_field, parent_id, name, lgd, exclude_id=None) -> None:
-    """A friendly 409 before the write. The database constraint catches what this misses."""
-    if name:
-        siblings = model.objects.filter(**{f"{parent_field}_id": parent_id}, name_key=name_key(name))
-        if exclude_id:
-            siblings = siblings.exclude(id=exclude_id)
-        if siblings.exists():
-            raise _duplicate("name_en", _("This name already exists here."))
+def _check_unique(model, parent_field, parent_id, name, lgd, exclude_id=None, name_te="") -> None:
+    """A friendly 409 before the write. The database constraint catches what this misses.
+
+    The Telugu name is checked only when it is being set, and only here (no constraint): a
+    duplicate already in the data must not block unrelated edits of the area until it is fixed.
+    """
+    siblings = model.objects.filter(**{f"{parent_field}_id": parent_id})
+    if exclude_id:
+        siblings = siblings.exclude(id=exclude_id)
+    if name and siblings.filter(name_key=name_key(name)).exists():
+        raise _duplicate("name_en", _("This name already exists here."))
+    if clean_name(name_te) and siblings.filter(name_te=clean_name(name_te)).exists():
+        raise _duplicate("name_te", _("This Telugu name already exists here."))
     if lgd:
         clash = model.objects.filter(lgd_code=lgd)
         if exclude_id:
@@ -86,7 +91,8 @@ def create_area(actor, level: str, values: dict, *, via: str, audit: bool = True
     parent = parent_model.objects.filter(id=values.pop(parent_key, None)).first()
     if parent is None:
         raise ApiError("validation_error", _("Choose the parent area."), fields={parent_key: [_("No such area.")]})
-    _check_unique(model, parent_field, parent.id, values.get("name_en"), values.get("lgd_code"))
+    _check_unique(model, parent_field, parent.id, values.get("name_en"), values.get("lgd_code"),
+                  name_te=values.get("name_te", ""))
     try:
         with transaction.atomic():
             obj = model.objects.create(**{parent_field: parent}, **values)
@@ -109,7 +115,8 @@ def update_area(actor, level: str, area_id: int, values: dict, *, via: str, audi
     if obj is None:
         raise ApiError("not_found", _("No such area."), status=status.HTTP_404_NOT_FOUND)
     _check_unique(
-        model, parent_field, getattr(obj, f"{parent_field}_id"), values.get("name_en"), values.get("lgd_code"), obj.id
+        model, parent_field, getattr(obj, f"{parent_field}_id"), values.get("name_en"), values.get("lgd_code"), obj.id,
+        name_te=values.get("name_te", ""),
     )
     before = _snapshot(obj)
     was_active = obj.is_active
