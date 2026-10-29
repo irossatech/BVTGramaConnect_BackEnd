@@ -7,10 +7,10 @@ no payment and no request behind a bill yet.
 
 from django.db import models
 
-#: Icons the app draws (the server only checks the key).
-ICONS = ["power", "water", "mobile", "dth", "broadband", "gas", "fastag", "house", "card", "help", "services"]
+#: Icons the app and the console draw (the server only checks the key).
+ICONS = ["power", "water", "gas", "mobile", "landline", "dth", "broadband", "fastag", "credit_card", "bill"]
 COLORS = ["orange", "blue", "green", "purple", "teal"]
-DEFAULT_ICON = "power"
+DEFAULT_ICON = "bill"
 
 
 def bill_logo_path(instance, filename):

@@ -118,14 +118,23 @@ def test_names_are_unique_among_bills_only(admin, world):
     assert admin.post(ADMIN, NEW, format="json").status_code == 201  # a service may have the same name
 
 
-def test_the_icon_defaults_to_power(admin, world):
+def test_the_icon_defaults_to_bill(admin, world):
     body = {key: value for key, value in NEW.items() if key != "icon"}
-    assert admin.post(ADMIN, body, format="json").json()["icon"] == "power"
+    assert admin.post(ADMIN, body, format="json").json()["icon"] == "bill"
+
+
+@pytest.mark.parametrize(
+    "icon", ["power", "water", "gas", "mobile", "landline", "dth", "broadband", "fastag", "credit_card", "bill"]
+)
+def test_every_icon_the_clients_send_is_accepted(admin, world, icon):
+    response = admin.post(ADMIN, {**NEW, "icon": icon}, format="json")
+    assert response.status_code == 201 and response.json()["icon"] == icon
 
 
 @pytest.mark.parametrize(
     "changes, field",
-    [({"icon": "aadhaar"}, "icon"), ({"color": "red"}, "color"), ({"name_en": "A"}, "name_en"),
+    [({"icon": "aadhaar"}, "icon"), ({"icon": "card"}, "icon"), ({"icon": "services"}, "icon"),
+     ({"color": "red"}, "color"), ({"name_en": "A"}, "name_en"),
      ({"name_en": "x" * 61}, "name_en"), ({"color": None}, "color")],
 )
 def test_bad_fields_are_refused(admin, world, changes, field):
