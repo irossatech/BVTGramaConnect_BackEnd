@@ -1,5 +1,7 @@
 """Smoke tests for the project scaffold: settings, URL layout, web serving, user model."""
 
+from unittest import mock
+
 import pytest
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -72,7 +74,7 @@ def test_reserved_prefixes_are_not_swallowed_by_the_website(client, bare, target
     assert response["Location"] == target
 
 
-# --- Ported web prototypes, served by Django only while DEBUG is on ------------
+# --- Ported web prototypes, served by Django only while SERVE_FILES is on --------
 
 
 @pytest.fixture
@@ -81,7 +83,7 @@ def web_dirs(settings, tmp_path):
     console = tmp_path / "console"
     public.mkdir()
     console.mkdir()
-    settings.DEBUG = True
+    settings.SERVE_FILES = True
     settings.WEB_PUBLIC_DIR = public
     settings.WEB_ADMIN_DIR = console
     return public, console
@@ -128,12 +130,75 @@ def test_paths_cannot_escape_the_site_folder(client, web_dirs):
     assert b"do not serve" not in response.content
 
 
-def test_web_parts_are_not_served_outside_debug(client, web_dirs, settings):
+def test_nothing_is_served_where_nginx_serves_files(client, web_dirs, settings, tmp_path):
     public, _ = web_dirs
     (public / "index.html").write_text("<!doctype html>", encoding="utf-8")
-    settings.DEBUG = False
+    settings.MEDIA_ROOT = tmp_path / "media"
+    (settings.MEDIA_ROOT / "posts").mkdir(parents=True)
+    (settings.MEDIA_ROOT / "posts" / "p.webp").write_bytes(b"RIFF")
+    settings.SERVE_FILES = False  # production: prod.py
     assert client.get("/").status_code == 404
     assert client.get("/console/").status_code == 404
+    assert client.get("/media/posts/p.webp").status_code == 404
+    assert client.get("/static/admin/css/base.css").status_code == 404
+
+
+# --- The qa server: DEBUG off, files still served by Django -----------------------
+
+
+@pytest.fixture
+def qa(settings, tmp_path):
+    """DEBUG off with SERVE_FILES on, like the qa server's .env (pytest-django already runs with DEBUG off)."""
+    settings.DEBUG = False
+    settings.SERVE_FILES = True
+    settings.MEDIA_ROOT = tmp_path / "media"
+    (settings.MEDIA_ROOT / "services").mkdir(parents=True)
+    return settings
+
+
+def test_qa_keeps_serving_uploads_static_files_and_the_console(client, web_dirs, qa):
+    _, console = web_dirs
+    (console / "index.html").write_text("<!doctype html><title>console</title>", encoding="utf-8")
+    (qa.MEDIA_ROOT / "services" / "aadhaar-1-256.webp").write_bytes(b"RIFF....WEBP")
+    logo = client.get("/media/services/aadhaar-1-256.webp")
+    assert logo.status_code == 200 and logo["Content-Type"] == "image/webp"
+    assert b"".join(logo.streaming_content) == b"RIFF....WEBP"
+    assert client.get("/static/admin/css/base.css").status_code == 200  # Django admin and Swagger styles
+    assert client.get("/console/").status_code == 200
+
+
+def test_media_paths_cannot_escape_the_media_folder(client, qa, tmp_path):
+    (tmp_path / "secret.txt").write_text("do not serve", encoding="utf-8")
+    response = client.get("/media/../secret.txt")
+    assert response.status_code in (400, 404)
+    assert b"do not serve" not in b"".join(getattr(response, "streaming_content", [response.content]))
+
+
+@pytest.mark.django_db
+def test_an_unknown_api_address_is_the_plain_json_404(client, qa):
+    response = client.get("/api/v1/no-such-page/")
+    assert response.status_code == 404
+    assert response["Content-Type"] == "application/json"
+    assert response.json() == {"error": {"code": "not_found", "message": "No such address."}}
+    assert b"urlpatterns" not in response.content and b"health" not in response.content
+
+
+@pytest.mark.django_db
+def test_a_crash_shows_nothing_internal(qa):
+    from django.test import Client
+
+    client = Client(raise_request_exception=False)
+    with mock.patch("grama.views.connection.ensure_connection", side_effect=RuntimeError("db password=hunter2")):
+        response = client.get("/api/v1/health/")
+    assert response.status_code == 500
+    assert response.json() == {"error": {"code": "server_error", "message": "Something went wrong on the server."}}
+    assert b"hunter2" not in response.content and b"Traceback" not in response.content
+
+
+def test_an_unknown_page_elsewhere_is_a_plain_404(client, qa):
+    response = client.get("/django-admin-nope/x/")  # not under /api/: the website's address space
+    assert response.status_code == 404
+    assert b"urlpatterns" not in response.content and b"Using the URLconf" not in response.content
 
 
 # --- Database URL helper -----------------------------------------------------------
