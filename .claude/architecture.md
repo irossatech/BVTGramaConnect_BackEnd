@@ -14,8 +14,8 @@ Top level of the repo: `apps/`, `grama/` (settings, URLs, shared helpers, projec
 | `audit` | AuditLog. Audit list and CSV export. |
 | `feed` | Public citizen feed with news search and a video filter, "Don't miss" (upcoming events) and the urgent list. No models of its own; reads Post. |
 | `notifications` | Device, Notification, NotificationTemplate. Push gateways (`push.py`), signal receivers (`receivers.py`), inbox and push logic (`services.py`), delivery jobs (`tasks.py`). |
-| `web_public` | ContactMessage. Site-config (with help lines and the website link), showcase and contact API, and the Super Admin's contact-messages API for the console. Serves the website files while DEBUG is on. |
-| `web_admin` | Console-only dashboard and reports API (`api.py`). Telugu name suggestions for every official's forms (`admin/transliterate/`; `transliteration.py`: Google Input Tools or off, cached under a hash, never logs the text). Serves the console files while DEBUG is on. |
+| `web_public` | ContactMessage. Site-config (with help lines and the website link), showcase and contact API, and the Super Admin's contact-messages API for the console. Serves the website files while SERVE_FILES is on. |
+| `web_admin` | Console-only dashboard and reports API (`api.py`). Telugu name suggestions for every official's forms (`admin/transliterate/`; `transliteration.py`: Google Input Tools or off, cached under a hash, never logs the text). Serves the console files while SERVE_FILES is on. |
 | `contacts` | ContactType, Contact: the app's important numbers (area numbers and statewide helplines). Phone grammar (`phones.py`), the only writer (`services.py`: create, update, soft remove, CSV import, types; an unused type is soft-deleted and `ContactType.objects.live()` hides it), read queries (`selectors.py`), citizen and official views (`views_public.py`, `views_admin.py`), `seed_helplines` and `import_contacts` commands. `web_public` site-config reads its statewide helplines. |
 | `citizens` | CitizenDevice: a citizen's phone with its posting token (stored as a hash). Citizens never sign in: the token is issued after a Google Play Integrity check (`integrity.py`: signed one-time nonces, the verdict). Registration, the phone's village, push token and language, posting with the daily limit (a runtime setting), and the Super Admin's temporary block, unblock and discard-all (`services.py`). One phone's installs are linked by a hashed Android ID (`same_phone`, `active_block`), so limits and blocks survive a reinstall. The citizen API under `citizen/` (`views.py`). Citizen posts themselves are made by `posts.services.create_citizen_post`; the decision push to the phone is `notifications.services.tell_citizen`. |
 | `service_requests` | Service (the list the Super Admin manages, with an optional uploaded logo re-encoded as WebP by `grama/logos.py`, else a drawn icon; key never changes, never deleted), ServiceRequest (a citizen's request for the phone's village, with address) and ServiceRequestEvent (every change). Public `services/`, citizen create and list with the posting token, officials' list, read and change, the Super Admin's `admin/services/` (`views.py`). Reads in `selectors.py` (`visible_requests`, `village_admin_of`); the only writer in `services.py` (services, `create_request` with the automatic assignment to the Village Admin, `update_request`), with history, audit and the notifications (templates `service_request_new`, `service_request_assigned_you`, `service_request_updated`, sent by `notifications.services`). Migrations `0001`–`0002` are the removed first version; the current models start at `0003`. |
@@ -43,7 +43,7 @@ Top level of the repo: `apps/`, `grama/` (settings, URLs, shared helpers, projec
 | Module | Used by | Notes |
 |---|---|---|
 | `grama/settings/base.py` | everything | Apps, DRF, JWT, sessions and CSRF, django-axes lockout, Argon2 and the password validators, django-q2, platform rules, push, limits. Reads env and an optional `.env`. |
-| `grama/settings/dev.py` | `manage.py` (default) | SQLite (`SQLITE_PATH` overrides the file), DEBUG on, session and CSRF cookies allowed over plain HTTP. |
+| `grama/settings/dev.py` | `manage.py` (default) | SQLite (`SQLITE_PATH` overrides the file), DEBUG on (`DEBUG=False` in env on the qa server), `SERVE_FILES` on, session and CSRF cookies allowed over plain HTTP. |
 | `grama/settings/prod.py` | `wsgi.py`, `asgi.py` (default) | Requires SECRET_KEY, ALLOWED_HOSTS, DATABASE_URL, MEDIA_ROOT, STATIC_ROOT. MySQL gets utf8mb4 automatically. |
 | `grama/settings/test.py` | pytest | Dev plus in-memory SQLite, MD5 hashing for speed, synchronous jobs, locmem push. |
 
@@ -54,11 +54,11 @@ Top level of the repo: `apps/`, `grama/` (settings, URLs, shared helpers, projec
 | `/api/v1/` | REST API, every app's `urls.py` plus `apps/web_public/api_urls.py` and `apps/web_admin/api_urls.py` |
 | `/api/schema/`, `/api/docs/` | OpenAPI schema and Swagger UI |
 | `/django-admin/` | Django admin, developers only. In production Nginx allows only `OFFICE_IPS` from the deploy config, and nobody when it is empty. |
-| `/console/` | Console files from `WEB_ADMIN_DIR` (default `../BVTGramaConnect/dist/console`), DEBUG only |
-| `/media/` | Uploaded files, DEBUG only |
-| `/` | Website files from `WEB_PUBLIC_DIR` (default `../BVTGramaConnect/dist`), DEBUG only; must stay last |
+| `/console/` | Console files from `WEB_ADMIN_DIR` (default `../BVTGramaConnect/dist/console`), SERVE_FILES only |
+| `/media/`, `/static/` | Uploaded files and Django's static files, SERVE_FILES only |
+| `/` | Website files from `WEB_PUBLIC_DIR` (default `../BVTGramaConnect/dist`), SERVE_FILES only; must stay last |
 
-In production Nginx serves `/`, `/console/`, `/static/` and `/media/` directly; `grama/sitefiles.py` answers 404 when DEBUG is off.
+In production Nginx serves `/`, `/console/`, `/static/` and `/media/` directly; `grama/sitefiles.py` answers 404 there because `SERVE_FILES` is off. The qa server has no Nginx: it runs `runserver` with `DEBUG=False` and `SERVE_FILES` on, so Django serves them. With DEBUG off, an unknown `/api/` address answers the JSON 404 and a crash the JSON 500 (`grama/views.py`), never Django's debug pages.
 
 ## Background jobs
 

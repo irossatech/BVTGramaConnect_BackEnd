@@ -207,9 +207,14 @@ def _dir_from_env(name: str, default: str) -> Path:
 # The website and the Super Admin console live in one repo, BVTGramaConnect,
 # cloned next to this one. Run `npm run build` there first: it writes dist/
 # (website, served at /) and dist/console/ (console, served at /console/).
-# Django serves them only while DEBUG is on; Nginx serves them on the server.
+# Django serves them only while SERVE_FILES is on; Nginx serves them on the server.
 WEB_PUBLIC_DIR = _dir_from_env("WEB_PUBLIC_DIR", "../BVTGramaConnect/dist")
 WEB_ADMIN_DIR = _dir_from_env("WEB_ADMIN_DIR", "../BVTGramaConnect/dist/console")
+
+# Django itself serves /media/, /static/, /console/ and the website (grama/sitefiles.py). Off here
+# and in prod.py, where Nginx serves them; on in dev.py, also on a server without Nginx (the qa
+# server) that runs with DEBUG=False.
+SERVE_FILES = False
 
 # --- REST API ----------------------------------------------------------------
 

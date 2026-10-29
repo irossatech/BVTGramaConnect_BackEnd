@@ -124,7 +124,7 @@ apps/                 every Django app (Python package "apps"; each keeps its sh
 grama/                Django project
   settings/           base.py, dev.py (default for manage.py), prod.py (wsgi/asgi), test.py
   urls.py             URL layout
-  sitefiles.py        serves the web parts while DEBUG is on
+  sitefiles.py        serves the web parts, /media/ and /static/ while SERVE_FILES is on
   tests/              project-level tests
 deploy/               server setup, deploy, backup and restore; loadtest/ holds the Locust test
 docs/                 API contract, prototype inventory, UAT checklist, security review

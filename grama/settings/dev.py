@@ -1,9 +1,15 @@
-"""Local development: SQLite, DEBUG on, no extra services."""
+"""Local development: SQLite, DEBUG on, no extra services.
+
+Also the qa server, which runs runserver without Nginx: there .env sets DEBUG=False, so unknown
+addresses and crashes never show Django's debug pages, while SERVE_FILES keeps Django serving
+photos, the console and the website.
+"""
 
 from .base import *  # noqa: F403
 from .base import BASE_DIR, REST_FRAMEWORK, env
 
-DEBUG = True
+DEBUG = env.bool("DEBUG", default=True)
+SERVE_FILES = env.bool("SERVE_FILES", default=True)
 
 SECRET_KEY = env.str(
     "SECRET_KEY",
@@ -39,10 +45,12 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 SESSION_COOKIE_SECURE = env.bool("SESSION_COOKIE_SECURE", default=False)
 CSRF_COOKIE_SECURE = env.bool("CSRF_COOKIE_SECURE", default=False)
 
-REST_FRAMEWORK = {
-    **REST_FRAMEWORK,
-    "DEFAULT_RENDERER_CLASSES": [
-        "grama.renderers.JSONRenderer",
-        "rest_framework.renderers.BrowsableAPIRenderer",
-    ],
-}
+# The browsable API pages only while debugging; with DEBUG off every answer is plain JSON.
+if DEBUG:
+    REST_FRAMEWORK = {
+        **REST_FRAMEWORK,
+        "DEFAULT_RENDERER_CLASSES": [
+            "grama.renderers.JSONRenderer",
+            "rest_framework.renderers.BrowsableAPIRenderer",
+        ],
+    }

@@ -4,17 +4,21 @@
 /api/schema/   OpenAPI schema; /api/docs/ shows it in Swagger UI
 /django-admin/ Django's built-in admin, for developers only
 /console/      Super Admin console (web_admin app)
-/media/        uploaded files, while DEBUG is on (Nginx on the server)
+/media/        uploaded files, /static/ static files: while SERVE_FILES is on (Nginx on the server)
 /              public website (web_public app); must stay last
+
+Unknown addresses under /api/ answer the contract's JSON 404 once DEBUG is off.
 """
 
-from django.conf import settings
-from django.conf.urls.static import static
 from django.contrib import admin
-from django.urls import include, path
+from django.urls import include, path, re_path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
+from .sitefiles import serve_media, serve_static
 from .views import health
+
+handler404 = "grama.views.not_found"
+handler500 = "grama.views.server_error"
 
 api_v1 = [
     path("health/", health, name="health"),
@@ -39,6 +43,7 @@ urlpatterns = [
     path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
     path("django-admin/", admin.site.urls),
     path("console/", include("apps.web_admin.urls")),
-    *static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT),
+    re_path(r"^media/(?P<path>.*)$", serve_media, name="media"),
+    re_path(r"^static/(?P<path>.*)$", serve_static, name="static"),
     path("", include("apps.web_public.urls")),
 ]
