@@ -128,7 +128,7 @@ All errors share one shape:
 | 413 | `file_too_large` | Upload over the limit |
 | 415 | `unsupported_media` | File type not allowed |
 | 429 | `locked_out` | 5 failed logins for this username from this IP address, or 50 failed logins from this IP address for any usernames within an hour; `retry_after_s` gives the seconds left |
-| 429 | `throttled` | Rate limit; `Retry-After` header set |
+| 429 | `throttled` | Rate limit; `retry_after_s` gives the seconds to wait, and the `Retry-After` header is set |
 
 ### Enumerations
 
@@ -1328,3 +1328,20 @@ Bills are never deleted. The five the app used to ship are seeded with these key
 - Errors: `400 validation_error` with `fields`: `name_en` (taken or bad), `icon`, `color`, `logo` ("Upload a JPEG, PNG or WebP image.", too large, too small), `keys`.
 - Audit: `bill.created` (key, whether a logo came), `bill.updated` (changed fields, `logo` when it changed), `bill.shown`, `bill.hidden`, `bill.reordered` (the keys).
 - An app talking to a server without this section gets `404` on `GET /bills/` and keeps its built-in five.
+
+---
+
+## 19. Transliteration: Telugu name suggestions
+
+Built (`apps.web_admin`, `transliteration.py`). When an admin types an English name, the app and the console fill the Telugu name box with its Telugu **spelling** ("Ravi Kumar" → "రవి కుమార్"), which the admin can correct. It is used in the forms for services, bills, places, contact types, contacts and users. Only this server talks to the provider, so names never go from the admins' devices to Google, and the console needs no CSP change.
+
+| Method and path | Who | Request | Response |
+|---|---|---|---|
+| `GET /admin/transliterate/?text=` | Any official with at least one active role (app JWT or console session) | `text`: required, trimmed, 1 to 150 characters | `200 {"te": "రవి కుమార్"}` |
+
+- **A suggestion only.** Nothing found, any provider failure or timeout (`TRANSLITERATION_TIMEOUT_S`, 4 s), or the feature switched off (`TRANSLITERATION_PROVIDER=off`): `200 {"te": ""}`, and the client leaves the box empty. A provider problem never gives a 5xx.
+- It is the spelling, not a translation: "Water Bill" gives "వాటర్ బిల్", not "నీటి బిల్లు". Admins type a Telugu word by hand when they want one.
+- Errors: `400 validation_error` on `text` (missing, empty or over 150 characters); `401` without a login; `403 permission_denied` for an account with no role; `429 throttled` over `TRANSLITERATION_RATE` (60 a minute per user), with `retry_after_s` and `Retry-After`.
+- Answers are cached for `TRANSLITERATION_CACHE_S` (30 days) under a SHA-256 hash of the provider and the lower-cased text; failures are not cached. The text and the answer are never logged or audited, and nothing is written to the database. Saving a Telugu name keeps its own validation.
+- Provider: `google_input_tools` (Google Input Tools, no key) by default. `off` switches the feature off after a restart.
+- A client talking to a server without this section gets `404` and leaves the box empty.

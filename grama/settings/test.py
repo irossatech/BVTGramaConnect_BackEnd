@@ -20,4 +20,6 @@ EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
 
 # Pushes are kept in notifications.push.LocmemPushGateway.outbox; retries do not wait.
 PUSH_GATEWAY = "apps.notifications.push.LocmemPushGateway"
+# Never call Google from tests; test_transliterate.py swaps in LocmemTransliterator.
+TRANSLITERATION_PROVIDER = "off"
 DELIVERY_RETRY_BASE_SECONDS = 0

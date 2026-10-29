@@ -17,10 +17,13 @@ from django.conf import settings
 from django.http import HttpResponse
 from django.utils import timezone
 from django.utils.translation import gettext as _
-from drf_spectacular.utils import extend_schema
-from rest_framework.permissions import IsAuthenticated
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
+from rest_framework import serializers
+from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.renderers import BaseRenderer
 from rest_framework.response import Response
+from rest_framework.throttling import UserRateThrottle
 from rest_framework.views import APIView
 
 from apps.accounts import authz
@@ -30,13 +33,14 @@ from apps.audit.models import AuditLog
 from apps.audit.services import record
 from apps.geography.areas import AreaDescriber, AreaRef
 from apps.geography.models import AreaLevel, District, Mandal, Village
-from grama.exceptions import ApiError
+from grama.exceptions import ApiError, permission_denied
 from grama.pagination import PageNumberPagination
 from grama.renderers import JSONRenderer
 from apps.posts.models import Post, PostStatus, ReviewAction, SettingOverride
 from apps.posts.services import targets_within
 
 from .permissions import client_via
+from .transliteration import MAX_LENGTH, to_telugu
 
 DECISIONS = [ReviewAction.Action.PUBLISH, ReviewAction.Action.RECHECK, ReviewAction.Action.DISCARD]
 
@@ -405,3 +409,44 @@ class ReportExportView(SuperAdminView):
         stamp = timezone.localtime().strftime("%Y%m%d")
         response["Content-Disposition"] = f'attachment; filename="grama-{report}-{stamp}.csv"'
         return response
+
+# --- Telugu name suggestions -----------------------------------------------------------------
+
+
+class HasAnyRole(BasePermission):
+    """Any official role anywhere (every role uses the name forms); an account without one gets 403."""
+
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False  # 401
+        if not authz.grants(request.user):
+            raise permission_denied()
+        return True
+
+
+class TransliterateThrottle(UserRateThrottle):
+    scope = "transliterate"
+
+
+class TransliterateQuery(serializers.Serializer):
+    text = serializers.CharField(max_length=MAX_LENGTH, trim_whitespace=True)
+
+
+class TransliterateView(APIView):
+    """English name -> Telugu spelling, for the Telugu name boxes (docs/api-contract.md, section 19).
+
+    Only a suggestion: "" when nothing is found, the provider fails or the feature is off, never 5xx.
+    """
+
+    permission_classes = [HasAnyRole]
+    throttle_classes = [TransliterateThrottle]
+
+    @extend_schema(
+        summary="Telugu spelling of an English name (a suggestion for the Telugu name box)",
+        parameters=[OpenApiParameter("text", OpenApiTypes.STR, required=True, description="1-150 characters")],
+        responses=inline_serializer("Transliteration", {"te": serializers.CharField()}),
+    )
+    def get(self, request):
+        query = TransliterateQuery(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        return Response({"te": to_telugu(query.validated_data["text"])})
