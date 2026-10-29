@@ -165,6 +165,7 @@ class PostSerializer(serializers.ModelSerializer):
     category = CategorySerializer()
     translation = serializers.SerializerMethodField()
     target_area = serializers.SerializerMethodField()
+    targets = serializers.SerializerMethodField()
     event = serializers.SerializerMethodField()
     media = serializers.SerializerMethodField()
     author = serializers.SerializerMethodField()
@@ -179,7 +180,7 @@ class PostSerializer(serializers.ModelSerializer):
         model = Post
         fields = [
             "id", "status", "category", "language", "title", "body", "translation",
-            "target_level", "target_area", "event", "is_urgent", "media", "author", "posted_as",
+            "target_level", "target_area", "targets", "event", "is_urgent", "media", "author", "posted_as",
             "created_at", "updated_at", "submitted_at", "published_at",
             "escalated", "escalated_at", "escalation_level",
             "decided_by", "decided_at", "last_review", "citizen", "allowed_actions",
@@ -196,6 +197,10 @@ class PostSerializer(serializers.ModelSerializer):
     @extend_schema_field(AreaOutputSerializer)
     def get_target_area(self, obj):
         return describer_from(self.context).describe(obj.target)
+
+    @extend_schema_field(AreaOutputSerializer(many=True))
+    def get_targets(self, obj):
+        return describe_targets(describer_from(self.context), obj)
 
     @extend_schema_field(MediaSerializer(many=True))
     def get_media(self, obj):
@@ -260,7 +265,14 @@ class PostSerializer(serializers.ModelSerializer):
 
 
 def prime_posts(context, posts) -> None:
-    describer_from(context).prime([ref for post in posts for ref in (post.target, post.posted_as)])
+    describer_from(context).prime(
+        [ref for post in posts for ref in (*post.target_refs, post.target, post.posted_as)]
+    )
+
+
+def describe_targets(describer, post) -> list[dict]:
+    """Every area of the post, each like target_area: level, id, name and path."""
+    return [area for area in (describer.describe(ref) for ref in post.target_refs) if area is not None]
 
 
 class PostWriteSerializer(serializers.Serializer):
@@ -268,10 +280,20 @@ class PostWriteSerializer(serializers.Serializer):
     language = serializers.ChoiceField(choices=["te", "en"], default="te")
     title = serializers.CharField(max_length=150)
     body = serializers.CharField(max_length=5000)
-    target = AreaInputSerializer()
+    #: One area, from clients older than `targets`; `targets` wins when both come.
+    target = AreaInputSerializer(required=False)
+    #: Every area: [{"level": "STATE", "id": …}] alone is Everyone (owner decision of 2026-10-28).
+    #: The count limit (POST_MAX_TARGETS) is checked in posts.services; this only caps the payload.
+    targets = serializers.ListField(child=AreaInputSerializer(), required=False, allow_empty=False, max_length=1000)
     event = EventSerializer(required=False, allow_null=True, default=None)
     is_urgent = serializers.BooleanField(default=False)
     submit = serializers.BooleanField(default=True)
+
+    def validate(self, attrs):
+        if not self.partial and not attrs.get("targets") and not attrs.get("target"):
+            message = _("Choose who will see the post.")
+            raise serializers.ValidationError({"targets": [message]})
+        return attrs
 
     def validate_title(self, value):
         value = " ".join(value.split())

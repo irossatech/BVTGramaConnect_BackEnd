@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from apps.accounts.models import RoleAssignment, User
 from apps.accounts.roles import Role
-from conftest import TEST_PASSWORD, assign
+from conftest import TEST_PASSWORD, assign, make_bare_post
 
 pytestmark = pytest.mark.django_db
 
@@ -120,7 +120,7 @@ def make_pending(world, area_key):
     from apps.posts.models import Category, Post
 
     target = world.ref(area_key)
-    return Post.objects.create(
+    return make_bare_post(
         author=world.users["pm_nidamanuru"], posted_as_role="PANCHAYAT_MEMBER", posted_as_level="VILLAGE",
         posted_as_area_id=world.ref("nidamanuru").id, category=Category.objects.get(key="announce"),
         title=area_key, body="b", target_level=target.level, target_area_id=target.id, status="PENDING",

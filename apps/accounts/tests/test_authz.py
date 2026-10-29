@@ -16,7 +16,7 @@ from apps.accounts.models import RoleAssignment, RoleGroup, User
 from apps.accounts.role_matrix import ROLE_GROUPS
 from apps.accounts.roles import Role
 from apps.geography.areas import AreaRef, area_is_within, within_q
-from conftest import PARENT, assign, inside
+from conftest import PARENT, assign, inside, make_bare_post
 
 pytestmark = pytest.mark.django_db
 
@@ -316,7 +316,7 @@ def test_post_list_queries_do_not_grow_with_the_page(api, world, extra, django_a
     category = Category.objects.first()
     for index in range(extra):
         target = world.ref(["kolakaluru", "nandivelugu", "kaza", "chinakakani"][index % 4])
-        Post.objects.create(
+        make_bare_post(
             author=world.users["pm_kolakaluru"], posted_as_role="PANCHAYAT_MEMBER",
             posted_as_level="VILLAGE", posted_as_area_id=world.ref("kolakaluru").id, category=category,
             title=f"Post {index}", body="b", target_level=target.level, target_area_id=target.id, status="PENDING",

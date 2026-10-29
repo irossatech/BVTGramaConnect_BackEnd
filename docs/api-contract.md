@@ -246,6 +246,7 @@ Returned by `GET /me/`, inside the app login response and inside the console ses
   "translation": null,
   "target_level": "VILLAGE",
   "target_area": Area,
+  "targets": [Area, …],
   "event": {"kind": "meeting", "start_date": "2026-10-20", "end_date": null},
   "is_urgent": false,
   "media": [Media],
@@ -262,6 +263,7 @@ Returned by `GET /me/`, inside the app login response and inside the console ses
 }
 ```
 - `translation`: `null`, or the published post in its other language (section 1, "Language").
+- `targets`: every area the post is for, each `{"level", "id", "name", "path"}` like `target_area`, in the order chosen. `target_level` and `target_area` are the first of them. A client that finds `targets` in a response knows the server takes many areas in one post.
 - `event`: `null` or `{"kind", "start_date", "end_date"}`. `kind` is one of `deadline`, `camp`, `distribution`, `closure`, `meeting`; dates are `YYYY-MM-DD`; `end_date` is `null` for one-day events and never before `start_date` (owner decision Q7).
 - `is_urgent`: set by admins; urgent posts are pinned in the app and their push goes out at high priority (owner decision Q19).
 - `posted_as` is the role assignment the author used, so admin posts show under the official role, as the website FAQ promises.
@@ -447,21 +449,29 @@ A disabled category disappears from the compose form and from feed filters. Its 
 | Method and path | Who | Request | Response |
 |---|---|---|---|
 | `GET /posts` | officials | Query: `status` (comma list), `mine=1`, `author`, `category`, `district`, `level` + `area_id`, `target_level`, `escalated=1`, `q` (title and body), `page` | Page of `Post`, plus `"status_counts": {"ALL": 15, "PENDING": 5, …}` over the same filters except `status`. `ALL` excludes drafts. |
-| `POST /posts` | posting roles | `{"category": "announce", "language": "te", "title", "body", "target": {"level", "id"}, "event"?: {"kind", "start_date", "end_date"?}, "is_urgent"?: false, "submit": true}` | `201 Post` |
+| `POST /posts` | posting roles | `{"category": "announce", "language": "te", "title", "body", "targets": [{"level", "id"}, …], "event"?: {"kind", "start_date", "end_date"?}, "is_urgent"?: false, "submit": true}`. Older clients send one `"target": {"level", "id"}` instead; `targets` wins when both come. | `201 Post`, with `targets` |
 | `GET /posts/{id}` | officials | — | `Post` |
-| `PATCH /posts/{id}` | author | same fields as create, all optional | `Post`. Only in `DRAFT` or `RECHECK`. |
+| `PATCH /posts/{id}` | author | same fields as create, all optional; `targets` replaces every area | `Post`. Only in `DRAFT` or `RECHECK`. |
 | `DELETE /posts/{id}` | author | — | `204`. Only in `DRAFT`. |
 | `POST /posts/{id}/submit` | author | — | `Post`. `DRAFT` to `PENDING` (action `SUBMIT`), or `RECHECK` to `PENDING` (action `RESUBMIT`). |
 | `GET /posts/{id}/history` | officials | — | `[ReviewAction]`, newest first |
-| `GET /posts/targets/` | posting roles | — | The "Visible to" choices for this official (below) |
+| `GET /posts/targets/` | posting roles | — | Suggested areas around this official's own (below). Since 2026-10-28 any area may be chosen; the app's picker reads `geo/*` instead. |
 | `POST /posts/{id}/urgent/` | reviewers whose area contains the post | `{"is_urgent": true\|false}` | `Post`. Panchayat members: `403 permission_denied`; outside the area: `404`. Audited as `post.urgent_set` or `post.urgent_cleared`. |
 
 What `POST /posts` does:
 - `submit` defaults to `true`, so the prototype flow, which has no draft step, works unchanged. With `submit: false` the post stays `DRAFT` (Pending Q4).
-- Panchayat members post only to their own village. The post goes to `PENDING`.
-- District, Mandal and Village Admins post to their own area or any area inside it. With `ADMIN_POSTS_AUTO_PUBLISH=True` the post goes straight to `PUBLISHED` with action `AUTO_PUBLISH`. Otherwise it goes to `PENDING` and someone else must review it; nobody reviews their own post.
+- **Who will see it (owner decision of 2026-10-28, replacing Q5's "up to your own level, one target"):** every poster chooses **Everyone** (`[{"level": "STATE", "id": <state id>}]`) or **any districts, mandals and villages anywhere**, in any mix, in one post. There is no `out_of_area` for posting any more.
+  - 1 to `POST_MAX_TARGETS` (200) areas. Each must exist and be active (and its parents too), else `400 validation_error` with `fields.targets`, and nothing is saved. More than 200: the same `400`.
+  - The server drops duplicates and any area inside another chosen one (a village inside a chosen district adds nothing; Everyone with anything else is Everyone). It never merges children into their parent: two villages stay two villages, even when they are a whole mandal.
+  - The order is kept; the first area is also `target_level` and `target_area`, for older readers.
+- Panchayat members' posts go to `PENDING`, wherever they go.
+- District, Mandal and Village Admins' posts go straight to `PUBLISHED` (action `AUTO_PUBLISH`) while `ADMIN_POSTS_AUTO_PUBLISH=True`, **wherever they go**: it depends on the poster's role, not the areas. So a Village Admin's post to Everyone is published statewide at once (the owner's choice). Otherwise it goes to `PENDING` and someone else must review it; nobody reviews their own post.
 - Super Admins may post only when `SUPER_ADMIN_CAN_POST=True`; otherwise `403 permission_denied`.
-- **Visibility (owner decision Q5):** the author picks "Visible to" (village, mandal, district or state) and one area at that level, up to their own level. Panchayat members and Village Admins: their village. Mandal Admins: their mandal or a village in it. District Admins: their district, a mandal or a village in it. State: Super Admins only, and only with `SUPER_ADMIN_CAN_POST`. Anything wider answers `403 out_of_area`. One target per post.
+- **Review:** a pending post is in the queue of, and may be decided by, every admin whose area contains **any** of its areas (the admins of that area and the areas above it), and the Super Admin. A post to Everyone is therefore reviewed by Super Admins only. The first decision counts for the whole post; a second reviewer gets `409 already_decided`.
+- **Alerts:** the admins over each area get one `REVIEW_PENDING` inbox item and push each. Super Admins are alerted only for a post to Everyone (otherwise they see the queue).
+- **Escalation** climbs from the post's lowest area (village, then mandal, then district, then state). Each area is alerted on its own ladder: a post for [village V, district D] first alerts V's Mandal Admins and, for D, the state; next V's District Admins; then the state.
+- **Pushes to citizens:** one job pushes to the topic of each area; a phone hears it once.
+- Lists, stats and reports filter and count by **any** area: a post for three villages counts once in each village (and in each mandal and district they reach), and once in totals.
 - `event` and `is_urgent` are optional on create and `PATCH`. Only admins may set `is_urgent: true`; from a Panchayat member it answers `403 permission_denied`.
 
 `GET /posts/targets/` answers, for example for a District Admin of Guntur:
@@ -551,6 +561,7 @@ No login. These views ignore any `Authorization` header, so a stale token on a c
   "body": "…",
   "translation": {"language": "en", "title": "Gram Sabha meeting – 20 October", "body": "…", "machine": true},
   "area": {"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు"},
+  "targets": [{"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు", "path": "కొలకలూరు · తెనాలి · గుంటూరు"}],
   "published_at": "2026-10-14T10:32:00+05:30",
   "thumbnail_url": "/media/posts/2026/10/…-320.webp",
   "image_url": "/media/posts/2026/10/…-1280.webp",
@@ -562,6 +573,7 @@ No login. These views ignore any `Authorization` header, so a stale token on a c
 }
 ```
 - `translation`: `null`, or the post in its other language (section 1, "Language"); new on 2026-10-28, so older clients ignore it.
+- `targets`: every area the post is for (section 3, "Posts"); `area` is the first of them. New on 2026-10-28.
 - `event` and `is_urgent` as on Post. `video`: `null`, or for a video post `{"url", "poster_url", "duration_s"}`, so the reels screen needs no extra call; `thumbnail_url` is then the poster's thumbnail.
 - The list carries the full `body`, not an excerpt. The app's news deck shows the body on the card, and one larger page costs less on 2G than a request per card.
 - `thumbnail_url` is the first photo's 320 px WebP, or `null`. URLs are relative to the server.
@@ -572,7 +584,7 @@ No login. These views ignore any `Authorization` header, so a stale token on a c
 
 Caching: every feed response sends `Cache-Control: public, max-age=60` and an `ETag`; a repeat request with `If-None-Match` gets `304` with an empty body.
 
-Feed rule: published posts whose target is the village, its mandal, its district or its state. The mobile prototype also shows other districts' district-level posts; that is a prototype bug and is not followed. Ordering is `published_at` then `id`, both descending; the composite index `(status, target_level, target_area_id, published_at)` on posts serves it.
+Feed rule: published posts with **any** area that is the village, its mandal, its district or its state (one row per post, however many areas match). The mobile prototype also shows other districts' district-level posts; that is a prototype bug and is not followed. Ordering is `published_at` then `id`, both descending; the composite index `(status, target_level, target_area_id, published_at)` on posts serves it.
 
 ---
 
@@ -961,7 +973,7 @@ Built (`apps.citizens`). A citizen posts news or an issue for the village chosen
 | `POST /citizen/register/` | `{"nonce", "integrity_token", "platform": "android", "village_id", "app_version"?, "android_id"?, "fcm_token"?, "language"?}`. `android_id` is Android's `Settings.Secure.ANDROID_ID` (stored only as a keyed hash; it links reinstalls of the same phone, so a block and the daily limit survive them). `fcm_token` lets the server push the decision on each post (CP4). `language` `te` (default) or `en`, for those pushes. | `201 {"token": "…", "device": CitizenDevice}`. `400 validation_error` (expired or reused nonce: `fields.nonce`; unknown or inactive village: `fields.village_id`); `403 integrity_failed` (Google's verdict is not genuine). No limit on registrations by default; only if `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY` is set: `429 throttled` with `retry_after_s` after that many from one IP address in 24 hours. |
 | `GET /citizen/me/` | token | `CitizenDevice` |
 | `PATCH /citizen/me/` | token; any of `{"village_id", "fcm_token", "language"}` | `CitizenDevice`. The village posts go to; a new FCM token when Firebase rotates it; the language of pushes. |
-| `POST /citizen/posts/` | token; multipart `category`, `language`, `title`, `body`, `photos` and `videos` (any number of each, together or alone; repeat the field per file) | `201 CitizenPost`, already `PENDING`. `400 validation_error`; `400 video_too_long`; `403 citizen_blocked` with `reason` and `blocked_until` (show both to the citizen); `403 permission_denied` for videos while `VIDEO_POSTS_ENABLED` is off; `413 file_too_large` (a photo over `MAX_IMAGE_UPLOAD_MB`, a video over `MAX_VIDEO_UPLOAD_MB`); `415 unsupported_media`; `429 throttled` with `retry_after_s` after the daily limit (5 posts per phone in 24 hours by default, all installs of the phone together; the Super Admin changes it in Settings). One bad file refuses the whole post and stores nothing. |
+| `POST /citizen/posts/` | token; multipart `category`, `language`, `title`, `body`, `photos` and `videos` (any number of each, together or alone; repeat the field per file), and optional `targets`: a JSON string such as `[{"level":"DISTRICT","id":16},{"level":"VILLAGE","id":3226}]`, the same rules as officials' `targets` (section 3, "Posts"). Without it the post is for the phone's village. `CITIZEN_CAN_TARGET_STATE` (on) and `CITIZEN_MAX_TARGETS` (0: as officials) can narrow what citizens choose; a refusal is `400 fields.targets` with a message to show. | `201 CitizenPost`, already `PENDING`, in the queue of the admins over each chosen area. `400 validation_error`; `400 video_too_long`; `403 citizen_blocked` with `reason` and `blocked_until` (show both to the citizen); `403 permission_denied` for videos while `VIDEO_POSTS_ENABLED` is off; `413 file_too_large` (a photo over `MAX_IMAGE_UPLOAD_MB`, a video over `MAX_VIDEO_UPLOAD_MB`); `415 unsupported_media`; `429 throttled` with `retry_after_s` after the daily limit (5 posts per phone in 24 hours by default, all installs of the phone together; the Super Admin changes it in Settings). One bad file refuses the whole post and stores nothing. |
 | `GET /citizen/posts/` | token | `[CitizenPost]`, this phone's posts, newest first, at most 50 |
 
 Every citizen endpoint answers `401 citizen_token_invalid` without a valid token. A blocked phone can still read `GET /citizen/me/` and its posts, but cannot post.
@@ -983,7 +995,8 @@ Every citizen endpoint answers `401 citizen_token_invalid` without a valid token
 {"id": "c2d4…", "status": "PENDING", "category": "news", "language": "te",
  "title": "…", "body": "…",
  "translation": null,     // once published: the post in its other language (section 1, "Language")
- "area": {"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు"},
+ "area": {"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు"},   // the phone's village it was sent from
+ "targets": [{"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు", "path": "కొలకలూరు · తెనాలి · గుంటూరు"}],   // who will see it
  "photos": [{"url": "/media/…-1280.webp", "thumb_url": "/media/…-320.webp"}],
  "videos": [{"url": "/media/….mp4", "poster_url": "/media/…-poster-1280.webp",
              "thumb_url": "/media/…-poster-320.webp", "duration_s": 42}],   // duration_s null when unknown

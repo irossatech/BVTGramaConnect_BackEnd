@@ -341,22 +341,16 @@ def test_removing_the_video_deletes_every_file(api, world, make_post, ffmpeg, me
 # --- "Visible to" (Q5) ------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "author, target, expected",
-    [
-        ("da_guntur", "ap", 403), ("da_guntur", "guntur", 201), ("da_guntur", "mangalagiri", 201), ("da_guntur", "kaza", 201),
-        ("ma_tenali", "guntur", 403), ("ma_tenali", "tenali", 201), ("ma_tenali", "nandivelugu", 201), ("ma_tenali", "kaza", 403),
-        ("va_kolakaluru", "tenali", 403), ("va_kolakaluru", "kolakaluru", 201), ("va_kolakaluru", "nandivelugu", 403),
-        ("pm_kolakaluru", "tenali", 403), ("pm_kolakaluru", "kolakaluru", 201), ("pm_kolakaluru", "ap", 403),
-    ],
-)
-def test_visibility_up_to_your_own_level(api, world, author, target, expected):
+@pytest.mark.parametrize("author", ["da_guntur", "ma_tenali", "va_kolakaluru", "pm_kolakaluru"])
+@pytest.mark.parametrize("target", ["ap", "guntur", "krishna", "tenali", "kaza", "nidamanuru"])
+def test_anyone_who_posts_may_post_to_any_area(api, world, author, target):
+    """Changed by the owner on 2026-10-28: Everyone, or any district, mandal or village, from any role that posts."""
     response = api(world.users[author]).post(POSTS, body(world, target), format="json")
-    assert response.status_code == expected, response.json()
+    assert response.status_code == 201, response.json()
 
 
 @pytest.mark.parametrize("allowed, expected", [(True, 201), (False, 403)])
-def test_only_the_super_admin_posts_to_the_state(api, world, super_admin_can_post, allowed, expected):
+def test_the_super_admin_posts_only_while_allowed(api, world, super_admin_can_post, allowed, expected):
     super_admin_can_post(allowed)
     assert api(world.users["super"]).post(POSTS, body(world, "ap"), format="json").status_code == expected
 

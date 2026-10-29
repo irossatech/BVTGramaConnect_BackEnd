@@ -62,25 +62,33 @@ def test_admin_posts_wait_for_review_when_auto_publish_is_off(settings, make_pos
 
 
 @pytest.mark.parametrize(
-    "author, target, expected",
+    "author, target, status",
     [
-        ("pm_kolakaluru", "nandivelugu", "out_of_area"),
-        ("pm_kolakaluru", "tenali", "out_of_area"),
-        ("va_kolakaluru", "nandivelugu", "out_of_area"),
-        ("va_kolakaluru", "tenali", "out_of_area"),
-        ("ma_tenali", "kaza", "out_of_area"),
-        ("da_guntur", "gannavaram", "out_of_area"),
-        ("super", "kolakaluru", "permission_denied"),
+        ("pm_kolakaluru", "nandivelugu", PostStatus.PENDING),
+        ("pm_kolakaluru", "tenali", PostStatus.PENDING),
+        ("va_kolakaluru", "nandivelugu", PostStatus.PUBLISHED),  # admins publish at once wherever the post goes
+        ("ma_tenali", "kaza", PostStatus.PUBLISHED),
+        ("da_guntur", "gannavaram", PostStatus.PUBLISHED),
     ],
 )
-def test_posting_outside_your_area_is_refused(api, world, author, target, expected):
+def test_posting_outside_your_area_is_allowed_and_review_does_not_change(api, world, author, target, status):
+    """Owner decision of 2026-10-28: any area; whether it waits depends on the poster, not the area."""
     response = api(world.users[author]).post(
         "/api/v1/posts/",
         {"category": "news", "title": "T", "body": "B", "target": world.area_json(target)},
         format="json",
     )
-    assert response.status_code == 403
-    assert code(response) == expected
+    assert response.status_code == 201, response.json()
+    assert response.json()["status"] == status
+
+
+def test_a_role_that_cannot_post_is_refused(api, world):
+    response = api(world.users["super"]).post(
+        "/api/v1/posts/",
+        {"category": "news", "title": "T", "body": "B", "target": world.area_json("kolakaluru")},
+        format="json",
+    )
+    assert response.status_code == 403 and code(response) == "permission_denied"
     assert not Post.objects.exists()
 
 

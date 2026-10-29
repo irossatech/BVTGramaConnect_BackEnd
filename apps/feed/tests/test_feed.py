@@ -69,7 +69,7 @@ def test_slim_shape_with_thumbnail(world, make_post):
     rows = feed(world).json()["results"]
     first, second = rows
     assert set(first) == {
-        "id", "category", "language", "title", "body", "translation", "area", "published_at",
+        "id", "category", "language", "title", "body", "translation", "area", "targets", "published_at",
         "thumbnail_url", "image_url", "media_count", "source_role", "event", "is_urgent", "video",
     }
     assert first["event"] is None and first["is_urgent"] is False and first["video"] is None

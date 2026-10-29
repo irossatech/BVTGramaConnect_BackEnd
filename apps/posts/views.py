@@ -49,7 +49,7 @@ from .serializers import (
 
 def post_queryset(queryset):
     return queryset.select_related("author", "citizen", "category", "decided_by").prefetch_related(
-        "media", "translations", Prefetch("review_actions", queryset=ReviewAction.objects.select_related("actor"))
+        "media", "translations", "targets", Prefetch("review_actions", queryset=ReviewAction.objects.select_related("actor"))
     )
 
 
@@ -149,7 +149,7 @@ def area_filter(request, queryset):
     if level or area_id:
         if level not in AreaLevel.values or not (area_id or "").isdigit():
             raise ApiError("validation_error", _("Give both level and area_id."), fields={"area_id": [_("Required with level.")]})
-        queryset = queryset.filter(within_q(AreaRef(level, int(area_id)), level_field="target_level", id_field="target_area_id"))
+        queryset = queryset.filter(services.targets_within(AreaRef(level, int(area_id))))
     return queryset
 
 
@@ -178,7 +178,7 @@ class PostViewSet(viewsets.GenericViewSet):
         if params.get("category"):
             queryset = queryset.filter(category__key=params["category"])
         if params.get("target_level"):
-            queryset = queryset.filter(target_level=params["target_level"])
+            queryset = queryset.filter(services.targets_match(Q(area_level=params["target_level"])))
         if params.get("escalated") in ("1", "true", "True"):
             queryset = queryset.filter(status=PostStatus.PENDING, escalated_at__isnull=False)
         query = params.get("q", "").strip()
@@ -217,7 +217,7 @@ class PostViewSet(viewsets.GenericViewSet):
             request.user,
             services.PostInput(
                 category=values["category"], language=values["language"], title=values["title"],
-                body=values["body"], target=values["target"],
+                body=values["body"], target=values.get("target"), targets=values.get("targets"),
                 event=values.get("event"), is_urgent=values["is_urgent"],
             ),
             submit=values["submit"],
@@ -396,8 +396,7 @@ class StatsView(APIView):
         else:
             area = authz.best_grant(request.user, perm).area
         global_view = area.level == AreaLevel.STATE and authz.can(request.user, perm, PLATFORM)
-        target_q = Q() if global_view else within_q(area, level_field="target_level", id_field="target_area_id")
-        posts = Post.objects.filter(target_q)
+        posts = Post.objects.all() if global_view else Post.objects.filter(services.targets_within(area))
         today = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
         assignment_q = Q() if global_view else within_q(area)
         users = User.objects.filter(id__in=RoleAssignment.objects.filter(assignment_q).values("user_id"))

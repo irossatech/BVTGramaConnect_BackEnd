@@ -10,13 +10,17 @@ from rest_framework import serializers
 
 from apps.geography.areas import AreaDescriber
 from apps.posts.models import MediaKind
-from apps.posts.serializers import EventSerializer, TranslationSerializer, translation_of
+from apps.posts.serializers import EventSerializer, TranslationSerializer, describe_targets, translation_of
 
 
 class AreaSlimSerializer(serializers.Serializer):
     level = serializers.CharField()
     id = serializers.IntegerField()
     name = serializers.CharField()
+
+
+class AreaTargetSerializer(AreaSlimSerializer):
+    path = serializers.CharField()
 
 
 class FeedVideoSerializer(serializers.Serializer):
@@ -53,6 +57,7 @@ class FeedItemSerializer(serializers.Serializer):
     body = serializers.CharField()
     translation = serializers.SerializerMethodField()
     area = serializers.SerializerMethodField()
+    targets = serializers.SerializerMethodField()
     published_at = serializers.DateTimeField()
     thumbnail_url = serializers.SerializerMethodField()
     image_url = serializers.SerializerMethodField()
@@ -71,6 +76,10 @@ class FeedItemSerializer(serializers.Serializer):
     @extend_schema_field(TranslationSerializer(allow_null=True))
     def get_translation(self, obj):
         return translation_of(obj)
+
+    @extend_schema_field(AreaTargetSerializer(many=True))
+    def get_targets(self, obj):
+        return describe_targets(self._describer(), obj)
 
     @extend_schema_field(AreaSlimSerializer)
     def get_area(self, obj):

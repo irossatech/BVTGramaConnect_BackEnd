@@ -26,7 +26,7 @@ from django_q.tasks import async_task
 
 from apps.accounts import authz
 from apps.accounts.models import User
-from apps.geography.areas import AreaDescriber, AreaRef, ancestry
+from apps.geography.areas import DEPTH, AreaDescriber, AreaRef, ancestries, ancestry
 from apps.geography.models import AreaLevel
 
 from .models import Notification, NotificationKind, NotificationTemplate
@@ -36,6 +36,8 @@ from .templates_data import BY_KEY
 logger = logging.getLogger("grama.notifications")
 
 REVIEW = "posts.review_post"
+NEXT_LEVEL_UP = {AreaLevel.VILLAGE: AreaLevel.MANDAL, AreaLevel.MANDAL: AreaLevel.DISTRICT,
+                 AreaLevel.DISTRICT: AreaLevel.STATE, AreaLevel.STATE: None}
 
 
 class _Blank(dict):
@@ -66,8 +68,30 @@ def admins_over(post_target, *, levels=None, include_super_admins=False):
     return users.distinct()
 
 
+def admins_over_targets(at: dict[AreaRef, set[str] | None], *, include_super_admins=False):
+    """admins_over() for many areas at once: {area: levels or None for all} -> one user query.
+
+    Ancestry is loaded with one query per level, so a post for 200 areas costs the same as one.
+    """
+    chains = ancestries(at)
+    areas = {
+        AreaRef(level, area_id)
+        for ref, levels in at.items()
+        for level, area_id in chains[ref].items()
+        if levels is None or level in levels
+    }
+    users = authz.holders(REVIEW, areas, platform_wide=False) if areas else User.objects.none()
+    if include_super_admins:
+        users = users | authz.holders(REVIEW, platform_wide=True)
+    return users.distinct()
+
+
 def reviewers_for(post):
-    return admins_over(post.target).exclude(pk=post.author_id)
+    """The admins over any of the post's areas. The Super Admin sees the queue instead of a ping, except
+    for a post to Everyone, which only platform-wide reviewers can review."""
+    refs = post.target_refs
+    everyone = any(ref.level == AreaLevel.STATE for ref in refs)
+    return admins_over_targets(dict.fromkeys(refs), include_super_admins=everyone).exclude(pk=post.author_id)
 
 
 def _values(post, language: str, **extra) -> dict:
@@ -119,14 +143,16 @@ def notify_users(users, *, post, kind: str, template_key: str, **extra) -> list[
 
 
 def announce_to_citizens(post) -> None:
-    """Queue one topic push for the post's target area, in the post's language.
+    """Queue one job that pushes to the topic of each of the post's areas, in the post's language.
 
-    Urgent posts go out at high priority, everything else at normal (owner decision Q19).
+    A phone hears it once: its app follows its village's, mandal's, district's and state's topics,
+    and a post never has two areas where one contains the other. Urgent posts go out at high
+    priority, everything else at normal (owner decision Q19).
     """
     title = render("post_published", post.language, **_values(post, post.language))
     async_task(
-        "apps.notifications.tasks.send_push_to_topic",
-        topic_for(post.target_level, post.target_area_id),
+        "apps.notifications.tasks.send_push_to_topics",
+        [topic_for(ref.level, ref.id) for ref in post.target_refs],
         title[:255],
         post.title,
         _push_data(post, NotificationKind.POST_PUBLISHED),
@@ -272,11 +298,28 @@ def tell_citizen_service_request(request) -> bool:
     return True
 
 
+def escalation_levels(refs: list[AreaRef], level: str) -> dict[AreaRef, str]:
+    """Which level to alert for each of a post's areas when the post climbs to `level`.
+
+    The post climbs from its lowest area. An area whose ladder has `level` above it is alerted
+    there. One already above `level` (a district while the post's villages reach the mandals) is
+    alerted once, at its own next level up, on the first escalation only.
+    """
+    lowest = max((ref.level for ref in refs), key=lambda lv: DEPTH[lv])
+    first = level == NEXT_LEVEL_UP.get(lowest)
+    alerts = {}
+    for ref in refs:
+        if DEPTH[ref.level] > DEPTH[level]:
+            alerts[ref] = level
+        elif first and NEXT_LEVEL_UP.get(ref.level):
+            alerts[ref] = NEXT_LEVEL_UP[ref.level]
+    return alerts
+
+
 def alert_escalation(post, level: str, hours: int) -> list[Notification]:
-    if level == AreaLevel.STATE:
-        users = admins_over(post.target, levels=set(), include_super_admins=True)
-    else:
-        users = admins_over(post.target, levels={level})
+    alerts = escalation_levels(post.target_refs, level)
+    below_state = {ref: {lv} for ref, lv in alerts.items() if lv != AreaLevel.STATE}
+    users = admins_over_targets(below_state, include_super_admins=AreaLevel.STATE in alerts.values())
     return notify_users(
         users.exclude(pk=post.author_id),
         post=post,

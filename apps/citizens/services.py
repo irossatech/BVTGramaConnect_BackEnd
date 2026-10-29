@@ -242,7 +242,7 @@ def posts_today(device: CitizenDevice, now=None):
 
 
 def create_post(
-    device: CitizenDevice, *, category, language: str, title: str, body: str, photos=(), videos=()
+    device: CitizenDevice, *, category, language: str, title: str, body: str, photos=(), videos=(), targets=None
 ) -> Post:
     """Checks, then posts.services.create_citizen_post with the photos and videos attached in its transaction.
 
@@ -278,7 +278,7 @@ def create_post(
 
     data = post_services.PostInput(
         category=category, language=language, title=title, body=body,
-        target=AreaRef(AreaLevel.VILLAGE, device.village_id),
+        target=AreaRef(AreaLevel.VILLAGE, device.village_id), targets=targets,
     )
     return post_services.create_citizen_post(device, data, attach=attach)
 

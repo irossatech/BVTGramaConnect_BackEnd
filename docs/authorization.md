@@ -236,6 +236,8 @@ Rank 0 is the highest. The groups, their levels, ranks and permissions are writt
 Rules on top of the table:
 
 - **Posting.** A Panchayat Member's post waits for review because they lack `posts.publish_post`. An admin's own post publishes at once when `ADMIN_POSTS_AUTO_PUBLISH` is on. The Super Admin posts only while `SUPER_ADMIN_CAN_POST` is true. The sync command and every request both check that setting.
+- **Posting goes anywhere (owner decision of 2026-10-28).** `posts.create_post` and `posts.submit_post` are the one exception to area scoping: whoever holds them in any area may post to Everyone or to any districts, mandals and villages. The post goes out under the role that covers its first area, else the poster's highest role, and that role alone decides whether it publishes at once. Citizens choose areas the same way (contract section 15).
+- **Reviewing a post for several areas.** Every other post permission (review, publish, recheck, discard, take down, reverse, urgent, block the citizen) is checked over each of the post's areas, and holding it over **any** one is enough. So the admins of every chosen area review it, and a post to Everyone only the Super Admin. The first decision counts for the whole post.
 - **Reversing a decision** needs `posts.reverse_decision` and a group ranked strictly above the one that decided.
 - **First decision wins.** A second reviewer gets `409 already_decided`.
 - **User actions** need the permission over the user's area and a group ranked strictly below the admin's own. This covers assigning, reassigning, removing, blocking, resetting and unlocking. An admin can never give a group at or above their own rank.

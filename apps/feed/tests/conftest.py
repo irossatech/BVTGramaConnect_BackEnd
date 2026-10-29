@@ -3,7 +3,7 @@ from datetime import timedelta
 import pytest
 from django.utils import timezone
 
-from conftest import OFFICIALS
+from conftest import OFFICIALS, make_bare_post
 from apps.posts.models import Category, Post, PostMedia, PostStatus
 
 
@@ -18,7 +18,7 @@ def make_post(world):
         role, author_area = OFFICIALS[author]
         target = world.ref(area_key)
         when = timezone.now() - timedelta(minutes=minutes_ago)
-        post = Post.objects.create(
+        post = make_bare_post(
             author=world.users[author],
             posted_as_role=role,
             posted_as_level=world.ref(author_area).level,
