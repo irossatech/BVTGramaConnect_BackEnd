@@ -5,7 +5,10 @@ Django's default engine.
 """
 
 from .dev import *  # noqa: F403
-from .dev import BASE_DIR, Q_CLUSTER
+from .dev import BASE_DIR, Q_CLUSTER, SQLITE_DATABASE
+
+# Always SQLite, even where .env sets DATABASE_URL for runserver (the qa server's MySQL).
+DATABASES = {"default": SQLITE_DATABASE}
 
 # Fast hashing for tests; production uses Argon2 (base.py).
 PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
