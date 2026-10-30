@@ -2,7 +2,7 @@
 
 `docs/api-contract.md` in this repo is the single source of truth for every endpoint, object, error code and permission rule. Read the section you need; do not copy it elsewhere.
 
-The live schema is at `/api/schema/` and Swagger UI at `/api/docs/` on any running server.
+The live schema is at `/api/schema/` and Swagger UI at `/api/docs/`: open on laptops and the qa server, console users only in production (`API_DOCS_PUBLIC`).
 
 ## Changing the API
 

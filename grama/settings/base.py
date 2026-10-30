@@ -168,6 +168,11 @@ AXES_ENABLE_ACCESS_FAILURE_LOG = True
 LOGIN_IP_MAX_FAILURES = env.int("LOGIN_IP_MAX_FAILURES", default=50)
 LOGIN_IP_WINDOW_MINUTES = env.int("LOGIN_IP_WINDOW_MINUTES", default=60)
 
+# "Change password" with a wrong current password: this many within the window end every session
+# of the user (apps/accounts/credentials.py), so guessing needs a real login, where the lockout applies.
+PASSWORD_CHANGE_MAX_FAILURES = env.int("PASSWORD_CHANGE_MAX_FAILURES", default=5)
+PASSWORD_CHANGE_WINDOW_MINUTES = env.int("PASSWORD_CHANGE_WINDOW_MINUTES", default=15)
+
 # Web console sessions: HttpOnly cookie, CSRF token, ended after this much idle time.
 CONSOLE_SESSION_IDLE_MINUTES = env.int("CONSOLE_SESSION_IDLE_MINUTES", default=30)
 SESSION_COOKIE_AGE = CONSOLE_SESSION_IDLE_MINUTES * 60
@@ -259,11 +264,15 @@ SIMPLE_JWT = {
     "USER_ID_CLAIM": "user_id",
 }
 
+API_DOCS_PUBLIC = False
+
 SPECTACULAR_SETTINGS = {
     "TITLE": "BVT Grama Connect API",
     "DESCRIPTION": "Village news platform for Andhra Pradesh. Contract: docs/api-contract.md.",
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
+    # /api/schema/ and /api/docs/: console users only unless API_DOCS_PUBLIC (dev.py turns it on).
+    "SERVE_PERMISSIONS": ["apps.accounts.permissions.CanReadApiDocs"],
     "COMPONENT_SPLIT_REQUEST": True,
     "SCHEMA_PATH_PREFIX": r"/api/v[0-9]+",
 }

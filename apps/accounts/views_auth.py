@@ -31,7 +31,7 @@ from grama.exceptions import ApiError
 
 from . import authz
 from .authentication import CONSOLE_PERMISSION, came_from_console, not_console_user
-from .credentials import authenticate_official, check_new_password, invalid_credentials, refuse
+from .credentials import authenticate_official, check_new_password, refuse, wrong_current_password
 from .lockout import SESSION_TOKEN_VERSION
 from .serializers import (
     LoginResponseSerializer,
@@ -174,14 +174,15 @@ class PasswordChangeView(APIView):
         user = request.user
         current = data.validated_data["current_password"]
         new = data.validated_data["new_password"]
+        console = came_from_console(request)
         if not user.check_password(current):
-            raise invalid_credentials()
+            # Audited and counted; after too many the error is session_revoked (credentials.py).
+            raise wrong_current_password(user, via="console" if console else "app")
         check_new_password(new, user, field="new_password")
         if new == current:
             message = _("Choose a password different from the current one.")
             raise ApiError("validation_error", message, fields={"new_password": [message]})
 
-        console = came_from_console(request)
         with transaction.atomic():
             user.set_password(new)
             user.must_change_password = False

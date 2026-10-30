@@ -1,6 +1,5 @@
 """Audit log API for Super Admins: list with filters, CSV export. Contract section 8."""
 
-import csv
 import io
 import json
 from datetime import datetime, time
@@ -19,6 +18,7 @@ from rest_framework.views import APIView
 
 from apps.accounts.serializers import describer_from
 from apps.geography.areas import AreaRef
+from grama.csvsafe import safe_writer
 from grama.exceptions import ApiError
 from grama.renderers import JSONRenderer
 from apps.accounts import authz
@@ -142,6 +142,19 @@ class CSVRenderer(BaseRenderer):
         return data
 
 
+#: Filters whose values hold no personal data; they are kept in the export's audit entry.
+PLAIN_FILTERS = ("type", "actor", "action", "from", "to", "format")
+
+
+def export_filters(params) -> dict:
+    """What the export was filtered by. A search text (q) can be an email or mobile number, and the
+    audit log is never cleaned, so only the fact that one was given is kept, never its value."""
+    filters = {name: params.get(name) for name in PLAIN_FILTERS if params.get(name)}
+    if params.get("q"):
+        filters["q"] = "(given)"
+    return filters
+
+
 class AuditExportView(APIView):
     permission_classes = [IsAuthenticated, HasPerm(EXPORT, message="Only Super Admins can download the audit log.")]
     renderer_classes = [JSONRenderer, CSVRenderer]
@@ -152,7 +165,7 @@ class AuditExportView(APIView):
             raise ApiError("validation_error", _("Only CSV export is available."), fields={"format": ["csv"]})
         rows = in_reach(request, filtered(request), EXPORT).order_by("-created_at")[:50000]
         buffer = io.StringIO()
-        writer = csv.writer(buffer)
+        writer = safe_writer(buffer)  # names and titles never run as spreadsheet formulas
         writer.writerow(["time", "user", "role", "action", "type", "target", "area_level", "area_id", "via"])
         for entry in rows:
             writer.writerow([
@@ -160,7 +173,8 @@ class AuditExportView(APIView):
                 entry.actor_name or "System", entry.actor_role, entry.action, entry.type,
                 entry.target_label, entry.area_level, entry.area_id or "", entry.via,
             ])
-        record("report.exported", actor=request.user, via=client_via(request), data={"report": "audit", "filters": dict(request.query_params)})
+        record("report.exported", actor=request.user, via=client_via(request),
+               data={"report": "audit", "filters": export_filters(request.query_params)})
         response = HttpResponse("﻿" + buffer.getvalue(), content_type="text/csv; charset=utf-8")
         response["Content-Disposition"] = f'attachment; filename="audit-{timezone.localdate():%Y%m%d}.csv"'
         return response
