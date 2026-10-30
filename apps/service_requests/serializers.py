@@ -23,7 +23,7 @@ class ServiceSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Service
-        fields = ["key", "name_en", "name_te", "icon", "logo", "color", "is_active"]
+        fields = ["key", "name_en", "name_te", "hint_en", "hint_te", "icon", "logo", "color", "is_active"]
 
     def get_logo(self, obj) -> str | None:
         """Absolute URL of the uploaded logo, or null: then the app draws `icon`."""
@@ -43,6 +43,8 @@ class ServiceWriteSerializer(serializers.Serializer):
 
     name_en = serializers.CharField(max_length=60)
     name_te = serializers.CharField(max_length=60, required=False, allow_blank=True)
+    hint_en = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    hint_te = serializers.CharField(max_length=100, required=False, allow_blank=True)
     icon = serializers.ChoiceField(choices=ICONS, required=False)
     color = serializers.ChoiceField(choices=COLORS)
     is_active = serializers.BooleanField(required=False)
@@ -59,6 +61,12 @@ class ServiceWriteSerializer(serializers.Serializer):
         return value
 
     def validate_name_te(self, value):
+        return " ".join(value.split())
+
+    def validate_hint_en(self, value):
+        return " ".join(value.split())
+
+    def validate_hint_te(self, value):
         return " ".join(value.split())
 
 

@@ -1073,7 +1073,9 @@ Built (`apps.service_requests`), from the mobile and web team's plan of 2026-10-
 ### Service
 
 ```jsonc
-{"key": "aadhaar", "name_en": "Aadhaar Services", "name_te": "ఆధార్ సేవలు", "icon": "aadhaar",
+{"key": "aadhaar", "name_en": "Aadhaar Services", "name_te": "ఆధార్ సేవలు",
+ "hint_en": "e.g. update the address on my Aadhaar", "hint_te": "ఉదా: నా ఆధార్‌లో చిరునామా మార్చాలి",   // or ""
+ "icon": "aadhaar",
  "logo": "https://…/media/services/aadhaar-3fa9c2d1-256.webp",   // or null
  "color": "orange", "is_active": true}
 ```
@@ -1083,6 +1085,8 @@ Built (`apps.service_requests`), from the mobile and web team's plan of 2026-10-
 | `key` | Made by the server from `name_en` on create ("Ration Card" → `ration_card`; `_2`, `_3`… when taken). **Never changes**; requests refer to it. |
 | `name_en` | Required, 2–60 characters, spaces collapsed, unique in any case |
 | `name_te` | Optional, at most 60; the app shows `name_en` when empty |
+| `hint_en` | Optional, at most 100 characters, spaces collapsed. The grey example in the citizen's request box ("Your request for …"); `""` = the app shows its own. New on 2026-10-30; the 8 seeded services have `""`. |
+| `hint_te` | The same in Telugu; the app shows `hint_en` when empty. |
 | `icon` | One of `aadhaar`, `eci`, `id_badge`, `card`, `certificate`, `document`, `scheme`, `loan`, `land`, `farmer`, `house`, `ration`, `health`, `education`, `pension`, `women`, `job`, `water`, `power`, `police`, `help`, `services` (the app draws them). Optional; `services` when not given. |
 | `logo` | The logo the Super Admin uploaded, an absolute URL, or `null`. **The app shows the logo when there is one, else draws `icon`.** Uploaded as JPEG, PNG or WebP, at most 2 MB (`SERVICE_LOGO_MAX_UPLOAD_MB`) and at least 64 px on each side; the server re-encodes it as WebP with the longest side at most 256 px (shape and transparency kept, EXIF removed). The file name changes on every replacement, so a cached old logo is never shown. |
 | `color` | One of `orange`, `blue`, `green`, `purple`, `teal` |
