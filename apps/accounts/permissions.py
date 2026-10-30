@@ -68,3 +68,23 @@ class ManagesUsers(BasePermission):
         if not authz.assignable_roles(user):
             raise permission_denied(_("Your role cannot manage users."))
         return True
+
+class CanReadApiDocs(BasePermission):
+    """/api/schema/ and /api/docs/ (SPECTACULAR_SETTINGS["SERVE_PERMISSIONS"]).
+
+    Open while API_DOCS_PUBLIC is on (dev.py: laptops and the qa server, where the client teams
+    read Swagger). Otherwise, as in production, only console users: the schema maps every
+    endpoint, the admin ones included.
+    """
+
+    def has_permission(self, request, view):
+        from django.conf import settings
+
+        if settings.API_DOCS_PUBLIC:
+            return True
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False  # 401 not_authenticated
+        if not authz.can(user, "web_admin.access_web_console"):
+            raise permission_denied(_("Only Super Admins can read the API documentation here."))
+        return True

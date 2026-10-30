@@ -26,7 +26,7 @@ Contents:
 
 ### Base URL and format
 - Base path `/api/v1/`. Django serves it behind Nginx on the same origin as the website (`/`) and the console (`/console/`), so the web parts need no CORS. The mobile app calls the absolute URL.
-- OpenAPI schema: `GET /api/schema/`. Swagger UI: `/api/docs/`.
+- OpenAPI schema: `GET /api/schema/`. Swagger UI: `/api/docs/`. Open to everyone on laptops and the QA server (`API_DOCS_PUBLIC`); in production only for console users (a Super Admin's console session or token): anyone else gets `401` or `403`.
 - JSON in UTF-8 both ways. Telugu is sent as raw UTF-8, not `\u` escapes; a Telugu letter costs 3 bytes instead of 6, which matters on 2G. Nginx compresses JSON with gzip.
 - Field names are `snake_case`. Enum values are `UPPER_CASE`, except category keys and language codes.
 
@@ -327,7 +327,7 @@ Lean on purpose, for 2G.
 | `GET /auth/csrf/` | public | — | `200 {"detail": "ok"}` and the `csrftoken` cookie. Console. |
 | `POST /auth/session/login/` | public, `X-CSRFToken` | `{"username", "password"}` | `200 {"user": Me}` and the `sessionid` cookie. Console; needs `web_admin.access_web_console`. |
 | `POST /auth/session/logout/` | session, `X-CSRFToken` | — | `204`. The session is flushed. |
-| `POST /auth/password/change/` | bearer or session | `{"current_password", "new_password"}` | App: `200 {"access", "refresh"}`. Console: `200 {"user": Me}`, and the current session stays. Every other session and token ends. |
+| `POST /auth/password/change/` | bearer or session | `{"current_password", "new_password"}` | App: `200 {"access", "refresh"}`. Console: `200 {"user": Me}`, and the current session stays. Every other session and token ends. A wrong `current_password`: `400 invalid_credentials`. The `PASSWORD_CHANGE_MAX_FAILURES`-th (5) wrong one within `PASSWORD_CHANGE_WINDOW_MINUTES` (15) ends **every** session of the user, this one too: `401 session_revoked`, and the next try needs a real login, where the lockout applies. Each wrong try is audited (`auth.password_change_failed`, then `auth.password_change_locked`), never the password. |
 | `GET /me/` | bearer or session | — | `200 Me` |
 | `PATCH /me/` | bearer or session | `{"name"?, "name_te"?, "preferred_language"?}` | `200 Me` |
 

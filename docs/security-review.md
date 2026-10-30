@@ -1,6 +1,6 @@
 # Security review before UAT
 
-Date: 2026-10-22, updated for the login and permissions rebuild of 2026-10-21 (`docs/authorization.md`). Scope: backend API, ported public website and console, deploy configuration. Checked by reading the code and the deploy templates, the automated test suite, and `manage.py check --deploy` with production settings.
+Date: 2026-10-22, updated for the login and permissions rebuild of 2026-10-21 (`docs/authorization.md`), and on 2026-10-30 for the gap review of 2026-10-27 (gaps G1 to G16, listed under "Gap review" below). Scope: backend API, ported public website and console, deploy configuration. Checked by reading the code and the deploy templates, the automated test suite, and `manage.py check --deploy` with production settings.
 
 ## Results
 
@@ -16,14 +16,19 @@ Date: 2026-10-22, updated for the login and permissions rebuild of 2026-10-21 (`
 | Area permissions | Pass | Roles are Django groups and actions are Django permissions, limited to each role assignment's area. The matrix tests cover every group × every permission × the same area, the parent, a sibling and another district. User actions also need a group ranked strictly below the actor's. |
 | Other rate limits | Pass | Contact form: 5 per IP per hour, plus a hidden honeypot field. Nginx limits the whole API to 20 requests per second per IP with a burst of 60. |
 | Uploads | Pass | Photos: only JPEG, PNG and WebP; size limit; decompression-bomb guard; metadata stripped by re-encoding to WebP; at most 5 per post. Videos (owner decision Q8): MP4 or MOV only, checked by extension and by the file's own header; at most 50 MB and 60 seconds, measured on the server with ffprobe; one per post and never with photos; the poster is re-encoded to WebP like a photo. The video file itself is stored as sent, not re-encoded, so its metadata stays. Nginx caps request bodies at 60 MB and serves /media/ with a sandboxing Content-Security-Policy and nosniff. |
-| Personal data in logs | Pass | No password, temporary password or token is written to logs, audit entries or background-job arguments. A failed push is audited with the topic or user id, the number of tries and the error type only. Nginx logs URLs without query strings, so searches by email or mobile number are not recorded. |
+| Personal data in logs | Pass | No password, temporary password or token is written to logs, audit entries or background-job arguments. A failed push is audited with the topic or user id, the number of tries and the error type only. Nginx logs URLs without query strings, so searches by email or mobile number are not recorded. Gunicorn keeps no access log of its own (G3), so it cannot undo that. The audit export's entry keeps only the filter names and values that hold no personal data; a search text is noted as "(given)" (G14). |
+| Password change guessing | Pass | A wrong current password answers `invalid_credentials` and is audited. The 5th within 15 minutes (`PASSWORD_CHANGE_MAX_FAILURES`, `PASSWORD_CHANGE_WINDOW_MINUTES`) ends every session of the user, so a stolen session cannot be used to guess the password: the next try needs a real login, where the lockout applies (G9). |
+| API documentation | Pass | `/api/schema/` and `/api/docs/` answer only console users in production (`API_DOCS_PUBLIC` off): the schema maps every endpoint, the admin ones too. Laptops and the qa server keep them open for the client teams (G4). |
+| CSV exports | Pass | The audit export and the reports write text cells starting with `=`, `+`, `-`, `@`, a tab or a carriage return with a leading apostrophe (`grama/csvsafe.py`), so a post title or a name never runs as a formula in Excel. Numbers stay numbers (G15). |
+| Audit "via" label | Pass | "console" or "app" comes only from the authenticator that accepted the request; client headers are ignored (G13). |
+| Secret key | Pass | Production refuses to start with the `.env.example` value, the development key, a `django-insecure-` key or anything Django calls weak (under 50 characters or under 5 different ones). `setup.sh` generates a random one. |
 | Personal data in URLs | Pass with a note | No endpoint puts a password or token in the URL. The users and audit searches take a q parameter that can contain an email or mobile number; it stays out of Nginx logs, but browsers keep it in their history on the Super Admin's own machine. |
 | Public data | Pass | The citizen feed, the upcoming and urgent lists and the website showcase show posts, areas and the publishing role only: no names, mobile numbers or emails of officials. |
 | Important numbers | Pass with a note | Public by design: one village at a time, no bulk export, Nginx rate limits. Writes need `contacts.manage_contact` over the number's area, lists filter in SQL, and numbers outside reach answer 404. A strict phone grammar keeps USSD codes such as `*#06#` out of the app's dialler. A 10-digit mobile is published only with the consent tick, and audit entries mask every phone (`******0001`). Removal hides a number at once; the row stays only for the audit trail. Note: an official's own mobile is personal data under the DPDP Act 2023, so office, landline or CUG numbers are preferred (decision C2). |
 | Contact messages | Pass | Only holders of `web_public.manage_contact_messages`, the Super Admins, can list them or mark them handled (owner decision Q16); everyone else gets 403. Marking one handled is audited with the message number only, never the sender's name or mobile number. |
 | Django admin | Pass by config | Nginx allows /django-admin/ only from `OFFICE_IPS` in the deploy config and blocks it for everyone when that is empty (owner decision). Logins there go through the same lockout. Only Super Admins can see or edit groups and role assignments, and group permission changes are audited. |
 | Old data | Pass | A daily job deletes expired refresh tokens, expired console sessions and failed background jobs older than 30 days. The audit log is never deleted. |
-| Production settings | Pass | Production refuses to start without SECRET_KEY, ALLOWED_HOSTS, DATABASE_URL, MEDIA_ROOT and STATIC_ROOT. `manage.py check --deploy` warns only about HSTS and the HTTPS redirect, which Nginx provides: port 80 redirects to HTTPS, and the HTTPS site sends `Strict-Transport-Security` for one year. |
+| Production settings | Pass | Production refuses to start without SECRET_KEY, ALLOWED_HOSTS, DATABASE_URL, MEDIA_ROOT and STATIC_ROOT. `manage.py check --deploy` warns only about HSTS and the HTTPS redirect, which Nginx provides: port 80 redirects to HTTPS, and the HTTPS site sends `Strict-Transport-Security` for one year. `prod.py` silences exactly those two (`security.W004`, `security.W008`), and `deploy.sh` runs the security checks with `--fail-level WARNING` before migrating: any other security warning stops the deploy (`STRICT_CHECKS=1`, now the default) (G11). |
 | Post translation | Pass by design, off by default | While `TRANSLATION_PROVIDER` is off, nothing leaves the server. When on, only the title and body of **published** posts, text the public feed already shows, go to Google or Bhashini over HTTPS, from the background worker. Never names, phone numbers, device ids or unpublished text. The Google key goes in a header, not the URL. Provider errors and logs carry the status code and error type only, never the post's text. A citizen may write personal details into a post's body; once published, that text was public anyway. |
 | Content-Security-Policy | Accepted risk | The website and console need 'unsafe-eval' and inline styles because of the Design Canvas runtime. All scripts are served from our own origin; no third-party scripts load in production. |
 
@@ -31,6 +36,32 @@ Date: 2026-10-22, updated for the login and permissions rebuild of 2026-10-21 (`
 
 1. **Django admin: set the office IPs.** Handled by config: `setup.sh` writes an allow line for each address in `OFFICE_IPS` and `deny all` after them, so with no addresses Django admin is closed. Before go-live, put the office's fixed IP addresses in `OFFICE_IPS` and re-run `setup.sh`. A dynamic office IP would lock the office out.
 2. **Not tested on a real server.** The deploy scripts pass syntax and shellcheck checks, but Nginx, certificates, firewall and backups have not run on Ubuntu yet. The console's Secure session and CSRF cookies are first exercised over real HTTPS there.
-3. **Video metadata.** Uploaded videos are kept as sent, so a phone's GPS tag in the file stays in it. Stripping it needs a re-encode with ffmpeg; decide before go-live whether that cost is wanted.
+3. **Video metadata (G7, owner decision).** Uploaded videos are kept as sent, so a phone's GPS tag in the file stays in it. `ffmpeg -map_metadata -1 -c copy` strips it without re-encoding, in a fraction of a second; decide before go-live.
+4. **Second factor for Super Admins (G5, owner decision).** Console login is username and password only. TOTP for console users, or the risk accepted in writing.
+5. **Admin password length (G12, owner decision).** At least 8 characters for every role today; the review suggests 12 for admin roles.
+6. **Dependency scanning (G10, team decision).** Every package is pinned, but nothing checks them for known vulnerabilities. `pip-audit` in CI or Dependabot needs a `.github/` folder, a new top-level folder the team must agree to. Until then, run `pip-audit -r requirements.txt` before each release.
+7. **An official's push link (G8, deferred).** A registration without a login, carrying a known push token, unlinks that phone from its official, who then stops getting review alerts. Fix: keep the existing link on an anonymous re-registration. Low risk: the token is not public.
+8. **Untracked files with tokens and test passwords (G16).** The review found `test_execution_results.json` (15 JWTs), test scripts with the `super.admin` and village passwords, an API specification `.docx` and screenshots in a repo copy. They are not in git and not in this checkout. Whoever holds them deletes them; the `.docx` is not shared until its screenshots are checked.
+
+## Gap review of 2026-10-27
+
+| Gap | Status |
+|---|---|
+| G1 per-IP login limit | Closed 2026-10-27: the IP-wide cap (Login lockout above) |
+| G2 this document out of date | Closed: rewritten for the current design, updated 2026-10-30 |
+| G3 Gunicorn access log with query strings | Closed 2026-10-30 |
+| G4 public API schema and Swagger | Closed 2026-10-30 (production) |
+| G5 second factor | Open: open item 4 |
+| G6 deploy never run on a server | Open: open item 2 |
+| G7 video GPS metadata | Open: open item 3 |
+| G8 anonymous device registration | Deferred: open item 7 |
+| G9 password change attempts | Closed 2026-10-30 |
+| G10 dependency scanning | Open: open item 6 |
+| G11 Django HSTS and strict deploy checks | Closed 2026-10-30: HSTS stays with Nginx (no second header), every other security warning stops the deploy |
+| G12 admin password length | Open: open item 5 |
+| G13 audit "via" from a header | Closed 2026-10-30 |
+| G14 search text in the export's audit entry | Closed 2026-10-30 |
+| G15 CSV formula injection | Closed 2026-10-30 |
+| G16 untracked files with tokens | Open: open item 8 |
 
 Closed by the 2026-10-21 rebuild: SMTP credentials (nothing is emailed) and default role passwords (removed). Closed on 2026-10-27: password spraying from one IP address (the IP-wide cap, see Login lockout above).

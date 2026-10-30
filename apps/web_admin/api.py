@@ -7,7 +7,6 @@ Python in Asia/Kolkata time, so no database time-zone functions are needed
 
 from __future__ import annotations
 
-import csv
 import io
 import json
 from collections import defaultdict
@@ -33,6 +32,7 @@ from apps.audit.models import AuditLog
 from apps.audit.services import record
 from apps.geography.areas import AreaDescriber, AreaRef
 from apps.geography.models import AreaLevel, District, Mandal, Village
+from grama.csvsafe import safe_writer
 from grama.exceptions import ApiError, permission_denied
 from grama.pagination import PageNumberPagination
 from grama.renderers import JSONRenderer
@@ -395,7 +395,7 @@ class ReportExportView(SuperAdminView):
         header, rows = csv_rows(report, REPORTS[report](days))
         buffer = io.StringIO()
         buffer.write("﻿")  # BOM: Excel then reads Telugu correctly
-        writer = csv.writer(buffer)
+        writer = safe_writer(buffer)  # names and titles never run as spreadsheet formulas
         writer.writerow(header)
         writer.writerows(rows)
         record(

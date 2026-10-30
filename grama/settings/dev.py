@@ -10,6 +10,8 @@ from .base import BASE_DIR, REST_FRAMEWORK, database_config, env
 
 DEBUG = env.bool("DEBUG", default=True)
 SERVE_FILES = env.bool("SERVE_FILES", default=True)
+# Swagger and the schema open to everyone, for the client teams; production keeps them for console users.
+API_DOCS_PUBLIC = env.bool("API_DOCS_PUBLIC", default=True)
 
 SECRET_KEY = env.str(
     "SECRET_KEY",
