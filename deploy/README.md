@@ -10,6 +10,7 @@ Scripts for one Ubuntu LTS server (22.04 or 24.04) in India. The database is MyS
 | `backup.sh` | Encrypted database + media backup; runs nightly from a systemd timer |
 | `restore.sh` | Restores a backup made by `backup.sh` |
 | `templates/` | systemd units, Nginx and fail2ban files that `setup.sh` fills in |
+| `qa/` | The team's test server on a hosting account without root: start, stop, deploy and nightly backup scripts, and how to set it up (`qa/README.md`) |
 | [RUNBOOK.md](RUNBOOK.md) | Day-to-day operation, restore drill, secrets, push, security notes, certificates |
 | [DATA_MOVE.md](DATA_MOVE.md) | Moving master and seed data from a laptop's SQLite to the server |
 
