@@ -44,7 +44,7 @@ Contents:
 - It picks the language of server-made text: category names, area names, error messages, notification text.
 - Area and category objects return `name` in the requested language. Admin endpoints also return `name_te` and `name_en` so both can be edited.
 - A post is written in one language, Telugu or English, stored in `language` (owner decision Q3). The server sets `language` from the text: the script most of the title's and body's letters are in (Telugu letters U+0C00–U+0C7F against Latin ones), and what the app sent only when there are no letters. So an English post that names one Telugu village stays `en`.
-- **Translation** (proposed reversal of Q3; *awaiting the owner's decision*; off until `TRANSLATION_PROVIDER` is set): once a post is **published**, the server machine-translates its title and body into the other language in the background. `Post`, `FeedItem`, `FeedPost` and `CitizenPost` carry `translation`:
+- **Translation** (owner decision of 2026-10-28, changing Q3; works once `TRANSLATION_PROVIDER` and its key are set on the server): once a post is **published**, the server machine-translates its title and body into the other language in the background. `Post`, `FeedItem`, `FeedPost` and `CitizenPost` carry `translation`:
   ```jsonc
   "translation": {"language": "en", "title": "…", "body": "…", "machine": true}   // or null
   ```
