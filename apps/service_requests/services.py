@@ -57,7 +57,7 @@ NOTE_REQUIRED = {
 }
 DAY = timedelta(hours=24)
 #: Service fields the Super Admin may change.
-SERVICE_FIELDS = ("name_en", "name_te", "icon", "color", "is_active")
+SERVICE_FIELDS = ("name_en", "name_te", "hint_en", "hint_te", "icon", "color", "is_active")
 
 
 def area_of(request: ServiceRequest) -> AreaRef:

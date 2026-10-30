@@ -32,6 +32,7 @@ def test_the_migration_seeds_the_apps_eight_services_in_order(world):
     data = APIClient().get(SERVICES).json()
     assert [row["key"] for row in data] == SEEDED
     assert data[0] == {"key": "aadhaar", "name_en": "Aadhaar Services", "name_te": "ఆధార్ సేవలు",
+                       "hint_en": "", "hint_te": "",  # empty: the app shows its own example
                        "icon": "aadhaar", "logo": None, "color": "orange", "is_active": True}
 
 
@@ -85,11 +86,47 @@ def test_the_key_never_changes(admin, world):
 @pytest.mark.parametrize(
     "changes, field",
     [({"icon": "rocket"}, "icon"), ({"color": "red"}, "color"), ({"name_en": "A"}, "name_en"),
-     ({"name_en": "x" * 61}, "name_en")],
+     ({"name_en": "x" * 61}, "name_en"), ({"hint_en": "x" * 101}, "hint_en"), ({"hint_te": "క" * 101}, "hint_te")],
 )
 def test_bad_fields_are_refused(admin, world, changes, field):
     response = admin.post(ADMIN, {**NEW, **changes}, format="json")
     assert response.status_code == 400 and field in response.json()["error"]["fields"]
+
+
+# --- The request example (hint_en, hint_te) -----------------------------------------------------------
+
+HINTS = {"hint_en": "e.g. apply for a new ration card", "hint_te": "ఉదా: కొత్త రేషన్ కార్డు కోసం దరఖాస్తు"}
+
+
+def test_a_new_service_keeps_its_request_example(admin, world):
+    data = admin.post(ADMIN, {**NEW, **HINTS}, format="json").json()
+    assert (data["hint_en"], data["hint_te"]) == (HINTS["hint_en"], HINTS["hint_te"])
+    public = next(row for row in APIClient().get(SERVICES).json() if row["key"] == "ration_card")
+    assert (public["hint_en"], public["hint_te"]) == (HINTS["hint_en"], HINTS["hint_te"])
+    admin_row = next(row for row in admin.get(ADMIN).json() if row["key"] == "ration_card")
+    assert admin_row["hint_te"] == HINTS["hint_te"]
+
+
+def test_without_an_example_both_are_empty(admin, world):
+    data = admin.post(ADMIN, NEW, format="json").json()
+    assert (data["hint_en"], data["hint_te"]) == ("", "")
+    assert set(Service.objects.values_list("hint_en", "hint_te")) == {("", "")}  # the seeded 8 too
+
+
+def test_changing_only_the_telugu_example(admin, world):
+    admin.patch(f"{ADMIN}pan/", {"hint_en": "e.g. apply for a new PAN card"}, format="json")
+    AuditLog.objects.all().delete()
+    response = admin.patch(f"{ADMIN}pan/", {"hint_te": "ఉదా: కొత్త పాన్ కార్డు"}, format="json")
+    assert response.status_code == 200
+    assert (response.json()["hint_en"], response.json()["hint_te"]) == ("e.g. apply for a new PAN card", "ఉదా: కొత్త పాన్ కార్డు")
+    assert AuditLog.objects.get(action="service.updated").data == {"key": "pan", "changed": ["hint_te"]}
+
+
+def test_an_example_is_cleaned_of_extra_spaces_and_can_be_cleared(admin, world):
+    data = admin.post(ADMIN, {**NEW, "hint_en": "  e.g.   new  card ", "hint_te": " ఉదా:   కొత్త  "}, format="json").json()
+    assert (data["hint_en"], data["hint_te"]) == ("e.g. new card", "ఉదా: కొత్త")
+    cleared = admin.patch(f"{ADMIN}ration_card/", {"hint_en": ""}, format="json").json()
+    assert cleared["hint_en"] == "" and cleared["hint_te"] == "ఉదా: కొత్త"
 
 
 def test_reordering_needs_every_key_once(admin, world):
@@ -152,6 +189,12 @@ def test_a_new_service_with_a_logo_needs_no_icon(admin, world, media_root):
     public = next(row for row in APIClient().get(SERVICES).json() if row["key"] == "ration_card")
     assert public["logo"] == data["logo"]
     assert AuditLog.objects.get(action="service.created").data == {"key": "ration_card", "logo": True}
+
+
+def test_a_multipart_create_with_a_logo_keeps_the_example(admin, world, media_root):
+    body = {**NEW, **HINTS, "logo": logo()}
+    data = admin.post(ADMIN, body, format="multipart").json()
+    assert data["logo"] and (data["hint_en"], data["hint_te"]) == (HINTS["hint_en"], HINTS["hint_te"])
 
 
 def test_a_logo_is_added_replaced_and_removed(admin, world, media_root):

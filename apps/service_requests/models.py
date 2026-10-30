@@ -45,6 +45,9 @@ class Service(models.Model):
     key = models.SlugField(max_length=40, unique=True)
     name_en = models.CharField(max_length=60)
     name_te = models.CharField(max_length=60, blank=True)
+    #: The grey example in the citizen's request box ("e.g. apply for a new PAN card"). Empty: the app shows its own.
+    hint_en = models.CharField(max_length=100, blank=True, default="")
+    hint_te = models.CharField(max_length=100, blank=True, default="")
     icon = models.CharField(max_length=30, choices=[(icon, icon) for icon in ICONS], default=DEFAULT_ICON)
     #: Optional uploaded logo, re-encoded as WebP by services.process_logo. Empty: the app draws `icon`.
     logo = models.FileField(upload_to=service_logo_path, max_length=200, blank=True)
