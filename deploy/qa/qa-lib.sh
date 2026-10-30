@@ -12,6 +12,8 @@ PYTHON="$BACKEND_DIR/.venv/bin/python"
 STATE_DIR="$HOME/.bvt-grama"
 LOG_DIR="$STATE_DIR/logs"
 AUTOSTART_TAG="# bvt-grama-autostart"
+# Left by BVT-stop.sh: the keep-alive does not start what was stopped on purpose.
+STOPPED_MARK="$STATE_DIR/stopped"
 BACKUP_TAG="# bvt-grama-backup"
 
 step() { printf '\n== %s\n' "$*"; }
