@@ -66,3 +66,30 @@ gc shell -c "from apps.geography.models import Village; print(Village.objects.co
 The first number should match the laptop; the second is the number of villages still without coordinates.
 
 Then take a backup: `sudo bash /srv/gramaconnect/backend/deploy/backup.sh`.
+
+## Copying a whole dev server to a new database (qa)
+
+Everything above moves only master data. When a test server moves to a new account or database
+and its testers should keep their logins, posts and settings, copy all of it instead. Rehearsed
+SQLite to SQLite: every data table arrives with the same rows, passwords still work, Telugu intact.
+
+1. **Old server, read only:** dump everything except what is rebuilt or must not move:
+   ```
+   python -X utf8 manage.py dumpdata --natural-foreign --natural-primary \
+     --exclude contenttypes --exclude auth.permission --exclude sessions --exclude admin.logentry \
+     --exclude django_q --exclude token_blacklist --exclude axes --exclude web_admin.ConsoleAccess \
+     -o full.json
+   tar -czf media.tgz media
+   ```
+   `full.json` holds password hashes and personal data: copy it straight to the new server and delete it.
+2. **New server**, `DATABASE_URL` set in `.env`: create the tables, empty the rows the migrations
+   seeded (categories, contact types, groups …), then load:
+   ```
+   python manage.py migrate
+   python manage.py flush --no-input
+   python manage.py loaddata full.json
+   tar -xzf media.tgz
+   python manage.py ensure_schedules
+   ```
+   `flush` deletes every row, so run it only on the new, empty database.
+3. Sessions and app tokens do not move: everyone logs in again once.
