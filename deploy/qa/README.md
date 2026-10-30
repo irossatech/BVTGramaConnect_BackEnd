@@ -66,6 +66,16 @@ must print `mysql <database>`.
 711, the new one copies the files by name into its own folder, and the old one deletes the `/tmp`
 folder at once.
 
+## Running without a terminal
+
+`BVT-start.sh` starts Django and the worker detached from the terminal (`setsid nohup`), and adds
+a crontab line that runs `BVT-start.sh --if-down` every minute. That keep-alive starts both again
+when either is not running: after a logout on a host that ends every process of a login, after a
+crash, after a reboot. It does nothing while they run, or while a start is under way (a lock).
+`BVT-stop.sh` leaves a "stopped" mark that the keep-alive respects, so loading data or a restore
+is never interrupted; the next `BVT-start.sh` removes it. What the keep-alive did is in
+`~/.bvt-grama/logs/keepalive.log`; `crontab -l` shows the line.
+
 ## Every release
 
 ```
@@ -107,5 +117,5 @@ Without `CSRF_TRUSTED_ORIGINS` the console's login fails through the domain.
 
 ## Stopping for good
 
-`bash BVT-stop.sh --disable` stops both processes and removes the autostart;
+`bash BVT-stop.sh --disable` stops both processes and removes the keep-alive line;
 `bash BVT-backup.sh --uninstall` removes the nightly backup.
