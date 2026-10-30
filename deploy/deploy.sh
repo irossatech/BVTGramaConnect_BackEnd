@@ -58,6 +58,17 @@ log "Installing Python packages"
 # --- Django ----------------------------------------------------------------------------------
 
 cd "$BACKEND_DIR"
+# Before anything changes, so a failed check leaves the running version as it was. Security
+# checks only (--tag security): drf-spectacular's schema-naming warnings are not a reason to
+# stop a deploy. STRICT_CHECKS=1 (the default) stops on any security warning.
+log "Django security checks"
+if ! "$PY" manage.py check --deploy --tag security --fail-level WARNING; then
+  if [[ "$STRICT_CHECKS" == "1" ]]; then
+    die "manage.py check --deploy reported security warnings (STRICT_CHECKS=1). Fix them, or set STRICT_CHECKS=0 to deploy anyway."
+  fi
+  warn "check --deploy reported security warnings; see above."
+fi
+
 log "Migrating the database"
 "$PY" manage.py migrate --noinput
 log "Collecting static files"
@@ -92,14 +103,6 @@ sudo -n /usr/bin/systemctl restart gramaconnect-gunicorn.service
 sudo -n /usr/bin/systemctl restart gramaconnect-qcluster.service
 
 # --- Checks ----------------------------------------------------------------------------------------
-
-log "Django deploy checks"
-if ! "$PY" manage.py check --deploy; then
-  if [[ "$STRICT_CHECKS" == "1" ]]; then
-    die "manage.py check --deploy reported errors (STRICT_CHECKS=1)."
-  fi
-  warn "check --deploy reported problems; see above."
-fi
 
 log "Health check"
 for _ in $(seq 1 15); do

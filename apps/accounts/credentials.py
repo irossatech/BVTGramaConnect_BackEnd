@@ -132,3 +132,31 @@ def authenticate_official(request, username: str, password: str, *, via: str, re
         require(user)
     user.last_login = timezone.now()
     return user
+
+# --- Wrong current password on "Change password" -----------------------------------------------
+# A stolen session must not become a way to guess the account's password. Each wrong try is
+# audited; PASSWORD_CHANGE_MAX_FAILURES of them within PASSWORD_CHANGE_WINDOW_MINUTES end every
+# session of the user, so the next try needs a real login, where the lockout applies.
+
+
+def wrong_current_password(user, *, via: str):
+    """Audit one wrong current password; the error to raise: 400 invalid_credentials, or 401 session_revoked."""
+    from datetime import timedelta
+
+    from apps.audit.models import AuditLog
+
+    from .tokens import revoke_all_sessions, session_revoked
+
+    since = timezone.now() - timedelta(minutes=settings.PASSWORD_CHANGE_WINDOW_MINUTES)
+    mine = AuditLog.objects.filter(target_type=user._meta.label_lower, target_id=str(user.pk))
+    last_lock = mine.filter(action="auth.password_change_locked", created_at__gte=since).order_by("-created_at").first()
+    if last_lock is not None:
+        since = last_lock.created_at  # count only the tries after the last time the sessions were ended
+    record("auth.password_change_failed", actor=user, target=user, target_label=user.username, via=via)
+    failures = mine.filter(action="auth.password_change_failed", created_at__gt=since).count()
+    if failures < settings.PASSWORD_CHANGE_MAX_FAILURES:
+        return invalid_credentials()
+    revoke_all_sessions(user)
+    record("auth.password_change_locked", actor=user, target=user, target_label=user.username, via=via,
+           data={"failures": failures})
+    return session_revoked()

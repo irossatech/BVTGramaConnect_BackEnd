@@ -22,7 +22,6 @@ ExecStart=@VENV@/bin/gunicorn grama.wsgi:application \
     --graceful-timeout 30 \
     --max-requests 2000 \
     --max-requests-jitter 200 \
-    --access-logfile - \
     --error-logfile -
 ExecReload=/bin/kill -s HUP $MAINPID
 Restart=always

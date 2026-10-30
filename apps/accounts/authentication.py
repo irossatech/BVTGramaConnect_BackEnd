@@ -125,9 +125,8 @@ def came_from_console(request) -> bool:
 
 
 def client_via(request) -> str:
-    """'console' for the web console (its session, or the old X-Client headers), else 'app'. For audit entries."""
-    if came_from_console(request):
-        return "console"
-    if request.headers.get("X-Client") == "web_admin" or request.headers.get("X-GC-Client") == "console":
-        return "console"
-    return "app"
+    """'console' when the console session authenticated the request, else 'app'. For audit entries.
+
+    Only the authenticator decides: a client header could claim anything.
+    """
+    return "console" if came_from_console(request) else "app"

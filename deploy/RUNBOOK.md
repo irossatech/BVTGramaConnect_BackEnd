@@ -14,7 +14,7 @@ For the person who runs the BVT Grama Connect server. Commands run on the server
 
    It prints a temporary password once. Give it to the person in person or by phone; they log in at `/console/` and must choose their own password first. Every other official is added from the console or the app by an admin above them, who sets or generates the temporary password and passes it on the same way. Nothing is emailed.
 4. **Configure push** (Firebase) below. Until then pushes are off.
-5. Set `STRICT_CHECKS=1` in `/etc/gramaconnect/deploy.env` once `manage.py check --deploy` is clean.
+5. `deploy.sh` stops before migrating if `manage.py check --deploy --tag security` reports any warning (`STRICT_CHECKS=1`, the default). HSTS and the HTTPS redirect come from Nginx, so `prod.py` silences only those two checks. `STRICT_CHECKS=0` in `/etc/gramaconnect/deploy.env` deploys anyway, for emergencies.
 
 Django admin (`https://<domain>/django-admin/`) opens only from the office IPs in `OFFICE_IPS`. Only Super Admins (staff accounts that also hold the Super Admin role) may edit groups and role assignments there; every group permission change is audit-logged, and `gc sync_role_permissions` puts the role matrix back.
 
