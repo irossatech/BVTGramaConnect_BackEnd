@@ -79,6 +79,22 @@ class CategoryListView(generics.ListAPIView):
     queryset = Category.objects.filter(is_active=True)
 
 
+@method_decorator(cache_control(public=True, max_age=300), name="dispatch")
+class AppConfigView(APIView):
+    """What the apps need before login: the languages the Super Admin left on (contract section 5).
+
+    Only these: escalation hours and the citizens' daily limit stay Super Admin only. No login, and a
+    stale token is ignored, like /categories/. max-age 300: a switch reaches phones within 5 minutes.
+    """
+
+    permission_classes = [AllowAny]
+    authentication_classes: list = []
+
+    @extend_schema(summary="Public app settings: the languages switched on")
+    def get(self, request):
+        return Response({"languages": {"te": True, "en": bool(services.runtime("LANGUAGE_EN_ENABLED"))}})
+
+
 class AdminCategoryViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, mixins.UpdateModelMixin, viewsets.GenericViewSet):
     permission_classes = [IsAuthenticated, HasPerm("posts.manage_categories", PLATFORM, gettext_lazy("Only Super Admins can do this."))]
     serializer_class = AdminCategorySerializer

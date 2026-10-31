@@ -447,7 +447,7 @@ Rules:
 | `POST /admin/categories` | Super Admin | `{"key", "name_te", "name_en", "short_name_te"?, "short_name_en"?}` → `201` (Pending Q6) |
 | `PATCH /admin/categories/{id}` | Super Admin | `{"name_te"?, "name_en"?, "is_active"?, "order"?}` (Pending Q6) |
 
-A disabled category disappears from the compose form and from feed filters. Its existing posts stay visible.
+A disabled category disappears from the compose form and from feed filters. Its published posts are hidden from the feed and the public pages until it is switched on again (`/feed/`, `/feed/upcoming/`, `/feed/urgent/`, `/feed/posts/?ids=`, `/public/showcase/`; `/feed/posts/{id}/` answers `404`). Officials still see them in their lists. Changed on 2026-10-31; before, they stayed visible.
 
 ### Posts
 
@@ -541,6 +541,12 @@ What `POST /posts` does:
 ```
 - Values start from Django settings and environment variables, as CLAUDE.md defines. A value saved here overrides the default and is audited as `setting.changed`.
 - Editable: `review_escalation_hours` (6 to 168), `languages.en`, and `citizen_posts_per_day` (0 to 1000, 0 is no limit; section 15). Telugu cannot be switched off. The other three are read-only here.
+
+What the apps read before login:
+
+| Method and path | Who | Response |
+|---|---|---|
+| `GET /app-config` | public, no login (a stale token is ignored) | `{"languages": {"te": true, "en": bool}}`. `Cache-Control: public, max-age=300`, so a switch reaches phones within 5 minutes. Only the language switch: escalation hours and the daily limit stay Super Admin only. The app hides its language switch while `en` is `false`. |
 
 ---
 
@@ -804,7 +810,7 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Super Admin: all posts | `GET /posts` with `status_counts`; `POST /posts` only if allowed |
 | Super Admin: areas | `GET /geo/*?include_inactive=1&with_counts=1`, geography writes |
 | Super Admin: reports, audit, settings | `GET /admin/reports/*`, `GET /audit`, `/admin/settings`, `/admin/categories`, `/admin/notification-templates` |
-| App start | `POST /devices` |
+| App start | `POST /devices`; `GET /app-config` (the languages switched on) |
 | Contacts tab (citizens) | `GET /contacts?village_id=`; `GET /contact-types` for chips and icons |
 | Citizen: first post (once per install) | `POST /citizen/challenge/`, Play Integrity on the phone, `POST /citizen/register/` |
 | Citizen: write a post, my posts | `POST /citizen/posts/`, `GET /citizen/posts/`, `GET /citizen/me/`; `PATCH /citizen/me/` after a village change |
