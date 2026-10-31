@@ -69,6 +69,17 @@ if ! "$PY" manage.py check --deploy --tag security --fail-level WARNING; then
   warn "check --deploy reported security warnings; see above."
 fi
 
+# Known vulnerabilities in the pinned packages (G10). pip-audit lives in a venv of its own,
+# so it never mixes with the app's packages. AUDIT_DEPENDENCIES=0 skips it for an emergency.
+if [[ "$AUDIT_DEPENDENCIES" == "1" ]]; then
+  log "Checking Python packages for known vulnerabilities"
+  AUDIT_VENV="$APP_ROOT/audit-venv"
+  [[ -x "$AUDIT_VENV/bin/pip-audit" ]] || python3 -m venv "$AUDIT_VENV"
+  "$AUDIT_VENV/bin/python" -m pip install --quiet "pip-audit==$PIP_AUDIT_VERSION"
+  "$AUDIT_VENV/bin/pip-audit" --requirement "$BACKEND_DIR/requirements.txt" --progress-spinner off \
+    || die "pip-audit found a known vulnerability (above) or could not run. Upgrade the package in requirements.txt, or set AUDIT_DEPENDENCIES=0 to deploy anyway."
+fi
+
 log "Migrating the database"
 "$PY" manage.py migrate --noinput
 log "Collecting static files"

@@ -23,3 +23,12 @@ htmlcov/
 
 # Load-test output
 deploy/loadtest/results/
+
+# Manual API test runs and the documents made from them: they hold live tokens and
+# test passwords (security gap G16). Never commit or share them unchecked.
+test_execution_results*.json
+run_api_tests.py
+build_word_doc.py
+add_business_requirements.py
+*_with_Screenshots.docx
+swagger_screens/

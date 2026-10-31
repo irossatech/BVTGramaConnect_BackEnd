@@ -44,6 +44,12 @@ class DeviceRegisterView(APIView):
         values = dict(data.validated_data)
         token = values.pop("fcm_token")
         values["user"] = _user_or_none(request)
+        if values["user"] is None:
+            # Without a login, a known token never unlinks an official (G8): the
+            # app's logout deletes the device first. The row is left as it is.
+            linked = Device.objects.filter(fcm_token=token, user__isnull=False).first()
+            if linked:
+                return Response(DeviceSerializer(linked).data, status=status.HTTP_200_OK)
         device, created = Device.objects.update_or_create(fcm_token=token, defaults=values)
         return Response(DeviceSerializer(device).data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 

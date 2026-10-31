@@ -31,12 +31,32 @@ def test_citizen_registers_without_login_and_updates_by_token(geo):
     assert (device.village_id, device.language) == (geo.areas["kaza"].id, "en")
 
 
-def test_official_device_is_linked_and_unlinked_by_anonymous_use(api, world):
+def test_official_device_is_linked_and_anonymous_use_never_unlinks_it(api, world):
+    """G8: anyone holding the push token could otherwise cut an official off their review alerts."""
     user = world.users["ma_tenali"]
     register(api(user))
-    assert Device.objects.get().user == user
-    register(APIClient())
+    device = Device.objects.get()
+    assert device.user == user
+    response = register(APIClient(), language="en", village_id=world.areas["kaza"].id)
+    assert response.status_code == 200
+    device.refresh_from_db()
+    assert (device.user, device.language, device.village_id) == (user, "te", None)
+    assert Device.objects.count() == 1
+
+
+def test_after_logout_the_phone_registers_as_a_citizen(api, world):
+    user = world.users["ma_tenali"]
+    official = api(user)
+    device_id = register(official).json()["id"]
+    assert official.delete(f"/api/v1/devices/{device_id}/").status_code == 204
+    assert register(APIClient()).status_code == 201
     assert Device.objects.get().user is None
+
+
+def test_another_official_logging_in_on_the_phone_takes_the_device(api, world):
+    register(api(world.users["ma_tenali"]))
+    register(api(world.users["va_kolakaluru"]))
+    assert Device.objects.get().user == world.users["va_kolakaluru"]
 
 
 def test_unknown_village_is_rejected(geo):
