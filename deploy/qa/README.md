@@ -115,6 +115,21 @@ CSRF_COOKIE_SECURE=True
 ```
 Without `CSRF_TRUSTED_ORIGINS` the console's login fails through the domain.
 
+The hosting panel's nginx serves files with static extensions (`.js`, `.css`, `.png`, …)
+from the site folder itself and never forwards them to the port. Until the hosting
+company points those paths at the build folders, links in the site folder stand in:
+```
+cd ~/htdocs/<site folder>
+ln -s BVTGramaConnect/dist/_next _next
+ln -s BVTGramaConnect/dist/_ds _ds
+ln -s BVTGramaConnect/dist/assets assets
+ln -s BVTGramaConnect_BackEnd/media media
+```
+Remove them (`rm _next _ds assets media`) once nginx serves those folders. This is fine
+for qa only: production uses `deploy/setup.sh`, whose nginx serves the website, the
+console, `/static/` and `/media/` with their cache rules and sends only `/api/` and
+`/django-admin/` to Gunicorn.
+
 ## Stopping for good
 
 `bash BVT-stop.sh --disable` stops both processes and removes the keep-alive line;
