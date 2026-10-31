@@ -68,23 +68,30 @@ class AdminAdViewSet(
     def _out(self, ad: Ad, code=status.HTTP_200_OK):
         return Response(AdminAdSerializer(ad, context=self.get_serializer_context()).data, status=code)
 
-    @extend_schema(summary="New ad (multipart, with the banner image)", request={"multipart/form-data": AdWriteSerializer},
-                   responses={201: AdminAdSerializer})
+    def _files(self, request, data) -> dict:
+        return {
+            "image": request.FILES.get("image"),
+            "video": request.FILES.get("video"),
+            "duration_s": data.validated_data.pop("duration_s", None),
+        }
+
+    @extend_schema(summary="New ad (multipart, with the banner image or video)",
+                   request={"multipart/form-data": AdWriteSerializer}, responses={201: AdminAdSerializer})
     def create(self, request):
         data = AdWriteSerializer(data=request.data)
         data.is_valid(raise_exception=True)
-        ad = services.create(request.user, data.validated_data, request.FILES.get("image"))
+        ad = services.create(request.user, data.validated_data, **self._files(request, data))
         return self._out(ad, status.HTTP_201_CREATED)
 
-    @extend_schema(summary="Change an ad: multipart with a new image, or JSON with only the details",
+    @extend_schema(summary="Change an ad: multipart with a new image or video, or JSON with only the details",
                    request=AdWriteSerializer, responses=AdminAdSerializer)
     def partial_update(self, request, pk=None):
         ad = self.get_object()
         data = AdWriteSerializer(data=request.data, partial=True)
         data.is_valid(raise_exception=True)
-        return self._out(services.update(request.user, ad, data.validated_data, request.FILES.get("image")))
+        return self._out(services.update(request.user, ad, data.validated_data, **self._files(request, data)))
 
-    @extend_schema(summary="Delete an ad and its image", responses={204: None})
+    @extend_schema(summary="Delete an ad, its image and its video", responses={204: None})
     def destroy(self, request, pk=None):
         services.delete(request.user, self.get_object())
         return Response(status=status.HTTP_204_NO_CONTENT)

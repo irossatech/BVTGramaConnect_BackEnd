@@ -247,12 +247,12 @@ def test_dates_and_the_switch_decide_what_is_shown(api, world, media_root):
     assert shown(world) == ["no dates", "started today", "ends today"]
 
 
-def test_the_public_shape_has_only_four_fields(api, world, media_root):
+def test_the_public_shape_has_only_the_banners_fields(api, world, media_root):
     create(api, world)
     response = APIClient().get(f"{PUBLIC}?village_id={world.areas['kolakaluru'].id}")
     assert response.status_code == 200 and "max-age=300" in response["Cache-Control"]
     (row,) = response.json()
-    assert set(row) == {"id", "title", "image", "link"}
+    assert set(row) == {"id", "title", "image", "video", "duration_s", "link"}
     assert row["image"].startswith("http://testserver/media/ads/")
 
 

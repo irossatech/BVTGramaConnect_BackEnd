@@ -217,12 +217,14 @@ def _sniff_video(upload) -> str:
 
 @dataclass
 class PreparedVideo:
-    """A checked video, ready to store: its container, length (None if unknown) and processed poster."""
+    """A checked video, ready to store: its container, length (None if unknown), processed poster
+    (None with process_poster=False) and the poster picture as cut or sent, for callers with their own sizes."""
 
     upload: object
     container: str
     duration: float | None
-    poster: tuple
+    poster: tuple | None
+    poster_source: ContentFile | None = None
 
 
 def _placeholder_poster() -> ContentFile:
@@ -232,15 +234,27 @@ def _placeholder_poster() -> ContentFile:
     return ContentFile(buffer.getvalue(), name="placeholder.png")
 
 
-def prepare_video(upload, *, duration_s=None, poster=None, lenient: bool = False) -> PreparedVideo:
+def prepare_video(
+    upload,
+    *,
+    duration_s=None,
+    poster=None,
+    lenient: bool = False,
+    max_mb: int | None = None,
+    max_seconds: int | None = None,
+    process_poster: bool = True,
+) -> PreparedVideo:
     """Check a video upload and make its poster. Writes nothing.
 
     Officials (lenient=False): without ffprobe and ffmpeg the phone must send
     duration_s and a poster. Citizens (lenient=True, contract section 15): the
     length may stay unknown and a placeholder poster is used instead.
+    max_mb and max_seconds default to the post limits; banner ads pass their own.
     """
-    if upload.size > settings.MAX_VIDEO_UPLOAD_MB * 1024 * 1024:
-        raise _too_large(settings.MAX_VIDEO_UPLOAD_MB, _("Videos"))
+    max_mb = max_mb or settings.MAX_VIDEO_UPLOAD_MB
+    max_seconds = max_seconds or settings.VIDEO_MAX_SECONDS
+    if upload.size > max_mb * 1024 * 1024:
+        raise _too_large(max_mb, _("Videos"))
     container = _sniff_video(upload)
 
     with _local_path(upload, f".{container}") as path:
@@ -252,10 +266,10 @@ def prepare_video(upload, *, duration_s=None, poster=None, lenient: bool = False
                 _("Send the video length in seconds."),
                 fields={"duration_s": [_("Required when the server cannot measure the video.")]},
             )
-        if duration is not None and float(duration) > settings.VIDEO_MAX_SECONDS + DURATION_SLACK_S:
+        if duration is not None and float(duration) > max_seconds + DURATION_SLACK_S:
             raise ApiError(
                 "video_too_long",
-                _("Videos can be at most %(s)d seconds.") % {"s": settings.VIDEO_MAX_SECONDS},
+                _("Videos can be at most %(s)d seconds.") % {"s": max_seconds},
                 fields={"file": [_("Too long.")]},
             )
         frame = extract_poster(path, min(1.0, float(duration) / 2) if duration is not None else 1.0)
@@ -272,7 +286,13 @@ def prepare_video(upload, *, duration_s=None, poster=None, lenient: bool = False
             _("Send a poster photo for the video."),
             fields={"poster": [_("Required when the server cannot make a poster.")]},
         )
-    return PreparedVideo(upload, container, float(duration) if duration is not None else None, process_image(poster_file))
+    return PreparedVideo(
+        upload,
+        container,
+        float(duration) if duration is not None else None,
+        process_image(poster_file) if process_poster else None,
+        poster_file,
+    )
 
 
 def store_video(post: Post, prepared: PreparedVideo, order: int) -> PostMedia:
