@@ -28,6 +28,8 @@ Date: 2026-10-22, updated for the login and permissions rebuild of 2026-10-21 (`
 | Important numbers | Pass with a note | Public by design: one village at a time, no bulk export, Nginx rate limits. Writes need `contacts.manage_contact` over the number's area, lists filter in SQL, and numbers outside reach answer 404. A strict phone grammar keeps USSD codes such as `*#06#` out of the app's dialler. A 10-digit mobile is published only with the consent tick, and audit entries mask every phone (`******0001`). Removal hides a number at once; the row stays only for the audit trail. Note: an official's own mobile is personal data under the DPDP Act 2023, so office, landline or CUG numbers are preferred (decision C2). |
 | Contact messages | Pass | Only holders of `web_public.manage_contact_messages`, the Super Admins, can list them or mark them handled (owner decision Q16); everyone else gets 403. Marking one handled is audited with the message number only, never the sender's name or mobile number. |
 | Django admin | Pass by config | Nginx allows /django-admin/ only from `OFFICE_IPS` in the deploy config and blocks it for everyone when that is empty (owner decision). Logins there go through the same lockout. Only Super Admins can see or edit groups and role assignments, and group permission changes are audited. |
+| Push devices | Pass | `POST /devices/` without a login never unlinks a device already linked to an official, so a known push token cannot cut an official off their review alerts; only the official's logout (`DELETE`) or another official's login on the phone does (G8). |
+| Dependencies | Pass | Every package is pinned in `requirements.txt`. `deploy.sh` runs `pip-audit` on it before migrating and stops on any known vulnerability (G10). |
 | Old data | Pass | A daily job deletes expired refresh tokens, expired console sessions and failed background jobs older than 30 days. The audit log is never deleted. |
 | Production settings | Pass | Production refuses to start without SECRET_KEY, ALLOWED_HOSTS, DATABASE_URL, MEDIA_ROOT and STATIC_ROOT. `manage.py check --deploy` warns only about HSTS and the HTTPS redirect, which Nginx provides: port 80 redirects to HTTPS, and the HTTPS site sends `Strict-Transport-Security` for one year. `prod.py` silences exactly those two (`security.W004`, `security.W008`), and `deploy.sh` runs the security checks with `--fail-level WARNING` before migrating: any other security warning stops the deploy (`STRICT_CHECKS=1`, now the default) (G11). |
 | Post translation | Pass by design, off by default | While `TRANSLATION_PROVIDER` is off, nothing leaves the server. When on, only the title and body of **published** posts, text the public feed already shows, go to Google or Bhashini over HTTPS, from the background worker. Never names, phone numbers, device ids or unpublished text. The Google key goes in a header, not the URL. Provider errors and logs carry the status code and error type only, never the post's text. A citizen may write personal details into a post's body; once published, that text was public anyway. |
@@ -40,9 +42,8 @@ Date: 2026-10-22, updated for the login and permissions rebuild of 2026-10-21 (`
 3. **Video metadata (G7, owner decision).** Uploaded videos are kept as sent, so a phone's GPS tag in the file stays in it. `ffmpeg -map_metadata -1 -c copy` strips it without re-encoding, in a fraction of a second; decide before go-live.
 4. **Second factor for Super Admins (G5, owner decision).** Console login is username and password only. TOTP for console users, or the risk accepted in writing.
 5. **Admin password length (G12, owner decision).** At least 8 characters for every role today; the review suggests 12 for admin roles.
-6. **Dependency scanning (G10, team decision).** Every package is pinned, but nothing checks them for known vulnerabilities. `pip-audit` in CI or Dependabot needs a `.github/` folder, a new top-level folder the team must agree to. Until then, run `pip-audit -r requirements.txt` before each release.
-7. **An official's push link (G8, deferred).** A registration without a login, carrying a known push token, unlinks that phone from its official, who then stops getting review alerts. Fix: keep the existing link on an anonymous re-registration. Low risk: the token is not public.
-8. **Untracked files with tokens and test passwords (G16).** The review found `test_execution_results.json` (15 JWTs), test scripts with the `super.admin` and village passwords, an API specification `.docx` and screenshots in a repo copy. They are not in git and not in this checkout. Whoever holds them deletes them; the `.docx` is not shared until its screenshots are checked.
+6. **Untracked files with tokens and test passwords (G16).** The review found `test_execution_results.json` (15 JWTs), test scripts with the `super.admin` and village passwords, an API specification `.docx` and screenshots in a repo copy. They are not in git and not in this checkout, and `.gitignore` now lists them, so a `git add .` cannot commit them. Whoever holds them deletes them; the `.docx` is not shared until its screenshots are checked.
+7. **Dependency scanning in CI (G10, team decision).** `deploy.sh` now refuses a release with a known vulnerable package, but nothing checks between releases. `pip-audit` in CI or Dependabot needs a `.github/` folder, a new top-level folder the team must agree to.
 
 ## Gap review of 2026-10-27
 
@@ -55,14 +56,14 @@ Date: 2026-10-22, updated for the login and permissions rebuild of 2026-10-21 (`
 | G5 second factor | Open: open item 4 |
 | G6 deploy never run on a server | Open: open item 2 |
 | G7 video GPS metadata | Open: open item 3 |
-| G8 anonymous device registration | Deferred: open item 7 |
+| G8 anonymous device registration | Closed 2026-10-31: a registration without a login leaves a device linked to an official as it is |
 | G9 password change attempts | Closed 2026-10-30 |
-| G10 dependency scanning | Open: open item 6 |
+| G10 dependency scanning | Closed for releases 2026-10-31: `deploy.sh` runs pip-audit before migrating (`AUDIT_DEPENDENCIES=1`); a check between releases is open item 7. Clean on 2026-10-31 |
 | G11 Django HSTS and strict deploy checks | Closed 2026-10-30: HSTS stays with Nginx (no second header), every other security warning stops the deploy |
 | G12 admin password length | Open: open item 5 |
 | G13 audit "via" from a header | Closed 2026-10-30 |
 | G14 search text in the export's audit entry | Closed 2026-10-30 |
 | G15 CSV formula injection | Closed 2026-10-30 |
-| G16 untracked files with tokens | Open: open item 8 |
+| G16 untracked files with tokens | Ignored by git 2026-10-31; deleting the copies is open item 6 |
 
 Closed by the 2026-10-21 rebuild: SMTP credentials (nothing is emailed) and default role passwords (removed). Closed on 2026-10-27: password spraying from one IP address (the IP-wide cap, see Login lockout above).

@@ -607,7 +607,7 @@ Feed rule: published posts with **any** area that is the village, its mandal, it
 
 | Method and path | Who | Request | Response |
 |---|---|---|---|
-| `POST /devices/` | public or bearer | `{"fcm_token", "platform": "android"\|"ios"\|"web", "language": "te"\|"en", "village_id"?, "app_version"?}` | `201` when new, `200` when the token was known: `{"id", "fcm_token", "platform", "language", "village_id", "app_version"}`. Upserts by `fcm_token`. With a bearer token the device is linked to that official; without one it is unlinked. `400` for an unknown or inactive village. |
+| `POST /devices/` | public or bearer | `{"fcm_token", "platform": "android"\|"ios"\|"web", "language": "te"\|"en", "village_id"?, "app_version"?}` | `201` when new, `200` when the token was known: `{"id", "fcm_token", "platform", "language", "village_id", "app_version"}`. Upserts by `fcm_token`. With a bearer token the device is linked to that official. Without one, a new token makes an unlinked device, but a token already linked to an official is left as it is (`200`, unchanged): only `DELETE /devices/{id}/` or another official's login on the phone unlinks it, so the app's logout deletes the device before registering again without a login. `400` for an unknown or inactive village. |
 | `PATCH /devices/{id}/` | the app that registered it | `{"village_id"?, "language"?, "fcm_token"?}` | `200`, same shape. A device linked to an official answers `404` to anyone else. |
 | `DELETE /devices/{id}/` | same | — | `204` (logout or opt-out) |
 
