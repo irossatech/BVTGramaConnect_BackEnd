@@ -16,6 +16,7 @@ router.register("admin/categories", views.AdminCategoryViewSet, basename="admin-
 
 urlpatterns = [
     path("categories/", views.CategoryListView.as_view(), name="categories"),
+    path("app-config/", views.AppConfigView.as_view(), name="app-config"),
     path("review/queue/", views.ReviewQueueView.as_view(), name="review-queue"),
     path("stats/", views.StatsView.as_view(), name="stats"),
     path("admin/settings/", views.AdminSettingsView.as_view(), name="admin-settings"),

@@ -192,3 +192,51 @@ def test_feed_query_count_stays_flat(world, make_post, django_assert_max_num_que
         make_post("kolakaluru" if index % 2 else "guntur", media=1)
     with django_assert_max_num_queries(8):
         assert len(feed(world).json()["results"]) == 20
+
+# --- A category the Super Admin switched off -------------------------------------------------------
+
+
+def test_a_switched_off_category_hides_its_posts_from_every_citizen_read(world, api, make_post):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from apps.posts.models import Category, Post
+
+    news = make_post("kolakaluru", category="news", title="news post")
+    other = make_post("kolakaluru", category="announce", title="announce post", minutes_ago=5)
+    Post.objects.filter(pk__in=[news.pk, other.pk]).update(
+        is_urgent=True, event_start=timezone.localdate() + timedelta(days=2)
+    )
+    village = world.areas["kolakaluru"].id
+    client = APIClient()
+
+    def everywhere() -> dict:
+        def ids(rows):
+            return {row["id"] for row in rows}
+
+        return {
+            "feed": ids(client.get(f"/api/v1/feed/?village_id={village}").json()["results"]),
+            "upcoming": ids(client.get(f"/api/v1/feed/upcoming/?village_id={village}").json()),
+            "urgent": ids(client.get(f"/api/v1/feed/urgent/?village_id={village}").json()),
+            "saved": ids(client.get(f"/api/v1/feed/posts/?ids={news.pk},{other.pk}").json()),
+            "website": ids(showcase_rows(client.get("/api/v1/public/showcase/").json())),
+        }
+
+    def showcase_rows(data) -> list:
+        return [row for row in [data["featured"], *data["items"]] if row]
+
+    both = {str(news.pk), str(other.pk)}
+    assert all(found == both for found in everywhere().values())
+
+    Category.objects.filter(key="news").update(is_active=False)
+    assert all(found == {str(other.pk)} for found in everywhere().values())
+    assert client.get(f"/api/v1/feed/posts/{news.pk}/").status_code == 404
+
+    # Officials still see and manage it.
+    rows = api(world.users["va_kolakaluru"]).get("/api/v1/posts/", {"page_size": 100}).json()["results"]
+    assert str(news.pk) in {row["id"] for row in rows}
+
+    Category.objects.filter(key="news").update(is_active=True)
+    assert everywhere()["feed"] == both
+    assert client.get(f"/api/v1/feed/posts/{news.pk}/").status_code == 200

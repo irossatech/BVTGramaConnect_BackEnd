@@ -54,7 +54,9 @@ def published_posts():
     first_image = media.filter(kind=MediaKind.IMAGE).order_by("order", "created_at").values("image")[:1]
     video = media.filter(kind=MediaKind.VIDEO)
     return (
-        Post.objects.filter(status=PostStatus.PUBLISHED)
+        # A category the Super Admin switched off hides its posts from every citizen read and the
+        # public pages; officials' lists (posts.views) still show them.
+        Post.objects.filter(status=PostStatus.PUBLISHED, category__is_active=True)
         .select_related("category")
         .prefetch_related("translations", "targets")
         .annotate(
