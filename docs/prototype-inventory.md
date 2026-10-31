@@ -421,7 +421,7 @@ Only these changes are allowed. Anything else is a design change and needs sign-
 - **Development:** Django serves both folders when `DEBUG` is on. `web_public` maps `/` to `WEB_PUBLIC_DIR` (default `../BVTGramaConnect/dist`); `web_admin` maps `/console/` to `WEB_ADMIN_DIR` (default `../BVTGramaConnect/dist/console`).
 - **Production:** the deploy script builds the web repo once and copies `dist/` to the folder Nginx serves at `/` and `dist/console/` to the folder it serves at `/console/`. Nginx proxies `/api/` and `/django-admin/` to Gunicorn and serves `/media/` from `/var/media`.
 - Files are served byte for byte. No HTML minifier, because the runtime re-reads the raw page.
-- Nginx sends `charset utf-8`, gzip for HTML, JS, CSS and JSON, long cache headers for `vendor/`, `_ds/` and `assets/`, and `no-cache` with an ETag for `index.html` and `support.js`.
+- Nginx sends `charset utf-8`, gzip for HTML, JS, CSS and JSON, long cache headers for `vendor/`, `_ds/` and `assets/`, a year (`immutable`) for the website's `_next/static/`, and `no-cache` with an ETag for every `.html` page and `support.js`.
 
 ### 5.6 Constraints the port inherits
 - **Content Security Policy:** the runtime uses `new Function` and the markup uses inline styles. These pages need `script-src 'self' 'unsafe-eval'`, `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`, `font-src https://fonts.gstatic.com`, `connect-src 'self'`. This is why the console keeps its refresh token in an HttpOnly cookie and its access token in memory only.
