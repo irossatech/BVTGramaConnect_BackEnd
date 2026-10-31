@@ -17,10 +17,19 @@ def ad_image_path(instance, filename):
     return f"ads/{filename}"
 
 
+def ad_video_path(instance, filename):
+    return f"ads/{filename}"
+
+
 class Ad(models.Model):
     title = models.CharField(max_length=80)
     #: Always a WebP the server made (longest side ADS_IMAGE_MAX_PX), never the uploaded file.
+    #: A picture ad's picture, or a video ad's poster frame.
     image = models.FileField(upload_to=ad_image_path, max_length=200)
+    #: MP4 or MOV as uploaded; empty for a picture ad.
+    video = models.FileField(upload_to=ad_video_path, max_length=200, blank=True, default="")
+    #: Whole seconds; null for a picture ad or when the length is unknown.
+    duration_s = models.PositiveSmallIntegerField(null=True, blank=True)
     link = models.URLField(max_length=500, blank=True)
     area_level = models.CharField(max_length=10, choices=AreaLevel.choices)
     area_id = models.PositiveIntegerField()

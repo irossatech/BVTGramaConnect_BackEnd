@@ -421,6 +421,10 @@ ADS_MAX_UPLOAD_MB = env.int("ADS_MAX_UPLOAD_MB", default=5)
 ADS_MIN_WIDTH_PX = env.int("ADS_MIN_WIDTH_PX", default=800)
 # Stored as WebP with the longest side at most this.
 ADS_IMAGE_MAX_PX = env.int("ADS_IMAGE_MAX_PX", default=1600)
+# Video banners: the same numbers as post videos today, kept apart so banners can be
+# tightened alone. The app has them too (kAdVideoMaxSec, kAdVideoMaxMb): tell the mobile team.
+ADS_VIDEO_MAX_MB = env.int("ADS_VIDEO_MAX_MB", default=50)
+ADS_VIDEO_MAX_SECONDS = env.int("ADS_VIDEO_MAX_SECONDS", default=60)
 # Ads one village's Home shows, and how long phones may reuse the list.
 ADS_PUBLIC_LIMIT = env.int("ADS_PUBLIC_LIMIT", default=10)
 ADS_PUBLIC_MAX_AGE = env.int("ADS_PUBLIC_MAX_AGE", default=300)

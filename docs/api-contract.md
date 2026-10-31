@@ -817,7 +817,7 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Review a citizen post | as Review; tabs from `GET /review/queue/?source=official\|citizen` and `source_counts`. Super Admin also: `POST /posts/{id}/block-citizen/`, `/unblock-citizen/`, `/discard-citizen-posts/` |
 | Important numbers (every official) | `GET /admin/contacts` (`section=AREA\|HELPLINE`), `POST /admin/contacts`, `PATCH /admin/contacts/{id}`, `DELETE /admin/contacts/{id}`, `GET /admin/contacts/targets` |
 | Citizen Home: banner ads | `GET /ads?village_id=` |
-| Super Admin: More → Ads | `GET /admin/ads`, `POST /admin/ads` (multipart), `PATCH /admin/ads/{id}` (multipart with a new image, else JSON), `DELETE /admin/ads/{id}`; areas from `/geo/*` |
+| Super Admin: More → Ads | `GET /admin/ads`, `POST /admin/ads` (multipart), `PATCH /admin/ads/{id}` (multipart with a new image or video, else JSON), `DELETE /admin/ads/{id}`; areas from `/geo/*` |
 | Citizen: Home → Services, Profile → My service requests | `GET /services/`, `POST /citizen/service-requests/`, `GET /citizen/service-requests/` |
 | Service requests (officials) | `GET /service-requests/` (status tabs from `status_counts`), `GET /service-requests/{id}/`, `PATCH /service-requests/{id}/`; assignees from `GET /users/` |
 | Super Admin: More → Services | `GET /admin/services/`, `POST /admin/services/`, `PATCH /admin/services/{key}/`, `POST /admin/services/order/` |
@@ -1241,9 +1241,12 @@ Built (`apps.ads`). The Super Admin makes banner ads in the app (**More → Ads*
 ```jsonc
 // PublicAd: only what the banner needs
 {"id": 7, "title": "Free eye camp at Tenali",
- "image": "https://<site>/media/ads/7-3fa9c2d1-1600.webp",   // absolute
+ "image": "https://<site>/media/ads/7-3fa9c2d1-1600.webp",   // absolute; a video ad's poster frame
+ "video": "https://<site>/media/ads/7-a81f03be.mp4",          // absolute; "" for a picture ad
+ "duration_s": 18,                                            // whole seconds; null for a picture ad or when unknown
  "link": "https://example.org/eye-camp"}                     // "" when there is none
 ```
+An ad is a video ad when `video` is not empty. Apps that read only `image` show its poster as a picture banner.
 
 An ad is shown when it is switched on (`is_active`), today (India time) is inside its dates (`starts_on` null or not after today, `ends_on` null or not before today: both days included), and its area is the village, its mandal, its district or the state.
 
@@ -1252,10 +1255,10 @@ An ad is shown when it is switched on (`is_active`), today (India time) is insid
 | Method and path | Request | Response |
 |---|---|---|
 | `GET /admin/ads/` | `page`, `page_size` (at most 100) | Page of `AdminAd`, newest first |
-| `POST /admin/ads/` | multipart: `image` (required), `title`, `link`, `area_level`, `area_id`, `starts_on`, `ends_on`, `is_active` | `201 AdminAd` |
+| `POST /admin/ads/` | multipart: `image` or `video` (exactly one), `duration_s` (with a video, optional), `title`, `link`, `area_level`, `area_id`, `starts_on`, `ends_on`, `is_active` | `201 AdminAd` |
 | `GET /admin/ads/{id}/` | — | `AdminAd`; `404` if there is no such ad |
-| `PATCH /admin/ads/{id}/` | any field above. Multipart when a new `image` is sent; otherwise JSON, e.g. `{"is_active": false}` | `AdminAd` |
-| `DELETE /admin/ads/{id}/` | — | `204`; the image file is removed too |
+| `PATCH /admin/ads/{id}/` | any field above. Multipart when a new `image` or `video` is sent; otherwise JSON, e.g. `{"is_active": false}` | `AdminAd` |
+| `DELETE /admin/ads/{id}/` | — | `204`; the image and video files are removed too |
 
 ```jsonc
 // AdminAd
@@ -1263,6 +1266,8 @@ An ad is shown when it is switched on (`is_active`), today (India time) is insid
   "id": 7,
   "title": "Free eye camp at Tenali",
   "image": "https://<site>/media/ads/7-3fa9c2d1-1600.webp",
+  "video": "",                     // or the absolute URL of a video ad's MP4 or MOV
+  "duration_s": null,              // or whole seconds
   "link": "https://example.org/eye-camp",
   "area": {"level": "MANDAL", "id": 88, "name": "తెనాలి"},   // STATE: all villages; name follows Accept-Language
   "starts_on": "2026-10-28",       // or null
@@ -1279,14 +1284,17 @@ The app works out "Running", "Scheduled", "Paused" and "Ended" itself from the d
 | Field | Rule |
 |---|---|
 | `title` | Required, 1 to 80 characters after trimming. Shown in the admin list and read by screen readers. |
-| `image` | Required on create. JPEG, PNG or WebP, at most `ADS_MAX_UPLOAD_MB` (5) and at least `ADS_MIN_WIDTH_PX` (800) wide. Re-encoded by the server as WebP with the longest side at most `ADS_IMAGE_MAX_PX` (1600), which removes EXIF and GPS. The uploaded file name is never kept: the file is `ads/<id>-<random>-1600.webp`, with a new name on every replacement, because phones cache `/media/` for days. A wide 16:9 picture (e.g. 1600 × 900) suits the banner. |
+| `image` | Required on create unless a `video` is sent. JPEG, PNG or WebP, at most `ADS_MAX_UPLOAD_MB` (5) and at least `ADS_MIN_WIDTH_PX` (800) wide. Re-encoded by the server as WebP with the longest side at most `ADS_IMAGE_MAX_PX` (1600), which removes EXIF and GPS. The uploaded file name is never kept: the file is `ads/<id>-<random>-1600.webp`, with a new name on every replacement, because phones cache `/media/` for days. A wide 16:9 picture (e.g. 1600 × 900) suits the banner. A new `image` on a video ad makes it a picture ad again: `video` becomes `""`, `duration_s` null, and the video and its poster are removed. |
+| `video` | MP4 or MOV (checked by extension and by the file's own header), at most `ADS_VIDEO_MAX_MB` (50) and `ADS_VIDEO_MAX_SECONDS` (60, with 0.5 s slack). Stored as uploaded under `ads/<id>-<random>.<mp4\|mov>`, a new name on every replacement. The server measures the length with ffprobe; without it, it uses `duration_s`, which is checked against the same limit. The server cuts the poster frame with ffmpeg (a plain dark picture without it) and stores it as the ad's `image`, like a picture but without the 800 px minimum, so portrait and 480p videos work. A new `video` replaces the old video and poster, or a picture ad's picture. Sending `image` and `video` together: `400` on `video`. Neither on create: `400` on `image`. Not an MP4 or MOV: `415 unsupported_media`. Too large: `413 file_too_large`. Too long: `400 video_too_long`. |
+| `duration_s` | Optional, a whole number of seconds (at least 1), the phone's measure of the video. Ignored without a `video`; the server's own measure wins when it has ffprobe. |
 | `link` | Optional; `http://` or `https://` only (no `javascript:`, `intent:`, `file:` …); at most 500 characters |
 | `area_level`, `area_id` | `STATE`, `DISTRICT`, `MANDAL` or `VILLAGE`, and an existing active area of that level. "All villages" is the state, with its id from `/geo/states/`. |
 | `starts_on`, `ends_on` | `YYYY-MM-DD`, or null; an empty string in a multipart form or JSON also means none. `ends_on` before `starts_on`: `400` on `ends_on` (checked against the stored values on PATCH). |
 | `is_active` | `true` / `false`; default `true` |
 
 - Errors: `400 validation_error` with `fields` for the rules above (`title`, `image`, `link`, `area_level`, `area_id`, `ends_on`); `403 permission_denied` for anyone but the Super Admin; `404` for an unknown ad.
-- Audit: `ad.created`, `ad.updated` (the changed field names, `image` when it was replaced), `ad.deleted`, each with the area.
+- Audit: `ad.created` (`kind`: `image` or `video`), `ad.updated` (the changed field names, `image` when it was replaced, `video` when one was stored or removed), `ad.deleted`, each with the area.
+- Video files are served from `/media/` like photos: Nginx answers Range requests, so playback can start and seek before the whole file arrives. They are not re-encoded yet; the app's compression keeps them small.
 
 ### Settings
 
@@ -1295,6 +1303,8 @@ The app works out "Running", "Scheduled", "Paused" and "Ended" itself from the d
 | `ADS_MAX_UPLOAD_MB` | 5 | Largest banner upload |
 | `ADS_MIN_WIDTH_PX` | 800 | Narrowest banner accepted |
 | `ADS_IMAGE_MAX_PX` | 1600 | Longest side of the stored WebP |
+| `ADS_VIDEO_MAX_MB` | 50 | Largest banner video. The app has the same number (`kAdVideoMaxMb`): change both together |
+| `ADS_VIDEO_MAX_SECONDS` | 60 | Longest banner video. The app has the same number (`kAdVideoMaxSec`): change both together |
 | `ADS_PUBLIC_LIMIT` | 10 | Ads one village's Home shows |
 | `ADS_PUBLIC_MAX_AGE` | 300 | Seconds phones may reuse `/ads/` |
 
