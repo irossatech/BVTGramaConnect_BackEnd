@@ -374,7 +374,8 @@ def test_password_change_validation(world, current, new, error_code):
 
 
 def test_eight_characters_are_enough(world):
-    client = bearer(login("va_kolakaluru").json()["access"])
+    """For a Panchayat member; admins need 12 (G12, test_password_length.py)."""
+    client = bearer(login("pm_kolakaluru").json()["access"])
     response = client.post(CHANGE, {"current_password": TEST_PASSWORD, "new_password": "Pq7-wxyz"}, format="json")
     assert response.status_code == 200
 
@@ -402,7 +403,7 @@ def test_a_new_password_needs_every_kind_of_character(world, new, missing):
 
 @pytest.mark.parametrize("new", ["Pq7@wxyz", "Gram#2026x", "Abc 12345!", "తెలుగుAb1$"])
 def test_any_special_character_counts(world, new):
-    client = bearer(login("va_kolakaluru").json()["access"])
+    client = bearer(login("pm_kolakaluru").json()["access"])  # 8 characters suffice for a member
     response = client.post(CHANGE, {"current_password": TEST_PASSWORD, "new_password": new}, format="json")
     assert response.status_code == 200, response.json()
 

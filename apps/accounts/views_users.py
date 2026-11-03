@@ -246,7 +246,7 @@ class UserViewSet(
             created_by=request.user,
         )
         if values["password"]:
-            check_new_password(values["password"], user)
+            check_new_password(values["password"], user, group_ids=[role.group_id])
 
         with transaction.atomic():
             user.set_unusable_password()

@@ -21,6 +21,10 @@ Fields:
 - permissions: "app_label.codename" strings.
 - requires_setting: permissions the group gets only while a Django setting is
   true. Checked by the sync and again on every request.
+- password_min_length: the shortest password a holder may choose (security
+  gap G12, owner decision of 2026-11-03: 12 for admins, 8 for Panchayat
+  members). Someone holding several roles needs the longest. Generated
+  temporary passwords are 12 characters, so no value may exceed 12.
 
 To add a permission: add it to a model's Meta.permissions (and a migration),
 list it here for the groups that need it, run sync_role_permissions, and ask
@@ -72,6 +76,9 @@ PLATFORM_ADMIN = [
     "bills.manage_bills",
 ]
 
+ADMIN_PASSWORD_MIN_LENGTH = 12
+MEMBER_PASSWORD_MIN_LENGTH = 8
+
 ROLE_GROUPS: dict[str, dict] = {
     "SUPER_ADMIN": {
         "name": "Super Admin",
@@ -80,6 +87,7 @@ ROLE_GROUPS: dict[str, dict] = {
         "rank": 0,
         "platform_wide": True,
         "manage_permission": None,
+        "password_min_length": ADMIN_PASSWORD_MIN_LENGTH,
         "permissions": [
             *POSTING,
             *REVIEWING,
@@ -106,6 +114,7 @@ ROLE_GROUPS: dict[str, dict] = {
         "rank": 1,
         "platform_wide": False,
         "manage_permission": "accounts.manage_district_admin",
+        "password_min_length": ADMIN_PASSWORD_MIN_LENGTH,
         "permissions": [
             *POSTING,
             *REVIEWING,
@@ -125,6 +134,7 @@ ROLE_GROUPS: dict[str, dict] = {
         "rank": 2,
         "platform_wide": False,
         "manage_permission": "accounts.manage_mandal_admin",
+        "password_min_length": ADMIN_PASSWORD_MIN_LENGTH,
         "permissions": [
             *POSTING,
             *REVIEWING,
@@ -143,6 +153,7 @@ ROLE_GROUPS: dict[str, dict] = {
         "rank": 3,
         "platform_wide": False,
         "manage_permission": "accounts.manage_village_admin",
+        "password_min_length": ADMIN_PASSWORD_MIN_LENGTH,
         "permissions": [
             *POSTING,
             *REVIEWING,
@@ -160,6 +171,7 @@ ROLE_GROUPS: dict[str, dict] = {
         "rank": 4,
         "platform_wide": False,
         "manage_permission": "accounts.manage_panchayat_member",
+        "password_min_length": MEMBER_PASSWORD_MIN_LENGTH,
         # Their posts wait for review: they lack publish_post (posts/services.py).
         "permissions": [*POSTING, "posts.view_stats", *CONTACTS, *SERVICE_REQUESTS_VIEW],
     },

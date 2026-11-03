@@ -71,6 +71,7 @@ def _row_values(spec: dict) -> dict:
         "platform_wide": spec["platform_wide"],
         "manage_permission": spec["manage_permission"] or "",
         "requires_setting": spec.get("requires_setting", {}),
+        "password_min_length": spec["password_min_length"],
     }
 
 
