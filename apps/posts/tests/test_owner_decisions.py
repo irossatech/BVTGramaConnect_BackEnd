@@ -195,6 +195,7 @@ def ffmpeg(monkeypatch):
 
     monkeypatch.setattr(media_service, "probe_duration", probe)
     monkeypatch.setattr(media_service, "extract_poster", poster)
+    monkeypatch.setattr(media_service, "strip_metadata", lambda path, container: None)
     return calls
 
 
@@ -202,6 +203,7 @@ def ffmpeg(monkeypatch):
 def no_ffmpeg(monkeypatch):
     monkeypatch.setattr(media_service, "probe_duration", lambda path: None)
     monkeypatch.setattr(media_service, "extract_poster", lambda path, at_seconds: None)
+    monkeypatch.setattr(media_service, "strip_metadata", lambda path, container: None)
 
 
 def send_video(api, world, post, file=None, actor="pm_kolakaluru", **extra):

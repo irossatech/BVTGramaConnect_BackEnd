@@ -41,6 +41,7 @@ def ffmpeg(monkeypatch):
     calls = {"length": 10.0, "frame": (1920, 1080)}
     monkeypatch.setattr(media_service, "probe_duration", lambda path: calls["length"])
     monkeypatch.setattr(media_service, "extract_poster", lambda path, at_seconds: frame(calls["frame"]))
+    monkeypatch.setattr(media_service, "strip_metadata", lambda path, container: None)
     return calls
 
 
@@ -48,6 +49,7 @@ def ffmpeg(monkeypatch):
 def no_ffmpeg(monkeypatch):
     monkeypatch.setattr(media_service, "probe_duration", lambda path: None)
     monkeypatch.setattr(media_service, "extract_poster", lambda path, at_seconds: None)
+    monkeypatch.setattr(media_service, "strip_metadata", lambda path, container: None)
 
 
 def create_video(api, world, video=None, **changes):

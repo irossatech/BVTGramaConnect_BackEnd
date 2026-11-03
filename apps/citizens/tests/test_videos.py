@@ -30,6 +30,7 @@ def ffmpeg(monkeypatch):
     """The server has ffprobe and ffmpeg: every video is 42 s long and gets a real frame as poster."""
     monkeypatch.setattr(media_service, "probe_duration", lambda path: 42.0)
     monkeypatch.setattr(media_service, "extract_poster", lambda path, at_seconds: png_frame())
+    monkeypatch.setattr(media_service, "strip_metadata", lambda path, container: None)
 
 
 @pytest.fixture
@@ -37,6 +38,7 @@ def no_ffmpeg(monkeypatch):
     """The qa server today: no ffprobe, no ffmpeg."""
     monkeypatch.setattr(media_service, "probe_duration", lambda path: None)
     monkeypatch.setattr(media_service, "extract_poster", lambda path, at_seconds: None)
+    monkeypatch.setattr(media_service, "strip_metadata", lambda path, container: None)
 
 
 def send(citizen, photos=(), videos=()):
