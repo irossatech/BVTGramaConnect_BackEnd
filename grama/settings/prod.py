@@ -39,11 +39,16 @@ STATIC_ROOT = Path(env.str("STATIC_ROOT"))
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 TRUST_X_REAL_IP = env.bool("TRUST_X_REAL_IP", default=True)
 SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=False)
-SECURE_HSTS_SECONDS = env.int("SECURE_HSTS_SECONDS", default=0)
-# Nginx redirects http to https and sends Strict-Transport-Security (one year) once the
-# certificate exists (deploy/setup.sh), so Django does neither and its two checks are silenced.
-# Every other security check stops deploy.sh (STRICT_CHECKS=1).
-SILENCED_SYSTEM_CHECKS = ["security.W004", "security.W008"]
+# Security gap G11: Django sends Strict-Transport-Security for a year on what it answers (the
+# API, Django admin). Nginx sends the same header on the website and console pages it serves
+# itself (deploy/setup.sh, once the certificate exists); no response carries both.
+SECURE_HSTS_SECONDS = env.int("SECURE_HSTS_SECONDS", default=31536000)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = env.bool("SECURE_HSTS_INCLUDE_SUBDOMAINS", default=False)
+SECURE_HSTS_PRELOAD = env.bool("SECURE_HSTS_PRELOAD", default=False)
+# Nginx redirects http to https, so Django does not (W008). Subdomains and the preload list
+# stay off until the owner's domain is known: they bind every subdomain to HTTPS for a year
+# (W005, W021). Every other security check stops deploy.sh (STRICT_CHECKS=1).
+SILENCED_SYSTEM_CHECKS = ["security.W008", "security.W005", "security.W021"]
 SECURE_REFERRER_POLICY = "same-origin"
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True

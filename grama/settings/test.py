@@ -26,3 +26,9 @@ PUSH_GATEWAY = "apps.notifications.push.LocmemPushGateway"
 # Never call Google from tests; test_transliterate.py swaps in LocmemTransliterator.
 TRANSLITERATION_PROVIDER = "off"
 DELIVERY_RETRY_BASE_SECONDS = 0
+
+# Login throttle counts in memory; the root conftest empties it before every test.
+CACHES = {
+    "default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"},
+    "throttle": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache", "LOCATION": "throttle"},
+}

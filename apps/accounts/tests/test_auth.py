@@ -264,6 +264,7 @@ def test_the_ip_cap_covers_the_console_login(world, settings):
 
 def test_ip_cap_zero_switches_it_off(world, settings):
     settings.LOGIN_IP_MAX_FAILURES = 0
+    settings.LOGIN_THROTTLE_RATE = "100/hour"  # the login throttle (G1) is tested in test_login_throttle.py
     spray(60)
     assert login("va_kolakaluru").status_code == 200
 

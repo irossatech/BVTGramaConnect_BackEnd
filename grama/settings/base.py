@@ -253,6 +253,16 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {"transliterate": env.str("TRANSLITERATION_RATE", default="60/min")},
 }
 
+# "throttle" counts in a database table (made by accounts migration 0008), so every Gunicorn
+# worker shares one count per IP with no Redis. The rest stays in each process's memory.
+CACHES = {
+    "default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"},
+    "throttle": {"BACKEND": "django.core.cache.backends.db.DatabaseCache", "LOCATION": "grama_throttle_cache"},
+}
+# Security gap G1: logins (app and console) per IP address, successful or not, on top of
+# django-axes (per username + IP) and the IP-wide cap on failures (LOGIN_IP_MAX_FAILURES).
+LOGIN_THROTTLE_RATE = env.str("LOGIN_THROTTLE_RATE", default="30/hour")
+
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=env.int("JWT_ACCESS_MINUTES", default=15)),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=env.int("JWT_REFRESH_DAYS", default=30)),

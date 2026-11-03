@@ -10,10 +10,12 @@ Both go through credentials.authenticate_official(), so django-axes lockout,
 blocked accounts and the audit log work the same for each.
 """
 
+from django.conf import settings
 from django.contrib.auth import login as django_login
 from django.contrib.auth import logout as django_logout
 from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.signals import user_logged_in
+from django.core.cache import caches
 from django.db import transaction
 from django.utils import timezone
 from django.utils.decorators import method_decorator
@@ -24,10 +26,12 @@ from rest_framework import serializers, status
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
 
 from apps.audit.services import record
 from grama.exceptions import ApiError
+from grama.http import client_ip
 
 from . import authz
 from .authentication import CONSOLE_PERMISSION, came_from_console, not_console_user
@@ -51,6 +55,24 @@ class PublicAuthView(APIView):
     authentication_classes: list = []
 
 
+class LoginThrottle(SimpleRateThrottle):
+    """Security gap G1: LOGIN_THROTTLE_RATE (30/hour) login requests per IP, app and console together,
+    counted whether they succeed or not. Over it: 429 throttled with retry_after_s."""
+
+    scope = "login"
+    cache = caches["throttle"]
+
+    def get_rate(self):
+        return settings.LOGIN_THROTTLE_RATE  # read per request, so a changed setting applies at once
+
+    def get_cache_key(self, request, view):
+        return self.cache_format % {"scope": self.scope, "ident": client_ip(request) or "unknown"}
+
+
+class LoginEndpoint(PublicAuthView):
+    throttle_classes = [LoginThrottle]
+
+
 def enforce_csrf(request) -> None:
     """CSRF check for views that run before there is a session (login, logout)."""
     SessionAuthentication().enforce_csrf(request)
@@ -71,7 +93,7 @@ def _signal_login(request, user) -> None:
 # --- Mobile app: JWT ----------------------------------------------------------------------
 
 
-class LoginView(PublicAuthView):
+class LoginView(LoginEndpoint):
     @extend_schema(summary="Log in with username and password (mobile app)", request=LoginSerializer, responses=LoginResponseSerializer)
     def post(self, request):
         data = LoginSerializer(data=request.data)
@@ -127,7 +149,7 @@ class CsrfView(PublicAuthView):
         return Response({"detail": "ok"})
 
 
-class SessionLoginView(PublicAuthView):
+class SessionLoginView(LoginEndpoint):
     @extend_schema(
         summary="Console login: creates a session cookie (send X-CSRFToken)",
         request=LoginSerializer,
