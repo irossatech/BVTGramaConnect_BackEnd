@@ -1,5 +1,8 @@
 # Pull requests into dev when a pinned package in requirements.txt has a fix or a new release
 # (security gap G10). Each one runs the security scans; run the tests before merging.
+# Python packages get minor and patch releases only: a major one (Django 5.2 LTS to 6.x,
+# django-axes 8 to 9) is a planned upgrade of its own, and a vulnerable version still stops
+# CI and deploy.sh through pip-audit.
 version: 2
 updates:
   - package-ecosystem: pip
@@ -9,6 +12,9 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: "/"
     target-branch: dev
