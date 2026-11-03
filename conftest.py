@@ -30,6 +30,14 @@ from apps.accounts.tokens import issue_tokens
 from apps.geography.areas import AreaRef
 from apps.geography.models import District, Mandal, State, Village
 
+@pytest.fixture(autouse=True)
+def _fresh_login_throttle():
+    """Every test starts with no logins counted against 127.0.0.1 (LOGIN_THROTTLE_RATE, G1)."""
+    from django.core.cache import caches
+
+    caches["throttle"].clear()
+
+
 MAP = {
     "guntur": ("గుంటూరు", {
         "tenali": ("తెనాలి", {

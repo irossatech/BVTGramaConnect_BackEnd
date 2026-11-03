@@ -1,4 +1,5 @@
-"""Fixes from the security gap review of 2026-10-27 (docs/security-review.md): G4, G9, G11, G13, G14, G15."""
+"""Fixes from the security gap review of 2026-10-27 (docs/security-review.md): G4, G9, G11, G13, G14, G15.
+G1's login throttle is in apps/accounts/tests/test_login_throttle.py."""
 
 import io
 import os
@@ -163,7 +164,8 @@ def import_prod(secret_key: str) -> subprocess.CompletedProcess:
         "STATIC_ROOT": "/tmp/static",
     }
     return subprocess.run(
-        [sys.executable, "-c", "import grama.settings.prod as p; print(sorted(p.SILENCED_SYSTEM_CHECKS))"],
+        [sys.executable, "-c",
+         "import grama.settings.prod as p; print(sorted(p.SILENCED_SYSTEM_CHECKS), p.SECURE_HSTS_SECONDS)"],
         cwd=REPO, env=env, capture_output=True, text=True, timeout=60,
     )
 
@@ -185,4 +187,6 @@ def test_production_starts_with_a_random_key():
 
     result = import_prod(secrets.token_urlsafe(50))
     assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == "['security.W004', 'security.W008']"  # only what Nginx does instead
+    # G11 as the gaps file gives it: Django sends HSTS for a year (W004 is no longer silenced). Silenced:
+    # the HTTPS redirect, which Nginx does, and subdomains and preload until the domain is known.
+    assert result.stdout.strip() == "['security.W005', 'security.W008', 'security.W021'] 31536000"
