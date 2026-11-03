@@ -193,6 +193,11 @@ class RoleGroup(models.Model):
         blank=True,
         help_text=_("For example {\"posts.create_post\": \"SUPER_ADMIN_CAN_POST\"}."),
     )
+    password_min_length = models.PositiveSmallIntegerField(
+        _("shortest password"),
+        default=8,
+        help_text=_("Holders of this role need a password at least this long."),
+    )
 
     class Meta:
         verbose_name = _("role group")

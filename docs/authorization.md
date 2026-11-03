@@ -89,14 +89,14 @@ The same rule applies to sessions and to tokens. Clients send the official strai
 
 - Hashed with **Argon2** (`argon2-cffi`). Older PBKDF2 hashes still work and are upgraded at the next login. Tests use MD5 for speed only.
 - Every password an official or an admin chooses passes Django's validators:
-  - at least 8 characters;
+  - at least **12 characters for admins** (Super, District, Mandal and Village Admin) and 8 for Panchayat members (security gap G12, owner decision of 2026-11-03). Each role's minimum is `password_min_length` in `apps/accounts/role_matrix.py`, kept on `RoleGroup`; someone holding several roles needs the longest. Checked by `credentials.check_new_password`, also for the role an admin is giving a new account;
   - not a common password;
   - not all digits;
   - not too similar to the username, name or email;
   - at least **one capital letter, one small letter, one number and one special character** (anything that is not a letter, a number or a space, such as `@ # $ % & * ! ?`). `apps/accounts/validators.py`, `PasswordCompositionValidator`.
 - A failing password gives `400 validation_error`, with the reasons under `fields.new_password` or `fields.password`. One message names everything missing, for example "The password needs at least a capital letter (A-Z), a number (0-9)."
 - Generated temporary passwords follow the same rules: 12 characters with one special character from `@#$%&*!?` (on a phone's first symbol keyboard), and no look-alikes (0/O, 1/l/I).
-- The rules apply when a password is set. Passwords people already have keep working until they next change them.
+- The rules apply when a password is set. Passwords people already have keep working until they next change them, with one exception: at login, a password shorter than the person's roles now need (set before G12, or a higher role given later) turns on `must_change_password`, so they choose a long enough one before doing anything else. That is audited as `auth.password_too_short`, without the password.
 - Passwords are never written to logs, the audit log or background jobs.
 
 ---

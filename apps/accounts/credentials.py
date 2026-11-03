@@ -26,7 +26,7 @@ from grama.exceptions import ApiError
 from grama.http import client_ip
 
 from . import lockout
-from .models import User, normalize_login
+from .models import RoleGroup, User, normalize_login
 
 #: No 0/O, 1/l/I: the password is read off a screen and typed on a phone.
 PASSWORD_ALPHABET = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789"
@@ -46,12 +46,37 @@ def generate_password(length: int = 12) -> str:
             return password
 
 
-def check_new_password(password: str, user: User | None = None, field: str = "password") -> None:
-    """Raise a validation_error ApiError unless AUTH_PASSWORD_VALIDATORS accept the password."""
+def required_length(user: User | None, group_ids=()) -> int:
+    """The shortest password `user` may have: the longest RoleGroup.password_min_length of their
+    active roles, plus `group_ids` (a role being given to them now). G12: 12 for admins, 8 for Panchayat members."""
+    groups = set(group_ids)
+    if user is not None and user.pk:
+        groups |= set(user.role_assignments.filter(is_active=True).values_list("group_id", flat=True))
+    lengths = RoleGroup.objects.filter(group_id__in=groups).values_list("password_min_length", flat=True)
+    return max(lengths, default=0)
+
+
+def check_new_password(password: str, user: User | None = None, field: str = "password", group_ids=()) -> None:
+    """Raise a validation_error ApiError unless AUTH_PASSWORD_VALIDATORS accept the password and it is
+    as long as the user's roles need (required_length)."""
     try:
         validate_password(password, user)
     except DjangoValidationError as exc:
         raise ApiError("validation_error", exc.messages[0], fields={field: list(exc.messages)}) from None
+    length = required_length(user, group_ids)
+    if len(password) < length:
+        message = _("Admin accounts need a password of at least %(n)d characters.") % {"n": length}
+        raise ApiError("validation_error", message, fields={field: [message]})
+
+
+def require_change_if_too_short(user: User, password: str, *, via: str) -> None:
+    """At login: a password shorter than the user's roles now need (a role given later, or one set
+    before G12) must be changed first, through the usual must_change_password flow."""
+    if user.must_change_password or len(password) >= required_length(user):
+        return
+    user.must_change_password = True
+    User.objects.filter(pk=user.pk).update(must_change_password=True)
+    record("auth.password_too_short", target=user, target_label=user.username, via=via)
 
 
 def set_temporary_password(user: User, password: str | None) -> str | None:
@@ -130,6 +155,7 @@ def authenticate_official(request, username: str, password: str, *, via: str, re
         raise refuse(user, "permission_denied", _("This account has no role. Ask your admin to assign one."), via)
     if require is not None:
         require(user)
+    require_change_if_too_short(user, password, via=via)
     user.last_login = timezone.now()
     return user
 
