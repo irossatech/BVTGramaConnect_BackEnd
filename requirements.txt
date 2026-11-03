@@ -33,7 +33,7 @@ pytest==9.2.0
 pytest-django==4.14.0
 
 # Load test (deploy/loadtest/locustfile.py)
-locust==2.46.7
+locust==2.47.0
 
 # django-cors-headers is not installed: Django serves both web parts on the
 # same origin in development. Add it only if a web part gets its own dev server.
