@@ -6,10 +6,11 @@ most POST_IMAGE_MAX_PX (1280), plus a POST_MEDIUM_PX (640) copy for big cards
 and a POST_THUMB_PX (320) thumbnail.
 
 Videos (owner decision Q8): MP4 or MOV up to MAX_VIDEO_UPLOAD_MB and
-VIDEO_MAX_SECONDS, one per post and never together with photos. The file is
-stored as uploaded; the app compresses it first. With ffprobe and ffmpeg on
-PATH (the server installs them) the server measures the length and cuts a
-poster frame. Without them the app must send `duration_s` and a `poster` photo.
+VIDEO_MAX_SECONDS, one per post and never together with photos. The app
+compresses it first. With ffprobe and ffmpeg on PATH (the server installs
+them) the server measures the length, cuts a poster frame and stores a copy
+without metadata (strip_metadata, G7). Without them the app must send
+`duration_s` and a `poster` photo, and the file is stored as uploaded.
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 
 from django.conf import settings
-from django.core.files.base import ContentFile
+from django.core.files.base import ContentFile, File
 from django.db import transaction
 from django.utils.translation import gettext as _
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -205,6 +206,43 @@ def extract_poster(path: str, at_seconds: float) -> bytes | None:
     return result.stdout or None
 
 
+def strip_metadata(path: str, container: str) -> File | None:
+    """The video without its metadata (GPS place, phone model, dates), or None when ffmpeg is not installed.
+
+    Security gap G7, owner decision of 2026-11-03. The streams are copied, not re-encoded, so it
+    takes a fraction of a second; data streams (where some phones keep a GPS track) and
+    chapters are dropped, and the index moves to the front so playback starts sooner. Raises
+    unsupported_media when ffmpeg is there but cannot copy the file: a video is never kept
+    with its metadata when the server could have removed it.
+    """
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        return None
+    handle, out = tempfile.mkstemp(suffix=f".{container}")
+    os.close(handle)
+    try:
+        result = subprocess.run(
+            [ffmpeg, "-v", "error", "-y", "-i", path, "-map", "0:v", "-map", "0:a?", "-c", "copy",
+             "-map_metadata", "-1", "-map_chapters", "-1", "-movflags", "+faststart", "-f", container, out],
+            capture_output=True,
+            timeout=120,
+            check=False,
+        )
+        if result.returncode != 0 or os.path.getsize(out) == 0:
+            raise _unsupported(_("This video could not be read. Upload an MP4 or MOV file."))
+        # An anonymous temporary file goes away by itself when it is closed or collected.
+        copy = tempfile.TemporaryFile()
+        with open(out, "rb") as stripped:
+            shutil.copyfileobj(stripped, copy)
+        size = copy.tell()
+        copy.seek(0)
+    finally:
+        os.unlink(out)
+    file = File(copy, name=f"video.{container}")
+    file.size = size
+    return file
+
+
 def _sniff_video(upload) -> str:
     """'mp4' or 'mov' from the name and the file's first bytes, else 415."""
     extension = os.path.splitext(upload.name or "")[1].lower()
@@ -273,7 +311,10 @@ def prepare_video(
                 fields={"file": [_("Too long.")]},
             )
         frame = extract_poster(path, min(1.0, float(duration) / 2) if duration is not None else 1.0)
+        stripped = strip_metadata(path, container)
 
+    if stripped is not None:
+        upload = stripped
     if frame is not None:
         poster_file = ContentFile(frame, name="poster.png")
     elif poster is not None:
