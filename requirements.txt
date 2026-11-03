@@ -6,7 +6,7 @@
 # (deploy/setup.sh installs these). Windows and macOS get prebuilt wheels.
 
 # Framework
-Django==5.2.18
+Django==6.1.2
 djangorestframework==3.18.3
 djangorestframework-simplejwt==5.5.1
 drf-spectacular==0.30.0
