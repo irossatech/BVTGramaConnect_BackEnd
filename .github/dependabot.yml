@@ -1,0 +1,16 @@
+# Pull requests into dev when a pinned package in requirements.txt has a fix or a new release
+# (security gap G10). Each one runs the security scans; run the tests before merging.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: "/"
+    target-branch: dev
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+  - package-ecosystem: github-actions
+    directory: "/"
+    target-branch: dev
+    schedule:
+      interval: monthly

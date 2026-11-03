@@ -2,7 +2,7 @@
 
 Django 5.2 + Django REST Framework. One project package, `grama`, and thirteen apps inside the `apps/` package. Apps are imported as `apps.<name>`; each keeps its short label (`accounts`, `posts`, …), so tables, migrations, URL namespaces and `AUTH_USER_MODEL = "accounts.User"` use the short name.
 
-Top level of the repo: `apps/`, `grama/` (settings, URLs, shared helpers, project tests in `grama/tests/`), `deploy/` (server scripts; `deploy/loadtest/` for Locust), `docs/`, plus `manage.py`, `conftest.py`, `pytest.ini` and the single `requirements.txt` used in every environment.
+Top level of the repo: `apps/`, `grama/` (settings, URLs, shared helpers, project tests in `grama/tests/`), `deploy/` (server scripts; `deploy/loadtest/` for Locust), `docs/`, `.github/` (security scans on pull requests into `dev`, Dependabot), plus `manage.py`, `conftest.py`, `pytest.ini` and the single `requirements.txt` used in every environment.
 
 ## Apps and what each owns
 

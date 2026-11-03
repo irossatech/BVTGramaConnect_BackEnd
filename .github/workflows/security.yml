@@ -1,0 +1,53 @@
+# Security scans on every pull request into dev (security gap G10, SAST report of 2026-10-31).
+# Each job fails on a Medium or higher finding; Low ones are listed but pass.
+# docs/security-review.md, "Dependencies" and "Code scanning".
+name: Security scans
+
+on:
+  pull_request:
+    branches: [dev]
+  push:
+    branches: [dev]
+  schedule:
+    - cron: "30 2 * * 1"   # Mondays 08:00 India time: new advisories for packages that did not change
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bandit:
+    name: Bandit (Python code)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install bandit==1.9.4
+      - run: bandit -r apps grama -x "*/tests/*,*/migrations/*" --severity-level medium
+
+  semgrep:
+    name: Semgrep (Python, Django, secrets)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install semgrep==1.183.0
+      - run: >
+          semgrep scan --config p/python --config p/django --config p/secrets
+          --severity WARNING --severity ERROR --error
+          apps grama deploy
+
+  pip-audit:
+    name: pip-audit (known vulnerable packages)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pip-audit==2.10.1
+      - run: pip-audit --requirement requirements.txt --progress-spinner off
