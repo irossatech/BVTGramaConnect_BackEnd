@@ -2,8 +2,10 @@
 
 The team's test server: one Unix account on a hosting panel, no sudo, no Nginx of our own. Django's
 own server runs the dev settings with `DEBUG=False` and serves the website, console and photos itself
-(`SERVE_FILES`); the data lives in the account's MySQL or MariaDB database. Production uses
-`deploy/setup.sh` and `deploy/deploy.sh` instead (root, Nginx, Gunicorn, HTTPS, backups).
+(`SERVE_FILES`); the data lives in the account's MySQL or MariaDB database. Production on a
+server with root uses `deploy/setup.sh` and `deploy/deploy.sh` (Nginx, Gunicorn, HTTPS, backups);
+production on a hosting panel uses these scripts with the production settings ("Production on a
+hosting panel", below).
 
 Current server: Unix user `bvt_dev`, folder `~/htdocs/dev.bvtgramaconnect.com`, port 9501,
 `http://147.93.102.247:9501` (website `/`, console `/console/`, API `/api/v1/`, Swagger `/api/docs/`).
@@ -161,6 +163,69 @@ FCM_TOPIC_PREFIX=qa_
 without it a test post would reach real users. QA builds of the app follow the `qa_` topics.
 The worker sends the pushes, so `BVT-start.sh` must show it running; its log must not say
 "FCM disabled".
+
+## Production on a hosting panel
+
+When production has to run on the same kind of account (no sudo, the panel's nginx in front, as
+for www.gramaconnect.com on 147.93.102.247), the same scripts run it with the production
+settings. They tell production from qa by one line in the backend's `.env`,
+`DJANGO_SETTINGS_MODULE=grama.settings.prod`, which the first production deploy writes:
+
+| | qa | production on the panel |
+|---|---|---|
+| Settings | dev, `DEBUG=False` | `grama.settings.prod`: secure cookies, HSTS, the key and host checks |
+| Web server | `runserver` on `0.0.0.0:PORT` | Gunicorn on `127.0.0.1:PORT` (3 workers, `WEB_WORKERS`), no access log |
+| Branch | `dev` | `main` (`BRANCH=dev` to override) |
+| Deploy also runs | | `check --deploy` before migrating, `collectstatic` |
+| Refused | | `SEED=1`, `QA_SQLITE=1` |
+
+Its own panel site and Unix user, its own MySQL database, its own port: nothing is shared with qa.
+
+1. **In the panel** (whoever administers it): a reverse-proxy site for `www.gramaconnect.com`
+   (and `gramaconnect.com`) to `http://127.0.0.1:9601`, with its own SSH user, Let's Encrypt
+   certificate, and a MySQL database and user. With Cloudflare in front, its SSL mode is
+   "Full (strict)".
+2. **As that site's user**, in its site folder: clone both repos and create the launchers as in
+   "First setup", steps 1 and 2.
+3. `MODE=production DOMAIN=www.gramaconnect.com EXTRA_DOMAINS=gramaconnect.com PORT=9601 bash BVT-deploy.sh`.
+   The first run writes the production `.env` and stops at the database: add `DATABASE_URL` as in
+   "The database", and run the same command again. Later releases: `bash BVT-deploy.sh`.
+4. **The links** the panel's nginx needs, because it serves every address with a file extension
+   from the site folder:
+   ```
+   cd ~/htdocs/<site folder>
+   ln -s BVTGramaConnect/dist/_next _next
+   ln -s BVTGramaConnect/dist/_ds _ds
+   ln -s BVTGramaConnect/dist/assets assets
+   ln -s BVTGramaConnect/dist/fonts fonts
+   ln -s BVTGramaConnect/dist/downloads downloads
+   ln -s BVTGramaConnect_BackEnd/media media
+   ln -s BVTGramaConnect_BackEnd/staticfiles static
+   ```
+   The console's own files (`/console/vendor/…`, `/console/assets/…`) need `console`:
+   `ln -s BVTGramaConnect/dist/console console` only if `https://<domain>/console/support.js`
+   answers 404 without it.
+5. **Push:** a new key for the `fcm-sender` account (Google Cloud → IAM → Service accounts →
+   fcm-sender → Keys), copied to `~/secrets/fcm-service-account.json` (mode 600, never in
+   `~/htdocs`), then in `.env`: `FCM_CREDENTIALS_FILE=/home/<user>/secrets/fcm-service-account.json`.
+   `FCM_PROJECT_ID=bvt-grama-connect` and an empty `FCM_TOPIC_PREFIX` are written already.
+6. **Office details** from the owner in `.env`: `SITE_PHONE`, `SITE_EMAIL`, `SITE_OFFICE_ADDRESS_TE`,
+   `SITE_OFFICE_ADDRESS_EN`, `SITE_HOURS_TE`, `SITE_HOURS_EN`. Restart: `bash BVT-stop.sh && bash BVT-start.sh`.
+7. **Data:** geography, categories, numbers (`deploy/DATA_MOVE.md`), then the first Super Admin:
+   `.venv/bin/python manage.py create_super_admin`.
+8. **Real visitor addresses.** Lockouts and limits count per address, so Django must see the
+   visitor's, not the proxy's or Cloudflare's. Try the console login once with a wrong password
+   (failed logins are recorded with their address), then:
+   ```
+   .venv/bin/python manage.py shell -c "from axes.models import AccessFailureLog; print(list(AccessFailureLog.objects.order_by('-attempt_time').values_list('ip_address', flat=True)[:3]))"
+   ```
+   It must show your own public address (search "what is my IP"). `127.0.0.1` or a Cloudflare
+   address means the panel does not pass the real one: stop and fix that before launch.
+9. `bash BVT-backup.sh --install`.
+
+`.env` also carries the owner's decision of 2026-11-04, `CITIZEN_INTEGRITY_REQUIRED=False`:
+citizens may post from the website's APK until the app is on Google Play. Remove the line and
+restart on the day it is.
 
 ## Stopping for good
 

@@ -1,5 +1,5 @@
-# Shared by the BVT-*.sh scripts of a qa server on a hosting account without root (deploy/qa/README.md).
-# Sourced, not run.
+# Shared by the BVT-*.sh scripts of a qa server, or of production, on a hosting account without root
+# (deploy/qa/README.md). Sourced, not run.
 
 # This file sits in <backend>/deploy/qa/, so the backend is two folders up; the web repo is cloned
 # next to the backend. Both can be overridden from the environment.
@@ -19,10 +19,25 @@ BACKUP_TAG="# bvt-grama-backup"
 step() { printf '\n== %s\n' "$*"; }
 fail() { echo "ERROR: $*" >&2; exit 1; }
 
-# True when PID is alive and is one of our manage.py processes (not a reused PID).
+# Production on the same kind of hosting account (deploy/qa/README.md, "Production on a hosting
+# panel"): the backend's .env names the production settings, and every manage.py, Gunicorn and
+# backup run here uses them. A qa server's .env has no such line and keeps the dev settings.
+load_settings_module() {
+  local module=""
+  if [[ -f "$BACKEND_DIR/.env" ]]; then
+    module="$(sed -n 's/^DJANGO_SETTINGS_MODULE=//p' "$BACKEND_DIR/.env" | tail -n 1 | tr -d '"'"'"' \r')"
+  fi
+  if [[ -n "$module" ]]; then
+    export DJANGO_SETTINGS_MODULE="$module"
+  fi
+}
+is_production() { [[ "${DJANGO_SETTINGS_MODULE:-}" == "grama.settings.prod" ]]; }
+load_settings_module
+
+# True when PID is alive and is one of our processes, manage.py or Gunicorn (not a reused PID).
 is_ours() {
   local pid="$1"
-  [[ -n "$pid" && -r "/proc/$pid/cmdline" ]] && tr '\0' ' ' <"/proc/$pid/cmdline" | grep -q "manage.py"
+  [[ -n "$pid" && -r "/proc/$pid/cmdline" ]] && tr '\0' ' ' <"/proc/$pid/cmdline" | grep -qE "manage\.py|gunicorn"
 }
 
 # Stop one process and everything it started (it runs in its own process group).
