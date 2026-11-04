@@ -611,9 +611,6 @@ Feed rule: published posts with **any** area that is the village, its mandal, it
 | `POST /devices/` | public or bearer | `{"fcm_token", "platform": "android"\|"ios"\|"web", "language": "te"\|"en", "village_id"?, "app_version"?}` | `201` when new, `200` when the token was known: `{"id", "fcm_token", "platform", "language", "village_id", "app_version"}`. Upserts by `fcm_token`. With a bearer token the device is linked to that official. Without one, a new token makes an unlinked device, but a token already linked to an official is left as it is (`200`, unchanged): only `DELETE /devices/{id}/` or another official's login on the phone unlinks it, so the app's logout deletes the device before registering again without a login. `400` for an unknown or inactive village. |
 | `PATCH /devices/{id}/` | the app that registered it | `{"village_id"?, "language"?, "fcm_token"?}` | `200`, same shape. A device linked to an official answers `404` to anyone else. |
 | `DELETE /devices/{id}/` | same | — | `204` (logout or opt-out) |
-
-All three share one rate limit per IP address: `DEVICE_THROTTLE_RATE`, 300 an hour by default, signed in or not. Over it they answer `429 throttled` with `retry_after_s` and a `Retry-After` header. The app calls them only on start, on a village or language change, and on sign-in or sign-out, so a phone never comes near it; the limit is high because many phones on a mobile network share one address. **App: on `throttled`, keep the current registration and try again on the next start.**
-
 ### Inbox (officials)
 
 | Method and path | Response |

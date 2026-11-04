@@ -1,10 +1,9 @@
 """Push in production (mobile team's plan, 28 Oct 2026): the qa topic prefix, the Android channel,
-tag and expiry, the iPhone sound, the high-priority switch and the /devices/ rate limit."""
+tag and expiry, the iPhone sound, and the high-priority switch."""
 
 import json
 
 import pytest
-from rest_framework.test import APIClient
 
 from apps.notifications.push import FcmGateway, PushMessage, build_payload, topic_for
 from apps.posts.models import Category
@@ -187,55 +186,3 @@ def test_switch_sends_every_post_at_high_priority_and_keeps_the_news_channel(
     [message] = [m for m in push_outbox if m.topic]
     assert message.priority == "high"
     assert build_payload(message)["message"]["android"]["notification"]["channel_id"] == "news"
-
-
-# --- 4. Rate limit on /devices/ -----------------------------------------------------------------------
-
-
-def register(client, token):
-    return client.post("/api/v1/devices/", {"fcm_token": token, "platform": "android", "language": "te"}, format="json")
-
-
-@pytest.mark.django_db
-def test_devices_are_limited_per_ip(settings):
-    settings.DEVICE_THROTTLE_RATE = "3/hour"
-    client = APIClient()
-    assert [register(client, f"tok-{i}").status_code for i in range(3)] == [201, 201, 201]
-    response = register(client, "tok-4")
-    assert response.status_code == 429
-    assert response.json()["error"]["code"] == "throttled"
-    assert response.json()["error"]["retry_after_s"] > 0
-    assert response.has_header("Retry-After")
-
-
-@pytest.mark.django_db
-def test_patch_and_delete_count_against_the_same_limit(settings):
-    settings.DEVICE_THROTTLE_RATE = "3/hour"
-    client = APIClient()
-    device_id = register(client, "tok-1").json()["id"]
-    assert client.patch(f"/api/v1/devices/{device_id}/", {"language": "en"}, format="json").status_code == 200
-    assert client.delete(f"/api/v1/devices/{device_id}/").status_code == 204
-    assert register(client, "tok-2").status_code == 429
-
-
-@pytest.mark.django_db
-def test_another_ip_has_its_own_count(settings):
-    settings.DEVICE_THROTTLE_RATE = "1/hour"
-    assert register(APIClient(REMOTE_ADDR="10.0.0.1"), "tok-1").status_code == 201
-    assert register(APIClient(REMOTE_ADDR="10.0.0.1"), "tok-2").status_code == 429
-    assert register(APIClient(REMOTE_ADDR="10.0.0.2"), "tok-3").status_code == 201
-
-
-@pytest.mark.django_db
-def test_officials_are_limited_too(settings, api, world):
-    settings.DEVICE_THROTTLE_RATE = "1/hour"
-    official = api(world.users["ma_tenali"])
-    assert register(official, "tok-1").status_code == 201
-    assert register(official, "tok-1").status_code == 429
-
-
-def test_default_limit_leaves_room_for_a_shared_mobile_network():
-    from django.conf import settings
-
-    count, period = settings.DEVICE_THROTTLE_RATE.split("/")
-    assert period == "hour" and int(count) >= 300

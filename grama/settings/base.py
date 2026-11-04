@@ -484,9 +484,6 @@ PUSH_TTL_SECONDS = env.int("PUSH_TTL_SECONDS", default=86400)
 # Owner decision Q19: only urgent posts go to citizens at high priority. True sends every published
 # post at high priority, so it is not held back while the phone sleeps; urgent posts keep their own channel.
 PUSH_ALL_POSTS_HIGH_PRIORITY = env.bool("PUSH_ALL_POSTS_HIGH_PRIORITY", default=False)
-# POST, PATCH and DELETE /devices/ per IP address. Many phones on a mobile network share one
-# public address, so this is set well above what one phone needs.
-DEVICE_THROTTLE_RATE = env.str("DEVICE_THROTTLE_RATE", default="300/hour")
 
 # Machine translation of published posts, Telugu <-> English (apps.posts.translation; contract
 # section 6): "off", "google" or "bhashini". Off: nothing is sent anywhere and `translation` is null.

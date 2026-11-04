@@ -1,7 +1,5 @@
 """Devices, the officials' inbox and notification texts. docs/api-contract.md, section 7."""
 
-from django.conf import settings
-from django.core.cache import caches
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
@@ -10,14 +8,12 @@ from rest_framework import generics, status
 from rest_framework.pagination import CursorPagination
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
 
 from apps.accounts.authentication import client_via
 from apps.accounts.permissions import PLATFORM, HasPerm
 from apps.audit.services import record
 from grama.exceptions import ApiError, permission_denied
-from grama.http import client_ip
 
 from .models import Device, Notification, NotificationTemplate
 from .serializers import (
@@ -36,26 +32,10 @@ def _user_or_none(request):
     return request.user if request.user and request.user.is_authenticated else None
 
 
-class DeviceThrottle(SimpleRateThrottle):
-    """DEVICE_THROTTLE_RATE requests to /devices/ per IP, POST, PATCH and DELETE together, so a script
-    cannot fill the table. Over it: 429 throttled with retry_after_s. Counted in the shared "throttle"
-    cache, so every Gunicorn worker sees one count."""
-
-    scope = "devices"
-    cache = caches["throttle"]
-
-    def get_rate(self):
-        return settings.DEVICE_THROTTLE_RATE
-
-    def get_cache_key(self, request, view):
-        return self.cache_format % {"scope": self.scope, "ident": client_ip(request) or "unknown"}
-
-
 class DeviceRegisterView(APIView):
     """Citizens register without login; a bearer token links the device to the official."""
 
     permission_classes = [AllowAny]
-    throttle_classes = [DeviceThrottle]
 
     @extend_schema(summary="Register or refresh this device for push", request=DeviceSerializer, responses=DeviceSerializer)
     def post(self, request):
@@ -78,7 +58,6 @@ class DeviceDetailView(APIView):
     """The device id is known only to the app that registered it."""
 
     permission_classes = [AllowAny]
-    throttle_classes = [DeviceThrottle]
 
     def get_device(self, request, pk) -> Device:
         device = get_object_or_404(Device, pk=pk)
