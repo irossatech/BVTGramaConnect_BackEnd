@@ -209,11 +209,31 @@ def test_video_post_page_has_a_player_and_its_poster_as_the_preview(world):
     assert meta(response, "og:image") == f"{BASE}media/og/{post.share_code}.jpg"
 
 
-def test_text_post_has_no_preview_picture_until_the_category_has_one(world):
+def test_text_post_uses_its_categorys_picture(world):
     response = page(publish(world).share_code)
     assert response.status_code == 200
-    assert meta(response, "og:image") is None
-    assert meta(response, "twitter:card") == "summary"
+    assert meta(response, "og:image") == f"{BASE}static/share/og-announce.jpg"
+    assert meta(response, "twitter:card") == "summary_large_image"
+
+
+def test_text_post_in_a_category_without_a_picture_uses_the_default(world):
+    Category.objects.create(key="health", name_te="ఆరోగ్యం", name_en="Health", order=9)
+    post = publish(world)
+    Post.objects.filter(pk=post.pk).update(category=Category.objects.get(key="health"))
+    assert meta(page(post.share_code), "og:image") == f"{BASE}static/share/og-default.jpg"
+
+
+@pytest.mark.parametrize("key", ["announce", "schemes", "news", "updates", "default"])
+def test_every_category_picture_is_a_1200_by_630_jpeg_under_300_kb(key):
+    from django.contrib.staticfiles import finders
+
+    path = finders.find(f"share/og-{key}.jpg")
+    assert path, f"share/og-{key}.jpg is missing"
+    with open(path, "rb") as handle:
+        data = handle.read()
+    assert len(data) <= 300_000
+    with Image.open(io.BytesIO(data)) as picture:
+        assert picture.format == "JPEG" and picture.size == (1200, 630)
 
 
 def test_the_translation_shows_below_the_post(world):
