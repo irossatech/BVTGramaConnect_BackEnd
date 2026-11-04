@@ -4,6 +4,12 @@
 #   SERVER_IP=147.93.102.247 PORT=9501 bash BVT-deploy.sh    the first time
 #   bash BVT-deploy.sh                                       every later release
 #
+# Production on a hosting account of the same kind (deploy/qa/README.md, "Production on a
+# hosting panel"), the first time, as that site's own user:
+#   MODE=production DOMAIN=www.gramaconnect.com EXTRA_DOMAINS=gramaconnect.com PORT=9601 bash BVT-deploy.sh
+# It writes a production .env (grama.settings.prod, Gunicorn), deploys BRANCH (default main
+# there), checks Django's security settings, collects the static files and refuses SEED=1.
+#
 # Pulls the backend repo and the web repo (cloned next to it), uses the website and console
 # build committed in the web repo's dist/ (or builds it, when the repo has none), installs the Python packages, writes the backend's .env
 # on the first run, migrates the database and restarts with BVT-start.sh. deploy/qa/README.md
@@ -23,8 +29,13 @@ set -euo pipefail
 source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/qa-lib.sh"
 
 main() {
-  local branch python_bin
-  branch="${BRANCH:-dev}"
+  local branch python_bin production=0
+  if is_production || [[ "${MODE:-}" == "production" ]]; then
+    production=1
+    [[ "${SEED:-0}" != "1" ]] || fail "SEED=1 is refused in production: it writes sample places, posts and officials."
+    [[ "${QA_SQLITE:-0}" != "1" ]] || fail "QA_SQLITE=1 is refused in production: it needs its own MySQL database."
+  fi
+  if (( production )); then branch="${BRANCH:-main}"; else branch="${BRANCH:-dev}"; fi
   python_bin="${PYTHON_BIN:-python3}"
 
   step "Checking tools and folders"
@@ -50,14 +61,26 @@ main() {
   "$PYTHON" -m pip install --quiet -r "$BACKEND_DIR/requirements.txt"
 
   step "Settings (.env)"
-  write_env
+  if (( production )); then write_production_env; else write_env; fi
+  load_settings_module
   check_database_setting
 
   step "Database"
   cd "$BACKEND_DIR"
   "$PYTHON" manage.py check
+  if (( production )); then
+    is_production || fail "$BACKEND_DIR/.env does not name grama.settings.prod; this is not a production .env."
+    # Before anything changes, as deploy/deploy.sh does: a weak key or a missing https setting stops here.
+    "$PYTHON" manage.py check --deploy --tag security --fail-level WARNING \
+      || fail "Django's security check failed (above). Fix .env, then deploy again."
+  fi
   "$PYTHON" manage.py migrate --noinput
   "$PYTHON" manage.py ensure_schedules
+  if (( production )); then
+    # Django admin and API docs styles; the panel's nginx serves them through the site folder's static link.
+    "$PYTHON" manage.py collectstatic --noinput >/dev/null
+    echo "Static files collected in $(sed -n 's/^STATIC_ROOT=//p' "$BACKEND_DIR/.env" | tail -n 1)."
+  fi
   if [[ "${SEED:-0}" == "1" ]]; then
     local villages
     villages="$("$PYTHON" manage.py shell -c 'from apps.geography.models import Village; print(Village.objects.count())' | tail -n 1)"
@@ -146,6 +169,55 @@ WEB_ADMIN_DIR=$WEB_DIR/dist/console
 EOF
   )
   echo "Wrote $env_file (readable by you only)."
+}
+
+# Production on a hosting panel: write .env on the first run only, with the production settings.
+# The database line (DATABASE_URL) is added by hand, as on qa; the Firebase key and the office
+# details too (deploy/qa/README.md, "Production on a hosting panel").
+write_production_env() {
+  local env_file="$BACKEND_DIR/.env" secret names hosts origins first
+  if [[ -f "$env_file" ]]; then
+    echo "Keeping the existing $env_file."
+    return
+  fi
+  [[ -n "${DOMAIN:-}" ]] || fail "First production run: give the domain, e.g.  MODE=production DOMAIN=www.gramaconnect.com EXTRA_DOMAINS=gramaconnect.com PORT=9601 bash BVT-deploy.sh"
+  names="$DOMAIN${EXTRA_DOMAINS:+ $EXTRA_DOMAINS}"
+  first="$DOMAIN"
+  hosts="$(echo "$names" | tr ' ' ','),localhost,127.0.0.1"
+  # shellcheck disable=SC2086  # one origin per name
+  origins="$(printf 'https://%s,' $names)"
+  origins="${origins%,}"
+  secret="$("$PYTHON" -c 'import secrets; print(secrets.token_urlsafe(50))')"
+  (
+    umask 077
+    cat >"$env_file" <<EOF
+# BVT Grama Connect production on a hosting panel. Written by deploy/qa/BVT-deploy.sh (MODE=production).
+# Add DATABASE_URL yourself (deploy/qa/README.md, "Production on a hosting panel").
+DJANGO_SETTINGS_MODULE=grama.settings.prod
+SECRET_KEY=$secret
+ALLOWED_HOSTS=$hosts
+CSRF_TRUSTED_ORIGINS=$origins
+MEDIA_ROOT=$BACKEND_DIR/media
+STATIC_ROOT=$BACKEND_DIR/staticfiles
+WEB_PUBLIC_DIR=$WEB_DIR/dist
+WEB_ADMIN_DIR=$WEB_DIR/dist/console
+# The panel's nginx forwards every address without a file extension here, so Django serves the
+# website and console pages; files with an extension come from the site folder's links.
+SERVE_FILES=True
+# The panel's nginx sets X-Real-IP; check it once (README) so lockouts count real addresses.
+TRUST_X_REAL_IP=True
+PUBLIC_BASE_URL=https://$first/
+SITE_WEBSITE_URL=https://$first/
+PLAY_INTEGRITY_PACKAGE=com.bvt.app
+# Owner's decision of 2026-11-04: citizens may post from the website's APK until the app is on
+# Google Play. Remove this line on the day it is.
+CITIZEN_INTEGRITY_REQUIRED=False
+APP_DOWNLOAD_URL=/downloads/bvt-grama-connect.apk
+FCM_PROJECT_ID=bvt-grama-connect
+FCM_TOPIC_PREFIX=
+EOF
+  )
+  echo "Wrote $env_file (readable by you only, production settings)."
 }
 
 # A qa server keeps its data in its own database. Without DATABASE_URL, the dev settings would

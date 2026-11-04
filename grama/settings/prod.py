@@ -1,4 +1,4 @@
-"""The Linux server: Gunicorn behind Nginx.
+"""The Linux server: Gunicorn behind Nginx (ours from deploy/setup.sh, or a hosting panel's).
 
 Required env: SECRET_KEY, ALLOWED_HOSTS, DATABASE_URL, MEDIA_ROOT, STATIC_ROOT.
 Startup fails with ImproperlyConfigured when one is missing.
@@ -34,6 +34,10 @@ DATABASES = {"default": database_config(env.str("DATABASE_URL"))}
 
 MEDIA_ROOT = Path(env.str("MEDIA_ROOT"))
 STATIC_ROOT = Path(env.str("STATIC_ROOT"))
+# Off behind our own Nginx (deploy/setup.sh), which serves the website, console, /static/ and /media/.
+# On for production on a hosting panel (deploy/qa/README.md): the panel's nginx serves files with an
+# extension from the site folder and forwards the rest, the website's pages among them, to Django.
+SERVE_FILES = env.bool("SERVE_FILES", default=False)
 
 # Nginx terminates HTTPS and passes X-Forwarded-Proto and X-Real-IP.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")

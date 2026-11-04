@@ -6,7 +6,8 @@
 #   bash BVT-start.sh --if-down    the keep-alive: start only when not running (cron, every minute)
 #
 # Runs two background processes as the current user:
-#   web     Django on 0.0.0.0:PORT: website (/), console (/console/), API (/api/v1/), photos (/media/)
+#   web     Django on 0.0.0.0:PORT: website (/), console (/console/), API (/api/v1/), photos (/media/);
+#           in production (.env names grama.settings.prod) Gunicorn on 127.0.0.1:PORT instead
 #   worker  background jobs (push notifications, review escalation, translation)
 # They do not belong to the terminal: closing it or logging out leaves them running. Some hosting
 # setups still end every process of a login at logout, so a crontab line runs the keep-alive every
@@ -24,7 +25,7 @@ case "${1:-}" in
   *) echo "Usage: bash BVT-start.sh [--if-down]" >&2; exit 2 ;;
 esac
 
-# Start one manage.py command in the background, in its own session, logging to LOG_DIR.
+# Start one program (its full command) in the background, in its own session, logging to LOG_DIR.
 start_one() {
   local name="$1" log="$LOG_DIR/$1.log"
   shift
@@ -32,11 +33,11 @@ start_one() {
   if [[ -f "$log" ]] && (( $(stat -c %s "$log") > 20 * 1024 * 1024 )); then
     mv -f "$log" "$log.1"
   fi
-  echo "=== $(date '+%Y-%m-%d %H:%M:%S') starting $name: manage.py $*" >>"$log"
+  echo "=== $(date '+%Y-%m-%d %H:%M:%S') starting $name: ${*#"$BACKEND_DIR/"}" >>"$log"
   (
     cd "$BACKEND_DIR"
     # 9>&-: the processes must not inherit the start lock, or they would hold it for ever.
-    PYTHONUNBUFFERED=1 setsid nohup "$PYTHON" manage.py "$@" >>"$log" 2>&1 </dev/null 9>&- &
+    PYTHONUNBUFFERED=1 setsid nohup "$@" >>"$log" 2>&1 </dev/null 9>&- &
     echo $! >"$STATE_DIR/$name.pid"
   )
 }
@@ -83,8 +84,17 @@ if ss -ltnH "sport = :$PORT" 2>/dev/null | grep -q .; then
 fi
 
 echo "$PORT" >"$STATE_DIR/port"
-start_one web runserver "0.0.0.0:$PORT" --noreload
-start_one worker qcluster
+if is_production; then
+  # Production: Gunicorn, reachable only from this server (the panel's nginx forwards the domain
+  # to it). No access log: addresses can carry search words, and those stay out of logs.
+  [[ -x "$BACKEND_DIR/.venv/bin/gunicorn" ]] || fail "Gunicorn is missing from $BACKEND_DIR/.venv. Run BVT-deploy.sh."
+  start_one web "$BACKEND_DIR/.venv/bin/gunicorn" grama.wsgi:application \
+    --bind "127.0.0.1:$PORT" --workers "${WEB_WORKERS:-3}" --timeout 300 \
+    --max-requests 1000 --max-requests-jitter 100 --error-logfile - --log-level warning
+else
+  start_one web "$PYTHON" manage.py runserver "0.0.0.0:$PORT" --noreload
+fi
+start_one worker "$PYTHON" manage.py qcluster
 
 # --- Keep it running: after logout, a crash or a reboot ------------------------------
 
@@ -103,12 +113,17 @@ web_pid="$(cat "$STATE_DIR/web.pid")"
 for _ in $(seq 1 30); do
   if curl -fsS "http://127.0.0.1:$PORT/api/v1/health/" >/dev/null 2>&1; then
     echo " ok."
-    ip="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
     echo
-    echo "Running. Open, with your server's public IP address:"
-    echo "  Website  http://${ip:-<server IP>}:$PORT/"
-    echo "  Console  http://${ip:-<server IP>}:$PORT/console/"
-    echo "  API      http://${ip:-<server IP>}:$PORT/api/v1/health/"
+    if is_production; then
+      echo "Running (production settings, Gunicorn on 127.0.0.1:$PORT). Open it through the domain:"
+      echo "  Website  https://<domain>/   Console  https://<domain>/console/   API  https://<domain>/api/v1/health/"
+    else
+      ip="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
+      echo "Running. Open, with your server's public IP address:"
+      echo "  Website  http://${ip:-<server IP>}:$PORT/"
+      echo "  Console  http://${ip:-<server IP>}:$PORT/console/"
+      echo "  API      http://${ip:-<server IP>}:$PORT/api/v1/health/"
+    fi
     echo
     echo "Logs:  tail -f $LOG_DIR/web.log     tail -f $LOG_DIR/worker.log"
     exit 0

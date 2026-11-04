@@ -190,3 +190,23 @@ def test_production_starts_with_a_random_key():
     # G11 as the gaps file gives it: Django sends HSTS for a year (W004 is no longer silenced). Silenced:
     # the HTTPS redirect, which Nginx does, and subdomains and preload until the domain is known.
     assert result.stdout.strip() == "['security.W005', 'security.W008', 'security.W021'] 31536000"
+
+
+@pytest.mark.parametrize("value, expected", [(None, "False"), ("True", "True"), ("False", "False")])
+def test_production_serves_files_only_when_asked(value, expected):
+    """Off behind our own Nginx; on for production behind a hosting panel (deploy/qa/README.md)."""
+    import secrets
+
+    env = {
+        **os.environ, "SECRET_KEY": secrets.token_urlsafe(50), "ALLOWED_HOSTS": "example.in",
+        "DATABASE_URL": "sqlite:///prod-check.sqlite3", "MEDIA_ROOT": "/tmp/media", "STATIC_ROOT": "/tmp/static",
+    }
+    env.pop("SERVE_FILES", None)
+    if value is not None:
+        env["SERVE_FILES"] = value
+    result = subprocess.run(
+        [sys.executable, "-c", "import grama.settings.prod as p; print(p.SERVE_FILES, p.DEBUG)"],
+        cwd=REPO, env=env, capture_output=True, text=True, timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == f"{expected} False"
