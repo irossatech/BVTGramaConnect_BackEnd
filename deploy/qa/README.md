@@ -202,6 +202,9 @@ Its own panel site and Unix user, its own MySQL database, its own port: nothing 
    ln -s BVTGramaConnect_BackEnd/media media
    ln -s BVTGramaConnect_BackEnd/staticfiles static
    ```
+   Every production deploy also writes `.well-known/assetlinks.json` into the site folder
+   (`manage.py write_assetlinks`), because the panel's nginx serves `.json` files from there:
+   that is what lets shared `/p/` links open the app. Check: `curl -s https://<domain>/.well-known/assetlinks.json`.
    The console's own files (`/console/vendor/…`, `/console/assets/…`) need `console`:
    `ln -s BVTGramaConnect/dist/console console` only if `https://<domain>/console/support.js`
    answers 404 without it.
