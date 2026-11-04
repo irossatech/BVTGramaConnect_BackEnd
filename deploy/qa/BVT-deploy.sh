@@ -76,10 +76,11 @@ main() {
   fi
   "$PYTHON" manage.py migrate --noinput
   "$PYTHON" manage.py ensure_schedules
+  # Shared posts' category pictures, Django admin and API docs styles: the panel's nginx serves
+  # .jpg and .css files through the site folder's static link, never through Django.
+  "$PYTHON" manage.py collectstatic --noinput >/dev/null
+  echo "Static files collected (link the site folder's static to them: deploy/qa/README.md)."
   if (( production )); then
-    # Django admin and API docs styles; the panel's nginx serves them through the site folder's static link.
-    "$PYTHON" manage.py collectstatic --noinput >/dev/null
-    echo "Static files collected in $(sed -n 's/^STATIC_ROOT=//p' "$BACKEND_DIR/.env" | tail -n 1)."
     # App Links: the panel's nginx serves *.json from the site folder, never from Django.
     "$PYTHON" manage.py write_assetlinks "$(dirname "$BACKEND_DIR")/.well-known/assetlinks.json"
   fi

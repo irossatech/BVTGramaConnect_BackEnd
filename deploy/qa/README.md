@@ -137,8 +137,11 @@ ln -s BVTGramaConnect/dist/assets assets
 ln -s BVTGramaConnect/dist/fonts fonts
 ln -s BVTGramaConnect/dist/downloads downloads
 ln -s BVTGramaConnect_BackEnd/media media
+ln -s BVTGramaConnect_BackEnd/staticfiles static
 ```
-`downloads` holds the app's APK (`/downloads/bvt-grama-connect.apk`).
+`downloads` holds the app's APK (`/downloads/bvt-grama-connect.apk`). `static` holds what every
+deploy collects (`collectstatic`): the pictures WhatsApp shows for shared posts without a photo
+(`/static/share/og-*.jpg`), and the Django admin and API docs styles.
 Remove them (`rm _next _ds assets fonts downloads media`) once nginx serves those folders. This is fine
 for qa only: production uses `deploy/setup.sh`, whose nginx serves the website, the
 console, `/static/` and `/media/` with their cache rules and sends only `/api/` and
