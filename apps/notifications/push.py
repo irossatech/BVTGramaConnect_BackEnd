@@ -50,8 +50,8 @@ class PushMessage:
     topic: str | None = None
     token: str | None = None
     #: "high" wakes the phone at once; "normal" may wait for the phone to be awake.
-    #: Urgent posts and messages to officials are high (owner decision Q19); every post too
-    #: while PUSH_ALL_POSTS_HIGH_PRIORITY is on.
+    #: Messages to officials are high; posts to citizens too while PUSH_ALL_POSTS_HIGH_PRIORITY
+    #: is on (the default), else only urgent posts.
     priority: str = "high"
 
     def __post_init__(self):

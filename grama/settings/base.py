@@ -481,9 +481,10 @@ if not re.fullmatch(r"[A-Za-z0-9_.~%-]*", FCM_TOPIC_PREFIX):
     raise ImproperlyConfigured("FCM_TOPIC_PREFIX may hold only letters, digits and - _ . ~ %.")
 # A push still undelivered after this many seconds (phone off) is dropped instead of arriving late.
 PUSH_TTL_SECONDS = env.int("PUSH_TTL_SECONDS", default=86400)
-# Owner decision Q19: only urgent posts go to citizens at high priority. True sends every published
-# post at high priority, so it is not held back while the phone sleeps; urgent posts keep their own channel.
-PUSH_ALL_POSTS_HIGH_PRIORITY = env.bool("PUSH_ALL_POSTS_HIGH_PRIORITY", default=False)
+# Every published post goes to citizens at high priority, so Android does not hold it back while the
+# phone sleeps (approved 2026-11-04, replacing "only urgent posts at high" from Q19). Urgent posts keep
+# their own "urgent" channel. False goes back to normal priority for ordinary posts.
+PUSH_ALL_POSTS_HIGH_PRIORITY = env.bool("PUSH_ALL_POSTS_HIGH_PRIORITY", default=True)
 
 # Machine translation of published posts, Telugu <-> English (apps.posts.translation; contract
 # section 6): "off", "google" or "bhashini". Off: nothing is sent anywhere and `translation` is null.

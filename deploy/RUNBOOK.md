@@ -135,7 +135,7 @@ Proves the backups work. Do it on a spare server, never on production.
 
    `FCM_TOPIC_PREFIX` stays **empty in production**; the qa server uses `qa_` (`deploy/qa/README.md`). A prefix on production would send every post to topics no real phone follows.
 4. Restart both services. `systemctl status gramaconnect-qcluster` must be running (only the worker sends pushes), and `journalctl -u gramaconnect-qcluster -n 50` must not show "FCM disabled".
-5. Optional, after the owner's decision on Q19: `PUSH_ALL_POSTS_HIGH_PRIORITY=True` sends every post at high priority. `PUSH_TTL_SECONDS` (one day) rarely needs changing.
+5. Every post goes out at high priority by default (`PUSH_ALL_POSTS_HIGH_PRIORITY`). `PUSH_TTL_SECONDS` (one day) rarely needs changing.
 6. Rotate the key yearly, and at once if it leaks: a new key, install it as above, restart, then delete the old key in Google Cloud. Failed pushes are in the audit log as `push.failed`.
 
 ## Certificates

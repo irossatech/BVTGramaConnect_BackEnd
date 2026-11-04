@@ -78,7 +78,7 @@ def test_publishing_pushes_to_the_village_topic_and_tells_the_author(world, devi
         "type": "POST_PUBLISHED", "post_id": str(post.id), "area_level": "VILLAGE",
         "area_id": str(world.areas["kolakaluru"].id), "urgent": "0",
     }
-    assert topic_pushes[0].priority == "normal"  # ordinary post; urgent ones go out "high"
+    assert topic_pushes[0].priority == "high"  # every post, urgent or not (PUSH_ALL_POSTS_HIGH_PRIORITY)
     author_note = inbox(world.users["pm_kolakaluru"], NotificationKind.POST_PUBLISHED).get()
     assert "ప్రచురించబడింది" in author_note.title
     assert "tok-pm_kolakaluru" in {m.token for m in push_outbox}

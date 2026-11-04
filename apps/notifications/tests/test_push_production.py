@@ -159,30 +159,45 @@ def test_telugu_text_reaches_fcm_as_utf8():
     assert sent["payload"]["message"]["notification"]["title"] == "కొలకలూరు: కొత్త గ్రామ చాటింపులు"
 
 
-# --- 2. High priority for every post (switch, off by default: owner decision Q19) --------------------
+# --- 2. High priority for every post (approved 2026-11-04; on by default) ----------------------------
 
 
-def publish_ordinary(world, capture):
+def publish(world, capture, *, urgent=False):
     with capture(execute=True):
         create_post(world.users["ma_tenali"], PostInput(
             category=Category.objects.get(key="announce"), language="te", title="గ్రామ సభ",
-            body="రేపు ఉదయం.", target=world.ref("tenali"),
+            body="రేపు ఉదయం.", target=world.ref("tenali"), is_urgent=urgent,
         ))
 
 
-@pytest.mark.django_db
-def test_ordinary_posts_stay_normal_priority_by_default(world, push_outbox, django_capture_on_commit_callbacks):
-    publish_ordinary(world, django_capture_on_commit_callbacks)
-    [message] = [m for m in push_outbox if m.topic]
-    assert message.priority == "normal"
+def test_every_post_is_high_priority_by_default():
+    from django.conf import settings
+
+    assert settings.PUSH_ALL_POSTS_HIGH_PRIORITY is True
 
 
 @pytest.mark.django_db
-def test_switch_sends_every_post_at_high_priority_and_keeps_the_news_channel(
-    settings, world, push_outbox, django_capture_on_commit_callbacks
-):
-    settings.PUSH_ALL_POSTS_HIGH_PRIORITY = True
-    publish_ordinary(world, django_capture_on_commit_callbacks)
+def test_ordinary_post_goes_out_high_on_the_news_channel(world, push_outbox, django_capture_on_commit_callbacks):
+    publish(world, django_capture_on_commit_callbacks)
     [message] = [m for m in push_outbox if m.topic]
     assert message.priority == "high"
     assert build_payload(message)["message"]["android"]["notification"]["channel_id"] == "news"
+
+
+@pytest.mark.django_db
+def test_urgent_post_goes_out_high_on_the_urgent_channel(world, push_outbox, django_capture_on_commit_callbacks):
+    publish(world, django_capture_on_commit_callbacks, urgent=True)
+    [message] = [m for m in push_outbox if m.topic]
+    assert message.priority == "high"
+    assert build_payload(message)["message"]["android"]["notification"]["channel_id"] == "urgent"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("urgent, priority", [(False, "normal"), (True, "high")])
+def test_switched_off_only_urgent_posts_go_out_high(
+    settings, world, push_outbox, django_capture_on_commit_callbacks, urgent, priority
+):
+    settings.PUSH_ALL_POSTS_HIGH_PRIORITY = False
+    publish(world, django_capture_on_commit_callbacks, urgent=urgent)
+    [message] = [m for m in push_outbox if m.topic]
+    assert message.priority == priority

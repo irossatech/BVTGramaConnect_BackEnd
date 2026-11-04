@@ -147,9 +147,9 @@ def announce_to_citizens(post) -> None:
     """Queue one job that pushes to the topic of each of the post's areas, in the post's language.
 
     A phone hears it once: its app follows its village's, mandal's, district's and state's topics,
-    and a post never has two areas where one contains the other. Urgent posts go out at high
-    priority, everything else at normal (owner decision Q19), unless PUSH_ALL_POSTS_HIGH_PRIORITY
-    sends every post at high. Urgent posts still show on the app's "urgent" channel.
+    and a post never has two areas where one contains the other. Every post goes out at high
+    priority while PUSH_ALL_POSTS_HIGH_PRIORITY is on (the default since 2026-11-04); with it off,
+    only urgent posts do. Urgent posts show on the app's "urgent" channel either way.
     """
     high = post.is_urgent or settings.PUSH_ALL_POSTS_HIGH_PRIORITY
     title = render("post_published", post.language, **_values(post, post.language))
