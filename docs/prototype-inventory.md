@@ -424,7 +424,7 @@ Only these changes are allowed. Anything else is a design change and needs sign-
 - Nginx sends `charset utf-8`, gzip for HTML, JS, CSS and JSON, long cache headers for `vendor/`, `_ds/` and `assets/`, a year (`immutable`) for the website's `_next/static/`, and `no-cache` with an ETag for every `.html` page and `support.js`.
 
 ### 5.6 Constraints the port inherits
-- **Content Security Policy:** the runtime uses `new Function` and the markup uses inline styles. These pages need `script-src 'self' 'unsafe-eval'`, `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`, `font-src https://fonts.gstatic.com`, `connect-src 'self'`. This is why the console keeps its refresh token in an HttpOnly cookie and its access token in memory only.
+- **Content Security Policy:** the runtime uses `new Function` and the markup uses inline styles. These pages need `script-src 'self' 'unsafe-eval'`, `style-src 'self' 'unsafe-inline'`, `font-src 'self' data:`, `connect-src 'self'`. Since 2026-11-04 both serve their fonts from `/fonts/` on the site itself, so no page loads anything from Google. This is why the console keeps its refresh token in an HttpOnly cookie and its access token in memory only.
 - **Generated runtime:** `support.js` is never edited. When the designer re-exports a page, the new file replaces the old one whole and the data wiring is carried over by hand.
 - **No URL per page:** browser Back leaves the site and pages cannot be linked to (Q16).
 - **Search engines** see the raw template with `{{ }}` placeholders until JavaScript runs. This weakens the public site's search ranking.
