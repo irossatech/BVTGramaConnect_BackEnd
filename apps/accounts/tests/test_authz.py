@@ -73,13 +73,15 @@ def expected_permissions(key: str, super_admin_can_post: bool = False) -> set[st
 def test_groups_hold_exactly_the_brief_s_permissions(db, key):
     group = RoleGroup.objects.get(key=key).group
     held = {f"{app}.{code}" for app, code in group.permissions.values_list("content_type__app_label", "codename")}
-    assert held == expected_permissions(key)
+    # SUPER_ADMIN_CAN_POST is on by default (owner decision of 2026-11-04).
+    assert held == expected_permissions(key, super_admin_can_post=True)
 
 
-def test_super_admin_gets_posting_only_with_the_setting(super_admin_can_post):
+def test_super_admin_loses_posting_when_the_setting_is_off(super_admin_can_post):
+    super_admin_can_post(False)
     group = RoleGroup.objects.get(key="SUPER_ADMIN").group
     held = {f"{app}.{code}" for app, code in group.permissions.values_list("content_type__app_label", "codename")}
-    assert held == expected_permissions("SUPER_ADMIN", super_admin_can_post=True)
+    assert held == expected_permissions("SUPER_ADMIN", super_admin_can_post=False)
 
 
 def test_role_groups_carry_level_rank_and_manage_permission(db):

@@ -51,7 +51,8 @@ class SiteConfigSerializer(serializers.Serializer):
 class ContactMessageSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=120)
     mobile = MobileField()
-    village_text = serializers.CharField(max_length=200, required=False, allow_blank=True, default="")
+    #: Required, as on the website's form: a script cannot leave it out either.
+    village_text = serializers.CharField(max_length=200)
     message = serializers.CharField(max_length=2000)
     language = serializers.ChoiceField(choices=[("te", "te"), ("en", "en")], default="te")
     #: Honeypot. The website keeps this hidden and empty; bots fill it in.
@@ -61,6 +62,12 @@ class ContactMessageSerializer(serializers.Serializer):
         value = " ".join(value.split())
         if not value:
             raise serializers.ValidationError(_("Enter your name."))
+        return value
+
+    def validate_village_text(self, value):
+        value = " ".join(value.split())
+        if not value:
+            raise serializers.ValidationError(_("Enter your village."))
         return value
 
     def validate_message(self, value):

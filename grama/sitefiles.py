@@ -16,7 +16,9 @@ from pathlib import Path
 
 from django.conf import settings
 from django.contrib.staticfiles.views import serve as staticfiles_serve
-from django.http import Http404, HttpResponse
+from django.core.exceptions import SuspiciousFileOperation
+from django.http import Http404, HttpResponse, HttpResponsePermanentRedirect
+from django.utils._os import safe_join
 from django.utils.html import escape
 from django.views.static import serve
 
@@ -61,8 +63,21 @@ def serve_static(request, path: str):
     return staticfiles_serve(request, path, insecure=True)
 
 
+def _is_page_folder(root: Path, path: str) -> bool:
+    """Is <root>/<path>/index.html a file? Never looks outside root."""
+    try:
+        return Path(safe_join(str(root), path, "index.html")).is_file()
+    except SuspiciousFileOperation:
+        return False
+
+
 def serve_site(request, root: Path, path: str, *, label: str, setting: str):
     _check_serving()
+    # /faq is the folder faq/: send the browser to /faq/, as Nginx's try_files does in
+    # production, keeping the query string.
+    if path and not path.endswith("/") and _is_page_folder(root, path):
+        query = request.META.get("QUERY_STRING", "")
+        return HttpResponsePermanentRedirect(f"{request.path}/" + (f"?{query}" if query else ""))
     if not path or path.endswith("/"):
         path = f"{path}index.html"
     if path == "index.html" and not (Path(root) / "index.html").is_file():

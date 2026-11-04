@@ -122,6 +122,44 @@ def test_console_is_served_under_console(client, web_dirs):
     assert logo["Content-Type"] == "image/png"
 
 
+@pytest.mark.parametrize("page", ["faq", "howitworks", "officials", "contact", "privacy", "terms"])
+def test_a_page_without_the_final_slash_redirects_to_it(client, web_dirs, page):
+    public, _ = web_dirs
+    (public / page).mkdir()
+    (public / page / "index.html").write_text("<!doctype html><title>page</title>", encoding="utf-8")
+    response = client.get(f"/{page}")
+    assert response.status_code == 301
+    assert response["Location"] == f"/{page}/"
+    assert client.get(f"/{page}/").status_code == 200
+
+
+def test_the_redirect_keeps_the_query_string(client, web_dirs):
+    public, _ = web_dirs
+    (public / "faq").mkdir()
+    (public / "faq" / "index.html").write_text("<!doctype html>", encoding="utf-8")
+    response = client.get("/faq?lang=en&x=1")
+    assert response.status_code == 301
+    assert response["Location"] == "/faq/?lang=en&x=1"
+
+
+def test_console_pages_redirect_too(client, web_dirs):
+    _, console = web_dirs
+    (console / "users").mkdir()
+    (console / "users" / "index.html").write_text("<!doctype html>", encoding="utf-8")
+    response = client.get("/console/users")
+    assert response.status_code == 301
+    assert response["Location"] == "/console/users/"
+
+
+def test_files_and_unknown_paths_do_not_redirect(client, web_dirs):
+    public, _ = web_dirs
+    (public / "robots.txt").write_text("User-agent: *", encoding="utf-8")
+    (public / "assets").mkdir()  # a folder without index.html is not a page
+    assert client.get("/robots.txt").status_code == 200
+    assert client.get("/assets").status_code == 404
+    assert client.get("/nowhere").status_code == 404
+
+
 def test_paths_cannot_escape_the_site_folder(client, web_dirs):
     public, _ = web_dirs
     (public.parent / "secret.txt").write_text("do not serve", encoding="utf-8")
@@ -268,6 +306,6 @@ def test_platform_rule_defaults_match_claude_md():
     assert settings.ADMIN_POSTS_AUTO_PUBLISH is True
     assert settings.REVIEW_FIRST_DECISION_WINS is True
     assert settings.REVIEW_ESCALATION_HOURS == 24
-    assert settings.SUPER_ADMIN_CAN_POST is False
+    assert settings.SUPER_ADMIN_CAN_POST is True  # owner decision of 2026-11-04
     assert settings.LANGUAGE_CODE == "te"
     assert [code for code, _ in settings.LANGUAGES] == ["te", "en"]
