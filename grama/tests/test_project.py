@@ -67,7 +67,9 @@ def test_django_admin_lives_under_django_admin(client):
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("bare, target", [("/console", "/console/"), ("/django-admin", "/django-admin/")])
+@pytest.mark.parametrize(
+    "bare, target", [("/console", "/console/"), ("/django-admin", "/django-admin/"), ("/app", "/app/")]
+)
 def test_reserved_prefixes_are_not_swallowed_by_the_website(client, bare, target):
     response = client.get(bare)
     assert response.status_code == 301

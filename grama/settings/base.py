@@ -75,6 +75,7 @@ LOCAL_APPS = [
     "apps.service_requests",
     "apps.ads",
     "apps.bills",
+    "apps.share",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -371,6 +372,36 @@ APP_STORE_URL = env.str("APP_STORE_URL", default="")
 CONTACT_MESSAGES_PER_IP_PER_HOUR = env.int("CONTACT_MESSAGES_PER_IP_PER_HOUR", default=5)
 # Link added to shared posts and invites (owner decision Q17). Placeholder until the domain is known.
 SITE_WEBSITE_URL = env.str("SITE_WEBSITE_URL", default="https://example.in/")
+
+# --- Sharing (apps.share; contract section 6, "Sharing") ----------------------------------------
+# The public https address every shared link is built from, with the final slash, e.g.
+# https://www.gramaconnect.com/. Empty: posts carry share_url null and site-config invite_url null,
+# so the app shares the store link instead. WhatsApp previews and App Links need https.
+PUBLIC_BASE_URL = env.str("PUBLIC_BASE_URL", default="")
+if PUBLIC_BASE_URL and not PUBLIC_BASE_URL.endswith("/"):
+    PUBLIC_BASE_URL += "/"
+if PUBLIC_BASE_URL and not re.match(r"^https?://[^/]+/", PUBLIC_BASE_URL):
+    raise ImproperlyConfigured("PUBLIC_BASE_URL must be an address like https://www.gramaconnect.com/.")
+# Android App Links (/.well-known/assetlinks.json): the app's package and the SHA-256 fingerprints of
+# every key it is signed with, comma separated. Today: the upload key; add Play's app signing key
+# from Play Console (Setup > App integrity) once the app is on Google Play.
+ANDROID_PACKAGE = env.str("ANDROID_PACKAGE", default="com.bvt.app")
+ANDROID_CERT_SHA256 = [
+    value.strip().upper()
+    for value in env.list(
+        "ANDROID_CERT_SHA256",
+        default=["27:16:13:C6:5C:CD:BE:3A:45:97:E0:54:4E:CD:09:CA:44:91:E0:CB:07:63:B3:5E:6E:D0:42:89:D5:8A:89:79"],
+    )
+    if value.strip()
+]
+for _fingerprint in ANDROID_CERT_SHA256:
+    if not re.fullmatch(r"[0-9A-F]{2}(:[0-9A-F]{2}){31}", _fingerprint):
+        raise ImproperlyConfigured(f"ANDROID_CERT_SHA256: {_fingerprint!r} is not a SHA-256 fingerprint (32 hex pairs).")
+# Seconds browsers and WhatsApp may keep a shared post page (/p/<code>/).
+SHARE_PAGE_MAX_AGE = env.int("SHARE_PAGE_MAX_AGE", default=300)
+# Optional "Download for Android" button on /app/ while PLAY_STORE_URL is empty, e.g.
+# /downloads/bvt-grama-connect.apk (the website's own APK). Empty: no button.
+APP_DOWNLOAD_URL = env.str("APP_DOWNLOAD_URL", default="")
 # Village whose feed fills the home page's phone picture (owner decision Q16).
 # Empty: the newest published posts anywhere.
 SITE_SHOWCASE_VILLAGE_ID = env.int("SITE_SHOWCASE_VILLAGE_ID", default=0) or None

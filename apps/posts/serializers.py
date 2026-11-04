@@ -9,6 +9,7 @@ from apps.accounts.serializers import AreaInputSerializer, AreaOutputSerializer,
 
 from .models import Category, EventKind, MediaKind, Post, PostMedia, PostStatus, ReviewAction
 from .services import REVERSE_TARGETS, allowed_actions
+from .sharing import share_url
 
 DECISION_ACTIONS = {
     ReviewAction.Action.PUBLISH,
@@ -175,6 +176,7 @@ class PostSerializer(serializers.ModelSerializer):
     last_review = serializers.SerializerMethodField()
     citizen = serializers.SerializerMethodField()
     allowed_actions = serializers.SerializerMethodField()
+    share_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Post
@@ -183,8 +185,12 @@ class PostSerializer(serializers.ModelSerializer):
             "target_level", "target_area", "targets", "event", "is_urgent", "media", "author", "posted_as",
             "created_at", "updated_at", "submitted_at", "published_at",
             "escalated", "escalated_at", "escalation_level",
-            "decided_by", "decided_at", "last_review", "citizen", "allowed_actions",
+            "decided_by", "decided_at", "last_review", "citizen", "allowed_actions", "share_url",
         ]
+
+    def get_share_url(self, obj) -> str | None:
+        """The public link while the post is published; null otherwise or while PUBLIC_BASE_URL is not set."""
+        return share_url(obj)
 
     @extend_schema_field(TranslationSerializer(allow_null=True))
     def get_translation(self, obj):

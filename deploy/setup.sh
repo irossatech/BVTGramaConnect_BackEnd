@@ -289,6 +289,8 @@ set_env "$GC_APP_ENV" LANG C.UTF-8
 set_env "$GC_APP_ENV" CONSOLE_SESSION_IDLE_MINUTES "${CONSOLE_SESSION_IDLE_MINUTES:-30}"
 # Link added to shared posts and invites (owner decision Q17).
 set_env "$GC_APP_ENV" SITE_WEBSITE_URL "https://$DOMAIN/" --if-missing
+# Shared post links and the invite link are built from it (apps.share).
+set_env "$GC_APP_ENV" PUBLIC_BASE_URL "https://$DOMAIN/" --if-missing
 # Placeholder the owner replaces (kept once edited):
 #   FCM_CREDENTIALS_FILE: Firebase service-account JSON. Missing file = pushes off.
 set_env "$GC_APP_ENV" FCM_CREDENTIALS_FILE "$GC_ETC/fcm-service-account.json" --if-missing

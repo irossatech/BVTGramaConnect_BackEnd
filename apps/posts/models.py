@@ -104,6 +104,9 @@ class Post(models.Model):
     event_end = models.DateField(null=True, blank=True)
     # Admins flag time-critical posts (owner decision Q19): pinned in the app, high-priority push.
     is_urgent = models.BooleanField(default=False)
+    # The random part of the post's public link (/p/<code>/), set the first time it is published and
+    # never changed (apps.posts.sharing). Random, so nobody can walk through the posts by number.
+    share_code = models.CharField(max_length=10, unique=True, null=True, blank=True, editable=False)
 
     class Meta:
         ordering = ["-created_at"]

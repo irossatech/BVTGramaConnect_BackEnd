@@ -48,6 +48,7 @@ from grama.exceptions import ApiError, out_of_area, permission_denied
 
 from . import signals
 from .models import CITIZEN_ROLE, Category, Post, PostStatus, PostTarget, ReviewAction, SettingOverride
+from .sharing import share_code_once
 from .translation import detect_language
 
 CREATE = "posts.create_post"
@@ -350,6 +351,7 @@ def _move_on_submit(post: Post, user, assignment: Grant, *, resubmit: bool) -> P
             decided_by=user,
             decided_by_role=assignment.key,
             updated_at=now,
+            share_code=share_code_once(),
         )
         action, to_status, signal = ReviewAction.Action.AUTO_PUBLISH, PostStatus.PUBLISHED, signals.post_published
     else:
@@ -610,6 +612,7 @@ def review(user, post: Post, action: str, comment: str = "", to_status: str | No
     }
     if new_status == PostStatus.PUBLISHED:
         values["published_at"] = now
+        values["share_code"] = share_code_once()
 
     with transaction.atomic():
         changed = Post.objects.filter(pk=post.pk, status=from_status).update(**values)
@@ -654,6 +657,8 @@ def _reverse(user, reviewer: Grant, post: Post, comment: str, to_status: str | N
     }
     if to_status == PostStatus.PUBLISHED and not post.published_at:
         values["published_at"] = now
+    if to_status == PostStatus.PUBLISHED:
+        values["share_code"] = share_code_once()
     if to_status == PostStatus.PENDING:
         values.update(submitted_at=now, escalated_at=None, escalation_level="")
 

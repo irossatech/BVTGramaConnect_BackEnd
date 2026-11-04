@@ -11,6 +11,7 @@ from rest_framework import serializers
 from apps.geography.areas import AreaDescriber
 from apps.posts.models import MediaKind
 from apps.posts.serializers import EventSerializer, TranslationSerializer, describe_targets, translation_of
+from apps.posts.sharing import share_url
 
 
 class AreaSlimSerializer(serializers.Serializer):
@@ -67,6 +68,11 @@ class FeedItemSerializer(serializers.Serializer):
     event = serializers.SerializerMethodField()
     is_urgent = serializers.BooleanField()
     video = serializers.SerializerMethodField()
+    share_url = serializers.SerializerMethodField()
+
+    def get_share_url(self, obj) -> str | None:
+        """The post's public link (/p/<code>/), or null while PUBLIC_BASE_URL is not set."""
+        return share_url(obj)
 
     def _describer(self) -> AreaDescriber:
         describer = self.context.get("describer")

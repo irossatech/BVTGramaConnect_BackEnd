@@ -118,6 +118,12 @@ CSRF_COOKIE_SECURE=True
 ```
 Without `CSRF_TRUSTED_ORIGINS` the console's login fails through the domain.
 
+For shared post links and WhatsApp previews, also add `PUBLIC_BASE_URL=https://<domain>/`.
+`/p/<code>/` and `/app/` reach Django, and preview pictures sit in `media/og/` (served
+through the `media` link). `/.well-known/assetlinks.json` ends in `.json`, so the hosting
+nginx looks for a file in the site folder instead: App Links do not work on qa, which is
+fine until the final domain.
+
 The hosting panel's nginx serves files with static extensions (`.js`, `.css`, `.png`, …)
 from the site folder itself and never forwards them to the port. Until the hosting
 company points those paths at the build folders, links in the site folder stand in:

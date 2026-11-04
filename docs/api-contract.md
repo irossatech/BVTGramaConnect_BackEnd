@@ -261,9 +261,11 @@ Returned by `GET /me/`, inside the app login response and inside the console ses
   "escalated": false,
   "escalated_at": null,
   "last_review": {"action": "RECHECK", "comment": "ఫోటో జోడించండి", "actor": {"name": "Suresh Babu", "role": "VILLAGE_ADMIN"}, "at": "…"},
-  "allowed_actions": ["publish", "recheck", "discard"]
+  "allowed_actions": ["publish", "recheck", "discard"],
+  "share_url": null
 }
 ```
+- `share_url`: the post's public link, `https://<domain>/p/<code>/`, while it is `PUBLISHED`; `null` for any other status and while the server has no `PUBLIC_BASE_URL` (section 20). New on 2026-11-04.
 - `translation`: `null`, or the published post in its other language (section 1, "Language").
 - `targets`: every area the post is for, each `{"level", "id", "name", "path"}` like `target_area`, in the order chosen. `target_level` and `target_area` are the first of them. A client that finds `targets` in a response knows the server takes many areas in one post.
 - `event`: `null` or `{"kind", "start_date", "end_date"}`. `kind` is one of `deadline`, `camp`, `distribution`, `closure`, `meeting`; dates are `YYYY-MM-DD`; `end_date` is `null` for one-day events and never before `start_date` (owner decision Q7).
@@ -291,7 +293,7 @@ Lean on purpose, for 2G.
   "source": {"role": "VILLAGE_ADMIN", "office": "కొలకలూరు గ్రామ పంచాయతీ"}
 }
 ```
-`category` is the key only; the app has the category list cached. There is no public post page: a shared post carries its text plus `website_url` from `GET /public/site-config/` (owner decision Q17). Section 6 has the exact feed shapes.
+`category` is the key only; the app has the category list cached. A shared post carries its text plus its `share_url`, which opens the public post page (section 20); without one, the app shares `invite_url` or `website_url` from `GET /public/site-config/` (owner decision Q17). Section 6 has the exact feed shapes.
 
 ### ReviewAction (post history)
 ```json
@@ -562,6 +564,7 @@ No login. These views ignore any `Authorization` header, so a stale token on a c
 | `GET /feed/urgent/?village_id=` | `village_id` | `[FeedItem]`, at most 5 published urgent posts from the same feed, published in the last 7 days, newest first. For the red alert at the top of Home and News. |
 | `GET /feed/posts/{id}/` | — | `FeedPost`; `404 not_found` unless `PUBLISHED` |
 | `GET /feed/posts/?ids=a,b,c` | 1 to 50 post ids | `[FeedItem]` for the ones still published, in the order asked. Used for posts saved on the phone. |
+| `GET /feed/share/{code}/` | the code from a `/p/{code}/` link | The same `FeedPost` as `GET /feed/posts/{id}/`; `404 not_found` unless `PUBLISHED`. The app calls it when a shared link opens the app (section 20). New on 2026-11-04. |
 
 `FeedItem`, the slim list shape:
 ```json
@@ -582,9 +585,11 @@ No login. These views ignore any `Authorization` header, so a stale token on a c
   "source_area": {"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు"},
   "event": {"kind": "meeting", "start_date": "2026-10-20", "end_date": null},
   "is_urgent": false,
-  "video": null
+  "video": null,
+  "share_url": "https://www.gramaconnect.com/p/Ab3xK9q2/"
 }
 ```
+- `share_url`: the post's public link for "Read more" and "Watch the video" in shared messages (section 20), or `null` while the server has no `PUBLIC_BASE_URL`; the app then shares the app link. In every feed shape, `GET /feed/share/{code}/` included. New on 2026-11-04.
 - `source_area`: the poster's own area, for "Source: Kolakaluru Gram Panchayat" or "Shared by a citizen of Kolakaluru". It is the area of the role the post went out under (`posted_as`), or the phone's village for a citizen post, never where the post was sent: a Village Admin's post to a whole district still shows their village. `null` when that area no longer exists. Name in the `Accept-Language` language. New on 2026-10-29, so older clients ignore it.
 - `translation`: `null`, or the post in its other language (section 1, "Language"); new on 2026-10-28, so older clients ignore it.
 - `targets`: every area the post is for (section 3, "Posts"); `area` is the first of them. New on 2026-10-28.
@@ -709,7 +714,7 @@ Built (web_admin app). `days` is 1 to 366, default 30, and counts posts created 
 
 | Method and path | Auth | Request | Response |
 |---|---|---|---|
-| `GET /public/site-config/` | public | — | `{"office_address_te", "office_address_en", "phone", "email", "hours_te", "hours_en", "play_store_url", "app_store_url", "website_url", "helplines": [{"number": "112", "label_te": "అత్యవసరం", "label_en": "Emergency"}, …]}`. Addresses use `\n` between the two lines the page shows. Empty store URLs keep the website's "coming soon" toast. Cacheable for 5 minutes. |
+| `GET /public/site-config/` | public | — | `{"office_address_te", "office_address_en", "phone", "email", "hours_te", "hours_en", "play_store_url", "app_store_url", "website_url", "invite_url", "helplines": [{"number": "112", "label_te": "అత్యవసరం", "label_en": "Emergency"}, …]}`. `invite_url` is `https://<domain>/app/` for "Invite your neighbours" (section 20), `null` while the server has no `PUBLIC_BASE_URL`; new on 2026-11-04. Addresses use `\n` between the two lines the page shows. Empty store URLs keep the website's "coming soon" toast. Cacheable for 5 minutes. |
 | `GET /public/showcase/` | public | — | `{"location": Area\|null, "featured": FeedItem\|null, "items": [FeedItem, FeedItem]}` for the home page's phone picture. Cacheable for 60 s. |
 | `GET /admin/contact-messages/` | Super Admin | Query: `status=new\|handled`, `q` (name, mobile, village, message), `page` | Page of `{"id", "name", "mobile", "village_text", "message", "language", "created_at", "handled", "handled_at", "handled_by": {"id", "name"}\|null}`, newest first |
 | `PATCH /admin/contact-messages/{id}/` | Super Admin | `{"handled": true\|false}` | The message. Sets or clears `handled_at` and `handled_by`; audited as `contact.handled` or `contact.reopened`. |
@@ -1368,3 +1373,23 @@ Built (`apps.web_admin`, `transliteration.py`). When an admin types an English n
 - Answers are cached for `TRANSLITERATION_CACHE_S` (30 days) under a SHA-256 hash of the provider and the lower-cased text; failures are not cached. The text and the answer are never logged or audited, and nothing is written to the database. Saving a Telugu name keeps its own validation.
 - Provider: `google_input_tools` (Google Input Tools, no key) by default. `off` switches the feature off after a restart.
 - A client talking to a server without this section gets `404` and leaves the box empty.
+
+## 20. Sharing: post links, the invite link, WhatsApp previews
+
+Built (`apps.share`, `apps.posts.sharing`). Not under `/api/v1/`: these are pages and files at the domain root, served by Django on every server (production Nginx proxies them).
+
+| Path | Who | Answer |
+|---|---|---|
+| `GET /p/{code}/` | anyone | `200` HTML page of a `PUBLISHED` post in an active category: category, area, date, title and text (escaped, line breaks kept), the translation if there is one, every photo (1280 px) or the video player with its poster, "Open in the app" and "Get the app". Open Graph tags for the preview card. Anything else (pending, sent back, discarded, taken down, unknown or malformed code): `404` "This post is no longer available", so taking a post down also ends its shared links. |
+| `GET /app/` | anyone | The invite link. `302` to `PLAY_STORE_URL`, keeping the query string (`?ref=`), when it is set; until then `200`, a short page with the website link and, when `APP_DOWNLOAD_URL` is set, an Android download button. |
+| `GET /.well-known/assetlinks.json` | anyone | Android App Links: `[{"relation": ["delegate_permission/common.handle_all_urls"], "target": {"namespace": "android_app", "package_name": ANDROID_PACKAGE, "sha256_cert_fingerprints": ANDROID_CERT_SHA256}}]` |
+| `GET /api/v1/feed/share/{code}/` | anyone | The post as `FeedPost` (section 6), for the app when a shared link opens it |
+
+- **Share code:** 8 random letters and digits (`[A-Za-z0-9]`), made the first time a post is published and never changed, also after a take-down and a reverse. Not a counter or the id, so links cannot be guessed in turn. Posts published before 2026-11-04 got one from migration `posts.0009`.
+- **Links:** `share_url` (`Post`, `FeedItem`, `FeedPost`) is `PUBLIC_BASE_URL + "p/" + code + "/"`, and `invite_url` (site-config) is `PUBLIC_BASE_URL + "app/"`. Both are `null` while `PUBLIC_BASE_URL` is empty.
+- **Preview card:** `og:title` (the title), `og:description` (the first 200 characters), `og:url` and `<link rel="canonical">` (the `share_url`), `og:type` `article`, `og:locale` `te_IN` or `en_IN`, and `og:image`: a 1200 × 630 JPEG under 300 KB made once from the first photo, or a video's poster frame, kept as `/media/og/{code}.jpg`. A post without a photo uses `static/share/og-{category}.jpg` or `og-default.jpg` when those pictures exist, else has no `og:image` (`twitter:card` `summary`).
+- **No personal data:** a citizen post shows "Citizen" (పౌరుడు), an official's post their role and area, never a name, phone, device or email.
+- **Headers:** `Cache-Control: public, max-age=SHARE_PAGE_MAX_AGE` (300 s; the "no longer available" page 60 s), a Content-Security-Policy with no scripts at all and pictures and videos only from the site (`default-src 'none'`), no cookies. `assetlinks.json`: `application/json`, cached an hour.
+- **Robots:** shared post pages may be indexed (posts are public news); the "no longer available" page is `noindex`. Ask the owner if posts should be `noindex` too.
+- **Settings:** `PUBLIC_BASE_URL` (https, with the final slash; `setup.sh` writes `https://<DOMAIN>/`), `PLAY_STORE_URL`, `APP_DOWNLOAD_URL`, `ANDROID_PACKAGE` (`com.bvt.app`), `ANDROID_CERT_SHA256` (comma separated; today the upload key; add Play's app signing key once the app is on Play), `SHARE_PAGE_MAX_AGE`.
+- **Mobile, later:** an `intent-filter` with `autoVerify` for `https://<domain>/p/…`, which then opens the post through `GET /feed/share/{code}/`. Needs the final domain.

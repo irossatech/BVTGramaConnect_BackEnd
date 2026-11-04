@@ -27,6 +27,7 @@ from apps.feed.serializers import FeedItemSerializer
 from apps.feed.views import describer_with, published_posts, targets_for_village
 from apps.geography.areas import AreaRef
 from apps.geography.models import AreaLevel, Village
+from apps.posts.sharing import invite_url
 from apps.accounts.authentication import client_via
 from apps.accounts.permissions import PLATFORM, HasPerm
 from grama.exceptions import ApiError
@@ -45,6 +46,7 @@ class SiteConfigSerializer(serializers.Serializer):
     play_store_url = serializers.CharField(allow_blank=True)
     app_store_url = serializers.CharField(allow_blank=True)
     website_url = serializers.CharField()
+    invite_url = serializers.CharField(allow_null=True, help_text="PUBLIC_BASE_URL + app/; null until it is set")
     helplines = serializers.ListField(child=serializers.DictField())
 
 
@@ -112,6 +114,7 @@ class SiteConfigView(PublicView):
                 "play_store_url": settings.PLAY_STORE_URL,
                 "app_store_url": settings.APP_STORE_URL,
                 "website_url": settings.SITE_WEBSITE_URL,
+                "invite_url": invite_url(),
                 "helplines": helplines(),
             }
         )
