@@ -387,7 +387,7 @@ No audit entry holds a password. The console shows these under Audit Log, tab Lo
 | `CONSOLE_SESSION_IDLE_MINUTES` | 30 | Console idle timeout |
 | `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE` | on (off in dev) | Cookies only over HTTPS |
 | `CSRF_TRUSTED_ORIGINS` | none | The server's https origin, in `prod.py` |
-| `SUPER_ADMIN_CAN_POST` | off | Whether the Super Admin may post |
+| `SUPER_ADMIN_CAN_POST` | on (owner decision of 2026-11-04) | Whether the Super Admin may post |
 | `ADMIN_POSTS_AUTO_PUBLISH` | on | Admin posts publish without review |
 
 JWT lifetimes are in `SIMPLE_JWT`: access 15 minutes, refresh 30 days, rotated and blacklisted.

@@ -82,7 +82,8 @@ def test_posting_outside_your_area_is_allowed_and_review_does_not_change(api, wo
     assert response.json()["status"] == status
 
 
-def test_a_role_that_cannot_post_is_refused(api, world):
+def test_a_role_that_cannot_post_is_refused(api, world, super_admin_can_post):
+    super_admin_can_post(False)
     response = api(world.users["super"]).post(
         "/api/v1/posts/",
         {"category": "news", "title": "T", "body": "B", "target": world.area_json("kolakaluru")},

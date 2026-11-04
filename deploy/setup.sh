@@ -184,6 +184,8 @@ install -d -m 2750 -o "$APP_USER" -g www-data "$APP_ROOT" "$STATIC_ROOT" "$WWW_D
 install -d -m 2750 -o "$APP_USER" -g www-data "$GC_MEDIA"
 install -d -m 700 -o root -g root "$GC_BACKUP_DIR"
 install -d -m 755 /var/www/letsencrypt
+# Nginx keeps the cached citizen feed here (proxy_cache_path gc_feed); it makes gc_feed itself.
+install -d -m 755 /var/cache/nginx
 chown root:"$APP_USER" "$GC_ETC"
 chmod 750 "$GC_ETC"
 chown root:"$APP_USER" "$GC_DEPLOY_ENV"
@@ -291,6 +293,9 @@ set_env "$GC_APP_ENV" SITE_WEBSITE_URL "https://$DOMAIN/" --if-missing
 #   FCM_CREDENTIALS_FILE: Firebase service-account JSON. Missing file = pushes off.
 set_env "$GC_APP_ENV" FCM_CREDENTIALS_FILE "$GC_ETC/fcm-service-account.json" --if-missing
 set_env "$GC_APP_ENV" FCM_PROJECT_ID "" --if-missing
+#   PLAY_INTEGRITY_PACKAGE: prod.py turns the citizen phone check on; without the package
+#   every citizen registration would fail with "Play Integrity is not configured".
+set_env "$GC_APP_ENV" PLAY_INTEGRITY_PACKAGE com.bvt.app --if-missing
 set_env "$GC_APP_ENV" LOG_LEVEL INFO --if-missing
 chown root:"$APP_USER" "$GC_APP_ENV"
 chmod 640 "$GC_APP_ENV"

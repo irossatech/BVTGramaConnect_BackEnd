@@ -713,7 +713,7 @@ Built (web_admin app). `days` is 1 to 366, default 30, and counts posts created 
 | `GET /public/showcase/` | public | — | `{"location": Area\|null, "featured": FeedItem\|null, "items": [FeedItem, FeedItem]}` for the home page's phone picture. Cacheable for 60 s. |
 | `GET /admin/contact-messages/` | Super Admin | Query: `status=new\|handled`, `q` (name, mobile, village, message), `page` | Page of `{"id", "name", "mobile", "village_text", "message", "language", "created_at", "handled", "handled_at", "handled_by": {"id", "name"}\|null}`, newest first |
 | `PATCH /admin/contact-messages/{id}/` | Super Admin | `{"handled": true\|false}` | The message. Sets or clears `handled_at` and `handled_by`; audited as `contact.handled` or `contact.reopened`. |
-| `POST /public/contact-messages/` | public | `{"name", "mobile", "village_text"?, "message", "language", "website"?}` | `201 {"id", "created_at"}` |
+| `POST /public/contact-messages/` | public | `{"name", "mobile", "village_text", "message", "language", "website"?}` | `201 {"id", "created_at"}`. `village_text` is required (since 2026-11-04): missing or blank answers `400` with `fields.village_text`. |
 
 - Built. Values come from settings, each overridable by env: `SITE_OFFICE_ADDRESS_TE`, `SITE_OFFICE_ADDRESS_EN`, `SITE_PHONE`, `SITE_EMAIL`, `SITE_HOURS_TE`, `SITE_HOURS_EN`, `PLAY_STORE_URL`, `APP_STORE_URL`. Defaults are the prototype's values.
 - Contact form validation matches the website: name and message required after trimming, mobile 10 digits (`+91` and spaces are accepted and stripped). `website` is a honeypot: when filled, the server answers `201` with `id` 0 and stores nothing. At most `CONTACT_MESSAGES_PER_IP_PER_HOUR` (default 5) per IP, then `429 throttled` with `Retry-After`.

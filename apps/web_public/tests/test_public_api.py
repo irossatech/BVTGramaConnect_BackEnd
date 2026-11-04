@@ -64,8 +64,19 @@ def test_contact_message_is_stored_with_telugu_intact(api):
     assert message.ip_address == "10.9.9.9"
 
 
-def test_village_is_optional(api):
-    assert send(api, village_text="").status_code == 201
+@pytest.mark.parametrize("village", ["", "   "])
+def test_village_is_required(api, village):
+    response = send(api, village_text=village)
+    assert response.status_code == 400
+    assert "village_text" in response.json()["error"]["fields"]
+    assert not ContactMessage.objects.exists()
+
+
+def test_a_missing_village_is_refused(api):
+    body = {"name": "రవి", "mobile": "9876543210", "message": "మా గ్రామాన్ని చేర్చండి", "language": "te"}
+    response = api().post(CONTACT, body, format="json")
+    assert response.status_code == 400
+    assert "village_text" in response.json()["error"]["fields"]
 
 
 @pytest.mark.parametrize(

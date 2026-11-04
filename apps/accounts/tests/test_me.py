@@ -36,7 +36,7 @@ def test_me_describes_groups_assignments_permissions_and_rules(api, world):
     }
     assert data["rules"] == {
         "admin_posts_auto_publish": True,
-        "super_admin_can_post": False,
+        "super_admin_can_post": True,  # owner decision of 2026-11-04
         "max_photos_per_post": 5,
         "video_enabled": True,  # video posts are in version 1 (owner decision Q8)
     }
@@ -45,8 +45,18 @@ def test_me_describes_groups_assignments_permissions_and_rules(api, world):
 def test_super_admin_sees_the_console_permission(api, world):
     data = api(world.users["super"]).get("/api/v1/me/").json()
     assert "web_admin.access_web_console" in data["permissions"]
-    assert "posts.create_post" not in data["permissions"]  # SUPER_ADMIN_CAN_POST is off
     assert data["capabilities"]["is_super_admin"] is True
+    # SUPER_ADMIN_CAN_POST is on by default: the console and the app show "New post".
+    assert "posts.create_post" in data["permissions"]
+    assert data["capabilities"]["can_post"] is True
+
+
+def test_super_admin_cannot_post_when_the_setting_is_off(api, world, super_admin_can_post):
+    super_admin_can_post(False)
+    data = api(world.users["super"]).get("/api/v1/me/").json()
+    assert "posts.create_post" not in data["permissions"]
+    assert data["capabilities"]["can_post"] is False
+    assert data["rules"]["super_admin_can_post"] is False
 
 
 def test_two_assignments_are_listed_per_area(api, world):
