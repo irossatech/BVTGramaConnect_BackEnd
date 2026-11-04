@@ -24,8 +24,9 @@ def test_site_config_has_every_field_and_the_prototype_defaults(api):
     data = response.json()
     assert set(data) == {
         "office_address_te", "office_address_en", "phone", "email",
-        "hours_te", "hours_en", "play_store_url", "app_store_url", "website_url", "helplines",
+        "hours_te", "hours_en", "play_store_url", "app_store_url", "website_url", "invite_url", "helplines",
     }
+    assert data["invite_url"] is None  # PUBLIC_BASE_URL is not set
     assert data["phone"] == "+91 863 223 4567"
     assert data["email"] == "help@bvtgramaconnect.in"
     assert data["hours_te"] == "సోమ–శని 10:00–18:00"

@@ -138,6 +138,15 @@ Proves the backups work. Do it on a spare server, never on production.
 5. Every post goes out at high priority by default (`PUSH_ALL_POSTS_HIGH_PRIORITY`). `PUSH_TTL_SECONDS` (one day) rarely needs changing.
 6. Rotate the key yearly, and at once if it leaks: a new key, install it as above, restart, then delete the old key in Google Cloud. Failed pushes are in the audit log as `push.failed`.
 
+## Shared links and WhatsApp previews
+
+`setup.sh` sets `PUBLIC_BASE_URL=https://<DOMAIN>/`; every `share_url`, `invite_url` and preview is built from it. Nginx sends `/p/`, `/app/` and `/.well-known/assetlinks.json` to Django; preview pictures are made once into `MEDIA_ROOT/og/` and served from `/media/og/`.
+
+- **When the app is on Google Play:** set `PLAY_STORE_URL`, and add Play's app signing key to `ANDROID_CERT_SHA256` (Play Console → Setup → App integrity → SHA-256), comma separated after the upload key. Restart. Without it, App Links fail for installs from Play.
+- **Check a preview:** send a `/p/<code>/` link on WhatsApp, or paste it into the Facebook Sharing Debugger: it should show the title and the photo. WhatsApp keeps a preview for days, so test with a post that was never shared before.
+- **Check App Links:** `curl -s https://<domain>/.well-known/assetlinks.json` must answer JSON with no redirect, and on a phone `adb shell pm get-app-links com.bvt.app` must say `verified`.
+- **Pictures for text posts:** put 1200 × 630 JPEGs as `apps/share/static/share/og-<category key>.jpg` (and `og-default.jpg`), then deploy (`collectstatic` copies them).
+
 ## Certificates
 
 - Let's Encrypt certificates renew on their own (`certbot.timer`); Nginx reloads after each renewal.

@@ -1,0 +1,20 @@
+{% extends "share/base.html" %}
+{% block title %}BVT Grama Connect యాప్ · The BVT Grama Connect app{% endblock %}
+{% block meta %}
+<meta name="description" content="Village announcements, schemes and news – all in one place.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="BVT Grama Connect">
+<meta property="og:title" content="BVT Grama Connect">
+<meta property="og:description" content="Village announcements, schemes and news – all in one place.">
+{% endblock %}
+{% block content %}
+<article>
+  <h1>BVT Grama Connect</h1>
+  <p>మీ గ్రామ ప్రకటనలు, పథకాలు, వార్తలు అన్నీ ఒకే చోట, తెలుగులో లేదా ఇంగ్లీషులో.</p>
+  <p>Village announcements, schemes and news – all in one place, in Telugu or English.</p>
+  <div class="actions">
+    {% if download_url %}<a class="button primary" href="{{ download_url }}">Android యాప్ డౌన్‌లోడ్ · Download for Android</a>{% endif %}
+    <a class="button {% if download_url %}secondary{% else %}primary{% endif %}" href="{{ website_url }}">వెబ్‌సైట్ · Website</a>
+  </div>
+</article>
+{% endblock %}

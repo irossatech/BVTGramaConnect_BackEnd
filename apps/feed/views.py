@@ -194,6 +194,18 @@ def _short_list(request, queryset):
     return Response(FeedItemSerializer(posts, many=True, context=context).data)
 
 
+@public_cache
+class FeedShareView(PublicView, APIView):
+    """A shared link opened in the app: /p/<code>/ -> the same shape as feed/posts/<id>/."""
+
+    @extend_schema(summary="One published post by its share code", responses=FeedPostSerializer)
+    def get(self, request, code):
+        post = published_posts().prefetch_related("media").filter(share_code=code).first()
+        if post is None:
+            raise ApiError("not_found", "This post is not available.", status=404)
+        return Response(FeedPostSerializer(post, context={"request": request, "describer": describer_with([post])}).data)
+
+
 VILLAGE_PARAM = [OpenApiParameter("village_id", OpenApiTypes.INT, required=True)]
 
 

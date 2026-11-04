@@ -5,6 +5,7 @@
 /django-admin/ Django's built-in admin, for developers only
 /console/      Super Admin console (web_admin app)
 /media/        uploaded files, /static/ static files: while SERVE_FILES is on (Nginx on the server)
+/p/<code>/, /app/, /.well-known/assetlinks.json   shared links (share app), always Django
 /              public website (web_public app); must stay last
 
 Unknown addresses under /api/ answer the contract's JSON 404 once DEBUG is off.
@@ -13,6 +14,8 @@ Unknown addresses under /api/ answer the contract's JSON 404 once DEBUG is off.
 from django.contrib import admin
 from django.urls import include, path, re_path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
+
+from apps.share import views as share_views
 
 from .sitefiles import serve_media, serve_static
 from .views import health
@@ -45,5 +48,9 @@ urlpatterns = [
     path("console/", include("apps.web_admin.urls")),
     re_path(r"^media/(?P<path>.*)$", serve_media, name="media"),
     re_path(r"^static/(?P<path>.*)$", serve_static, name="static"),
+    # Shared links (apps.share): Django renders them in production too, so WhatsApp sees the preview.
+    re_path(r"^p/(?P<code>[^/]+)/$", share_views.post_page, name="share-post"),
+    path("app/", share_views.app_page, name="share-app"),
+    path(".well-known/assetlinks.json", share_views.assetlinks, name="assetlinks"),
     path("", include("apps.web_public.urls")),
 ]
