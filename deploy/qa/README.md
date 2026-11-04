@@ -123,9 +123,10 @@ cd ~/htdocs/<site folder>
 ln -s BVTGramaConnect/dist/_next _next
 ln -s BVTGramaConnect/dist/_ds _ds
 ln -s BVTGramaConnect/dist/assets assets
+ln -s BVTGramaConnect/dist/fonts fonts
 ln -s BVTGramaConnect_BackEnd/media media
 ```
-Remove them (`rm _next _ds assets media`) once nginx serves those folders. This is fine
+Remove them (`rm _next _ds assets fonts media`) once nginx serves those folders. This is fine
 for qa only: production uses `deploy/setup.sh`, whose nginx serves the website, the
 console, `/static/` and `/media/` with their cache rules and sends only `/api/` and
 `/django-admin/` to Gunicorn.
