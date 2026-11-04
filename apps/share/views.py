@@ -39,11 +39,11 @@ MONTHS = {
 
 WORDS = {
     "te": {
-        "open": "యాప్‌లో తెరవండి", "get": "యాప్ పొందండి", "shared": "BVT Grama Connect నుండి షేర్ చేయబడింది",
+        "open": "యాప్‌లో తెరవండి", "get": "యాప్ పొందండి", "shared": "Grama Connect నుండి షేర్ చేయబడింది",
         "translation": "English", "website": "వెబ్‌సైట్", "citizen": "పౌరుడు",
     },
     "en": {
-        "open": "Open in the app", "get": "Get the app", "shared": "Shared from BVT Grama Connect",
+        "open": "Open in the app", "get": "Get the app", "shared": "Shared from Grama Connect",
         "translation": "తెలుగు", "website": "Website", "citizen": "Citizen",
     },
 }
@@ -146,10 +146,9 @@ def app_page(request):
     return _security_headers(render(request, "share/app.html", context), settings.SHARE_PAGE_MAX_AGE)
 
 
-@require_safe
-def assetlinks(request):
-    """Lets Android open https://<domain>/p/... links straight in the app (App Links)."""
-    statements = [{
+def assetlinks_statements() -> list[dict]:
+    """The App Links statement list; also written as a file by manage.py write_assetlinks."""
+    return [{
         "relation": ["delegate_permission/common.handle_all_urls"],
         "target": {
             "namespace": "android_app",
@@ -157,6 +156,11 @@ def assetlinks(request):
             "sha256_cert_fingerprints": settings.ANDROID_CERT_SHA256,
         },
     }]
-    response = JsonResponse(statements, safe=False)
+
+
+@require_safe
+def assetlinks(request):
+    """Lets Android open https://<domain>/p/... links straight in the app (App Links)."""
+    response = JsonResponse(assetlinks_statements(), safe=False)
     response["Cache-Control"] = "public, max-age=3600"
     return response

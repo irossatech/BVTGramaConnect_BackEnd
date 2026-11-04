@@ -80,6 +80,8 @@ main() {
     # Django admin and API docs styles; the panel's nginx serves them through the site folder's static link.
     "$PYTHON" manage.py collectstatic --noinput >/dev/null
     echo "Static files collected in $(sed -n 's/^STATIC_ROOT=//p' "$BACKEND_DIR/.env" | tail -n 1)."
+    # App Links: the panel's nginx serves *.json from the site folder, never from Django.
+    "$PYTHON" manage.py write_assetlinks "$(dirname "$BACKEND_DIR")/.well-known/assetlinks.json"
   fi
   if [[ "${SEED:-0}" == "1" ]]; then
     local villages

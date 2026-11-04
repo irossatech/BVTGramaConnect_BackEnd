@@ -327,7 +327,7 @@ def test_app_shows_a_page_until_the_app_is_on_play():
     response = APIClient().get("/app/")
     assert response.status_code == 200
     text = html(response)
-    assert "BVT Grama Connect" in text and "Download for Android" not in text
+    assert "Grama Connect" in text and "Download for Android" not in text
 
 
 def test_app_page_offers_the_apk_when_set(settings):
@@ -357,6 +357,26 @@ def test_the_default_fingerprint_is_the_upload_key():
     assert statement["target"]["sha256_cert_fingerprints"] == [
         "27:16:13:C6:5C:CD:BE:3A:45:97:E0:54:4E:CD:09:CA:44:91:E0:CB:07:63:B3:5E:6E:D0:42:89:D5:8A:89:79"
     ]
+
+
+def test_write_assetlinks_writes_the_same_json_as_the_page(tmp_path, settings):
+    """Behind a hosting panel the file sits in the site folder (deploy/qa/BVT-deploy.sh, production)."""
+    import json
+
+    from django.core.management import call_command
+
+    settings.ANDROID_CERT_SHA256 = ["AA:" * 31 + "AA"]
+    target = tmp_path / "site" / ".well-known" / "assetlinks.json"
+    call_command("write_assetlinks", str(target), stdout=io.StringIO())
+    assert json.loads(target.read_text(encoding="utf-8")) == APIClient().get("/.well-known/assetlinks.json").json()
+    assert not list(target.parent.glob("*.partial"))
+
+
+def test_pages_name_the_app_grama_connect(world):
+    text = html(page(publish(world).share_code))
+    assert '<meta property="og:site_name" content="Grama Connect">' in text
+    assert "BVT" not in text
+    assert "BVT" not in html(APIClient().get("/app/")) and "BVT" not in html(APIClient().get("/p/NoSuchC0/"))
 
 
 def test_feed_share_returns_the_post_like_feed_posts(world):

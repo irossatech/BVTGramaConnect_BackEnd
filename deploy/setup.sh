@@ -291,6 +291,8 @@ set_env "$GC_APP_ENV" CONSOLE_SESSION_IDLE_MINUTES "${CONSOLE_SESSION_IDLE_MINUT
 set_env "$GC_APP_ENV" SITE_WEBSITE_URL "https://$DOMAIN/" --if-missing
 # Shared post links and the invite link are built from it (apps.share).
 set_env "$GC_APP_ENV" PUBLIC_BASE_URL "https://$DOMAIN/" --if-missing
+# The Android download button on /app/ until PLAY_STORE_URL is set (the website's own APK).
+set_env "$GC_APP_ENV" APP_DOWNLOAD_URL "/downloads/bvt-grama-connect.apk" --if-missing
 # Placeholder the owner replaces (kept once edited):
 #   FCM_CREDENTIALS_FILE: Firebase service-account JSON. Missing file = pushes off.
 set_env "$GC_APP_ENV" FCM_CREDENTIALS_FILE "$GC_ETC/fcm-service-account.json" --if-missing
