@@ -25,7 +25,7 @@ class AdWriteSerializer(serializers.Serializer):
     starts_on = serializers.DateField(required=False, allow_null=True, default=None)
     ends_on = serializers.DateField(required=False, allow_null=True, default=None)
     is_active = serializers.BooleanField(required=False, default=True)
-    duration_s = serializers.IntegerField(required=False, allow_null=True, min_value=1)
+    duration_s = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=32767)
 
     def to_internal_value(self, data):
         # An empty string means "none", in multipart forms and JSON alike.

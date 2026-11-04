@@ -6,6 +6,7 @@ Contract section 17. ffprobe and ffmpeg are faked like the post video tests: no 
 import io
 
 import pytest
+from django.conf import settings as django_settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from PIL import Image
 from rest_framework.test import APIClient
@@ -120,8 +121,35 @@ def test_not_an_mp4_or_mov(api, world, media_root, ffmpeg, video):
     assert not Ad.objects.exists()
 
 
+def test_the_owners_limits_any_length_at_most_sixty_megabytes():
+    """Owner decision of 2026-11-02, written out (the app and the console use 60 MB too)."""
+    assert django_settings.ADS_VIDEO_MAX_MB == 60 and django_settings.ADS_VIDEO_MAX_SECONDS == 0
+
+
+@pytest.mark.parametrize("length", [61.0, 5 * 60.0, 3 * 3600.0])
+def test_a_banner_video_may_be_any_length(api, world, media_root, ffmpeg, length):
+    ffmpeg["length"] = length
+    response = create_video(api, world)
+    assert response.status_code == 201, response.json()
+    assert response.json()["duration_s"] == round(length)
+
+
+def test_a_length_past_the_column_is_kept_at_its_largest(api, world, media_root, ffmpeg):
+    ffmpeg["length"] = 10 * 3600.0  # 36,000 s: past what the column holds
+    assert create_video(api, world).json()["duration_s"] == 32767
+
+
+def test_sixty_megabytes_pass_and_one_byte_more_does_not(api, world, media_root, ffmpeg, settings):
+    settings.ADS_VIDEO_MAX_MB = 1  # the same rule as 60 MB, with a smaller file for the test
+    assert create_video(api, world, video=mp4(size=1024 * 1024)).status_code == 201
+    too_big = create_video(api, world, video=mp4(size=1024 * 1024 + 1))
+    assert too_big.status_code == 413 and code(too_big) == "file_too_large"
+    assert "1 MB" in too_big.json()["error"]["message"]
+
+
 @pytest.mark.parametrize("length, expected", [(60.4, 201), (61.0, 400)])
-def test_at_most_sixty_seconds(api, world, media_root, ffmpeg, length, expected):
+def test_a_length_limit_still_works_when_set(api, world, media_root, ffmpeg, settings, length, expected):
+    settings.ADS_VIDEO_MAX_SECONDS = 60
     ffmpeg["length"] = length
     response = create_video(api, world)
     assert response.status_code == expected
@@ -143,6 +171,14 @@ def test_the_banner_limits_are_their_own(api, world, media_root, ffmpeg, setting
     assert prepared.duration == 30.0 and prepared.poster is not None
 
 
+def test_post_videos_keep_their_sixty_seconds_whatever_the_banners_allow(ffmpeg, settings):
+    settings.ADS_VIDEO_MAX_SECONDS = 0
+    ffmpeg["length"] = 61.0
+    with pytest.raises(media_service.ApiError) as error:
+        media_service.prepare_video(mp4())  # no limits passed: the post ones (VIDEO_MAX_SECONDS 60)
+    assert error.value.error_code == "video_too_long"
+
+
 def test_without_ffmpeg_a_plain_poster_and_the_phones_length(api, world, media_root, no_ffmpeg):
     response = create_video(api, world, duration_s="18")
     assert response.status_code == 201, response.json()
@@ -153,9 +189,20 @@ def test_without_ffmpeg_a_plain_poster_and_the_phones_length(api, world, media_r
     assert unknown["duration_s"] is None and unknown["video"]
 
 
-def test_without_ffprobe_the_phones_length_is_still_checked(api, world, media_root, no_ffmpeg):
+def test_without_ffprobe_the_phones_length_is_kept(api, world, media_root, no_ffmpeg):
+    response = create_video(api, world, duration_s="300")
+    assert response.status_code == 201 and response.json()["duration_s"] == 300
+
+
+def test_without_ffprobe_the_phones_length_is_checked_when_a_limit_is_set(api, world, media_root, no_ffmpeg, settings):
+    settings.ADS_VIDEO_MAX_SECONDS = 60
     response = create_video(api, world, duration_s="75")
     assert response.status_code == 400 and code(response) == "video_too_long"
+
+
+def test_a_phone_length_past_the_column_is_refused(api, world, media_root, no_ffmpeg):
+    response = create_video(api, world, duration_s="40000")
+    assert response.status_code == 400 and "duration_s" in response.json()["error"]["fields"]
 
 
 # --- Change and delete -------------------------------------------------------------------------------
