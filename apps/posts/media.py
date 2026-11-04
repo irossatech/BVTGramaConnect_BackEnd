@@ -287,10 +287,11 @@ def prepare_video(
     Officials (lenient=False): without ffprobe and ffmpeg the phone must send
     duration_s and a poster. Citizens (lenient=True, contract section 15): the
     length may stay unknown and a placeholder poster is used instead.
-    max_mb and max_seconds default to the post limits; banner ads pass their own.
+    max_mb and max_seconds default to the post limits (None); banner ads pass their own, and
+    max_seconds=0 means any length (owner decision of 2026-11-02 for banners).
     """
-    max_mb = max_mb or settings.MAX_VIDEO_UPLOAD_MB
-    max_seconds = max_seconds or settings.VIDEO_MAX_SECONDS
+    max_mb = max_mb if max_mb is not None else settings.MAX_VIDEO_UPLOAD_MB
+    max_seconds = max_seconds if max_seconds is not None else settings.VIDEO_MAX_SECONDS
     if upload.size > max_mb * 1024 * 1024:
         raise _too_large(max_mb, _("Videos"))
     container = _sniff_video(upload)
@@ -304,7 +305,7 @@ def prepare_video(
                 _("Send the video length in seconds."),
                 fields={"duration_s": [_("Required when the server cannot measure the video.")]},
             )
-        if duration is not None and float(duration) > max_seconds + DURATION_SLACK_S:
+        if max_seconds and duration is not None and float(duration) > max_seconds + DURATION_SLACK_S:
             raise ApiError(
                 "video_too_long",
                 _("Videos can be at most %(s)d seconds.") % {"s": max_seconds},

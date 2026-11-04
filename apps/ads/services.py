@@ -6,9 +6,10 @@
   proves the file is an image. The uploaded name is never kept: the file is
   ads/<id>-<random>-1600.webp, new on every replacement, because phones may
   cache /media/ for days.
-- Videos: MP4 or MOV up to ADS_VIDEO_MAX_MB and ADS_VIDEO_MAX_SECONDS,
-  checked and measured by the post video code (apps.posts.media), stored as
-  uploaded under ads/<id>-<random>.<mp4|mov>. The poster frame, cut by
+- Videos: MP4 or MOV up to ADS_VIDEO_MAX_MB (60), of any length unless
+  ADS_VIDEO_MAX_SECONDS is set above 0, checked and measured by the post video
+  code (apps.posts.media), stored without metadata under
+  ads/<id>-<random>.<mp4|mov>. The poster frame, cut by
   ffmpeg (or a plain placeholder without it), becomes the ad's `image`, so
   apps that only read `image` show it as a picture banner. An ad has a
   picture or a video: a new one of either replaces the other.
@@ -38,6 +39,9 @@ from apps.posts.media import ALLOWED_FORMATS, MAX_PIXELS, PreparedVideo, prepare
 from grama.exceptions import ApiError
 
 from .models import Ad
+
+#: The largest Ad.duration_s a PositiveSmallIntegerField holds on SQLite, MySQL and PostgreSQL.
+DURATION_MAX_S = 32767
 
 #: Fields an ad's audit entry may list as changed.
 FIELDS = ("title", "link", "area_level", "area_id", "starts_on", "ends_on", "is_active")
@@ -108,7 +112,8 @@ def _store_video(ad: Ad, prepared: PreparedVideo, poster: bytes) -> None:
     upload = prepared.upload
     upload.seek(0)
     ad.video.save(f"{ad.pk}-{secrets.token_hex(4)}.{prepared.container}", upload, save=False)
-    ad.duration_s = max(1, round(prepared.duration)) if prepared.duration is not None else None
+    # Any length is allowed; the column holds up to DURATION_MAX_S (about 9 hours) on every database.
+    ad.duration_s = min(max(1, round(prepared.duration)), DURATION_MAX_S) if prepared.duration is not None else None
     _store_image(ad, poster)
 
 
