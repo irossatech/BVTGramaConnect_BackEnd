@@ -81,9 +81,12 @@ is never interrupted; the next `BVT-start.sh` removes it. What the keep-alive di
 ```
 bash BVT-deploy.sh
 ```
-It pulls both repos, builds the website and console, installs packages, migrates, refreshes the
-background schedules and restarts on the remembered port. It stops before changing anything if
-someone edited tracked files on the server. `SEED=1` is refused once villages exist: the sample
+It pulls both repos, installs packages, migrates, refreshes the background schedules and restarts
+on the remembered port. The website and console come from the web repo's committed `dist/`, as
+the web developer built them; the server builds them (with Node.js 20.9+) only when the repo has no
+`dist/`. A `dist/` built here before is removed so the pull can bring the committed one. It stops
+before changing anything if someone edited tracked files on the server, so never run
+`npm run build` in the web repo on the server. `SEED=1` is refused once villages exist: the sample
 data would write its own places over the real list. Demo content for real villages:
 `manage.py load_demo_area` (`.claude/operations.md`).
 

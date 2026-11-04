@@ -42,7 +42,16 @@ update_repo() {
   git -C "$dir" checkout -q "$GIT_BRANCH"
   git -C "$dir" merge --ff-only "origin/$GIT_BRANCH"
 }
+# Is the website and console build committed in the web repo (dist/ in git)?
+build_is_committed() {
+  git -C "$WEB_REPO_DIR" ls-files --error-unmatch dist/index.html dist/console/index.html >/dev/null 2>&1
+}
+
 update_repo "${REPO_BACKEND:-}" "$BACKEND_DIR"
+# A dist/ built here before the web repo committed its own would stop the merge; it is only build output.
+if [[ -d "$WEB_REPO_DIR/dist" ]] && ! build_is_committed; then
+  rm -rf "$WEB_REPO_DIR/dist"
+fi
 update_repo "${REPO_WEB:-}" "$WEB_REPO_DIR"
 
 # --- Python packages --------------------------------------------------------------------
@@ -94,12 +103,21 @@ fi
 # One repo holds the website and the Super Admin console. Its build writes
 # dist/ (website) and dist/console/ (console). They are published to the same
 # folders Nginx already serves: www/public at / and www/console at /console/.
-log "Building the website and console"
-(
-  cd "$WEB_REPO_DIR"
-  npm ci --no-audit --no-fund --loglevel=error
-  GC_API_BASE="$WEB_API_BASE" npm run build
-)
+# The web repo commits dist/, built by the web developer: it is used as it is, so the server never
+# changes files git tracks (the next merge would stop). That build calls the API at /api/v1 on the
+# same domain. Without a committed dist/, it is built here as before.
+if build_is_committed; then
+  log "Using the committed website and console build"
+  [[ "$WEB_API_BASE" == "/api/v1" ]] \
+    || warn "WEB_API_BASE=$WEB_API_BASE is ignored: the committed build calls /api/v1 on the same domain."
+else
+  log "Building the website and console"
+  (
+    cd "$WEB_REPO_DIR"
+    npm ci --no-audit --no-fund --loglevel=error
+    GC_API_BASE="$WEB_API_BASE" npm run build
+  )
+fi
 for page in "$WEB_REPO_DIR/dist/index.html" "$WEB_REPO_DIR/dist/console/index.html"; do
   [[ -f "$page" ]] || die "The web build did not produce $page."
 done

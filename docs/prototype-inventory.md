@@ -419,7 +419,7 @@ Only these changes are allowed. Anything else is a design change and needs sign-
 
 ### 5.5 How it is served
 - **Development:** Django serves both folders when `DEBUG` is on. `web_public` maps `/` to `WEB_PUBLIC_DIR` (default `../BVTGramaConnect/dist`); `web_admin` maps `/console/` to `WEB_ADMIN_DIR` (default `../BVTGramaConnect/dist/console`).
-- **Production:** the deploy script builds the web repo once and copies `dist/` to the folder Nginx serves at `/` and `dist/console/` to the folder it serves at `/console/`. Nginx proxies `/api/` and `/django-admin/` to Gunicorn and serves `/media/` from `/var/media`.
+- **Production:** the deploy script uses the build committed in the web repo's `dist/` (built by the web developer; built on the server only when the repo has none) and copies `dist/` to the folder Nginx serves at `/` and `dist/console/` to the folder it serves at `/console/`. Nginx proxies `/api/` and `/django-admin/` to Gunicorn and serves `/media/` from `/var/media`.
 - Files are served byte for byte. No HTML minifier, because the runtime re-reads the raw page.
 - Nginx sends `charset utf-8`, gzip for HTML, JS, CSS and JSON, long cache headers for `vendor/`, `_ds/` and `assets/`, a year (`immutable`) for the website's `_next/static/`, and `no-cache` with an ETag for every `.html` page and `support.js`.
 

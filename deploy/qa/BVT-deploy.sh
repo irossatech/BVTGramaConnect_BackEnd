@@ -4,8 +4,8 @@
 #   SERVER_IP=147.93.102.247 PORT=9501 bash BVT-deploy.sh    the first time
 #   bash BVT-deploy.sh                                       every later release
 #
-# Pulls the backend repo and the web repo (cloned next to it), builds the website and console
-# (Next.js static export into dist/), installs the Python packages, writes the backend's .env
+# Pulls the backend repo and the web repo (cloned next to it), uses the website and console
+# build committed in the web repo's dist/ (or builds it, when the repo has none), installs the Python packages, writes the backend's .env
 # on the first run, migrates the database and restarts with BVT-start.sh. deploy/qa/README.md
 # has the whole setup, the database line for .env and the data copy.
 #
@@ -32,14 +32,12 @@ main() {
   [[ -d "$WEB_DIR/.git" ]] || fail "No web repo at $WEB_DIR. Clone BVTGramaConnect next to the backend."
   command -v git >/dev/null || fail "git is not installed."
   command -v curl >/dev/null || fail "curl is not installed."
-  command -v npm >/dev/null || fail "Node.js and npm are not installed."
-  node -e 'const [a, b] = process.versions.node.split(".").map(Number); process.exit(a > 20 || (a === 20 && b >= 9) ? 0 : 1)' \
-    || fail "Node.js 20.9 or newer is needed for the Next.js build; this is $(node --version)."
   command -v "$python_bin" >/dev/null || fail "$python_bin is not installed."
   "$python_bin" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 12) else 1)' \
     || fail "Python 3.12 or newer is needed; $python_bin is $("$python_bin" --version 2>&1). Set PYTHON_BIN=python3.12."
 
   step "Web repo: $WEB_DIR ($branch)"
+  drop_untracked_build "$WEB_DIR"
   update_repo "$WEB_DIR" "$branch"
   build_web "$WEB_DIR"
 
@@ -85,10 +83,33 @@ update_repo() {
   echo "Now at $(git -C "$dir" log --oneline -1)"
 }
 
-# Next.js static export: npm packages (again only when package-lock.json changed), then the build.
+# Is the website and console build committed in the web repo (dist/ in git)?
+build_is_committed() {
+  git -C "$1" ls-files --error-unmatch dist/index.html dist/console/index.html >/dev/null 2>&1
+}
+
+# A dist/ built on this server before the web repo committed its own would stop the pull
+# ("untracked files would be overwritten"). It is only build output, so it goes.
+drop_untracked_build() {
+  local dir="$1"
+  if [[ -d "$dir/dist" ]] && ! build_is_committed "$dir"; then
+    rm -rf "$dir/dist"
+  fi
+}
+
+# The web repo commits dist/ (website and console, built by the web developer): use it as it is,
+# so the server never changes files git tracks. Without a committed dist/, build it here as before:
+# npm packages (again only when package-lock.json changed), then the Next.js static export.
 build_web() {
   local dir="$1"
+  if build_is_committed "$dir"; then
+    echo "Using the committed build: $dir/dist (website) and $dir/dist/console (console)"
+    return
+  fi
   [[ -f "$dir/package.json" ]] || fail "No package.json in $dir."
+  command -v npm >/dev/null || fail "Node.js and npm are not installed."
+  node -e 'const [a, b] = process.versions.node.split(".").map(Number); process.exit(a > 20 || (a === 20 && b >= 9) ? 0 : 1)' \
+    || fail "Node.js 20.9 or newer is needed for the Next.js build; this is $(node --version)."
   cd "$dir"
   if [[ ! -f node_modules/.package-lock.json || package-lock.json -nt node_modules/.package-lock.json ]]; then
     npm ci --no-audit --no-fund --loglevel=error

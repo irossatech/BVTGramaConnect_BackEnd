@@ -6,7 +6,7 @@ Scripts for one Ubuntu LTS server (22.04 or 24.04) in India. The database is MyS
 |---|---|
 | `config.env.example` | Every setting: domain, database engine, repos, backup target |
 | `setup.sh` | Prepares the server from scratch, then runs the first deploy |
-| `deploy.sh` | Pulls the code, installs, migrates, builds the web parts, restarts |
+| `deploy.sh` | Pulls the code, installs, migrates, publishes the web parts (the committed `dist/`, or a build when there is none), restarts |
 | `backup.sh` | Encrypted database + media backup; runs nightly from a systemd timer |
 | `restore.sh` | Restores a backup made by `backup.sh` |
 | `templates/` | systemd units, Nginx and fail2ban files that `setup.sh` fills in |
