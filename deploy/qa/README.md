@@ -131,6 +131,26 @@ for qa only: production uses `deploy/setup.sh`, whose nginx serves the website, 
 console, `/static/` and `/media/` with their cache rules and sends only `/api/` and
 `/django-admin/` to Gunicorn.
 
+## Push notifications
+
+The Firebase key is a secret. Keep it outside `~/htdocs`, because the hosting nginx serves
+`.json` files from the site folder to anyone:
+```
+mkdir -p ~/secrets && chmod 700 ~/secrets
+# copy the key there as fcm-service-account.json (scp from your laptop), then:
+chmod 600 ~/secrets/fcm-service-account.json
+```
+Add to `.env` (`<home>` is the output of `echo $HOME`) and restart with `bash BVT-stop.sh && bash BVT-start.sh`:
+```
+FCM_CREDENTIALS_FILE=<home>/secrets/fcm-service-account.json
+FCM_PROJECT_ID=<project id>
+FCM_TOPIC_PREFIX=qa_
+```
+`FCM_TOPIC_PREFIX=qa_` is required on qa: qa and production share the Firebase project, so
+without it a test post would reach real users. QA builds of the app follow the `qa_` topics.
+The worker sends the pushes, so `BVT-start.sh` must show it running; its log must not say
+"FCM disabled".
+
 ## Stopping for good
 
 `bash BVT-stop.sh --disable` stops both processes and removes the keep-alive line;

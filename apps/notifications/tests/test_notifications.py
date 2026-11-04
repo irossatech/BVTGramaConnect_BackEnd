@@ -210,5 +210,6 @@ def test_fcm_request_sets_android_and_apns_priority(priority, android, apns):
     gateway.enabled, gateway._session, gateway.project_id = True, Session(), "demo"
     gateway.send(PushMessage(title="t", body="b", data={"urgent": "1"}, topic="village_1", priority=priority))
     message = sent["payload"]["message"]
-    assert message["android"] == {"priority": android}
-    assert message["apns"] == {"headers": {"apns-priority": apns}}
+    assert message["android"]["priority"] == android
+    assert message["apns"]["headers"] == {"apns-priority": apns}
+    assert message["topic"] == "village_1" and "token" not in message

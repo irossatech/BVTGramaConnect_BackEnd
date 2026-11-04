@@ -6,10 +6,12 @@ read with django-environ. A .env file in the repo root is read too when it
 exists; real environment variables win over it.
 """
 
+import re
 from datetime import timedelta
 from pathlib import Path
 
 import environ
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -472,6 +474,19 @@ FEED_SEARCH_MIN_CHARS = 2
 PUSH_GATEWAY = env.str("PUSH_GATEWAY", default="apps.notifications.push.FcmGateway")
 FCM_CREDENTIALS_FILE = env.str("FCM_CREDENTIALS_FILE", default="")
 FCM_PROJECT_ID = env.str("FCM_PROJECT_ID", default="")
+# Put in front of every topic name: "qa_" on the qa server, empty in production. qa and production
+# share one Firebase project and the same area ids, so without it a qa test post reaches real phones.
+FCM_TOPIC_PREFIX = env.str("FCM_TOPIC_PREFIX", default="")
+if not re.fullmatch(r"[A-Za-z0-9_.~%-]*", FCM_TOPIC_PREFIX):
+    raise ImproperlyConfigured("FCM_TOPIC_PREFIX may hold only letters, digits and - _ . ~ %.")
+# A push still undelivered after this many seconds (phone off) is dropped instead of arriving late.
+PUSH_TTL_SECONDS = env.int("PUSH_TTL_SECONDS", default=86400)
+# Owner decision Q19: only urgent posts go to citizens at high priority. True sends every published
+# post at high priority, so it is not held back while the phone sleeps; urgent posts keep their own channel.
+PUSH_ALL_POSTS_HIGH_PRIORITY = env.bool("PUSH_ALL_POSTS_HIGH_PRIORITY", default=False)
+# POST, PATCH and DELETE /devices/ per IP address. Many phones on a mobile network share one
+# public address, so this is set well above what one phone needs.
+DEVICE_THROTTLE_RATE = env.str("DEVICE_THROTTLE_RATE", default="300/hour")
 
 # Machine translation of published posts, Telugu <-> English (apps.posts.translation; contract
 # section 6): "off", "google" or "bhashini". Off: nothing is sent anywhere and `translation` is null.

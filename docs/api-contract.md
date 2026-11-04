@@ -612,6 +612,8 @@ Feed rule: published posts with **any** area that is the village, its mandal, it
 | `PATCH /devices/{id}/` | the app that registered it | `{"village_id"?, "language"?, "fcm_token"?}` | `200`, same shape. A device linked to an official answers `404` to anyone else. |
 | `DELETE /devices/{id}/` | same | — | `204` (logout or opt-out) |
 
+All three share one rate limit per IP address: `DEVICE_THROTTLE_RATE`, 300 an hour by default, signed in or not. Over it they answer `429 throttled` with `retry_after_s` and a `Retry-After` header. The app calls them only on start, on a village or language change, and on sign-in or sign-out, so a phone never comes near it; the limit is high because many phones on a mobile network share one address. **App: on `throttled`, keep the current registration and try again on the next start.**
+
 ### Inbox (officials)
 
 | Method and path | Response |
@@ -634,10 +636,13 @@ Citizens have no account. Their alert list is built on the device from the feed,
 
 ### Push (Firebase Cloud Messaging)
 - **Topics, without a language suffix:** `village_{id}`, `mandal_{id}`, `district_{id}`, `state_{id}`. A citizen's app subscribes to all four for its village and moves the subscriptions when the village changes.
+- **Topic prefix:** the server puts `FCM_TOPIC_PREFIX` in front of every topic: `qa_` on the qa server (`qa_village_12`), empty in production (`village_12`). qa and production share one Firebase project and the same area ids, so this keeps qa test posts off real phones. QA builds of the app subscribe to the `qa_` topics, production builds to the plain ones (`APP_ENV=prod`). Pushes to one phone's token have no prefix.
 - **Publishing** sends one message to the topic of the post's target level. A district post reaches every village in the district with one message.
 - **Language:** a post exists only in the language it was written in, so the topic push is in the post's language: title from template `post_published` (e.g. "కొలకలూరు: కొత్త గ్రామ చాటింపులు"), body = post title. Pushes to officials use each official's preferred language.
-- **Payload:** notification `{"title", "body"}` plus data `{"type": "POST_PUBLISHED"|"REVIEW_PENDING"|…, "post_id", "area_level", "area_id", "urgent": "1"|"0"}`, all strings. The app opens the post on tap.
-- **Priority:** topic pushes for ordinary posts go out at normal priority; an urgent post's push goes out at high priority (Android `priority: high`, APNs `apns-priority: 10`). Pushes to officials are high priority.
+- **Payload:** notification `{"title", "body"}` plus data `{"type": "POST_PUBLISHED"|"REVIEW_PENDING"|…, "post_id", "area_level", "area_id", "urgent": "1"|"0"}`, all strings. Service-request pushes carry `request_id` instead of `post_id`. The app opens the post, the review screen or the request on tap. Keep these keys.
+- **Android:** `notification.channel_id` is `urgent` for an urgent post (`urgent` = `"1"`) and for `ESCALATION`, otherwise `news`; the app creates both channels. `notification.tag` is the `post_id` or `request_id`, so a later push about the same post or request replaces the earlier one on the phone instead of adding a second. `ttl` is `PUSH_TTL_SECONDS` (`86400s`, one day): a phone that was off longer does not get old news late.
+- **iPhone:** `apns.payload.aps.sound` is `default`, so notifications ring.
+- **Priority:** topic pushes for ordinary posts go out at normal priority; an urgent post's push goes out at high priority (Android `priority: high`, APNs `apns-priority: 10`). Pushes to officials are high priority. `PUSH_ALL_POSTS_HIGH_PRIORITY=True` sends every published post at high priority, so it is not held back while an Android phone sleeps; it is off until the owner changes decision Q19. Urgent posts keep their own channel either way.
 - **Delivery:** django-q2 jobs. Each send retries with backoff: `DELIVERY_RETRY_ATTEMPTS` tries (default 3), waiting `DELIVERY_RETRY_BASE_SECONDS` × 1, × 4 (1 s, 4 s). After the last failure an audit entry `push.failed` is written (`via: system`, target = topic or device id, no personal data). An unregistered token deletes the device without retrying.
 - **No credentials, no push:** without `FCM_CREDENTIALS_FILE` the gateway logs "FCM disabled: no credentials" once and skips sends, so development needs no Firebase project.
 

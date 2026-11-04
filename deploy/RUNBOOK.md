@@ -117,7 +117,7 @@ Proves the backups work. Do it on a spare server, never on production.
 
 ## Push notifications (Firebase Cloud Messaging)
 
-1. In the Firebase console, create a service account key for the project (JSON).
+1. In Google Cloud (the Firebase project), create a service account `fcm-sender` with only the role **Firebase Cloud Messaging API Admin**, and a JSON key for it. It is a secret: hand it over in person, by USB or through a password manager, never in git, chat or email. The app's `google-services.json` must come from the same project, or every send fails with `SENDER_ID_MISMATCH`.
 2. Copy it to `/etc/gramaconnect/fcm-service-account.json`, then:
 
    ```
@@ -125,7 +125,18 @@ Proves the backups work. Do it on a spare server, never on production.
    sudo chmod 640 /etc/gramaconnect/fcm-service-account.json
    ```
 
-3. Set `FCM_PROJECT_ID` in `/etc/gramaconnect/gramaconnect.env` if the backend needs it, and restart both services. The qcluster log shows whether pushes are enabled.
+3. In `/etc/gramaconnect/gramaconnect.env`:
+
+   ```
+   FCM_CREDENTIALS_FILE=/etc/gramaconnect/fcm-service-account.json
+   FCM_PROJECT_ID=<project id>
+   FCM_TOPIC_PREFIX=
+   ```
+
+   `FCM_TOPIC_PREFIX` stays **empty in production**; the qa server uses `qa_` (`deploy/qa/README.md`). A prefix on production would send every post to topics no real phone follows.
+4. Restart both services. `systemctl status gramaconnect-qcluster` must be running (only the worker sends pushes), and `journalctl -u gramaconnect-qcluster -n 50` must not show "FCM disabled".
+5. Optional, after the owner's decision on Q19: `PUSH_ALL_POSTS_HIGH_PRIORITY=True` sends every post at high priority. `PUSH_TTL_SECONDS` (one day) and `DEVICE_THROTTLE_RATE` (300/hour per IP on `/devices/`) rarely need changing.
+6. Rotate the key yearly, and at once if it leaks: a new key, install it as above, restart, then delete the old key in Google Cloud. Failed pushes are in the audit log as `push.failed`.
 
 ## Certificates
 
