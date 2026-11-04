@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 
+from django.conf import settings
 from django_q.tasks import async_task
 
 from apps.accounts import authz
@@ -146,9 +147,11 @@ def announce_to_citizens(post) -> None:
     """Queue one job that pushes to the topic of each of the post's areas, in the post's language.
 
     A phone hears it once: its app follows its village's, mandal's, district's and state's topics,
-    and a post never has two areas where one contains the other. Urgent posts go out at high
-    priority, everything else at normal (owner decision Q19).
+    and a post never has two areas where one contains the other. Every post goes out at high
+    priority while PUSH_ALL_POSTS_HIGH_PRIORITY is on (the default since 2026-11-04); with it off,
+    only urgent posts do. Urgent posts show on the app's "urgent" channel either way.
     """
+    high = post.is_urgent or settings.PUSH_ALL_POSTS_HIGH_PRIORITY
     title = render("post_published", post.language, **_values(post, post.language))
     async_task(
         "apps.notifications.tasks.send_push_to_topics",
@@ -156,7 +159,7 @@ def announce_to_citizens(post) -> None:
         title[:255],
         post.title,
         _push_data(post, NotificationKind.POST_PUBLISHED),
-        "high" if post.is_urgent else "normal",
+        "high" if high else "normal",
         group="push",
     )
 

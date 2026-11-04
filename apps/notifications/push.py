@@ -8,8 +8,10 @@ PUSH_GATEWAY names the class:
 - notifications.push.LocmemPushGateway: tests. Keeps messages in .outbox.
 
 Citizens never log in, so they get pushes through topics their app subscribes
-to: village_<id>, mandal_<id>, district_<id>, state_<id>. Officials also get
-pushes on their own device tokens.
+to: village_<id>, mandal_<id>, district_<id>, state_<id>, each with
+FCM_TOPIC_PREFIX in front ("qa_" on the qa server, empty in production, so a
+test post on qa never reaches real phones in the same Firebase project).
+Officials also get pushes on their own device tokens, which need no prefix.
 """
 
 from __future__ import annotations
@@ -30,9 +32,14 @@ logger = logging.getLogger("grama.push")
 FCM_SCOPE = "https://www.googleapis.com/auth/firebase.messaging"
 
 
+#: Android notification channels the app creates: "news" (high importance) and "urgent" (max).
+NEWS_CHANNEL = "news"
+URGENT_CHANNEL = "urgent"
+
+
 def topic_for(level: str, area_id: int) -> str:
-    """FCM topic of an area, e.g. ("VILLAGE", 12) -> "village_12"."""
-    return f"{level.lower()}_{int(area_id)}"
+    """FCM topic of an area, e.g. ("VILLAGE", 12) -> "village_12", or "qa_village_12" on qa."""
+    return f"{settings.FCM_TOPIC_PREFIX}{level.lower()}_{int(area_id)}"
 
 
 @dataclass
@@ -43,7 +50,8 @@ class PushMessage:
     topic: str | None = None
     token: str | None = None
     #: "high" wakes the phone at once; "normal" may wait for the phone to be awake.
-    #: Urgent posts and messages to officials are high (owner decision Q19).
+    #: Messages to officials are high; posts to citizens too while PUSH_ALL_POSTS_HIGH_PRIORITY
+    #: is on (the default), else only urgent posts.
     priority: str = "high"
 
     def __post_init__(self):
@@ -53,6 +61,41 @@ class PushMessage:
             raise ValueError("Push priority is high or normal.")
         # FCM data values must be strings.
         self.data = {key: str(value) for key, value in self.data.items() if value is not None}
+
+
+def build_payload(message: PushMessage) -> dict:
+    """The FCM HTTP v1 request body for one message.
+
+    - channel_id: urgent posts and escalations on the app's "urgent" channel, the rest on "news".
+    - tag: a later push about the same post or service request replaces the earlier one on the phone.
+    - ttl: news older than PUSH_TTL_SECONDS (a day) is dropped, not delivered late to a phone that was off.
+    - apns sound: iPhones otherwise show the notification silently.
+    FCM rejects null fields, so empty ones are left out.
+    """
+    data = message.data
+    urgent = data.get("urgent") == "1" or data.get("type") == "ESCALATION"
+    android_note = {"channel_id": URGENT_CHANNEL if urgent else NEWS_CHANNEL}
+    tag = data.get("post_id") or data.get("request_id")
+    if tag:
+        android_note["tag"] = tag
+    body = {
+        "notification": {"title": message.title, "body": message.body},
+        "data": data,
+        "android": {
+            "priority": message.priority,
+            "ttl": f"{int(settings.PUSH_TTL_SECONDS)}s",
+            "notification": android_note,
+        },
+        "apns": {
+            "headers": {"apns-priority": "10" if message.priority == "high" else "5"},
+            "payload": {"aps": {"sound": "default"}},
+        },
+    }
+    if message.topic:
+        body["topic"] = message.topic
+    else:
+        body["token"] = message.token
+    return {"message": body}
 
 
 class InvalidDeviceToken(PermanentDeliveryError):
@@ -107,18 +150,7 @@ class FcmGateway(PushGateway):
         if not self.enabled:
             return
         session = self._authorized_session()
-        payload = {
-            "message": {
-                "notification": {"title": message.title, "body": message.body},
-                "data": message.data,
-                "android": {"priority": message.priority},
-                "apns": {"headers": {"apns-priority": "10" if message.priority == "high" else "5"}},
-            }
-        }
-        if message.topic:
-            payload["message"]["topic"] = message.topic
-        else:
-            payload["message"]["token"] = message.token
+        payload = build_payload(message)
         url = f"https://fcm.googleapis.com/v1/projects/{self.project_id}/messages:send"
         response = session.post(url, data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
                                 headers={"Content-Type": "application/json; charset=utf-8"}, timeout=10)

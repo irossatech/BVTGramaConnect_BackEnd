@@ -267,7 +267,7 @@ Returned by `GET /me/`, inside the app login response and inside the console ses
 - `translation`: `null`, or the published post in its other language (section 1, "Language").
 - `targets`: every area the post is for, each `{"level", "id", "name", "path"}` like `target_area`, in the order chosen. `target_level` and `target_area` are the first of them. A client that finds `targets` in a response knows the server takes many areas in one post.
 - `event`: `null` or `{"kind", "start_date", "end_date"}`. `kind` is one of `deadline`, `camp`, `distribution`, `closure`, `meeting`; dates are `YYYY-MM-DD`; `end_date` is `null` for one-day events and never before `start_date` (owner decision Q7).
-- `is_urgent`: set by admins; urgent posts are pinned in the app and their push goes out at high priority (owner decision Q19).
+- `is_urgent`: set by admins; urgent posts are pinned in the app (owner decision Q19), and their push goes on the app's `urgent` channel (section 7).
 - `posted_as` is the role assignment the author used, so admin posts show under the official role, as the website FAQ promises.
 - `allowed_actions` values: `edit`, `submit`, `delete`, `add_media`, `publish`, `recheck`, `discard`, `unpublish`, `reverse`, `set_urgent`, `block_citizen`, `unblock_citizen`, `discard_citizen_posts`.
 - `citizen`: `null`, or for a citizen post `{"device_id", "blocked", "blocked_until", "posts_total", "posts_discarded"}`; its `author` is then `{"id": null, "name": "", "role": "CITIZEN"}` (section 15).
@@ -611,7 +611,6 @@ Feed rule: published posts with **any** area that is the village, its mandal, it
 | `POST /devices/` | public or bearer | `{"fcm_token", "platform": "android"\|"ios"\|"web", "language": "te"\|"en", "village_id"?, "app_version"?}` | `201` when new, `200` when the token was known: `{"id", "fcm_token", "platform", "language", "village_id", "app_version"}`. Upserts by `fcm_token`. With a bearer token the device is linked to that official. Without one, a new token makes an unlinked device, but a token already linked to an official is left as it is (`200`, unchanged): only `DELETE /devices/{id}/` or another official's login on the phone unlinks it, so the app's logout deletes the device before registering again without a login. `400` for an unknown or inactive village. |
 | `PATCH /devices/{id}/` | the app that registered it | `{"village_id"?, "language"?, "fcm_token"?}` | `200`, same shape. A device linked to an official answers `404` to anyone else. |
 | `DELETE /devices/{id}/` | same | — | `204` (logout or opt-out) |
-
 ### Inbox (officials)
 
 | Method and path | Response |
@@ -634,10 +633,13 @@ Citizens have no account. Their alert list is built on the device from the feed,
 
 ### Push (Firebase Cloud Messaging)
 - **Topics, without a language suffix:** `village_{id}`, `mandal_{id}`, `district_{id}`, `state_{id}`. A citizen's app subscribes to all four for its village and moves the subscriptions when the village changes.
+- **Topic prefix:** the server puts `FCM_TOPIC_PREFIX` in front of every topic: `qa_` on the qa server (`qa_village_12`), empty in production (`village_12`). qa and production share one Firebase project and the same area ids, so this keeps qa test posts off real phones. QA builds of the app subscribe to the `qa_` topics, production builds to the plain ones (`APP_ENV=prod`). Pushes to one phone's token have no prefix.
 - **Publishing** sends one message to the topic of the post's target level. A district post reaches every village in the district with one message.
 - **Language:** a post exists only in the language it was written in, so the topic push is in the post's language: title from template `post_published` (e.g. "కొలకలూరు: కొత్త గ్రామ చాటింపులు"), body = post title. Pushes to officials use each official's preferred language.
-- **Payload:** notification `{"title", "body"}` plus data `{"type": "POST_PUBLISHED"|"REVIEW_PENDING"|…, "post_id", "area_level", "area_id", "urgent": "1"|"0"}`, all strings. The app opens the post on tap.
-- **Priority:** topic pushes for ordinary posts go out at normal priority; an urgent post's push goes out at high priority (Android `priority: high`, APNs `apns-priority: 10`). Pushes to officials are high priority.
+- **Payload:** notification `{"title", "body"}` plus data `{"type": "POST_PUBLISHED"|"REVIEW_PENDING"|…, "post_id", "area_level", "area_id", "urgent": "1"|"0"}`, all strings. Service-request pushes carry `request_id` instead of `post_id`. The app opens the post, the review screen or the request on tap. Keep these keys.
+- **Android:** `notification.channel_id` is `urgent` for an urgent post (`urgent` = `"1"`) and for `ESCALATION`, otherwise `news`; the app creates both channels. `notification.tag` is the `post_id` or `request_id`, so a later push about the same post or request replaces the earlier one on the phone instead of adding a second. `ttl` is `PUSH_TTL_SECONDS` (`86400s`, one day): a phone that was off longer does not get old news late.
+- **iPhone:** `apns.payload.aps.sound` is `default`, so notifications ring.
+- **Priority:** every push goes out at high priority (Android `priority: high`, APNs `apns-priority: 10`), so Android does not hold a post back while the phone sleeps. Approved on 2026-11-04; before, only urgent posts were high (Q19). Urgent posts stand out through the `urgent` channel. `PUSH_ALL_POSTS_HIGH_PRIORITY=False` on a server sends ordinary posts at normal priority again.
 - **Delivery:** django-q2 jobs. Each send retries with backoff: `DELIVERY_RETRY_ATTEMPTS` tries (default 3), waiting `DELIVERY_RETRY_BASE_SECONDS` × 1, × 4 (1 s, 4 s). After the last failure an audit entry `push.failed` is written (`via: system`, target = topic or device id, no personal data). An unregistered token deletes the device without retrying.
 - **No credentials, no push:** without `FCM_CREDENTIALS_FILE` the gateway logs "FCM disabled: no credentials" once and skips sends, so development needs no Firebase project.
 
