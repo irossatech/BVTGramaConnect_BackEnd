@@ -18,7 +18,8 @@ from urllib.parse import urljoin, urlsplit
 from django.conf import settings
 from django.http import HttpResponseRedirect, JsonResponse
 from django.shortcuts import render
-from django.utils import timezone
+from django.utils import timezone, translation
+from django.utils.formats import date_format
 from django.views.decorators.http import require_safe
 
 from apps.accounts.models import RoleGroup
@@ -32,10 +33,11 @@ from .og import preview_url
 
 CODE = re.compile(r"[A-Za-z0-9]{1,10}")
 
-MONTHS = {
-    "te": ["జనవరి", "ఫిబ్రవరి", "మార్చి", "ఏప్రిల్", "మే", "జూన్", "జులై", "ఆగస్టు", "సెప్టెంబర్", "అక్టోబర్", "నవంబర్", "డిసెంబర్"],
-    "en": ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
-}
+
+def _date(moment, language: str) -> str:
+    """"30 అక్టోబర్ 2026" or "30 October 2026": Django's own month names for the language, in IST."""
+    with translation.override(language):
+        return date_format(timezone.localtime(moment), "j F Y")
 
 WORDS = {
     "te": {
@@ -108,7 +110,6 @@ def post_page(request, code: str):
     describer = AreaDescriber(language)
     area = describer.describe(post.target)
     source = _source(post, language, describer)
-    published = timezone.localtime(post.published_at)
     url = share_url(post) or request.build_absolute_uri()
 
     context = {
@@ -117,7 +118,7 @@ def post_page(request, code: str):
         "words": WORDS[language],
         "category": post.category.display_name(language),
         "area": area["path"] if area else "",
-        "date": f"{published.day} {MONTHS[language][published.month - 1]} {published.year}",
+        "date": _date(post.published_at, language),
         "source": source,
         "translation": translation_of(post),
         "photos": photos,
