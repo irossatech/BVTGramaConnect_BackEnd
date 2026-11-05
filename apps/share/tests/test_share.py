@@ -192,6 +192,24 @@ def test_the_preview_picture_is_a_1200_by_630_jpeg_under_300_kb(world):
     assert default_storage.listdir("og")[1] == [f"{post.share_code}.jpg"]
 
 
+@pytest.mark.parametrize("language, expected", [("te", "30 అక్టోబర్ 2026"), ("en", "30 October 2026")])
+def test_the_date_uses_djangos_month_names_in_the_posts_language(world, language, expected):
+    """No month list of our own: Django's Telugu and English names, in India Standard Time."""
+    from datetime import datetime, timezone as tz
+
+    post = publish(world)
+    Post.objects.filter(pk=post.pk).update(language=language, published_at=datetime(2026, 10, 30, 12, 0, tzinfo=tz.utc))  # 17:30 IST
+    assert expected in html(page(post.share_code))
+
+
+def test_the_date_is_the_indian_day_not_the_utc_day(world):
+    from datetime import datetime, timezone as tz
+
+    post = publish(world)
+    Post.objects.filter(pk=post.pk).update(published_at=datetime(2026, 10, 30, 20, 0, tzinfo=tz.utc))  # 31 Oct, 01:30 IST
+    assert "31 అక్టోబర్ 2026" in html(page(post.share_code))
+
+
 def test_post_text_is_escaped(world):
     post = publish(world, title="<script>alert(1)</script> సభ", body='"><img src=x onerror=alert(1)>')
     text = html(page(post.share_code))
