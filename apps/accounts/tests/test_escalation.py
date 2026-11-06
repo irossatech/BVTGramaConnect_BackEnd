@@ -28,7 +28,7 @@ def assignments_url(world, name):
         ("ma_tenali", "pm_kolakaluru", Role.MANDAL_ADMIN, "tenali"),
         ("ma_tenali", "pm_kolakaluru", Role.DISTRICT_ADMIN, "guntur"),
         ("va_kolakaluru", "pm_kolakaluru", Role.VILLAGE_ADMIN, "kolakaluru"),
-        ("super", "da_guntur", Role.SUPER_ADMIN, "ap"),
+        # A Super Admin giving the Super Admin role is the one allowed peer case: test_super_admin_peers.py.
     ],
 )
 def test_no_one_gives_a_role_at_or_above_their_own(api, world, actor, target, role, area):

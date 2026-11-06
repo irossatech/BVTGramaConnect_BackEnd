@@ -18,7 +18,7 @@ area at all, for "may this user use this screen").
 User management adds ranks (0 is the highest): an admin may give, move or
 remove a role, and block, reset or unlock someone, only for groups ranked
 strictly below the assignment that grants the permission, and only inside its
-area. Giving a role also needs that group's manage permission
+area. A platform-wide group (Super Admin) also manages its peers (outranks()). Giving a role also needs that group's manage permission
 (accounts.manage_mandal_admin and so on).
 
 Lookups are cached on the user object, which the API loads fresh for every
@@ -380,12 +380,22 @@ def role_info(role_group) -> RoleInfo:
     )
 
 
+def outranks(grant_rank: int, role: RoleInfo) -> bool:
+    """May an assignment of rank `grant_rank` manage holders of `role`?
+
+    Strictly higher ranks only, except a platform-wide role: its holders manage each other (peers),
+    so a Super Admin may make, block or reset another one. No other role has peers: a District Admin
+    never makes a District Admin.
+    """
+    return grant_rank < role.rank or (role.platform_wide and grant_rank == role.rank)
+
+
 def _manages(user, role: RoleInfo, area, perm: str | None = None) -> bool:
-    """Some assignment covers `area`, ranks above `role`, may give `role`, and holds `perm` too."""
+    """Some assignment covers `area`, outranks `role`, may give `role`, and holds `perm` too."""
     if not role.manage_permission:
         return False
     for grant in grants_for(user, role.manage_permission, area):
-        if grant.rank < role.rank and (perm is None or perm in grant.permissions):
+        if outranks(grant.rank, role) and (perm is None or perm in grant.permissions):
             return True
     return False
 
@@ -447,7 +457,7 @@ def manageable_users(user) -> QuerySet:
     platform_manager = False
     for grant in grants(user):
         for role in all_roles.values():
-            if role.manage_permission in grant.permissions and role.rank > grant.rank:
+            if role.manage_permission in grant.permissions and outranks(grant.rank, role):
                 clause = Q(group_id=role.group_id)
                 if not grant.platform_wide:
                     clause &= within_q(grant.area)

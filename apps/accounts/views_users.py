@@ -11,6 +11,9 @@ Every rule comes from permissions (accounts.authz), checked per area:
 Users outside the actor's reach are invisible: reading or changing them
 answers 404. Creating a user or an assignment in an area outside it answers
 403 out_of_area; a role the actor may not give at all answers 403 permission_denied.
+
+The Super Admin role is a peer role (peers.py): a Super Admin gives it with their own
+password, never to the point of more than MAX_SUPER_ADMINS, and never takes the last one away.
 """
 
 from django.db import IntegrityError, transaction
@@ -29,12 +32,13 @@ from apps.geography.areas import AreaRef, area_exists, within_q
 from apps.geography.models import AreaLevel
 from grama.exceptions import ApiError, out_of_area, permission_denied
 
-from . import authz, lockout
+from . import authz, lockout, peers
 from .authentication import client_via
 from .authz import ANYWHERE, RoleInfo
-from .credentials import check_new_password, set_temporary_password
+from .credentials import check_new_password, confirm_own_password, set_temporary_password
 from .models import RoleAssignment, User
 from .permissions import ManagesUsers
+from .signals import super_admin_added
 from .serializers import (
     BlockSerializer,
     PasswordResetSerializer,
@@ -72,6 +76,21 @@ def check_assignment_allowed(actor, role: RoleInfo, area: AreaRef) -> None:
         raise permission_denied(_("Your role cannot give this role."))
     if not authz.can_assign(actor, role, area):
         raise out_of_area()
+
+
+def check_giving_peer_role(request, role: RoleInfo, current_password: str, user: User | None = None) -> None:
+    """Giving the Super Admin role: the actor's own password (S1) and room under the limit (S4)."""
+    if not peers.is_peer_role(role):
+        return
+    confirm_own_password(request.user, current_password, via=via(request), purpose="give_super_admin")
+    peers.check_room_for_one_more(role, user)
+
+
+def announce_peer(request, role: RoleInfo, user: User) -> None:
+    """After commit, let the other Super Admins know (notifications listens; S7)."""
+    if peers.is_peer_role(role):
+        actor = request.user
+        transaction.on_commit(lambda: super_admin_added.send(sender=User, actor=actor, user=user))
 
 
 def require_action(actor, perm: str, target: User, message) -> None:
@@ -232,6 +251,7 @@ class UserViewSet(
         values = data.validated_data
         role, area = values["role"], values["area"]
         check_assignment_allowed(request.user, role, area)
+        check_giving_peer_role(request, role, values["current_password"])
         if User.objects.filter(username=values["username"]).exists():
             raise duplicate(_("This username is taken."), "username")
         if values["mobile"] and User.objects.filter(mobile=values["mobile"]).exists():
@@ -256,10 +276,12 @@ class UserViewSet(
                 user=user, group_id=role.group_id, area_level=area.level, area_id=area.id, assigned_by=request.user
             )
             record(
-                "user.created", actor=request.user, target=user, target_label=user.name,
+                "user.super_admin_created" if peers.is_peer_role(role) else "user.created",
+                actor=request.user, target=user, target_label=user.name,
                 area=assignment.area, via=via(request),
                 data={"role": role.key, "password": "generated" if generated else "set by admin"},
             )
+            announce_peer(request, role, user)
         return self._respond(user, status_code=status.HTTP_201_CREATED, temporary_password=generated, wrap=True)
 
     @extend_schema(summary="Change a user's name, language or contact details", request=UserUpdateSerializer, responses=UserSerializer)
@@ -282,6 +304,8 @@ class UserViewSet(
         reason = BlockSerializer(data=request.data)
         reason.is_valid(raise_exception=True)
         if user.is_active:
+            for role in peers.peer_roles_of(user):
+                peers.check_not_last(role, user)
             with transaction.atomic():
                 block_user(user)
                 record(
@@ -296,6 +320,8 @@ class UserViewSet(
         user = self.get_object()
         require_action(request.user, "accounts.block_user", user, _("Your role cannot unblock this user."))
         if not user.is_active:
+            for role in peers.peer_roles_of(user):
+                peers.check_room_for_one_more(role, user)
             with transaction.atomic():
                 unblock_user(user)
                 record("user.unblocked", actor=request.user, target=user, target_label=user.name, via=via(request))
@@ -362,15 +388,18 @@ class RoleAssignmentViewSet(viewsets.GenericViewSet):
         data.is_valid(raise_exception=True)
         role, area = data.validated_data["role"], data.validated_data["area"]
         check_assignment_allowed(request.user, role, area)
+        check_giving_peer_role(request, role, data.validated_data["current_password"], user)
         try:
             with transaction.atomic():
                 assignment = RoleAssignment.objects.create(
                     user=user, group_id=role.group_id, area_level=area.level, area_id=area.id, assigned_by=request.user
                 )
                 record(
-                    "user.assignment_added", actor=request.user, target=user, target_label=user.name,
+                    "user.super_admin_role_added" if peers.is_peer_role(role) else "user.assignment_added",
+                    actor=request.user, target=user, target_label=user.name,
                     area=area, via=via(request), data={"role": role.key},
                 )
+                announce_peer(request, role, user)
         except IntegrityError:
             raise duplicate(_("The user already has this role in this area."), "role") from None
         return self._respond(assignment, status.HTTP_201_CREATED)
@@ -397,6 +426,10 @@ class RoleAssignmentViewSet(viewsets.GenericViewSet):
                 assignment.area_level, assignment.area_id = area.level, area.id
                 fields += ["area_level", "area_id"]
         if "is_active" in data.validated_data and data.validated_data["is_active"] != assignment.is_active:
+            if data.validated_data["is_active"]:
+                peers.check_room_for_one_more(role, user)
+            else:
+                peers.check_not_last(role, user)
             assignment.is_active = data.validated_data["is_active"]
             audit["is_active"] = assignment.is_active
             fields.append("is_active")
@@ -405,6 +438,8 @@ class RoleAssignmentViewSet(viewsets.GenericViewSet):
                 with transaction.atomic():
                     assignment.save(update_fields=fields)
                     action_name = "user.reassigned" if "area_id" in fields else "user.assignment_changed"
+                    if peers.is_peer_role(role) and "is_active" in fields:
+                        action_name = "user.super_admin_role_added" if assignment.is_active else "user.super_admin_role_removed"
                     record(
                         action_name, actor=request.user, target=user, target_label=user.name,
                         area=assignment.area, via=via(request), data=audit,
@@ -418,10 +453,13 @@ class RoleAssignmentViewSet(viewsets.GenericViewSet):
         user = self.get_target_user()
         assignment = self.get_assignment(user)
         role = authz.role_info(assignment.group.role_group)
+        if assignment.is_active:
+            peers.check_not_last(role, user)
         with transaction.atomic():
             assignment.delete()
             record(
-                "user.assignment_removed", actor=request.user, target=user, target_label=user.name,
+                "user.super_admin_role_removed" if peers.is_peer_role(role) else "user.assignment_removed",
+                actor=request.user, target=user, target_label=user.name,
                 area=assignment.area, via=via(request), data={"role": role.key},
             )
         return Response(status=status.HTTP_204_NO_CONTENT)

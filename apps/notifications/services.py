@@ -214,6 +214,37 @@ def tell_citizen(post) -> bool:
     return True
 
 
+MANAGE_SUPER_ADMINS = "accounts.manage_super_admin"
+
+
+def tell_super_admins(actor, user) -> list[Notification]:
+    """A Super Admin made `user` a Super Admin: every OTHER active Super Admin gets an inbox item and a push.
+
+    Neither the giver nor the new holder is told. The text names both people, never a phone or email.
+    """
+    others = (
+        authz.holders(MANAGE_SUPER_ADMINS, platform_wide=True)
+        .exclude(pk__in=[actor.pk, user.pk])
+        .distinct()
+    )
+    created = []
+    for other in others:
+        language = other.preferred_language
+        actor_name = (actor.name_te if language == "te" and actor.name_te else actor.name) or actor.username
+        user_name = (user.name_te if language == "te" and user.name_te else user.name) or user.username
+        text = render("super_admin_added", language, actor=actor_name, name=user_name)
+        created.append(Notification.objects.create(user=other, kind=NotificationKind.ACCOUNT, title=text[:255]))
+        async_task(
+            "apps.notifications.tasks.send_push_to_user",
+            str(other.pk),
+            text[:255],
+            "",
+            {"type": NotificationKind.ACCOUNT, "user_id": str(user.pk)},
+            group="push",
+        )
+    return created
+
+
 SERVICE_MANAGE = "service_requests.manage_service_requests"
 
 

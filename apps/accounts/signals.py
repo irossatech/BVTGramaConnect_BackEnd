@@ -15,9 +15,14 @@ from contextvars import ContextVar
 
 from django.contrib.auth.models import Group
 from django.db.models.signals import m2m_changed, post_delete, post_save
-from django.dispatch import receiver
+from django.dispatch import Signal, receiver
 
 from .models import RoleAssignment
+
+#: Sent after commit when a Super Admin gives the Super Admin role to someone (peers.py):
+#: sender=User, actor=the giver, user=the new holder. notifications tells the other holders.
+#: accounts never imports notifications.
+super_admin_added = Signal()
 
 #: (user, via) of whoever is editing groups right now; set by Django admin (accounts/admin.py).
 group_editor: ContextVar[tuple | None] = ContextVar("group_editor", default=None)

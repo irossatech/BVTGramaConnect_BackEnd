@@ -383,6 +383,11 @@ class UserCreateSerializer(serializers.Serializer):
         max_length=128, required=False, allow_blank=True, trim_whitespace=False, default="",
         help_text=_("Temporary password. Leave out to have one generated and shown once."),
     )
+    current_password = serializers.CharField(
+        max_length=128, required=False, allow_blank=True, trim_whitespace=False, default="",
+        style={"input_type": "password"},
+        help_text=_("Your own password. Required only when the role is SUPER_ADMIN."),
+    )
 
     def validate_name(self, value):
         value = " ".join(value.split())
@@ -432,6 +437,11 @@ class BlockSerializer(serializers.Serializer):
 class RoleAssignmentCreateSerializer(serializers.Serializer):
     role = RoleField()
     area = AreaInputSerializer()
+    current_password = serializers.CharField(
+        max_length=128, required=False, allow_blank=True, trim_whitespace=False, default="",
+        style={"input_type": "password"},
+        help_text=_("Your own password. Required only when the role is SUPER_ADMIN."),
+    )
 
 
 class RoleAssignmentUpdateSerializer(serializers.Serializer):

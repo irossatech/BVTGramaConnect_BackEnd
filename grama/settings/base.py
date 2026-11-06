@@ -311,6 +311,11 @@ ADMIN_POSTS_AUTO_PUBLISH = env.bool("ADMIN_POSTS_AUTO_PUBLISH", default=True)
 REVIEW_FIRST_DECISION_WINS = env.bool("REVIEW_FIRST_DECISION_WINS", default=True)
 REVIEW_ESCALATION_HOURS = env.int("REVIEW_ESCALATION_HOURS", default=24)
 SUPER_ADMIN_CAN_POST = env.bool("SUPER_ADMIN_CAN_POST", default=True)
+# Most active Super Admins at once; a Super Admin may make another one (apps/accounts/peers.py).
+# 0 means no limit. Default 5 until the owner decides (super-admin plan of 2026-11-06).
+MAX_SUPER_ADMINS = env.int("MAX_SUPER_ADMINS", default=5)
+if MAX_SUPER_ADMINS < 0:
+    raise ImproperlyConfigured("MAX_SUPER_ADMINS must be 0 (no limit) or more.")
 
 # Limits shown to the apps through /me (docs/api-contract.md).
 MAX_PHOTOS_PER_POST = env.int("MAX_PHOTOS_PER_POST", default=5)

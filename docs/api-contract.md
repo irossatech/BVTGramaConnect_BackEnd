@@ -118,6 +118,7 @@ All errors share one shape:
 | 403 | `not_console_user` | Console login without `web_admin.access_web_console`; no session is created |
 | 403 | `password_change_required` | The official must choose a new password first; only `GET /me/`, `POST /auth/password/change/`, `/auth/session/logout/`, `/auth/refresh/` and `/auth/logout/` work, for sessions and tokens alike |
 | 403 | `permission_denied` | No group of the actor grants the permission; also a console request without a valid `X-CSRFToken` |
+| 403 | `password_confirmation_required` | Giving the Super Admin role with a wrong `current_password` (section 3); counted with wrong tries on "Change password", so too many give `401 session_revoked` |
 | 403 | `out_of_area` | Target is outside the actor's area, on writes |
 | 404 | `not_found` | Missing, or outside the actor's area on reads |
 | 409 | `invalid_transition` | Post state does not allow the action |
@@ -125,6 +126,8 @@ All errors share one shape:
 | 409 | `duplicate` | Username, email, mobile or name already used; `fields` says which |
 | 409 | `type_in_use` | A contact type that active numbers use cannot be deleted; `count` gives how many (section 14) |
 | 409 | `protected` | The "Other" contact type cannot be deleted (section 14) |
+| 409 | `last_super_admin` | Blocking a Super Admin, or removing or switching off their role, would leave no active Super Admin (section 3) |
+| 409 | `super_admin_limit` | There are already `MAX_SUPER_ADMINS` active Super Admins (section 3); `limit` gives the number |
 | 413 | `file_too_large` | Upload over the limit |
 | 415 | `unsupported_media` | File type not allowed |
 | 429 | `locked_out` | 5 failed logins for this username from this IP address, or 50 failed logins from this IP address for any usernames within an hour; `retry_after_s` gives the seconds left |
@@ -353,23 +356,32 @@ Passwords:
 | Method and path | Needs | Request | Response |
 |---|---|---|---|
 | `GET /users/` | any `accounts.manage_*` | Query: `role`, `status=ACTIVE\|BLOCKED`, `level` + `area_id`, `district`, `q` (name, Telugu name, username, email, mobile), `page` | Page of `User` inside the actor's areas, plus `"counts": {"total", "active", "blocked", "by_role": {"VILLAGE_ADMIN": 5}}` over the same filters except `role` and `status` |
-| `POST /users/` | the group's manage permission over the area | `{"name", "name_te"?, "username", "mobile"?, "email"?, "preferred_language"?, "role", "area": {"level", "id"}, "password"?}` | `201 {"user": User, "temporary_password"?}`. Without `password`, the server generates one and returns it once as `temporary_password`. `must_change_password` is set. A taken username, email or mobile gives `409 duplicate` with the field. |
+| `POST /users/` | the group's manage permission over the area | `{"name", "name_te"?, "username", "mobile"?, "email"?, "preferred_language"?, "role", "area": {"level", "id"}, "password"?, "current_password"?}` | `201 {"user": User, "temporary_password"?}`. Without `password`, the server generates one and returns it once as `temporary_password`. `must_change_password` is set. A taken username, email or mobile gives `409 duplicate` with the field. With `role: SUPER_ADMIN`, `current_password` (the actor's own) is required: see "Super Admins" below. |
 | `GET /users/{id}/` | managing the user | — | `User` |
 | `PATCH /users/{id}/` | managing the user | `{"name"?, "name_te"?, "preferred_language"?, "email"?, "mobile"?}` | `User` |
 | `POST /users/{id}/reset-password/` | `accounts.reset_password` | `{"password"?}` | `200 {"user": User, "temporary_password"?}`. Generated when `password` is left out, shown once. Sets `must_change_password`, bumps `token_version`. Audited as `user.password_reset`. |
 | `POST /users/{id}/unlock/` | `accounts.unlock_user` | — | `200 User`. Clears the lockout for that username. Audited as `user.unlocked`. |
 | `POST /users/{id}/block/` | `accounts.block_user` | `{"reason"?}` | `User`. `is_active` false and `token_version` bumped: every session ends at once. |
 | `POST /users/{id}/unblock/` | `accounts.block_user` | — | `User` |
-| `POST /users/{id}/role-assignments/` | the group's manage permission over the area | `{"role", "area": {"level", "id"}}` | `201 RoleAssignment`. This is how a second role is added. |
+| `POST /users/{id}/role-assignments/` | the group's manage permission over the area | `{"role", "area": {"level", "id"}, "current_password"?}` | `201 RoleAssignment`. This is how a second role is added. With `role: SUPER_ADMIN`, `current_password` is required, as for `POST /users/`. |
 | `PATCH /users/{id}/role-assignments/{ra_id}/` | `accounts.reassign_user` | `{"area"?: {"level", "id"}, "is_active"?}` | `RoleAssignment`. "Reassign area". Pending reviews stay with the old area. |
 | `DELETE /users/{id}/role-assignments/{ra_id}/` | managing the user | — | `204`. A user with no active assignment left cannot log in. |
 
 Rules:
-- An admin acts on a user only when the permission's assignment covers every one of that user's assignment areas, and every one of the user's groups ranks strictly below the admin's group. This applies to editing, blocking, resetting, unlocking, reassigning and removing.
-- Giving a role needs that group's manage permission over the area (`accounts.manage_village_admin` and so on) and a group strictly above it. Nobody can give a group at or above their own rank.
-- The role must be at the area's level: `DISTRICT_ADMIN` on a district, `MANDAL_ADMIN` on a mandal, `VILLAGE_ADMIN` and `PANCHAYAT_MEMBER` on a village.
-- Super Admins are not created, reset or given through the API. The first one is made on the server with `python manage.py create_super_admin --username <name> --name "<full name>"`, which prints a temporary password once (see deploy/RUNBOOK.md).
+- An admin acts on a user only when the permission's assignment covers every one of that user's assignment areas, and every one of the user's groups ranks strictly below the admin's group. This applies to editing, blocking, resetting, unlocking, reassigning and removing. The one exception is Super Admins, who act on each other (below).
+- Giving a role needs that group's manage permission over the area (`accounts.manage_village_admin` and so on) and a group strictly above it. Nobody can give a group at or above their own rank, except a Super Admin giving the Super Admin role.
+- The role must be at the area's level: `SUPER_ADMIN` on the state, `DISTRICT_ADMIN` on a district, `MANDAL_ADMIN` on a mandal, `VILLAGE_ADMIN` and `PANCHAYAT_MEMBER` on a village.
 - Inactive areas cannot receive new assignments. Admins cannot block themselves.
+
+**Super Admins** (plan of 2026-11-06):
+- **The first one** is made on the server with `python manage.py create_super_admin --username <name> --name "<full name>"`, which prints a temporary password once (see deploy/RUNBOOK.md).
+- **After that, any Super Admin may make another one**, with `POST /users/` or `POST /users/{id}/role-assignments/`, `"role": "SUPER_ADMIN"` and `"area": {"level": "STATE", "id": <state id>}`. Only Super Admins hold `accounts.manage_super_admin`, which `GET /me/` lists in `permissions`; clients show the Super Admin choice only then. The new Super Admin gets a temporary password, must change it at first login, and has console access.
+- **Own password:** `current_password` (the actor's own password) is required for that role. Missing: `400 validation_error` on `current_password`. Wrong: `403 password_confirmation_required` ("Your password is not correct."). Wrong tries count with those on "Change password": too many end every session (`401 session_revoked`).
+- **Peers:** a Super Admin may block, unblock, unlock, reset the password of, and remove or switch off the role of **another** Super Admin, never their own. Other Super Admins appear in `GET /users/` with those `allowed_actions`.
+- **Never zero:** a change that would leave no active Super Admin answers `409 last_super_admin` ("There must always be at least one active Super Admin.").
+- **Limit:** at most `MAX_SUPER_ADMINS` active Super Admins (default 5; 0 means no limit). One more, by creating, adding the role, switching it on or unblocking, answers `409 super_admin_limit` ("The limit of Super Admins is reached.") with `limit`. Blocked Super Admins do not count.
+- **Audit:** `user.super_admin_created`, `user.super_admin_role_added`, `user.super_admin_role_removed`, with the actor; never a password.
+- **The others are told:** every other active Super Admin gets an inbox item and a push from template `super_admin_added` ("{actor} added {name} as a Super Admin"), `kind: ACCOUNT`, push data `{"type": "ACCOUNT", "user_id"}`. The giver and the new Super Admin are not told.
 
 ---
 
@@ -654,10 +666,10 @@ Invite and reset emails use the same retries (section 3).
 
 | Method and path | Who | Request or response |
 |---|---|---|
-| `GET /admin/notification-templates/` | Super Admin | `[{"key", "name", "name_te", "name_en", "channel": "push", "recipient": "author"\|"citizens"\|"reviewers"\|"higher_admin", "text_te", "text_en", "variables": ["title", "comment"], "editable": true, "updated_at"}]` |
+| `GET /admin/notification-templates/` | Super Admin | `[{"key", "name", "name_te", "name_en", "channel": "push", "recipient": "author"\|"citizens"\|"reviewers"\|"higher_admin"\|"citizen"\|"assignee"\|"super_admins", "text_te", "text_en", "variables": ["title", "comment"], "editable": true, "updated_at"}]` |
 | `PATCH /admin/notification-templates/{key}/` | Super Admin | `{"text_te", "text_en"}`, both required; only the listed `variables` may appear. Audited as `template.updated`. |
 
-Keys, seeded by a migration: `post_published`, `post_approved`, `post_recheck`, `post_discarded`, `post_unpublished`, `review_pending`, `escalation`, all push and editable. There are no SMS texts.
+Keys, seeded by a migration: `post_published`, `post_approved`, `post_recheck`, `post_discarded`, `post_unpublished`, `review_pending`, `escalation`, the service-request keys (section 16) and `super_admin_added` (recipient `super_admins`, variables `actor` and `name`; section 3), all push and editable. There are no SMS texts.
 
 ---
 
@@ -766,8 +778,8 @@ Roles are Django groups and actions are Django permissions. The full group × pe
 | Reverse a decision | `posts.reverse_decision` | when the decider ranked lower | same | same | same | no | no |
 | Mark as urgent | `posts.mark_urgent` | any | inside the district | inside the mandal | inside the village | no | no |
 | Area stats | `posts.view_stats` | any area | inside the district | inside the mandal | the village | the village | no |
-| Create users, add roles | `accounts.manage_<group>` | District, Mandal, Village Admins, Panchayat members | Mandal, Village Admins, Panchayat members inside the district | Village Admins, Panchayat members inside the mandal | Panchayat members in the village | no | no |
-| Block, reset password, reassign, unlock | `accounts.block_user`, `accounts.reset_password`, `accounts.reassign_user`, `accounts.unlock_user` | anyone ranked below | lower groups inside the district | lower groups inside the mandal | Panchayat members in the village | no | no |
+| Create users, add roles | `accounts.manage_<group>` | other Super Admins (`accounts.manage_super_admin`, with their own password), District, Mandal, Village Admins, Panchayat members | Mandal, Village Admins, Panchayat members inside the district | Village Admins, Panchayat members inside the mandal | Panchayat members in the village | no | no |
+| Block, reset password, reassign, unlock | `accounts.block_user`, `accounts.reset_password`, `accounts.reassign_user`, `accounts.unlock_user` | anyone ranked below, and other Super Admins | lower groups inside the district | lower groups inside the mandal | Panchayat members in the village | no | no |
 | Geography writes | `geography.manage_master_data` | yes | no (owner decision Q13) | no | no | no | no |
 | Audit log, export | `audit.view_audit_log`, `audit.export_audit_log` | yes | no | no | no | no | no |
 | Dashboard, reports | `web_admin.view_dashboard`, `web_admin.view_reports` | yes | no | no | no | no | no |

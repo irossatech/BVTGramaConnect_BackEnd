@@ -165,24 +165,51 @@ def authenticate_official(request, username: str, password: str, *, via: str, re
 # session of the user, so the next try needs a real login, where the lockout applies.
 
 
-def wrong_current_password(user, *, via: str):
-    """Audit one wrong current password; the error to raise: 400 invalid_credentials, or 401 session_revoked."""
+def _count_wrong_password(user, *, via: str, purpose: str | None = None) -> bool:
+    """Audit one wrong password of a logged-in user. True when that was one too many: every session ended."""
     from datetime import timedelta
 
     from apps.audit.models import AuditLog
 
-    from .tokens import revoke_all_sessions, session_revoked
+    from .tokens import revoke_all_sessions
 
     since = timezone.now() - timedelta(minutes=settings.PASSWORD_CHANGE_WINDOW_MINUTES)
     mine = AuditLog.objects.filter(target_type=user._meta.label_lower, target_id=str(user.pk))
     last_lock = mine.filter(action="auth.password_change_locked", created_at__gte=since).order_by("-created_at").first()
     if last_lock is not None:
         since = last_lock.created_at  # count only the tries after the last time the sessions were ended
-    record("auth.password_change_failed", actor=user, target=user, target_label=user.username, via=via)
+    record("auth.password_change_failed", actor=user, target=user, target_label=user.username, via=via,
+           data={"for": purpose} if purpose else None)
     failures = mine.filter(action="auth.password_change_failed", created_at__gt=since).count()
     if failures < settings.PASSWORD_CHANGE_MAX_FAILURES:
-        return invalid_credentials()
+        return False
     revoke_all_sessions(user)
     record("auth.password_change_locked", actor=user, target=user, target_label=user.username, via=via,
            data={"failures": failures})
-    return session_revoked()
+    return True
+
+
+def wrong_current_password(user, *, via: str):
+    """Audit one wrong current password; the error to raise: 400 invalid_credentials, or 401 session_revoked."""
+    from .tokens import session_revoked
+
+    return session_revoked() if _count_wrong_password(user, via=via) else invalid_credentials()
+
+
+def confirm_own_password(user, password: str | None, *, via: str, purpose: str) -> None:
+    """Raise unless `password` is the logged-in `user`'s own password (giving the Super Admin role).
+
+    Missing: 400 validation_error on current_password. Wrong: 403 password_confirmation_required,
+    counted with the wrong tries on "Change password", so guessing here ends every session too.
+    """
+    if not password:
+        message = _("Enter your own password to confirm.")
+        raise ApiError("validation_error", message, fields={"current_password": [message]})
+    if user.check_password(password):
+        return
+    from .tokens import session_revoked
+
+    if _count_wrong_password(user, via=via, purpose=purpose):
+        raise session_revoked()
+    raise ApiError("password_confirmation_required", _("Your password is not correct."),
+                   status=status.HTTP_403_FORBIDDEN)

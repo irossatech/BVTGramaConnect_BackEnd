@@ -139,6 +139,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         verbose_name_plural = _("users")
         ordering = ["name"]
         permissions = [
+            ("manage_super_admin", "Give and remove the Super Admin role"),
             ("manage_district_admin", "Give, move and remove the District Admin role"),
             ("manage_mandal_admin", "Give, move and remove the Mandal Admin role"),
             ("manage_village_admin", "Give, move and remove the Village Admin role"),

@@ -116,6 +116,17 @@ DEFAULTS = [
         "variables": ["service", "status", "note"],
         "editable": True,
     },
+    {
+        "key": "super_admin_added",
+        "name_te": "కొత్త సూపర్ అడ్మిన్",
+        "name_en": "New Super Admin",
+        "channel": "push",
+        "recipient": "super_admins",
+        "text_te": "{actor} గారు {name} గారిని సూపర్ అడ్మిన్‌గా చేర్చారు",
+        "text_en": "{actor} added {name} as a Super Admin",
+        "variables": ["actor", "name"],
+        "editable": True,
+    },
 ]
 
 BY_KEY = {item["key"]: item for item in DEFAULTS}
