@@ -89,6 +89,7 @@ class Recipient(models.TextChoices):
     REVIEWERS = "reviewers", _("Reviewers of the area")
     HIGHER_ADMIN = "higher_admin", _("Admins one level up")
     CITIZEN = "citizen", _("The citizen who sent it")
+    SUPER_ADMINS = "super_admins", _("The other Super Admins")
     ASSIGNEE = "assignee", _("The official it is assigned to")
 
 

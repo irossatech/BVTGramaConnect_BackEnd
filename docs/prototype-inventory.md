@@ -504,7 +504,7 @@ Numbers match the "Pending Qn" marks in `api-contract.md`. The owner decided Q1,
 | Q9 | How do users with several role assignments switch between them, and is there a screen to add one? | **Decided 2026-10-21:** second roles are added and removed in the console only. The app has no screen for it. **Changed later on 2026-10-21:** any admin with the group's manage permission over the area may give a lower second role (`authorization.md`, section 6). |
 | Q10 | Do village coordinates come only from the master-data import, or should the app's village form get latitude and longitude fields? | **Decided 2026-10-21:** coordinates come from the console's village form and the CSV import. |
 | Q11 | May the console get a small pager or "Load more" on Users, Posts and Audit? The design has none. | Yes, minimal pager |
-| Q12 | How are Super Admin accounts created? | `createsuperuser` and a management command |
+| Q12 | How are Super Admin accounts created? | `createsuperuser` and a management command. **Changed 2026-11-06 (super-admin plan):** the first one with `create_super_admin`; after that any Super Admin makes another one through the API, with their own password (`authorization.md`, section 4). Still open for the owner: every Super Admin or only one "owner" account (default: every one), and the limit (default `MAX_SUPER_ADMINS=5`). |
 | Q13 | Does anyone besides the Super Admin maintain master data? The website FAQ says District Admins add villages. | **Decided 2026-10-21:** Super Admin only. |
 | Q14 | Is PDF export needed in version 1, or CSV only? | **Decided 2026-10-21:** CSV only. |
 | Q15 | Should the console get a CSV import for villages? The delivery plan asks for an import tool with validation. | Yes, in the console Geography page |

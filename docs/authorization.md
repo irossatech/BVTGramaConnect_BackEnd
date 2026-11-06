@@ -150,13 +150,30 @@ The official asks a higher admin. An admin with `accounts.reset_password` over t
 - Any lockout on that username is cleared, so the person can log in with the new password at once.
 - Audited as `user.password_reset`, without the password.
 
-**The first Super Admin** is made on the server. Nobody can give the Super Admin group through the API. See `deploy/RUNBOOK.md`:
+**The first Super Admin** is made on the server. See `deploy/RUNBOOK.md`:
 
 ```bash
 python manage.py create_super_admin --username sita.admin --name "Sita Mahalakshmi"
 ```
 
 It prints a temporary password once, and the person changes it at their first console login. The same command gives the role to an existing account.
+
+### More Super Admins (plan of 2026-11-06)
+
+After the first one, **any Super Admin may make another Super Admin**, in the console or the app (Users → Add user, role Super Admin), or give the role to an existing official. It is the same `POST /api/v1/users/` or `POST /api/v1/users/{id}/role-assignments/`, at the state, plus the actor's own password. A Super Admin can do everything, so the rules are stricter (`apps/accounts/peers.py`):
+
+| # | Rule | Answer |
+|---|---|---|
+| S1 | The actor confirms with their **own password**, `current_password`. Wrong tries count with those on "Change password" (section 1): too many end every session. | missing: `400 validation_error`; wrong: `403 password_confirmation_required` |
+| S2 | **Never yourself:** no block, reset, unlock or role change on your own account. | the user is not in your list: `404` |
+| S3 | **Never zero:** no block, role removal or switch-off that would leave no active Super Admin. | `409 last_super_admin` |
+| S4 | **Limit:** at most `MAX_SUPER_ADMINS` active Super Admins (default 5, 0 for no limit). Blocked ones do not count; unblocking or switching the role on again counts. | `409 super_admin_limit` |
+| S5 | **Strong password:** 12 characters, changed at first login, as for every admin. | section 2 |
+| S6 | **Audit:** `user.super_admin_created`, `user.super_admin_role_added`, `user.super_admin_role_removed`. | section 13 |
+| S7 | **The others are told:** every other active Super Admin gets an inbox item and a push (template `super_admin_added`, editable in the console). | |
+| S8 | **Peers:** a Super Admin may block, unblock, unlock and reset another Super Admin, so a lost or leaving admin is handled without the server. | |
+
+Only the Super Admin group has peers. It is the one platform-wide group, and `authz.outranks()` lets a platform-wide group manage its own rank; every other group still manages only groups strictly below it, so a District Admin never makes a District Admin.
 
 ---
 
@@ -177,7 +194,7 @@ Roles are Django groups (`django.contrib.auth.models.Group`). A small table, `Ro
 
 | Key (sent to clients as `role`) | Group | Telugu | Assigned at | Rank | Given by holders of |
 |---|---|---|---|---|---|
-| `SUPER_ADMIN` | Super Admin | సూపర్ అడ్మిన్ | State, platform-wide | 0 | Nobody through the API |
+| `SUPER_ADMIN` | Super Admin | సూపర్ అడ్మిన్ | State, platform-wide | 0 | `accounts.manage_super_admin`: another Super Admin, with their own password (section 4) |
 | `DISTRICT_ADMIN` | District Admin | జిల్లా అడ్మిన్ | District | 1 | `accounts.manage_district_admin` |
 | `MANDAL_ADMIN` | Mandal Admin | మండల అడ్మిన్ | Mandal | 2 | `accounts.manage_mandal_admin` |
 | `VILLAGE_ADMIN` | Village Admin | గ్రామ అడ్మిన్ | Village | 3 | `accounts.manage_village_admin` |
@@ -211,6 +228,7 @@ Rank 0 is the highest. The groups, their levels, ranks and permissions are writt
 | `posts.view_stats` | yes | yes | yes | yes | yes |
 | `posts.manage_categories` | yes |  |  |  |  |
 | `posts.manage_settings` | yes |  |  |  |  |
+| `accounts.manage_super_admin` | yes |  |  |  |  |
 | `accounts.manage_district_admin` | yes |  |  |  |  |
 | `accounts.manage_mandal_admin` | yes | yes |  |  |  |
 | `accounts.manage_village_admin` | yes | yes | yes |  |  |
@@ -243,7 +261,7 @@ Rules on top of the table:
 - **Reviewing a post for several areas.** Every other post permission (review, publish, recheck, discard, take down, reverse, urgent, block the citizen) is checked over each of the post's areas, and holding it over **any** one is enough. So the admins of every chosen area review it, and a post to Everyone only the Super Admin. The first decision counts for the whole post.
 - **Reversing a decision** needs `posts.reverse_decision` and a group ranked strictly above the one that decided.
 - **First decision wins.** A second reviewer gets `409 already_decided`.
-- **User actions** need the permission over the user's area and a group ranked strictly below the admin's own. This covers assigning, reassigning, removing, blocking, resetting and unlocking. An admin can never give a group at or above their own rank.
+- **User actions** need the permission over the user's area and a group ranked strictly below the admin's own. This covers assigning, reassigning, removing, blocking, resetting and unlocking. An admin can never give a group at or above their own rank. The one exception: Super Admins act on other Super Admins and give the role, with the rules of section 4, "More Super Admins".
 - **Console screens** follow the same permissions: Geography needs `geography.manage_master_data`, the Audit Log needs `audit.view_audit_log`, and so on. The console hides what the user lacks; the server still refuses it.
 - **Service requests: only the assignee changes one.** Changing the status, writing a note and passing it on belong to the official it is assigned to, whatever their group (a Panchayat Member included); every other official who sees it only reads it. `service_requests.manage_service_requests` over the village only lets an admin assign a request **nobody holds**: never assigned (the village has no Village Admin), or its assignee was blocked or lost their role over the village.
 - **Important numbers** need `contacts.manage_contact` over the number's area, so every official works inside their own area and below. Only a platform-wide assignment covers the STATE, so only the Super Admin edits the statewide helplines; everyone else reads them. The CSV import needs the permission over the whole platform.
@@ -356,6 +374,8 @@ python manage.py sync_role_permissions
 | `user.created`, `user.updated` | Accounts made or edited |
 | `user.blocked`, `user.unblocked` | Blocking |
 | `user.assignment_added`, `user.assignment_removed` | Roles given, moved or taken away |
+| `user.super_admin_created`, `user.super_admin_role_added`, `user.super_admin_role_removed` | A Super Admin made a new Super Admin, gave the role (or switched it on again), or removed or switched it off |
+| `auth.password_change_failed` | A wrong current password on "Change password", or a wrong own password when giving the Super Admin role (`data.for`: `give_super_admin`) |
 | `setting.group_permissions_changed` | Group permissions edited in Django admin |
 | `contact.created`, `contact.updated`, `contact.removed` | An important number added, edited or verified, or removed; the phone is masked (`******0001`) |
 | `contact_type.created`, `contact_type.updated` | Contact types managed by the Super Admin |
@@ -388,6 +408,7 @@ No audit entry holds a password. The console shows these under Audit Log, tab Lo
 | `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE` | on (off in dev) | Cookies only over HTTPS |
 | `CSRF_TRUSTED_ORIGINS` | none | The server's https origin, in `prod.py` |
 | `SUPER_ADMIN_CAN_POST` | on (owner decision of 2026-11-04) | Whether the Super Admin may post |
+| `MAX_SUPER_ADMINS` | 5 (until the owner decides) | Most active Super Admins at once; 0 means no limit (section 4) |
 | `ADMIN_POSTS_AUTO_PUBLISH` | on | Admin posts publish without review |
 
 JWT lifetimes are in `SIMPLE_JWT`: access 15 minutes, refresh 30 days, rotated and blacklisted.

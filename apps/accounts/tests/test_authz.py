@@ -26,13 +26,15 @@ ALL_AREAS_KEYS = ["ap", *PARENT.keys()]
 # --- The matrix as the brief states it (written out by hand, not read from the dict) ----------
 
 MANAGES = {
-    "SUPER_ADMIN": {"DISTRICT_ADMIN", "MANDAL_ADMIN", "VILLAGE_ADMIN", "PANCHAYAT_MEMBER"},
+    # A Super Admin also makes other Super Admins (super-admin plan of 2026-11-06): the only peers.
+    "SUPER_ADMIN": {"SUPER_ADMIN", "DISTRICT_ADMIN", "MANDAL_ADMIN", "VILLAGE_ADMIN", "PANCHAYAT_MEMBER"},
     "DISTRICT_ADMIN": {"MANDAL_ADMIN", "VILLAGE_ADMIN", "PANCHAYAT_MEMBER"},
     "MANDAL_ADMIN": {"VILLAGE_ADMIN", "PANCHAYAT_MEMBER"},
     "VILLAGE_ADMIN": {"PANCHAYAT_MEMBER"},
     "PANCHAYAT_MEMBER": set(),
 }
 MANAGE_PERMISSION = {
+    "SUPER_ADMIN": "accounts.manage_super_admin",
     "DISTRICT_ADMIN": "accounts.manage_district_admin",
     "MANDAL_ADMIN": "accounts.manage_mandal_admin",
     "VILLAGE_ADMIN": "accounts.manage_village_admin",
@@ -93,7 +95,6 @@ def test_role_groups_carry_level_rank_and_manage_permission(db):
         "VILLAGE_ADMIN": ("Village Admin", "VILLAGE", 3, False),
         "PANCHAYAT_MEMBER": ("Panchayat Member", "VILLAGE", 4, False),
     }
-    assert rows["SUPER_ADMIN"].manage_permission == ""  # nobody gives it through the API
     assert {key: rows[key].manage_permission for key in MANAGE_PERMISSION} == MANAGE_PERMISSION
 
 
@@ -218,7 +219,8 @@ def roles():
 
 @pytest.mark.parametrize("actor, role, area, allowed", [
     ("super", "DISTRICT_ADMIN", "krishna", True),
-    ("super", "SUPER_ADMIN", "ap", False),
+    ("super", "SUPER_ADMIN", "ap", True),  # peers: the plan of 2026-11-06
+    ("da_guntur", "SUPER_ADMIN", "ap", False),
     ("da_guntur", "DISTRICT_ADMIN", "guntur", False),
     ("da_guntur", "MANDAL_ADMIN", "tenali", True),
     ("da_guntur", "MANDAL_ADMIN", "gannavaram", False),

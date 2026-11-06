@@ -1,11 +1,12 @@
-"""Listen to posts.signals. posts sends them after commit; a receiver must never
-raise, because the post change it reports has already been saved."""
+"""Listen to posts.signals and accounts.signals.super_admin_added. Both are sent after commit; a
+receiver must never raise, because the change it reports has already been saved."""
 
 import logging
 
 from django.conf import settings
 from django.dispatch import receiver
 
+from apps.accounts.signals import super_admin_added
 from apps.posts.signals import post_decided, post_escalated, post_published, post_submitted
 
 from . import services
@@ -57,3 +58,8 @@ def _escalation_hours() -> int:
 @receiver(post_escalated, dispatch_uid="notifications.post_escalated")
 def on_post_escalated(sender, post, level=None, **kwargs):
     _safely(services.alert_escalation, post, level, _escalation_hours())
+
+
+@receiver(super_admin_added, dispatch_uid="notifications.super_admin_added")
+def on_super_admin_added(sender, actor, user, **kwargs):
+    _safely(services.tell_super_admins, actor, user)

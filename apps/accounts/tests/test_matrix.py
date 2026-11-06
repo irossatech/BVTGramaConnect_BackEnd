@@ -267,7 +267,9 @@ def probe(world, client, actor: User, perm: str, area_key: str | None) -> bool:
             body = {"type": "official", "name": "Probe office", "phone": "08644222333"}
         return outcome(client.post("/api/v1/admin/contacts/", {**body, "area": world.area_json(area_key)}, format="json"))
     if perm in MANAGE_ROLE:
-        body = {"name": "Probe", "username": "probe.new", "role": MANAGE_ROLE[perm], "area": world.area_json(area_key)}
+        # current_password: giving the Super Admin role needs the actor's own (ignored for other roles).
+        body = {"name": "Probe", "username": "probe.new", "role": MANAGE_ROLE[perm], "area": world.area_json(area_key),
+                "current_password": TEST_PASSWORD}
         return outcome(client.post("/api/v1/users/", body, format="json"))
     target = member_at(world, area_key)
     if perm == "accounts.block_user":

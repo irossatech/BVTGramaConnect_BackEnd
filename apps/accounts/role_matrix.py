@@ -14,7 +14,10 @@ Fields:
 - name, name_te: the Django group name and its Telugu label.
 - level: the area level the group is assigned at.
 - rank: 0 is the highest. An admin may only assign, block, reset or unlock
-  people whose groups rank strictly below their own.
+  people whose groups rank strictly below their own. The one exception is a
+  platform-wide group: its holders also manage each other (peers), so a Super
+  Admin may make, block or reset another Super Admin (plan of 2026-11-06), with
+  the extra rules in apps/accounts/peers.py.
 - platform_wide: the assignment covers every area, whatever area it names.
 - manage_permission: the permission an admin needs to give this group to
   someone (None: nobody can give it through the API).
@@ -86,11 +89,14 @@ ROLE_GROUPS: dict[str, dict] = {
         "level": "STATE",
         "rank": 0,
         "platform_wide": True,
-        "manage_permission": None,
+        # The first Super Admin is made on the server (create_super_admin); after that a Super Admin
+        # may give the role to someone else, confirming with their own password (peers.py).
+        "manage_permission": "accounts.manage_super_admin",
         "password_min_length": ADMIN_PASSWORD_MIN_LENGTH,
         "permissions": [
             *POSTING,
             *REVIEWING,
+            "accounts.manage_super_admin",
             # Citizen posts (docs/api-contract.md, section 15): only the Super Admin blocks or unblocks
             # a citizen's phone and discards all its pending posts (lead's decision of 2026-10-27).
             "posts.block_citizen",

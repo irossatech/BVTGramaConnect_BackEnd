@@ -116,6 +116,7 @@ For the QA engineer and the client's testers during user acceptance testing. Wor
 | S16 | Important numbers | Area and Helpline tabs. The Super Admin adds, edits and removes statewide helplines (short codes such as 108 accepted) and any area's numbers. Numbers not checked for 180 days show "needs re-check"; Verify clears it. The website's help lines follow the statewide list. |
 | S17 | Numbers CSV import | A dry run lists every bad row with its row number and field and saves nothing. One bad row means nothing is imported. A real import of a district's numbers works; importing it again changes nothing. A file saved from Excel with Telugu names imports correctly. |
 | S18 | Contact types | Add a type, rename it in Telugu and English, and switch it off; a switched-off type's numbers disappear from the app. A type in use cannot be deleted. |
+| S19 | More Super Admins | Users → Add user → role Super Admin asks for your own password; a wrong one shows "Your password is not correct." and creates nobody. The new Super Admin must change the password at first login and then sees the console. The other Super Admins get a notification. You can block, unblock and reset another Super Admin, never yourself. With 5 active Super Admins a sixth is refused with "The limit of Super Admins is reached." A District Admin never sees the Super Admin choice. |
 
 ## Public website
 

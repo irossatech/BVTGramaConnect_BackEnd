@@ -16,13 +16,14 @@ import pytest
 
 from apps.accounts.models import RoleAssignment, User
 from apps.accounts.roles import Role
-from conftest import OFFICIALS, assign, inside
+from conftest import OFFICIALS, TEST_PASSWORD, assign, inside
 
 pytestmark = pytest.mark.django_db
 
-# CLAUDE.md, "Roles": who creates and blocks whom.
+# CLAUDE.md, "Roles": who creates and blocks whom. A Super Admin also makes other Super Admins,
+# confirming with their own password (super-admin plan of 2026-11-06); no other role has peers.
 CAN_MANAGE = {
-    Role.SUPER_ADMIN: {Role.DISTRICT_ADMIN, Role.MANDAL_ADMIN, Role.VILLAGE_ADMIN, Role.PANCHAYAT_MEMBER},
+    Role.SUPER_ADMIN: {Role.SUPER_ADMIN, Role.DISTRICT_ADMIN, Role.MANDAL_ADMIN, Role.VILLAGE_ADMIN, Role.PANCHAYAT_MEMBER},
     Role.DISTRICT_ADMIN: {Role.MANDAL_ADMIN, Role.VILLAGE_ADMIN, Role.PANCHAYAT_MEMBER},
     Role.MANDAL_ADMIN: {Role.VILLAGE_ADMIN, Role.PANCHAYAT_MEMBER},
     Role.VILLAGE_ADMIN: {Role.PANCHAYAT_MEMBER},
@@ -80,7 +81,8 @@ def assert_outcome(response, status: int, code: str | None):
 def test_create_user_matrix(api, world, actor, role, area):
     response = api(world.users[actor]).post(
         "/api/v1/users/",
-        {"name": "New Official", "username": "new.official", "role": role, "area": world.area_json(area)},
+        {"name": "New Official", "username": "new.official", "role": role, "area": world.area_json(area),
+         "current_password": TEST_PASSWORD},
         format="json",
     )
     status, code = expected_outcome(actor, role, area)
@@ -366,9 +368,12 @@ def test_area_must_exist_and_be_active(api, world):
     assert_outcome(inactive, 400, "validation_error")
 
 
-def test_nobody_creates_super_admins_through_the_api(api, world):
-    response = create_as(api, world, "super", role=Role.SUPER_ADMIN, area=world.area_json("ap"))
-    assert_outcome(response, 403, "permission_denied")
+def test_only_a_super_admin_creates_super_admins(api, world):
+    """The rest of the Super Admin rules are in test_super_admin_peers.py."""
+    for actor in ("da_guntur", "ma_tenali", "va_kolakaluru", "pm_kolakaluru"):
+        response = create_as(api, world, actor, role=Role.SUPER_ADMIN, area=world.area_json("ap"),
+                             current_password=TEST_PASSWORD)
+        assert_outcome(response, 403, "permission_denied")
 
 
 def test_creating_needs_a_login(api, world):

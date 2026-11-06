@@ -4,9 +4,9 @@
 
 Prints a temporary password once; the person must change it at first login
 to the console. The role is the platform-wide group of role_matrix.py,
-assigned at the state (--state-id, or the only state). Nobody can give this
-role through the API, and Django admin lets only Super Admins edit roles, so
-this command is how the first one is made. Audit-logged.
+assigned at the state (--state-id, or the only state). Only a Super Admin can
+give this role through the API (with their own password, apps/accounts/peers.py),
+so this command is how the first one is made. Audit-logged.
 """
 
 from django.core.management.base import BaseCommand, CommandError
