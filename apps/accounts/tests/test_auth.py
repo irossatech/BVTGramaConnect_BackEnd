@@ -130,10 +130,18 @@ def test_role_default_passwords_are_gone(api, world):
 
 
 def test_argon2_is_the_production_hasher():
-    from grama.settings import base
+    import subprocess
+    import sys
 
-    assert base.PASSWORD_HASHERS[0] == "django.contrib.auth.hashers.Argon2PasswordHasher"
+    from django.conf import settings
+
+    result = subprocess.run(
+        [sys.executable, "-c", "import grama.settings as s; print(s.PASSWORD_HASHERS[0])"],
+        cwd=settings.BASE_DIR, capture_output=True, text=True, timeout=60,
+    )
+    assert result.stdout.strip() == "django.contrib.auth.hashers.Argon2PasswordHasher", result.stderr
     import argon2  # noqa: F401  (installed from requirements.txt)
+
 
 
 def test_new_hashes_use_the_first_hasher(world):

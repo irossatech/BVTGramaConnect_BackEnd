@@ -224,5 +224,5 @@ def test_prod_settings_turn_integrity_on():
     """prod.py needs production env to import, so read it: integrity is on unless env turns it off."""
     from pathlib import Path
 
-    text = (Path(__file__).resolve().parents[3] / "grama" / "settings" / "prod.py").read_text(encoding="utf-8")
+    text = (Path(__file__).resolve().parents[3] / "grama" / "settings.py").read_text(encoding="utf-8")
     assert 'CITIZEN_INTEGRITY_REQUIRED = env.bool("CITIZEN_INTEGRITY_REQUIRED", default=True)' in text
