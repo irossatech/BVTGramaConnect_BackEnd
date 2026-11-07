@@ -13,8 +13,8 @@
 # setups still end every process of a login at logout, so a crontab line runs the keep-alive every
 # minute: cron is not part of any login, and it also brings them back after a crash or a reboot.
 # BVT-stop.sh leaves a "stopped" mark that the keep-alive respects until the next BVT-start.sh.
-# Settings come from the backend's .env: the dev settings with DEBUG=False and the database in
-# DATABASE_URL (deploy/qa/README.md). PID files, the port and the logs are in ~/.bvt-grama.
+# Settings come from the backend's .env: grama/settings.py with DEBUG=False (production mode)
+# and the database in DATABASE_URL (deploy/qa/README.md). PID files, the port and the logs are in ~/.bvt-grama.
 set -euo pipefail
 # shellcheck source=qa-lib.sh
 source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/qa-lib.sh"

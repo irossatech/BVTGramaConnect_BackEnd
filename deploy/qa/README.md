@@ -1,8 +1,11 @@
 # qa server on a hosting account without root
 
 The team's test server: one Unix account on a hosting panel, no sudo, no Nginx of our own. Django's
-own server runs the dev settings with `DEBUG=False` and serves the website, console and photos itself
-(`SERVE_FILES`); the data lives in the account's MySQL or MariaDB database. Production on a
+own server runs `grama/settings.py` with `DEBUG=False`, which is production mode: secure cookies,
+HSTS, the key check, and `MEDIA_ROOT` and `STATIC_ROOT` required. `.env` turns on what a test server
+without Nginx needs: Django serves the website, console and photos itself (`SERVE_FILES=True`),
+debug builds of the app may post (`CITIZEN_INTEGRITY_REQUIRED=False`) and Swagger is open
+(`API_DOCS_PUBLIC=True`). The data lives in the account's MySQL or MariaDB database. Production on a
 server with root uses `deploy/setup.sh` and `deploy/deploy.sh` (Nginx, Gunicorn, HTTPS, backups);
 production on a hosting panel uses these scripts with the production settings ("Production on a
 hosting panel", below).
@@ -37,8 +40,11 @@ to the scripts arrives with `git pull`, reviewed like the rest of the code.
 3. The database: see below. Without `DATABASE_URL` the deploy stops, so it never migrates a
    stray SQLite file by mistake.
 4. `SERVER_IP=147.93.102.247 PORT=9501 bash BVT-deploy.sh`. It writes `.env` on the first run
-   (a new `SECRET_KEY`, `DEBUG=False`, `ALLOWED_HOSTS`, the web folders), so on a brand-new server
-   run it once, add the database line, and run it again.
+   (a new `SECRET_KEY`, `DEBUG=False`, `ALLOWED_HOSTS`, the web folders, `MEDIA_ROOT`,
+   `STATIC_ROOT`, `SERVE_FILES=True`, `CITIZEN_INTEGRITY_REQUIRED=False`, `API_DOCS_PUBLIC=True`),
+   so on a brand-new server run it once, add the database line, and run it again. A `.env` from
+   before the single settings file (PR #73) lacks the five lines after the web folders: add them
+   by hand, or the server stops with "Set the MEDIA_ROOT environment variable".
 5. `bash BVT-backup.sh --install`: a backup now and every night at 02:30.
 
 ## The database
@@ -171,16 +177,21 @@ The worker sends the pushes, so `BVT-start.sh` must show it running; its log mus
 
 When production has to run on the same kind of account (no sudo, the panel's nginx in front, as
 for www.gramaconnect.com on 147.93.102.247), the same scripts run it with the production
-settings. They tell production from qa by one line in the backend's `.env`,
-`DJANGO_SETTINGS_MODULE=grama.settings.prod`, which the first production deploy writes:
+settings. Both run `grama/settings.py` with `DEBUG=False`. The scripts tell production from qa by
+one line in the backend's `.env`, `DJANGO_SETTINGS_MODULE=grama.settings.prod` (only a marker for
+the scripts; the settings go by `DEBUG`), which the first production deploy writes:
 
 | | qa | production on the panel |
 |---|---|---|
-| Settings | dev, `DEBUG=False` | `grama.settings.prod`: secure cookies, HSTS, the key and host checks |
+| Settings | `DEBUG=False`, plus `SERVE_FILES`, `API_DOCS_PUBLIC` and integrity off for test builds | `DEBUG=False`: secure cookies, HSTS, the key and host checks |
 | Web server | `runserver` on `0.0.0.0:PORT` | Gunicorn on `127.0.0.1:PORT` (3 workers, `WEB_WORKERS`), no access log |
 | Branch | `dev` | `main` (`BRANCH=dev` to override) |
 | Deploy also runs | | `check --deploy` before migrating, `collectstatic` |
 | Refused | | `SEED=1`, `QA_SQLITE=1` |
+
+A production `.env` written before the single settings file (PR #73) has no `DEBUG` line, because
+the old `prod.py` forced it off. Add `DEBUG=False` before deploying that version, or the site runs
+in debug mode on a SQLite file.
 
 Its own panel site and Unix user, its own MySQL database, its own port: nothing is shared with qa.
 

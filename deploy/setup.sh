@@ -274,6 +274,8 @@ ALLOWED_HOSTS="${ALL_DOMAINS// /,}"
 CSRF_TRUSTED_ORIGINS="$(printf 'https://%s,' $ALL_DOMAINS)"
 CSRF_TRUSTED_ORIGINS="${CSRF_TRUSTED_ORIGINS%,}"
 set_env "$GC_APP_ENV" DJANGO_SETTINGS_MODULE grama.settings.prod
+# grama/settings.py runs in production mode only with DEBUG=False.
+set_env "$GC_APP_ENV" DEBUG False
 set_env "$GC_APP_ENV" SECRET_KEY "$(python3 -c 'import secrets; print(secrets.token_urlsafe(50))')" --if-missing
 set_env "$GC_APP_ENV" ALLOWED_HOSTS "$ALLOWED_HOSTS"
 set_env "$GC_APP_ENV" CSRF_TRUSTED_ORIGINS "$CSRF_TRUSTED_ORIGINS"
@@ -295,7 +297,7 @@ set_env "$GC_APP_ENV" PUBLIC_BASE_URL "https://$DOMAIN/" --if-missing
 #   FCM_CREDENTIALS_FILE: Firebase service-account JSON. Missing file = pushes off.
 set_env "$GC_APP_ENV" FCM_CREDENTIALS_FILE "$GC_ETC/fcm-service-account.json" --if-missing
 set_env "$GC_APP_ENV" FCM_PROJECT_ID "" --if-missing
-#   PLAY_INTEGRITY_PACKAGE: prod.py turns the citizen phone check on; without the package
+#   PLAY_INTEGRITY_PACKAGE: production (DEBUG=False) turns the citizen phone check on; without the package
 #   every citizen registration would fail with "Play Integrity is not configured".
 set_env "$GC_APP_ENV" PLAY_INTEGRITY_PACKAGE com.bvt.app --if-missing
 set_env "$GC_APP_ENV" LOG_LEVEL INFO --if-missing

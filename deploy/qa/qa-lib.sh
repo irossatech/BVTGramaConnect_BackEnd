@@ -21,7 +21,8 @@ fail() { echo "ERROR: $*" >&2; exit 1; }
 
 # Production on the same kind of hosting account (deploy/qa/README.md, "Production on a hosting
 # panel"): the backend's .env names the production settings, and every manage.py, Gunicorn and
-# backup run here uses them. A qa server's .env has no such line and keeps the dev settings.
+# backup run here uses them. A qa server's .env has no such line. Both load grama/settings.py,
+# which goes by DEBUG; this name only tells the scripts which kind of server this is.
 load_settings_module() {
   local module=""
   if [[ -f "$BACKEND_DIR/.env" ]]; then

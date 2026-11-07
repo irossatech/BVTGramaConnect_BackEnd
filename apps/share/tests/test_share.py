@@ -442,7 +442,7 @@ def test_the_website_still_serves_its_files_and_does_not_swallow_the_links(setti
 
 @pytest.mark.parametrize("env, expected", [("https://www.gramaconnect.com", "https://www.gramaconnect.com/"), ("", "")])
 def test_public_base_url_gets_its_final_slash(monkeypatch, env, expected):
-    import grama.settings.base as base
+    import grama.settings as base
 
     monkeypatch.setenv("PUBLIC_BASE_URL", env)
     try:
@@ -456,7 +456,7 @@ def test_public_base_url_gets_its_final_slash(monkeypatch, env, expected):
 def test_settings_refuse_bad_values(monkeypatch, name, value):
     from django.core.exceptions import ImproperlyConfigured
 
-    import grama.settings.base as base
+    import grama.settings as base
 
     monkeypatch.setenv(name, value)
     try:

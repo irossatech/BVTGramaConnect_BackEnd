@@ -106,7 +106,7 @@ Until a web part is ported, its URL shows a "not ported yet" page naming the fol
 python -m pytest
 ```
 
-Tests run against a fresh in-memory SQLite database with `grama.settings.test`. Background jobs run inline, so no worker is needed.
+Tests run against a fresh in-memory SQLite database with `grama.settings`, which notices pytest and switches to fast password hashing, inline background jobs and in-memory push. No worker is needed.
 
 ## Project layout
 
@@ -122,7 +122,7 @@ apps/                 every Django app (Python package "apps"; each keeps its sh
   web_admin/          serves the Super Admin console; dashboard and reports API
   contacts/           important numbers (VRO, Mee Seva, Tahsildar office …) and statewide helplines; officials manage their own area
 grama/                Django project
-  settings/           base.py, dev.py (default for manage.py), prod.py (wsgi/asgi), test.py
+  settings.py         all settings; DEBUG picks development or production
   urls.py             URL layout
   sitefiles.py        serves the web parts, /media/ and /static/ while SERVE_FILES is on
   tests/              project-level tests
@@ -138,9 +138,14 @@ Apps are imported as `apps.<name>` (for example `from apps.posts.services import
 
 ## Settings
 
-`manage.py` uses `grama.settings.dev` unless `DJANGO_SETTINGS_MODULE` says otherwise. `wsgi.py` and `asgi.py` default to `grama.settings.prod`.
+All settings are in one file, `grama/settings.py`, used by `manage.py`, `wsgi.py`, `asgi.py` and pytest. `DEBUG` in the environment or `.env` picks the mode:
 
-On the server, `grama.settings.prod` needs these environment variables and refuses to start without them:
+- **Development** (`DEBUG=True` or unset): SQLite (or `DATABASE_URL` when set), Django serves the web parts, cookies work over plain http, Swagger open, Play Integrity off.
+- **Production** (`DEBUG=False`): secure cookies, HSTS, the secret-key check, Swagger for console users only, Play Integrity on, Django serves the web parts only with `SERVE_FILES=True`.
+
+The old names `grama.settings.dev`, `.prod`, `.test` and `.base` still load the same file, so existing `.env` files and scripts keep working; they no longer change anything.
+
+With `DEBUG=False` these environment variables are required, and the server refuses to start without them:
 
 | Variable | Example |
 |---|---|
@@ -157,7 +162,7 @@ On the server, `grama.settings.prod` needs these environment variables and refus
 
 ## On the server
 
-Install the same `requirements.txt` as everywhere else; it includes Gunicorn and the drivers for both MySQL and PostgreSQL. On Linux, mysqlclient builds from source, so install `pkg-config default-libmysqlclient-dev build-essential python3-dev` first (`deploy/setup.sh` does this). Then, with `DJANGO_SETTINGS_MODULE=grama.settings.prod` and the variables above set:
+Install the same `requirements.txt` as everywhere else; it includes Gunicorn and the drivers for both MySQL and PostgreSQL. On Linux, mysqlclient builds from source, so install `pkg-config default-libmysqlclient-dev build-essential python3-dev` first (`deploy/setup.sh` does this). Then, with `DEBUG=False` and the variables above set:
 
 ```bash
 python manage.py migrate

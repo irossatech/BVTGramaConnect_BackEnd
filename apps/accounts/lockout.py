@@ -1,6 +1,6 @@
 """django-axes glue: failed-login lockout per username and IP address.
 
-AXES_* settings (grama/settings/base.py): 5 failures for the same username
+AXES_* settings (grama/settings.py): 5 failures for the same username
 from the same IP lock that pair for 15 minutes. Failures during a lockout do
 not extend it. A successful login clears the count. Admins with
 accounts.unlock_user clear it early (POST /api/v1/users/{id}/unlock/), and a
