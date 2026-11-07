@@ -28,7 +28,6 @@ def public_site(settings, tmp_path):
     settings.PUBLIC_BASE_URL = BASE
     settings.MEDIA_ROOT = tmp_path / "media"
     settings.PLAY_STORE_URL = ""
-    settings.APP_DOWNLOAD_URL = ""
 
 
 def webp(size=(1600, 900), colour=(31, 138, 59)) -> bytes:
@@ -352,26 +351,14 @@ def test_site_config_has_the_invite_link():
 # --- 8. /app/ ---------------------------------------------------------------------------------------------
 
 
-def test_app_goes_to_the_play_store_when_it_is_set(settings):
-    settings.PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.bvt.app"
-    response = APIClient().get("/app/")
+def test_app_goes_to_the_websites_download_panel_keeping_the_query(settings):
+    settings.SITE_WEBSITE_URL = "https://www.gramaconnect.com"  # with or without the final slash
+    settings.PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.bvt.app"  # not used by /app/
+    response = APIClient().get("/app/?ref=invite")
     assert response.status_code == 302
-    assert response["Location"] == "https://play.google.com/store/apps/details?id=com.bvt.app"
-    with_ref = APIClient().get("/app/?ref=invite")
-    assert with_ref["Location"] == "https://play.google.com/store/apps/details?id=com.bvt.app&ref=invite"
-
-
-def test_app_shows_a_page_until_the_app_is_on_play():
-    response = APIClient().get("/app/")
-    assert response.status_code == 200
-    text = html(response)
-    assert "Grama Connect" in text and "Download for Android" not in text
-
-
-def test_app_page_offers_the_apk_when_set(settings):
-    settings.APP_DOWNLOAD_URL = "/downloads/bvt-grama-connect.apk"
-    text = html(APIClient().get("/app/"))
-    assert 'href="/downloads/bvt-grama-connect.apk"' in text
+    assert response["Location"] == "https://www.gramaconnect.com/?ref=invite#get-app"
+    assert APIClient().get("/app")["Location"] == "/app/"
+    assert APIClient().get("/app/")["Location"] == "https://www.gramaconnect.com/#get-app"
 
 
 # --- 9. App Links and the app's share endpoint ------------------------------------------------------------
@@ -414,7 +401,7 @@ def test_pages_name_the_app_grama_connect(world):
     text = html(page(publish(world).share_code))
     assert '<meta property="og:site_name" content="Grama Connect">' in text
     assert "BVT" not in text
-    assert "BVT" not in html(APIClient().get("/app/")) and "BVT" not in html(APIClient().get("/p/NoSuchC0/"))
+    assert "BVT" not in html(APIClient().get("/p/NoSuchC0/"))
 
 
 def test_feed_share_returns_the_post_like_feed_posts(world):
@@ -446,7 +433,7 @@ def test_the_website_still_serves_its_files_and_does_not_swallow_the_links(setti
     code = publish(world).share_code
     assert "గ్రామ సభ రేపు" in html(client.get(f"/p/{code}/"))
     assert client.get(f"/p/{code}")["Location"] == f"/p/{code}/"
-    assert client.get("/app/").status_code == 200
+    assert client.get("/app/").status_code == 302
     assert client.get("/.well-known/assetlinks.json")["Content-Type"] == "application/json"
 
 

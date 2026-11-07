@@ -37,14 +37,7 @@ from .models import ContactMessage
 
 
 class SiteConfigSerializer(serializers.Serializer):
-    office_address_te = serializers.CharField()
-    office_address_en = serializers.CharField()
-    phone = serializers.CharField()
-    email = serializers.CharField()
-    hours_te = serializers.CharField()
-    hours_en = serializers.CharField()
     play_store_url = serializers.CharField(allow_blank=True)
-    app_store_url = serializers.CharField(allow_blank=True)
     website_url = serializers.CharField()
     invite_url = serializers.CharField(allow_null=True, help_text="PUBLIC_BASE_URL + app/; null until it is set")
     helplines = serializers.ListField(child=serializers.DictField())
@@ -101,18 +94,11 @@ def helplines() -> list[dict]:
 
 @method_decorator(cache_control(public=True, max_age=300), name="dispatch")
 class SiteConfigView(PublicView):
-    @extend_schema(summary="Contact details and store links for the public website", responses=SiteConfigSerializer)
+    @extend_schema(summary="Store, website and invite links and helplines", responses=SiteConfigSerializer)
     def get(self, request):
         return Response(
             {
-                "office_address_te": settings.SITE_OFFICE_ADDRESS_TE,
-                "office_address_en": settings.SITE_OFFICE_ADDRESS_EN,
-                "phone": settings.SITE_PHONE,
-                "email": settings.SITE_EMAIL,
-                "hours_te": settings.SITE_HOURS_TE,
-                "hours_en": settings.SITE_HOURS_EN,
                 "play_store_url": settings.PLAY_STORE_URL,
-                "app_store_url": settings.APP_STORE_URL,
                 "website_url": settings.SITE_WEBSITE_URL,
                 "invite_url": invite_url(),
                 "helplines": helplines(),

@@ -358,22 +358,9 @@ HOUSEKEEPING_KEEP_DAYS = env.int("HOUSEKEEPING_KEEP_DAYS", default=30)
 
 # --- Public website (web_public: /api/v1/public/site-config/) -------------------
 
-# Defaults are the approved prototype's contact details. Store URLs stay
-# empty until the apps are published; the website then shows "coming soon".
-SITE_OFFICE_ADDRESS_TE = env.str(
-    "SITE_OFFICE_ADDRESS_TE",
-    default="BVT Grama Connect, 2nd Floor, Collectorate Road,\nGuntur – 522004, Andhra Pradesh",
-)
-SITE_OFFICE_ADDRESS_EN = env.str(
-    "SITE_OFFICE_ADDRESS_EN",
-    default="BVT Grama Connect, 2nd Floor, Collectorate Road,\nGuntur – 522004, Andhra Pradesh",
-)
-SITE_PHONE = env.str("SITE_PHONE", default="+91 863 223 4567")
-SITE_EMAIL = env.str("SITE_EMAIL", default="help@bvtgramaconnect.in")
-SITE_HOURS_TE = env.str("SITE_HOURS_TE", default="సోమ–శని 10:00–18:00")
-SITE_HOURS_EN = env.str("SITE_HOURS_EN", default="Mon–Sat 10:00–18:00")
+# The website keeps its own office details and app download links. The Play Store URL stays
+# empty until the app is published; the website then shows "coming soon".
 PLAY_STORE_URL = env.str("PLAY_STORE_URL", default="")
-APP_STORE_URL = env.str("APP_STORE_URL", default="")
 CONTACT_MESSAGES_PER_IP_PER_HOUR = env.int("CONTACT_MESSAGES_PER_IP_PER_HOUR", default=5)
 # Link added to shared posts and invites (owner decision Q17). Placeholder until the domain is known.
 SITE_WEBSITE_URL = env.str("SITE_WEBSITE_URL", default="https://example.in/")
@@ -404,9 +391,6 @@ for _fingerprint in ANDROID_CERT_SHA256:
         raise ImproperlyConfigured(f"ANDROID_CERT_SHA256: {_fingerprint!r} is not a SHA-256 fingerprint (32 hex pairs).")
 # Seconds browsers and WhatsApp may keep a shared post page (/p/<code>/).
 SHARE_PAGE_MAX_AGE = env.int("SHARE_PAGE_MAX_AGE", default=300)
-# Optional "Download for Android" button on /app/ while PLAY_STORE_URL is empty, e.g.
-# /downloads/bvt-grama-connect.apk (the website's own APK). Empty: no button.
-APP_DOWNLOAD_URL = env.str("APP_DOWNLOAD_URL", default="")
 # Village whose feed fills the home page's phone picture (owner decision Q16).
 # Empty: the newest published posts anywhere.
 SITE_SHOWCASE_VILLAGE_ID = env.int("SITE_SHOWCASE_VILLAGE_ID", default=0) or None
