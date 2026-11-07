@@ -265,7 +265,7 @@ Pages switch in state (`state.page`, L278). There are no URLs or hash routes.
 | Phone mockup location, featured post and two mini cards | Template L71-73, `miniCards` L297 | Hard-coded; the featured post stays Telugu in both languages | Optional `GET /public/showcase` (Q16) |
 | Services, steps, levels, audiences, officials cards, FAQs | L291-296 | Built from the dictionary | Nothing |
 | Office address, phone, email, hours | L182-183, `t.hours` | Hard-coded | `GET /public/site-config` |
-| Store links | L62-63, L229, `storeClick` L301 | "Coming soon" toast | `play_store_url`, `app_store_url` from site config; the toast stays while they are empty |
+| Store links | L62-63, L229, `storeClick` L301 | "Coming soon" toast | `play_store_url` from site config (the App Store link is the website's own since 2026-11-07); the toast stays while they are empty |
 | Contact form | L190-199, L303-304 | Sets `sent` locally | `POST /public/contact-messages` |
 | Admin login card | L204-218, `adminOtp` L301 | Mobile field unbound; demo toast | No API; button and link go to `/console/` |
 | "© 2026" | L231 | Hard-coded | Nothing |

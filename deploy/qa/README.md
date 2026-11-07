@@ -215,11 +215,9 @@ Its own panel site and Unix user, its own MySQL database, its own port: nothing 
    fcm-sender → Keys), copied to `~/secrets/fcm-service-account.json` (mode 600, never in
    `~/htdocs`), then in `.env`: `FCM_CREDENTIALS_FILE=/home/<user>/secrets/fcm-service-account.json`.
    `FCM_PROJECT_ID=bvt-grama-connect` and an empty `FCM_TOPIC_PREFIX` are written already.
-6. **Office details** from the owner in `.env`: `SITE_PHONE`, `SITE_EMAIL`, `SITE_OFFICE_ADDRESS_TE`,
-   `SITE_OFFICE_ADDRESS_EN`, `SITE_HOURS_TE`, `SITE_HOURS_EN`. Restart: `bash BVT-stop.sh && bash BVT-start.sh`.
-7. **Data:** geography, categories, numbers (`deploy/DATA_MOVE.md`), then the first Super Admin:
+6. **Data:** geography, categories, numbers (`deploy/DATA_MOVE.md`), then the first Super Admin:
    `.venv/bin/python manage.py create_super_admin`.
-8. **Real visitor addresses.** Lockouts and limits count per address, so Django must see the
+7. **Real visitor addresses.** Lockouts and limits count per address, so Django must see the
    visitor's, not the proxy's or Cloudflare's. Try the console login once with a wrong password
    (failed logins are recorded with their address), then:
    ```
@@ -227,7 +225,7 @@ Its own panel site and Unix user, its own MySQL database, its own port: nothing 
    ```
    It must show your own public address (search "what is my IP"). `127.0.0.1` or a Cloudflare
    address means the panel does not pass the real one: stop and fix that before launch.
-9. `bash BVT-backup.sh --install`.
+8. `bash BVT-backup.sh --install`.
 
 `.env` also carries the owner's decision of 2026-11-04, `CITIZEN_INTEGRITY_REQUIRED=False`:
 citizens may post from the website's APK until the app is on Google Play. Remove the line and

@@ -3,7 +3,7 @@
 /p/<code>/                    a published post as a plain page, server-rendered: WhatsApp's and
                               Facebook's preview crawlers do not run JavaScript, and the website is
                               a static export. Not published (any more): 404 "no longer available".
-/app/                         the invite link: to Google Play, or a short page until the app is there
+/app/                         the invite link: to the website's download panel (#get-app)
 /.well-known/assetlinks.json  Android App Links: phones with the app open /p/ links in it
 
 No personal data on these pages: a citizen post shows "Citizen", an official's post their role and
@@ -136,15 +136,12 @@ def post_page(request, code: str):
 
 @require_safe
 def app_page(request):
-    """The invite link: Google Play when the app is there, keeping any query (?ref=...), else a short page."""
-    if settings.PLAY_STORE_URL:
-        target = settings.PLAY_STORE_URL
-        query = request.META.get("QUERY_STRING", "")
-        if query:
-            target += ("&" if "?" in target else "?") + query
-        return HttpResponseRedirect(target)
-    context = {"website_url": settings.SITE_WEBSITE_URL, "download_url": settings.APP_DOWNLOAD_URL}
-    return _security_headers(render(request, "share/app.html", context), settings.SHARE_PAGE_MAX_AGE)
+    """The invite link: the website's download panel, keeping any query (?ref=...)."""
+    target = settings.SITE_WEBSITE_URL.rstrip("/") + "/"
+    query = request.META.get("QUERY_STRING", "")
+    if query:
+        target += "?" + query
+    return HttpResponseRedirect(target + "#get-app")
 
 
 def assetlinks_statements() -> list[dict]:

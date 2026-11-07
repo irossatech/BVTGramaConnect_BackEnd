@@ -22,18 +22,9 @@ def test_site_config_has_every_field_and_the_prototype_defaults(api):
     response = api().get("/api/v1/public/site-config/")
     assert response.status_code == 200
     data = response.json()
-    assert set(data) == {
-        "office_address_te", "office_address_en", "phone", "email",
-        "hours_te", "hours_en", "play_store_url", "app_store_url", "website_url", "invite_url", "helplines",
-    }
+    # Office details and the App Store link are the website's own now, not the API's.
+    assert set(data) == {"play_store_url", "website_url", "invite_url", "helplines"}
     assert data["invite_url"] is None  # PUBLIC_BASE_URL is not set
-    assert data["phone"] == "+91 863 223 4567"
-    assert data["email"] == "help@bvtgramaconnect.in"
-    assert data["hours_te"] == "సోమ–శని 10:00–18:00"
-    assert data["office_address_en"].split("\n") == [
-        "BVT Grama Connect, 2nd Floor, Collectorate Road,",
-        "Guntur – 522004, Andhra Pradesh",
-    ]
     assert data["play_store_url"] == ""
     assert data["website_url"] == "https://example.in/"
     assert [line["number"] for line in data["helplines"]] == ["112", "108", "1930", "181", "1098", "1912"]

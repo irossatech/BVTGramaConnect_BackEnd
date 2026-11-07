@@ -215,7 +215,6 @@ PLAY_INTEGRITY_PACKAGE=com.bvt.app
 # Owner's decision of 2026-11-04: citizens may post from the website's APK until the app is on
 # Google Play. Remove this line on the day it is.
 CITIZEN_INTEGRITY_REQUIRED=False
-APP_DOWNLOAD_URL=/downloads/bvt-grama-connect.apk
 FCM_PROJECT_ID=bvt-grama-connect
 FCM_TOPIC_PREFIX=
 EOF
