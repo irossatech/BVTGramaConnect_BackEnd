@@ -255,7 +255,7 @@ def test_a_negative_limit_is_a_configuration_error(monkeypatch):
 
     from django.core.exceptions import ImproperlyConfigured
 
-    from grama.settings import base
+    import grama.settings as base
 
     monkeypatch.setenv("MAX_SUPER_ADMINS", "-1")
     try:

@@ -169,7 +169,7 @@ def test_group_edit_in_django_admin_is_audited_with_the_editor(world):
 
 
 def run_manage(db_path, *args):
-    env = {**os.environ, "SQLITE_PATH": str(db_path), "DJANGO_SETTINGS_MODULE": "grama.settings.dev"}
+    env = {**os.environ, "SQLITE_PATH": str(db_path), "DJANGO_SETTINGS_MODULE": "grama.settings"}
     return subprocess.run(
         [sys.executable, "manage.py", *args],
         cwd=settings.BASE_DIR, env=env, capture_output=True, text=True, encoding="utf-8", timeout=300,

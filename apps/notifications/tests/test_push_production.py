@@ -59,7 +59,7 @@ def test_pushes_to_one_phone_carry_no_prefix(settings, world, devices, push_outb
 def test_settings_accept_a_valid_prefix(prefix, monkeypatch):
     import importlib
 
-    import grama.settings.base as base
+    import grama.settings as base
 
     monkeypatch.setenv("FCM_TOPIC_PREFIX", prefix)
     try:
@@ -74,7 +74,7 @@ def test_settings_refuse_a_prefix_fcm_would_reject(monkeypatch):
 
     from django.core.exceptions import ImproperlyConfigured
 
-    import grama.settings.base as base
+    import grama.settings as base
 
     monkeypatch.setenv("FCM_TOPIC_PREFIX", "qa test/")
     try:

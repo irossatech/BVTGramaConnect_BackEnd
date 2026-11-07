@@ -7,7 +7,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 
-from grama.settings.base import database_config
+from grama.settings import database_config
 
 TELUGU_NAME = "సురేష్ బాబు"
 
@@ -176,7 +176,7 @@ def test_nothing_is_served_where_nginx_serves_files(client, web_dirs, settings, 
     settings.MEDIA_ROOT = tmp_path / "media"
     (settings.MEDIA_ROOT / "posts").mkdir(parents=True)
     (settings.MEDIA_ROOT / "posts" / "p.webp").write_bytes(b"RIFF")
-    settings.SERVE_FILES = False  # production: prod.py
+    settings.SERVE_FILES = False  # production (DEBUG=False) behind Nginx
     assert client.get("/").status_code == 404
     assert client.get("/console/").status_code == 404
     assert client.get("/media/posts/p.webp").status_code == 404

@@ -7,7 +7,7 @@
 # Production on a hosting account of the same kind (deploy/qa/README.md, "Production on a
 # hosting panel"), the first time, as that site's own user:
 #   MODE=production DOMAIN=www.gramaconnect.com EXTRA_DOMAINS=gramaconnect.com PORT=9601 bash BVT-deploy.sh
-# It writes a production .env (grama.settings.prod, Gunicorn), deploys BRANCH (default main
+# It writes a production .env (DEBUG=False, grama.settings.prod, Gunicorn), deploys BRANCH (default main
 # there), checks Django's security settings, collects the static files and refuses SEED=1.
 #
 # Pulls the backend repo and the web repo (cloned next to it), uses the website and console
@@ -162,14 +162,27 @@ write_env() {
   (
     umask 077
     cat >"$env_file" <<EOF
-# BVT Grama Connect qa server (dev settings, DEBUG off). Written by deploy/qa/BVT-deploy.sh.
-# Add the database line yourself (deploy/qa/README.md, "The database"): DATABASE_URL=mysql://...
+# BVT Grama Connect qa server. Written by deploy/qa/BVT-deploy.sh.
+# DEBUG=False runs grama/settings.py in production mode: no debug pages, secure cookies, and the
+# lines below are required. Add the database line yourself (deploy/qa/README.md, "The database"):
+# DATABASE_URL=mysql://...
 SECRET_KEY=$secret
 DEBUG=False
 ALLOWED_HOSTS=$hosts
 WEB_PUBLIC_DIR=$WEB_DIR/dist
 WEB_ADMIN_DIR=$WEB_DIR/dist/console
+MEDIA_ROOT=$BACKEND_DIR/media
+STATIC_ROOT=$BACKEND_DIR/staticfiles
+# No Nginx of our own: Django serves the website, the console and the photos.
+SERVE_FILES=True
+# Debug builds of the app cannot pass Google Play Integrity.
+CITIZEN_INTEGRITY_REQUIRED=False
+# Swagger (/api/docs/) open for the client teams.
+API_DOCS_PUBLIC=True
 EOF
+    if [[ "${QA_SQLITE:-0}" == "1" ]]; then
+      echo "DATABASE_URL=sqlite:///$BACKEND_DIR/db.sqlite3" >>"$env_file"
+    fi
   )
   echo "Wrote $env_file (readable by you only)."
 }
@@ -196,7 +209,9 @@ write_production_env() {
     cat >"$env_file" <<EOF
 # BVT Grama Connect production on a hosting panel. Written by deploy/qa/BVT-deploy.sh (MODE=production).
 # Add DATABASE_URL yourself (deploy/qa/README.md, "Production on a hosting panel").
+# The scripts read this name to know this is production; grama/settings.py itself goes by DEBUG.
 DJANGO_SETTINGS_MODULE=grama.settings.prod
+DEBUG=False
 SECRET_KEY=$secret
 ALLOWED_HOSTS=$hosts
 CSRF_TRUSTED_ORIGINS=$origins
@@ -222,8 +237,8 @@ EOF
   echo "Wrote $env_file (readable by you only, production settings)."
 }
 
-# A qa server keeps its data in its own database. Without DATABASE_URL, the dev settings would
-# quietly create a SQLite file in the backend folder and migrate that instead.
+# A qa server keeps its data in its own database. With DEBUG=False the settings refuse to start
+# without DATABASE_URL; QA_SQLITE=1 writes a SQLite one on the first run.
 check_database_setting() {
   if grep -qE '^DATABASE_URL=' "$BACKEND_DIR/.env"; then
     echo "Database: DATABASE_URL from .env."

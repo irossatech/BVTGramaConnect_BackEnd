@@ -72,7 +72,7 @@ class ManagesUsers(BasePermission):
 class CanReadApiDocs(BasePermission):
     """/api/schema/ and /api/docs/ (SPECTACULAR_SETTINGS["SERVE_PERMISSIONS"]).
 
-    Open while API_DOCS_PUBLIC is on (dev.py: laptops and the qa server, where the client teams
+    Open while API_DOCS_PUBLIC is on (development by default, and the qa server's .env, where the client teams
     read Swagger). Otherwise, as in production, only console users: the schema maps every
     endpoint, the admin ones included.
     """

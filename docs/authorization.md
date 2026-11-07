@@ -51,7 +51,7 @@ The console does not use tokens. It uses a Django session cookie with CSRF prote
 | Log out | `POST /api/v1/auth/session/logout/` with `X-CSRFToken` | `204`, session flushed |
 
 - Only users holding `web_admin.access_web_console` get a session. Today that is the Super Admin group. Anyone else gets `403 not_console_user` and no session.
-- The `sessionid` cookie is HttpOnly and SameSite=Lax. It is Secure on the server; `SESSION_COOKIE_SECURE` and `CSRF_COOKIE_SECURE` are off only in `dev.py`.
+- The `sessionid` cookie is HttpOnly and SameSite=Lax. It is Secure on the server; `SESSION_COOKIE_SECURE` and `CSRF_COOKIE_SECURE` are off only in development (`DEBUG` on in `grama/settings.py`); with `DEBUG=False` they are always on.
 - The session ends after `CONSOLE_SESSION_IDLE_MINUTES` (30) without a request. Each request restarts the clock. After that, calls answer `401 not_authenticated`.
 - The session remembers the user's `token_version`. A block, a reset or a password change in another session ends it with `401 session_revoked`.
 
@@ -406,7 +406,7 @@ No audit entry holds a password. The console shows these under Audit Log, tab Lo
 | `LOGIN_THROTTLE_RATE` | `30/hour` | Login requests from one IP, app and console together, successful or not, before `429 throttled` (G1) |
 | `CONSOLE_SESSION_IDLE_MINUTES` | 30 | Console idle timeout |
 | `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE` | on (off in dev) | Cookies only over HTTPS |
-| `CSRF_TRUSTED_ORIGINS` | none | The server's https origin, in `prod.py` |
+| `CSRF_TRUSTED_ORIGINS` | none | The server's https origin, in the server's `.env` |
 | `SUPER_ADMIN_CAN_POST` | on (owner decision of 2026-11-04) | Whether the Super Admin may post |
 | `MAX_SUPER_ADMINS` | 5 (until the owner decides) | Most active Super Admins at once; 0 means no limit (section 4) |
 | `ADMIN_POSTS_AUTO_PUBLISH` | on | Admin posts publish without review |

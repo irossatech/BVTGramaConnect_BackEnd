@@ -11,7 +11,7 @@
 
 ## Repo structure
 
-- Every Django app lives in `apps/`. To add one: `mkdir apps/<name>` then `python manage.py startapp <name> apps/<name>`; in its `apps.py` set `name = "apps.<name>"` and `label = "<name>"`; add `"apps.<name>"` to `LOCAL_APPS` in `grama/settings/base.py`.
+- Every Django app lives in `apps/`. To add one: `mkdir apps/<name>` then `python manage.py startapp <name> apps/<name>`; in its `apps.py` set `name = "apps.<name>"` and `label = "<name>"`; add `"apps.<name>"` to `LOCAL_APPS` in `grama/settings.py`.
 - Import apps as `apps.<name>` (`from apps.posts.services import review`). Dotted strings that name a module (django-q task paths, gateway settings, `include()`) also start with `apps.`. Model references keep the short label (`"accounts.User"`).
 - Keep the top level minimal: `apps/`, `grama/`, `deploy/`, `docs/`, and `.github/` for the security scans and Dependabot only. Do not add top-level folders without the team's agreement. Project-level tests go in `grama/tests/`.
 - One `requirements.txt` for every environment. Add new packages there, pinned. Do not create other requirements files.

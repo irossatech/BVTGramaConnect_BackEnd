@@ -43,10 +43,7 @@ Top level of the repo: `apps/`, `grama/` (settings, URLs, shared helpers, projec
 
 | Module | Used by | Notes |
 |---|---|---|
-| `grama/settings/base.py` | everything | Apps, DRF, JWT, sessions and CSRF, django-axes lockout, Argon2 and the password validators, django-q2, platform rules, push, limits. Reads env and an optional `.env`. |
-| `grama/settings/dev.py` | `manage.py` (default) | SQLite (`SQLITE_PATH` overrides the file), DEBUG on (`DEBUG=False` in env on the qa server), `SERVE_FILES` on, session and CSRF cookies allowed over plain HTTP. |
-| `grama/settings/prod.py` | `wsgi.py`, `asgi.py` (default) | Requires SECRET_KEY, ALLOWED_HOSTS, DATABASE_URL, MEDIA_ROOT, STATIC_ROOT. MySQL gets utf8mb4 automatically. |
-| `grama/settings/test.py` | pytest | Dev plus in-memory SQLite, MD5 hashing for speed, synchronous jobs, locmem push. |
+| `grama/settings.py` | everything: `manage.py`, `wsgi.py`, `asgi.py`, pytest | One file; `DEBUG` from env or `.env` picks the mode. **Development** (`DEBUG` on or unset): SQLite unless `DATABASE_URL` is set (`SQLITE_PATH` overrides the file), `SERVE_FILES` on, cookies allowed over plain HTTP, Swagger open, Play Integrity off. **Production** (`DEBUG=False`, also the qa server): requires SECRET_KEY (strength-checked), DATABASE_URL, MEDIA_ROOT, STATIC_ROOT and ALLOWED_HOSTS; secure cookies, HSTS, `SERVE_FILES` off unless env turns it on, Play Integrity on, throttle counts in a database table. **Tests** (pytest loaded): always SQLite, MD5 hashing, synchronous jobs, locmem push, transliteration off. Shared everywhere: apps, DRF, JWT, sessions and CSRF, django-axes lockout, Argon2 and the password validators, django-q2, platform rules, push, limits. MySQL gets utf8mb4 automatically. The old module names `grama.settings.base/.dev/.prod/.test` are aliases of this file (the deploy scripts still use `grama.settings.prod` to recognise a production `.env`). |
 
 ## URL layout
 

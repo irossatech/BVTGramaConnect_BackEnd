@@ -79,14 +79,14 @@ def test_a_header_cannot_label_an_app_request_as_console(world, api):
 
 @pytest.mark.django_db
 def test_api_docs_are_open_while_api_docs_public(client, settings):
-    settings.API_DOCS_PUBLIC = True  # dev.py: laptops and the qa server
+    settings.API_DOCS_PUBLIC = True  # development, and the qa server's .env
     assert client.get("/api/schema/", HTTP_ACCEPT="application/json").status_code == 200
 
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("path", ["/api/schema/", "/api/docs/"])
 def test_api_docs_are_for_console_users_in_production(world, api, settings, path):
-    settings.API_DOCS_PUBLIC = False  # base.py and prod.py
+    settings.API_DOCS_PUBLIC = False  # production (DEBUG=False)
     assert api().get(path).status_code == 401
     assert api(world.users["va_kolakaluru"]).get(path).status_code == 403  # an official, but not a console user
     assert api(world.users["super"]).get(path, HTTP_ACCEPT="application/json, text/html").status_code == 200
@@ -166,7 +166,7 @@ def import_prod(secret_key: str) -> subprocess.CompletedProcess:
     }
     return subprocess.run(
         [sys.executable, "-c",
-         "import grama.settings.prod as p; print(sorted(p.SILENCED_SYSTEM_CHECKS), p.SECURE_HSTS_SECONDS)"],
+         "import grama.settings as p; print(sorted(p.SILENCED_SYSTEM_CHECKS), p.SECURE_HSTS_SECONDS)"],
         cwd=REPO, env=env, capture_output=True, text=True, timeout=60,
     )
 
@@ -206,7 +206,7 @@ def test_production_serves_files_only_when_asked(value, expected):
     if value is not None:
         env["SERVE_FILES"] = value
     result = subprocess.run(
-        [sys.executable, "-c", "import grama.settings.prod as p; print(p.SERVE_FILES, p.DEBUG)"],
+        [sys.executable, "-c", "import grama.settings as p; print(p.SERVE_FILES, p.DEBUG)"],
         cwd=REPO, env=env, capture_output=True, text=True, timeout=60,
     )
     assert result.returncode == 0, result.stderr

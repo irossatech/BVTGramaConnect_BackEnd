@@ -221,7 +221,7 @@ def test_unconfigured_play_integrity_fails_closed(settings):
 
 
 def test_prod_settings_turn_integrity_on():
-    """prod.py needs production env to import, so read it: integrity is on unless env turns it off."""
+    """Production (DEBUG=False) needs its env to import, so read the file: integrity is on unless env turns it off."""
     from pathlib import Path
 
     text = (Path(__file__).resolve().parents[3] / "grama" / "settings.py").read_text(encoding="utf-8")

@@ -45,11 +45,11 @@ Linux or macOS: the same with `python3 -m venv .venv` and `source .venv/bin/acti
 | Statewide helplines | `python manage.py seed_helplines [--file list.csv]` (safe to repeat; `seed_sample_data` runs it too) |
 | Import important numbers | `python manage.py import_contacts <file.csv> [--dry-run]` (all rows or none; columns in `docs/api-contract.md` section 14) |
 | Sample file | `apps/geography/sample_data/prototype_villages.csv` |
-| Deploy checks | `DJANGO_SETTINGS_MODULE=grama.settings.prod python manage.py check --deploy` (needs the prod env vars) |
+| Deploy checks | `DEBUG=False python manage.py check --deploy` (needs the production env vars) |
 
 ## Environment variables
 
-`.env.example` lists every variable with a comment. Required in production: SECRET_KEY, ALLOWED_HOSTS, DATABASE_URL, MEDIA_ROOT, STATIC_ROOT. Also set for production: CSRF_TRUSTED_ORIGINS (the console's session login needs it), FCM_CREDENTIALS_FILE and FCM_PROJECT_ID, PLAY_STORE_URL once the app is published. The platform rules (ADMIN_POSTS_AUTO_PUBLISH and the rest) and the login settings (LOGIN_MAX_FAILURES, LOGIN_LOCKOUT_MINUTES, LOGIN_IP_MAX_FAILURES, LOGIN_IP_WINDOW_MINUTES, CONSOLE_SESSION_IDLE_MINUTES) can be overridden too, and so can HOUSEKEEPING_KEEP_DAYS (30, how long failed background jobs are kept); keep SESSION_COOKIE_SECURE and CSRF_COOKIE_SECURE on.
+`.env.example` lists every variable with a comment. All settings are in `grama/settings.py`; `DEBUG=False` switches it to production mode (the qa server runs that way too). Required with `DEBUG=False`: SECRET_KEY, ALLOWED_HOSTS, DATABASE_URL, MEDIA_ROOT, STATIC_ROOT. A server without Nginx (the qa server) also sets SERVE_FILES=True, CITIZEN_INTEGRITY_REQUIRED=False for debug builds, and API_DOCS_PUBLIC=True. Also set for production: CSRF_TRUSTED_ORIGINS (the console's session login needs it), FCM_CREDENTIALS_FILE and FCM_PROJECT_ID, PLAY_STORE_URL once the app is published. The platform rules (ADMIN_POSTS_AUTO_PUBLISH and the rest) and the login settings (LOGIN_MAX_FAILURES, LOGIN_LOCKOUT_MINUTES, LOGIN_IP_MAX_FAILURES, LOGIN_IP_WINDOW_MINUTES, CONSOLE_SESSION_IDLE_MINUTES) can be overridden too, and so can HOUSEKEEPING_KEEP_DAYS (30, how long failed background jobs are kept); keep SESSION_COOKIE_SECURE and CSRF_COOKIE_SECURE on.
 
 ## Load test
 
