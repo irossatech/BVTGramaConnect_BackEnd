@@ -37,19 +37,21 @@ A user can hold several role assignments, each tied to one area. Areas: State > 
 
 | Role | Area | Posts | Reviews | Creates and blocks |
 |---|---|---|---|---|
-| SUPER_ADMIN | Whole platform | While SUPER_ADMIN_CAN_POST is on (the default) | Every post | District, Mandal, Village Admins, Panchayat members |
+| SUPER_ADMIN | Whole platform | While SUPER_ADMIN_CAN_POST is on (the default) | Every post | Other Super Admins (at most MAX_SUPER_ADMINS), District, Mandal, Village Admins, Panchayat members |
 | DISTRICT_ADMIN | District | Yes | Posts in the district | Mandal Admins, Village Admins, Panchayat members in the district |
 | MANDAL_ADMIN | Mandal | Yes | Posts in the mandal | Village Admins, Panchayat members in the mandal |
 | VILLAGE_ADMIN | Village | Yes | Posts in the village | Panchayat members in the village |
-| PANCHAYAT_MEMBER | Village | Yes, to own village, goes to review | No | No |
-| Citizen | Chosen village | No | No | No login at all |
+| PANCHAYAT_MEMBER | Village | Yes, goes to review | No | No |
+| Citizen | Chosen village, no login | Yes, from the app, goes to review | No | No |
 
 Only holders of the console permission, the Super Admin group, can use the web console.
 
 ## Posts
 
 States: DRAFT > PENDING > PUBLISHED, RECHECK or DISCARDED; RECHECK > PENDING; PUBLISHED > UNPUBLISHED (shown as "Taken down").
-- Panchayat posts go to PENDING. Admin posts publish at once while ADMIN_POSTS_AUTO_PUBLISH is on, and only inside the admin's own area.
+- Who will see it: every poster picks Everyone, or any mix of districts, mandals and villages anywhere, in one post (1 to POST_MAX_TARGETS, 200 areas).
+- Panchayat and citizen posts go to PENDING. District, Mandal and Village Admins' posts publish at once while ADMIN_POSTS_AUTO_PUBLISH is on, wherever they go.
+- A pending post is reviewed by the admins of every area it is for (and the areas above), and by the Super Admin. A post to Everyone is reviewed by Super Admins only.
 - The first reviewer's decision wins. A later reviewer gets 409 `already_decided` naming who decided.
 - Only a strictly higher level can reverse a decision.
 - Recheck, discard, take-down and reverse need a comment.
@@ -85,7 +87,7 @@ ADMIN_POSTS_AUTO_PUBLISH=True, REVIEW_FIRST_DECISION_WINS=True, REVIEW_ESCALATIO
 - 2026-10-21 · **Server database not chosen yet.** Everyone develops and tests on SQLite until the owner picks MySQL or PostgreSQL.
 - 2026-10-21 · **Escalation:** one time for every level (REVIEW_ESCALATION_HOURS, 24 by default).
 - 2026-10-21 · **Language:** a post is written in one language, Telugu or English.
-- 2026-10-21 · **Visibility:** when posting, the author picks "Visible to": village, mandal, district or state, up to their own level. Village Admins and Panchayat members: village. Mandal Admins: a village in the mandal or the whole mandal. District Admins: a village, a mandal or the whole district. State: Super Admin only, and only when SUPER_ADMIN_CAN_POST is on. One target per post.
+- 2026-10-21 · ~~**Visibility:** "Visible to" up to the author's own level, one target per post.~~ Replaced on 2026-10-28, see below.
 - 2026-10-21 · **Event date:** posts may carry an optional event (deadline, camp, distribution, closure or meeting) with a start date and an optional end date.
 - 2026-10-21 · **Video posts are in version 1**, at most 60 seconds.
 - 2026-10-21 · **Also in version 1:** "mark as urgent" for admins, news search in the citizen feed, and a help-line numbers screen in the app.
@@ -97,6 +99,8 @@ ADMIN_POSTS_AUTO_PUBLISH=True, REVIEW_FIRST_DECISION_WINS=True, REVIEW_ESCALATIO
 - 2026-10-21 · **Console:** "Reset password" sits in the user panel, not in the users table.
 - 2026-10-21 · **/django-admin/** is reachable on the server only from office IP addresses.
 - 2026-10-22 · **Web is React and Next.js; mobile is Flutter.** The website and the console are one Next.js app (React, Pages Router) in BVTGramaConnect, exported as static files and served by Nginx; the mobile app stays Flutter. The conversion kept the approved design pixel for pixel.
+- 2026-10-27 · **Citizens post from the app** without logging in. Each install gets a posting token after Google Play Integrity confirms the genuine app. Every citizen post goes to review; 5 posts per phone a day by default, which the Super Admin can change. BackEnd repo, `docs/api-contract.md`, section 15.
+- 2026-10-28 · **Who will see it:** every poster, citizens included, picks Everyone or any districts, mandals and villages anywhere, in any mix, in one post. Admins' posts still publish at once wherever they go; the admins of every chosen area review the others. This replaces the 2026-10-21 visibility rule. BackEnd repo, `docs/api-contract.md`, section 5.
 - 2026-11-04 · **The Super Admin may post.** SUPER_ADMIN_CAN_POST is True by default; setting it to False removes "New post" again.
 
 ## Working across repos
