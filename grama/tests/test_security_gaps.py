@@ -157,6 +157,7 @@ def test_old_wrong_tries_leave_the_window(world, settings):
 def import_prod(secret_key: str) -> subprocess.CompletedProcess:
     env = {
         **os.environ,
+        "DEBUG": "False",
         "SECRET_KEY": secret_key,
         "ALLOWED_HOSTS": "example.in",
         "DATABASE_URL": "sqlite:///prod-check.sqlite3",
@@ -198,7 +199,7 @@ def test_production_serves_files_only_when_asked(value, expected):
     import secrets
 
     env = {
-        **os.environ, "SECRET_KEY": secrets.token_urlsafe(50), "ALLOWED_HOSTS": "example.in",
+        **os.environ, "DEBUG": "False", "SECRET_KEY": secrets.token_urlsafe(50), "ALLOWED_HOSTS": "example.in",
         "DATABASE_URL": "sqlite:///prod-check.sqlite3", "MEDIA_ROOT": "/tmp/media", "STATIC_ROOT": "/tmp/static",
     }
     env.pop("SERVE_FILES", None)
