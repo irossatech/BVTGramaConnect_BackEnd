@@ -269,20 +269,26 @@ class UserViewSet(
         if values["password"]:
             check_new_password(values["password"], user, group_ids=[role.group_id])
 
-        with transaction.atomic():
-            user.set_unusable_password()
-            user.save()
-            generated = set_temporary_password(user, values["password"] or None)
-            assignment = RoleAssignment.objects.create(
-                user=user, group_id=role.group_id, area_level=area.level, area_id=area.id, assigned_by=request.user
-            )
-            record(
-                "user.super_admin_created" if peers.is_peer_role(role) else "user.created",
-                actor=request.user, target=user, target_label=user.name,
-                area=assignment.area, via=via(request),
-                data={"role": role.key, "password": "generated" if generated else "set by admin"},
-            )
-            announce_peer(request, role, user)
+        try:
+            with transaction.atomic():
+                user.set_unusable_password()
+                user.save()
+                generated = set_temporary_password(user, values["password"] or None)
+                assignment = RoleAssignment.objects.create(
+                    user=user, group_id=role.group_id, area_level=area.level, area_id=area.id, assigned_by=request.user
+                )
+                record(
+                    "user.super_admin_created" if peers.is_peer_role(role) else "user.created",
+                    actor=request.user, target=user, target_label=user.name,
+                    area=assignment.area, via=via(request),
+                    data={"role": role.key, "password": "generated" if generated else "set by admin"},
+                )
+                announce_peer(request, role, user)
+        except IntegrityError:
+            # Another request took the username or mobile between the checks above and the save.
+            if User.objects.filter(username=values["username"]).exists():
+                raise duplicate(_("This username is taken."), "username") from None
+            raise duplicate(_("This mobile number already belongs to an official."), "mobile") from None
         return self._respond(user, status_code=status.HTTP_201_CREATED, temporary_password=generated, wrap=True)
 
     @extend_schema(summary="Change a user's name, language or contact details", request=UserUpdateSerializer, responses=UserSerializer)

@@ -73,7 +73,15 @@ class DeviceDetailView(APIView):
         data.is_valid(raise_exception=True)
         token = data.validated_data.get("fcm_token")
         if token and token != device.fcm_token:
-            Device.objects.filter(fcm_token=token).exclude(pk=device.pk).delete()
+            others = Device.objects.filter(fcm_token=token).exclude(pk=device.pk)
+            # As on register (G8): an official's device is never removed by someone else. Only the
+            # official, logged in, may move their phone's token to this row.
+            if others.filter(user__isnull=False).exclude(user=_user_or_none(request)).exists():
+                raise ApiError(
+                    "duplicate", "This push token belongs to another device.", status=status.HTTP_409_CONFLICT,
+                    fields={"fcm_token": ["This push token belongs to another device."]},
+                )
+            others.delete()
         data.save()
         return Response(DeviceSerializer(device).data)
 

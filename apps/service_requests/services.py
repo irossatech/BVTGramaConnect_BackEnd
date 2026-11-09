@@ -30,7 +30,7 @@ import logging
 from datetime import timedelta
 
 from django.conf import settings
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Max
 from django.utils import timezone
 from django.utils.text import slugify
@@ -131,18 +131,23 @@ def _delete_logo_after_commit(name: str) -> None:
 def create_service(user, values: dict, logo=None) -> Service:
     _check_name(values["name_en"])
     data = logos.process_logo(logo) if logo is not None else None
-    with transaction.atomic():
-        last = Service.objects.aggregate(last=Max("order"))["last"]
-        service = Service.objects.create(
-            key=_new_key(values["name_en"]),
-            order=0 if last is None else last + 1,
-            **{name: values[name] for name in SERVICE_FIELDS if name in values},
-        )
-        if data is not None:
-            _store_logo(service, data)
-            service.save(update_fields=["logo"])
-        record("service.created", actor=user, target=service, target_label=service.name_en,
-               data={"key": service.key, "logo": data is not None})
+    try:
+        with transaction.atomic():
+            last = Service.objects.aggregate(last=Max("order"))["last"]
+            service = Service.objects.create(
+                key=_new_key(values["name_en"]),
+                order=0 if last is None else last + 1,
+                **{name: values[name] for name in SERVICE_FIELDS if name in values},
+            )
+            if data is not None:
+                _store_logo(service, data)
+                service.save(update_fields=["logo"])
+            record("service.created", actor=user, target=service, target_label=service.name_en,
+                   data={"key": service.key, "logo": data is not None})
+    except IntegrityError:
+        # Two creates with the same name at once: the second gets the name check's answer.
+        _check_name(values["name_en"])
+        raise
     return service
 
 

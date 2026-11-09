@@ -9,6 +9,7 @@ so DRF keeps the WWW-Authenticate header and the 401 status.
 import math
 
 from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.http import Http404
 from django.utils.translation import gettext_lazy as _
 from rest_framework import exceptions, status
@@ -86,6 +87,12 @@ def exception_handler(exc, context):
     # Imported here: rest_framework.views loads the authentication classes,
     # which import this module, so a top-level import would be circular.
     from rest_framework.views import exception_handler as drf_exception_handler
+
+    if isinstance(exc, DjangoValidationError):
+        # The ORM raises Django's own ValidationError for a value its field cannot take, such as
+        # "abc" for a UUID in ?actor= or ?author=. DRF does not handle it, so it was a 500.
+        detail = exc.message_dict if hasattr(exc, "error_dict") else exc.messages
+        exc = exceptions.ValidationError(detail=detail)
 
     response = drf_exception_handler(exc, context)
     if response is None:
