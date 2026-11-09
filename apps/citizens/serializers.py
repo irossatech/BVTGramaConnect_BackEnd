@@ -4,7 +4,7 @@ import json
 
 from django.core.files.storage import default_storage
 from django.utils.translation import gettext_lazy as _
-from drf_spectacular.utils import extend_schema_field
+from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
 
 from apps.accounts.serializers import AreaInputSerializer
@@ -51,6 +51,7 @@ class RegisterSerializer(serializers.Serializer):
     language = serializers.ChoiceField(choices=LANGUAGES, required=False, default="te")
 
 
+@extend_schema_serializer(component_name="CitizenDeviceUpdate")
 class DeviceUpdateSerializer(serializers.Serializer):
     village_id = serializers.IntegerField(min_value=1, required=False)
     fcm_token = serializers.CharField(max_length=255, required=False, allow_blank=True)

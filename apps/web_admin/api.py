@@ -13,6 +13,7 @@ from collections import defaultdict
 from datetime import timedelta
 
 from django.conf import settings
+from django.core.cache import caches
 from django.http import HttpResponse
 from django.utils import timezone
 from django.utils.translation import gettext as _
@@ -115,7 +116,7 @@ class SuperAdminView(APIView):
 class DashboardView(SuperAdminView):
     permission_classes = [IsAuthenticated, HasPerm("web_admin.view_dashboard", PLATFORM, "Only Super Admins can do this.")]
 
-    @extend_schema(summary="Super Admin dashboard")
+    @extend_schema(summary="Super Admin dashboard", responses=OpenApiTypes.OBJECT)  # contract, section 11
     def get(self, request):
         now = timezone.now()
         today = local_date(now)
@@ -323,7 +324,7 @@ REPORTS = {
 class ReportView(SuperAdminView):
     report = ""
 
-    @extend_schema(summary="Super Admin report")
+    @extend_schema(summary="Super Admin report", responses=OpenApiTypes.OBJECT)  # contract, section 11
     def get(self, request):
         days = days_param(request)
         data = REPORTS[self.report](days)
@@ -425,6 +426,10 @@ class HasAnyRole(BasePermission):
 
 
 class TransliterateThrottle(UserRateThrottle):
+    # The shared "throttle" cache (a database table in production), not the per-process default:
+    # with several workers each would otherwise count on its own.
+    cache = caches["throttle"]
+
     scope = "transliterate"
 
 

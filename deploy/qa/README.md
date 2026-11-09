@@ -148,10 +148,12 @@ ln -s BVTGramaConnect_BackEnd/staticfiles static
 `downloads` holds the app's APK (`/downloads/bvt-grama-connect.apk`). `static` holds what every
 deploy collects (`collectstatic`): the pictures WhatsApp shows for shared posts without a photo
 (`/static/share/og-*.jpg`), and the Django admin and API docs styles.
-Remove them (`rm _next _ds assets fonts downloads media`) once nginx serves those folders. This is fine
-for qa only: production uses `deploy/setup.sh`, whose nginx serves the website, the
-console, `/static/` and `/media/` with their cache rules and sends only `/api/` and
-`/django-admin/` to Gunicorn.
+Remove them (`rm _next _ds assets fonts downloads media`) once nginx serves those folders. On a
+server set up with `deploy/setup.sh`, our own nginx serves the website, the console, `/static/` and
+`/media/` with their cache rules and sends only `/api/` and `/django-admin/` to Gunicorn. Production
+on the hosting panel (below) is not such a server: there the panel's nginx sits in front, and the
+headers, body-size limits, rate limits and the `/django-admin/` office-IP rule that
+`deploy/templates/` gives must be checked on the panel itself.
 
 ## Push notifications
 

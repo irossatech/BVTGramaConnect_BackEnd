@@ -58,7 +58,7 @@ class AuditEntrySerializer(serializers.ModelSerializer):
             return None
         return {"type": obj.target_type.split(".")[-1], "id": obj.target_id}
 
-    def get_area(self, obj):
+    def get_area(self, obj) -> dict | None:
         if not obj.area_level or obj.area_id is None:
             return None
         return describer_from(self.context).describe(AreaRef(obj.area_level, obj.area_id))
