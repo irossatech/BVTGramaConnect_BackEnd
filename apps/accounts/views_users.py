@@ -27,6 +27,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from apps.audit.masking import changes
 from apps.audit.services import record
 from apps.geography.areas import AreaRef, area_exists, within_q
 from apps.geography.models import AreaLevel
@@ -289,8 +290,16 @@ class UserViewSet(
         user = self.get_object()
         data = UserUpdateSerializer(user, data=request.data, partial=True)
         data.is_valid(raise_exception=True)
-        data.save()
-        record("user.updated", actor=request.user, target=user, target_label=user.name, via=via(request), data=dict(data.validated_data))
+        before = {name: getattr(user, name) for name in data.validated_data}
+        with transaction.atomic():
+            data.save()
+            changed = changes(before, user)
+            if changed:
+                # Only what changed, and email and mobile masked: the audit log never holds them in full.
+                record(
+                    "user.updated", actor=request.user, target=user, target_label=user.name,
+                    via=via(request), data={"changed": changed},
+                )
         return self._respond(user)
 
     def update(self, request, *args, **kwargs):

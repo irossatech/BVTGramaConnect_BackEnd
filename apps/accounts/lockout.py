@@ -32,6 +32,7 @@ from django.dispatch import receiver
 from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
 
+from apps.audit.masking import mask_text
 from grama.http import client_ip
 
 from .models import User, normalize_login
@@ -124,13 +125,23 @@ def audit_failed_login(sender, credentials=None, request=None, **kwargs):
 
     username = axes_username(request, credentials)
     target = User.objects.filter(username=username).first() if username else None
+    shown = _username_for_audit(username, target)
     record(
         "auth.login_failed",
         target=target,
-        target_label=username,
+        target_label=shown,
         via=_via(request),
-        data={"username": username, "locked": bool(getattr(request, "axes_locked_out", False))},
+        data={"username": shown, "locked": bool(getattr(request, "axes_locked_out", False))},
     )
+
+
+def _username_for_audit(username: str, target) -> str:
+    """A real account's username as is; anything else masked.
+
+    What was typed for an unknown account may be a password typed into the wrong box, or an
+    email address, so the audit log keeps only its first character.
+    """
+    return username if target is not None else mask_text(username)
 
 
 @receiver(user_locked_out, dispatch_uid="audit_lockout")
@@ -142,12 +153,13 @@ def audit_lockout(sender, request=None, username=None, ip_address=None, **kwargs
 
     username = normalize_login(username)
     target = User.objects.filter(username=username).first() if username else None
+    shown = _username_for_audit(username, target)
     record(
         "auth.locked_out",
         target=target,
-        target_label=username,
+        target_label=shown,
         via=_via(request),
-        data={"username": username, "minutes": int(_cool_off().total_seconds() // 60)},
+        data={"username": shown, "minutes": int(_cool_off().total_seconds() // 60)},
     )
 
 

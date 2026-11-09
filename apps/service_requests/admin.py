@@ -11,6 +11,14 @@ class ServiceAdmin(admin.ModelAdmin):
 
 @admin.register(ServiceRequest)
 class ServiceRequestAdmin(admin.ModelAdmin):
+    """Read only: a request holds a citizen's name, phone and address, and every change to it
+    belongs in its history and the audit log (services.update_request), not in Django admin."""
+
     list_display = ("id", "service", "status", "village", "assigned_to", "created_at")
     list_filter = ("service", "status")
-    readonly_fields = ("device", "created_at", "updated_at")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
