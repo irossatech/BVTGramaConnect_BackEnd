@@ -164,13 +164,20 @@ def test_iphones_wait_for_app_attest_while_integrity_is_required(world, required
 # --- The verdict itself -----------------------------------------------------------------------------
 
 
+# ANDROID_CERT_SHA256's default fingerprint, as Google writes it in the verdict (unpadded base64url).
+OUR_KEY_DIGEST = "JxYTxlzNvjpFl-BUTs0JykSR4MsHY7NebtBCidWKiXk"
+
+
 def verdict(nonce_value, **changes):
     payload = {
         "requestDetails": {
             "requestPackageName": "com.bvt.app", "nonce": nonce_value,
             "timestampMillis": str(int(time.time() * 1000)),
         },
-        "appIntegrity": {"appRecognitionVerdict": "PLAY_RECOGNIZED", "packageName": "com.bvt.app"},
+        "appIntegrity": {
+            "appRecognitionVerdict": "PLAY_RECOGNIZED", "packageName": "com.bvt.app",
+            "certificateSha256Digest": [OUR_KEY_DIGEST],
+        },
         "deviceIntegrity": {"deviceRecognitionVerdict": ["MEETS_DEVICE_INTEGRITY"]},
     }
     for path, value in changes.items():
@@ -205,6 +212,8 @@ def test_a_genuine_verdict_passes(play):
         {"deviceIntegrity__deviceRecognitionVerdict": ["MEETS_VIRTUAL_INTEGRITY"]},
         {"requestDetails__timestampMillis": str(int((time.time() - 3600) * 1000))},
         {"requestDetails__timestampMillis": "soon"},
+        {"appIntegrity__certificateSha256Digest": ["c29tZW9uZS1lbHNlcy1rZXk"]},  # re-signed by someone else
+        {"appIntegrity__certificateSha256Digest": []},
     ],
 )
 def test_any_doubt_fails_the_verdict(play, changes):

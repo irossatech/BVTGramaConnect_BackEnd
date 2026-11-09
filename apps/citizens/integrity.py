@@ -102,11 +102,26 @@ class PlayIntegrityVerifier:
             "nonce": request.get("nonce") == nonce,
             "fresh": _issued_recently(request.get("timestampMillis"), now),
             "app": app.get("appRecognitionVerdict") == "PLAY_RECOGNIZED",
+            "certificate": signed_with_our_key(app.get("certificateSha256Digest")),
             "device": "MEETS_DEVICE_INTEGRITY" in (device.get("deviceRecognitionVerdict") or []),
         }
         failed = [name for name, ok in checks.items() if not ok]
         if failed:
             raise IntegrityFailed(f"Verdict failed: {', '.join(failed)}")
+
+
+def signed_with_our_key(digests) -> bool:
+    """Is the app signed with one of our keys (ANDROID_CERT_SHA256, the same list assetlinks.json
+    publishes)? Google gives the digests as unpadded base64url; settings hold colon-separated hex.
+
+    Decided 2026-11-09 on audit BE_01, BE-SEC-014. Once the app is on Google Play, ANDROID_CERT_SHA256
+    must hold Play's app-signing key (Play Console, App integrity), or every registration fails here.
+    """
+    ours = {
+        base64.urlsafe_b64encode(bytes.fromhex(fingerprint.replace(":", ""))).decode().rstrip("=")
+        for fingerprint in settings.ANDROID_CERT_SHA256
+    }
+    return bool(ours) and any(str(digest).rstrip("=") in ours for digest in (digests or []))
 
 
 def _issued_recently(timestamp_millis, now: float | None) -> bool:
