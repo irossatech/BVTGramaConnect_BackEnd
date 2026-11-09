@@ -26,8 +26,12 @@ environ.Env.read_env(BASE_DIR / ".env")
 # In production, set DEBUG=False in .env; defaults to True for local development.
 DEBUG = env.bool("DEBUG", default=True)
  
-# Detect if pytest is running to accelerate test execution
-_RUNNING_TESTS = "pytest" in sys.modules or (len(sys.argv) > 1 and sys.argv[1] == "test")
+# Tests: pytest is imported AND has set PYTEST_VERSION (pytest 8.2+ sets it for the run), or
+# `manage.py test`. Both pytest signals are needed, so a server process that merely imports pytest
+# never switches to the test settings (MD5 hashing, no push).
+_RUNNING_TESTS = ("pytest" in sys.modules and "PYTEST_VERSION" in os.environ) or (
+    len(sys.argv) > 1 and sys.argv[1] == "test"
+)
  
  
 # ==============================================================================
@@ -55,6 +59,19 @@ if not DEBUG and (
     )
  
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
+
+# DEBUG is on unless .env says otherwise, which is right for laptops and wrong for a server whose
+# .env lost its DEBUG=False line. A server is recognised by a domain name in ALLOWED_HOSTS:
+# development mode refuses to start with one. Laptops use localhost and IP addresses.
+_LOCAL_HOST = re.compile(r"^(localhost|\.?[\w-]+\.(localhost|local)|\[[0-9a-fA-F:]+\]|[0-9.]+)$")
+if DEBUG and not _RUNNING_TESTS and not env.bool("DEBUG_ON_PUBLIC_HOST", default=False):
+    _public_hosts = [host for host in ALLOWED_HOSTS if not _LOCAL_HOST.match(host)]
+    if _public_hosts:
+        raise ImproperlyConfigured(
+            f"DEBUG is on (it is unset or True) but ALLOWED_HOSTS names {', '.join(_public_hosts)}. "
+            "A server must set DEBUG=False in its .env. On a laptop, remove those hosts, or set "
+            "DEBUG_ON_PUBLIC_HOST=True if you really mean to run development mode under that name."
+        )
  
  
 # ==============================================================================
@@ -86,11 +103,14 @@ SQLITE_DATABASE = {
     },
 }
  
-if not DEBUG:
+if _RUNNING_TESTS:
+    # Tests always run on SQLite, whatever DEBUG and DATABASE_URL say: never on a server's database.
+    DATABASES = {"default": SQLITE_DATABASE}
+elif not DEBUG:
     DATABASES = {"default": database_config(env.str("DATABASE_URL"))}
 else:  # DEV
     _db_url = env.str("DATABASE_URL", default="")
-    DATABASES = {"default": database_config(_db_url) if _db_url and not _RUNNING_TESTS else SQLITE_DATABASE}
+    DATABASES = {"default": database_config(_db_url) if _db_url else SQLITE_DATABASE}
  
  
 # ==============================================================================
@@ -107,12 +127,17 @@ def _dir_from_env(name: str, default: str) -> Path:
 WEB_PUBLIC_DIR = _dir_from_env("WEB_PUBLIC_DIR", "../BVTGramaConnect/dist")
 WEB_ADMIN_DIR = _dir_from_env("WEB_ADMIN_DIR", "../BVTGramaConnect/dist/console")
  
-if not DEBUG:
+if _RUNNING_TESTS:
+    # Never a server's media folder, whatever DEBUG says.
+    MEDIA_ROOT = BASE_DIR / ".test-media"
+    STATIC_ROOT = BASE_DIR / "staticfiles"
+    SERVE_FILES = env.bool("SERVE_FILES", default=DEBUG)
+elif not DEBUG:
     MEDIA_ROOT = Path(env.str("MEDIA_ROOT"))
     STATIC_ROOT = Path(env.str("STATIC_ROOT"))
     SERVE_FILES = env.bool("SERVE_FILES", default=False)  # Nginx serves files in production
 else:  # DEV
-    MEDIA_ROOT = BASE_DIR / (".test-media" if _RUNNING_TESTS else "media")
+    MEDIA_ROOT = BASE_DIR / "media"
     STATIC_ROOT = BASE_DIR / "staticfiles"
     SERVE_FILES = env.bool("SERVE_FILES", default=True)   # Django serves files in dev
  
