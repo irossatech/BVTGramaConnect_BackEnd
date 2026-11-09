@@ -98,9 +98,32 @@ before changing anything if someone edited tracked files on the server, so never
 data would write its own places over the real list. Demo content for real villages:
 `manage.py load_demo_area` (`.claude/operations.md`).
 
+## Backups
+
+`bash BVT-backup.sh --install` runs one every night. The data dump holds password hashes and
+personal data, so on production (and preferably on qa) encrypt it and keep a copy off the server:
+
+1. A passphrase file, once:
+   ```
+   mkdir -p ~/secrets && chmod 700 ~/secrets
+   python3 -c 'import secrets; print(secrets.token_urlsafe(32))' > ~/secrets/backup.passphrase
+   chmod 600 ~/secrets/backup.passphrase
+   ```
+   Store the passphrase in the team's password manager too: without it no backup can be restored.
+2. Optional off-site copy: configure an rclone remote for this account (`rclone config`), then add
+   to the crontab line's environment, or to `~/.profile`: `export BACKUP_RCLONE_REMOTE=<remote>:bvt-backups`.
+
+Each run warns while either is missing.
+
 ## Restoring a backup
 
-Into an empty database, or after `flush` (which deletes every row: never on the wrong database):
+Into an empty database, or after `flush` (which deletes every row: never on the wrong database).
+An encrypted backup (`*.gpg`) is decrypted first:
+```
+cd ~/bvt-backups/<folder>
+for f in *.gpg; do gpg --batch --pinentry-mode loopback --passphrase-file ~/secrets/backup.passphrase -o "${f%.gpg}" -d "$f"; done
+```
+Then:
 ```
 bash BVT-stop.sh
 cd BVTGramaConnect_BackEnd
@@ -112,7 +135,8 @@ tar -xzf ~/bvt-backups/<folder>/media.tgz
 .venv/bin/python manage.py ensure_schedules
 cd .. && bash BVT-start.sh
 ```
-Sessions and app tokens are not in a backup: everyone logs in again once.
+Delete the decrypted `data.json.gz` and `media.tgz` afterwards. Sessions and app tokens are not
+in a backup: everyone logs in again once.
 
 ## The domain
 

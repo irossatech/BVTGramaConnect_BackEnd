@@ -47,6 +47,27 @@ build_is_committed() {
   git -C "$WEB_REPO_DIR" ls-files --error-unmatch dist/index.html dist/console/index.html >/dev/null 2>&1
 }
 
+# Known vulnerabilities in the packages the NEW code pins (G10), checked before anything changes on
+# disk. pip-audit lives in a venv of its own, so it never mixes with the app's packages.
+# AUDIT_DEPENDENCIES=0 skips it for an emergency.
+if [[ "$AUDIT_DEPENDENCIES" == "1" && -d "$BACKEND_DIR/.git" ]]; then
+  log "Checking the new code's Python packages for known vulnerabilities"
+  git -C "$BACKEND_DIR" fetch --prune origin
+  incoming="$(mktemp)"
+  git -C "$BACKEND_DIR" show "origin/$GIT_BRANCH:requirements.txt" >"$incoming"
+  AUDIT_VENV="$APP_ROOT/audit-venv"
+  [[ -x "$AUDIT_VENV/bin/pip-audit" ]] || python3 -m venv "$AUDIT_VENV"
+  "$AUDIT_VENV/bin/python" -m pip install --quiet "pip-audit==$PIP_AUDIT_VERSION"
+  if ! "$AUDIT_VENV/bin/pip-audit" --requirement "$incoming" --progress-spinner off; then
+    rm -f "$incoming"
+    die "pip-audit found a known vulnerability (above) or could not run; nothing was changed. Upgrade the package in requirements.txt, or set AUDIT_DEPENDENCIES=0 to deploy anyway."
+  fi
+  rm -f "$incoming"
+fi
+
+# The commit running now, to go back to when the checks below fail.
+previous_backend=""
+[[ -d "$BACKEND_DIR/.git" ]] && previous_backend="$(git -C "$BACKEND_DIR" rev-parse HEAD)"
 update_repo "${REPO_BACKEND:-}" "$BACKEND_DIR"
 # A dist/ built here before the web repo committed its own would stop the merge; it is only build output.
 if [[ -d "$WEB_REPO_DIR/dist" ]] && ! build_is_committed; then
@@ -67,26 +88,21 @@ log "Installing Python packages"
 # --- Django ----------------------------------------------------------------------------------
 
 cd "$BACKEND_DIR"
-# Before anything changes, so a failed check leaves the running version as it was. Security
-# checks only (--tag security): drf-spectacular's schema-naming warnings are not a reason to
-# stop a deploy. STRICT_CHECKS=1 (the default) stops on any security warning.
+# Security checks only (--tag security): drf-spectacular's schema-naming warnings are not a reason
+# to stop a deploy. STRICT_CHECKS=1 (the default) stops on any security warning. The new code and
+# its packages are on disk by now, and Gunicorn workers that restart on --max-requests would load
+# them, so a failed check puts the previous commit and its packages back before stopping.
 log "Django security checks"
 if ! "$PY" manage.py check --deploy --tag security --fail-level WARNING; then
   if [[ "$STRICT_CHECKS" == "1" ]]; then
-    die "manage.py check --deploy reported security warnings (STRICT_CHECKS=1). Fix them, or set STRICT_CHECKS=0 to deploy anyway."
+    if [[ -n "$previous_backend" ]]; then
+      warn "Going back to the previous backend commit ${previous_backend:0:12} and its packages."
+      git -C "$BACKEND_DIR" reset -q --hard "$previous_backend"
+      "$PY" -m pip install --quiet -r "$BACKEND_DIR/requirements.txt" || warn "Could not reinstall the previous packages."
+    fi
+    die "manage.py check --deploy reported security warnings (STRICT_CHECKS=1); the previous version is back in place, and nothing was migrated. Fix them, or set STRICT_CHECKS=0 to deploy anyway."
   fi
   warn "check --deploy reported security warnings; see above."
-fi
-
-# Known vulnerabilities in the pinned packages (G10). pip-audit lives in a venv of its own,
-# so it never mixes with the app's packages. AUDIT_DEPENDENCIES=0 skips it for an emergency.
-if [[ "$AUDIT_DEPENDENCIES" == "1" ]]; then
-  log "Checking Python packages for known vulnerabilities"
-  AUDIT_VENV="$APP_ROOT/audit-venv"
-  [[ -x "$AUDIT_VENV/bin/pip-audit" ]] || python3 -m venv "$AUDIT_VENV"
-  "$AUDIT_VENV/bin/python" -m pip install --quiet "pip-audit==$PIP_AUDIT_VERSION"
-  "$AUDIT_VENV/bin/pip-audit" --requirement "$BACKEND_DIR/requirements.txt" --progress-spinner off \
-    || die "pip-audit found a known vulnerability (above) or could not run. Upgrade the package in requirements.txt, or set AUDIT_DEPENDENCIES=0 to deploy anyway."
 fi
 
 log "Migrating the database"

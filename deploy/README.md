@@ -1,6 +1,6 @@
 # Deploying BVT Grama Connect
 
-Scripts for one Ubuntu LTS server (22.04 or 24.04) in India. The database is MySQL 8 or PostgreSQL, chosen by one setting. Everything is safe to run again.
+Scripts for one Ubuntu 24.04 LTS server in India (22.04 is not enough: its Python is 3.10, and the backend needs 3.12). The database is MySQL 8 or PostgreSQL, chosen by one setting. Everything is safe to run again.
 
 | File | What it does |
 |---|---|
