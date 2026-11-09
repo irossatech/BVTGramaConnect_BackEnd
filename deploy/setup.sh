@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# BVT Grama Connect: server setup for Ubuntu 22.04 or 24.04 LTS.
+# BVT Grama Connect: server setup for Ubuntu 24.04 LTS (Python 3.12).
 #
 #   sudo bash deploy/setup.sh /path/to/config.env
 #
@@ -36,8 +36,8 @@ export DEBIAN_FRONTEND=noninteractive
 source /etc/os-release
 [[ "${ID:-}" == "ubuntu" ]] || die "This setup targets Ubuntu LTS; found ${PRETTY_NAME:-unknown}."
 case "${VERSION_ID:-}" in
-  22.04|24.04) ;;
-  *) warn "Tested on Ubuntu 22.04 and 24.04; this is $VERSION_ID." ;;
+  24.04) ;;
+  *) warn "Tested on Ubuntu 24.04; this is $VERSION_ID. Its python3 must be 3.12 or newer." ;;
 esac
 
 # --- Packages ---------------------------------------------------------------------
@@ -50,6 +50,9 @@ apt-get install -y --no-install-recommends \
   nginx certbot ffmpeg \
   python3 python3-venv python3-dev python3-pip build-essential pkg-config \
   default-libmysqlclient-dev
+# requirements.txt needs Python 3.12 or 3.13. Ubuntu 24.04 ships 3.12; 22.04 ships 3.10, which is
+# refused here rather than failing half-way through the package install.
+python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 12) else 1)'   || die "python3 is $(python3 --version 2>&1 | cut -d' ' -f2); the backend needs 3.12 or newer. Use Ubuntu 24.04 LTS."
 # ffmpeg gives ffprobe (video length) and the poster frame for video posts.
 # default-libmysqlclient-dev is needed on every server: requirements.txt always
 # builds mysqlclient, whichever database this server uses.
