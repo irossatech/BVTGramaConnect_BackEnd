@@ -26,7 +26,7 @@ requests==2.34.2
 # Development and tests use SQLite, which needs no driver.
 gunicorn==26.2.0
 mysqlclient==2.3.0
-psycopg[binary]==3.3.6
+psycopg[binary]==3.3.8
 
 # Tests
 pytest==9.2.0
