@@ -405,13 +405,20 @@ class _Areas:
 
     def __init__(self):
         self.state = default_state()
+        self._found: dict[tuple, object] = {}
 
     def _find(self, model, code: str, name: str, parent_filter: dict):
-        if code:
-            return model.objects.filter(lgd_code=code, **parent_filter).first()
-        if name:
-            return model.objects.filter(name_key=name_key(name), **parent_filter).first()
-        return None
+        """Looked up once per file: 5,000 rows usually name a few dozen areas."""
+        parent = tuple(sorted((key, getattr(value, "pk", value)) for key, value in parent_filter.items()))
+        key = (model, code, name_key(name) if name else "", parent)
+        if key not in self._found:
+            found = None
+            if code:
+                found = model.objects.filter(lgd_code=code, **parent_filter).first()
+            elif name:
+                found = model.objects.filter(name_key=name_key(name), **parent_filter).first()
+            self._found[key] = found
+        return self._found[key]
 
     def resolve(self, row: dict, section: str) -> AreaRef:
         given = {level: (row.get(f"{level}_lgd", "").strip(), row.get(level, "").strip()) for level in ("district", "mandal", "village")}
@@ -465,20 +472,38 @@ def _read_rows(text: str, report: ImportReport) -> list[tuple[int, dict]]:
     return rows
 
 
+def _memo(cache: dict, key, compute):
+    """compute() once per key; an ApiError is remembered and raised again for the next row."""
+    if key not in cache:
+        try:
+            cache[key] = compute()
+        except ApiError as error:
+            cache[key] = error
+    if isinstance(cache[key], ApiError):
+        raise cache[key]
+    return cache[key]
+
+
 def import_contacts(actor, text: str, *, dry_run: bool = False, via: str = "console") -> ImportReport:
-    """Create or update numbers from CSV: the same rules as the API. Any error writes nothing."""
+    """Create or update numbers from CSV: the same rules as the API. Any error writes nothing.
+
+    The checks are the API's, but each type, area and area check is looked up once per file, the
+    numbers already saved are found in one query, and the writes are bulk: a 5,000-row file costs
+    a few dozen queries, not tens of thousands.
+    """
     report = ImportReport()
     rows = _read_rows(text, report)
     areas = _Areas()
-    planned: list[tuple[str, Contact | None, dict]] = []
+    types: dict = {}
+    area_checks: dict = {}
+    checked: list[tuple[int, dict, ContactType, AreaRef, str, dict]] = []
     seen: set[tuple] = set()
-    added_per_area: dict[AreaRef, int] = {}
     for line, row in rows:
         try:
-            contact_type = active_type(row["type"])
+            contact_type = _memo(types, row["type"].strip(), lambda: active_type(row["type"]))
             area = areas.resolve(row, contact_type.section)
             check_section_level(contact_type, area)
-            check_area(area)
+            _memo(area_checks, area, lambda: check_area(area))
             phone, kind = clean_phone(contact_type, row["phone"])
             values = {
                 "custom_type": clean_custom_type(contact_type, row.get("custom_type", "")),
@@ -501,10 +526,20 @@ def import_contacts(actor, text: str, *, dry_run: bool = False, via: str = "cons
             report.errors.append({"row": line, "field": "phone", "message": _("Listed twice in this file.")})
             continue
         seen.add(key)
-        existing = Contact.objects.filter(
-            is_active=True, type=contact_type, phone=phone, area_level=area.level, area_id=area.id
-        ).first()
         values.update(type=contact_type, phone=phone, phone_kind=kind, area_level=area.level, area_id=area.id)
+        checked.append((line, row, contact_type, area, phone, values))
+
+    # Every active number this file could update, in one query (the first by the model's order wins,
+    # as .first() did per row).
+    existing_by_key: dict[tuple, Contact] = {}
+    phones = {phone for _l, _r, _t, _a, phone, _v in checked}
+    for contact in Contact.objects.filter(is_active=True, phone__in=phones):
+        existing_by_key.setdefault((contact.type_id, contact.phone, AreaRef(contact.area_level, contact.area_id)), contact)
+
+    planned: list[tuple[str, Contact | None, dict]] = []
+    added_per_area: dict[AreaRef, int] = {}
+    for line, row, contact_type, area, phone, values in checked:
+        existing = existing_by_key.get((contact_type.id, phone, area))
         if existing is None:
             added_per_area[area] = added_per_area.get(area, 0) + 1
             planned.append(("create", None, values))
@@ -533,15 +568,26 @@ def import_contacts(actor, text: str, *, dry_run: bool = False, via: str = "cons
         if len(set(ContactType.objects.live().select_for_update().filter(id__in=type_ids, is_active=True)
                    .values_list("id", flat=True))) != len(type_ids):
             raise invalid("type", _("Unknown contact type."))
+        Contact.objects.bulk_create(
+            [
+                Contact(**values, verified_at=now, created_by=actor, updated_by=actor)
+                for action, _contact, values in planned
+                if action == "create"
+            ],
+            batch_size=500,
+        )
+        updates, fields = [], {"verified_at", "updated_by", "updated_at"}
         for action, contact, values in planned:
-            if action == "create":
-                Contact.objects.create(**values, verified_at=now, created_by=actor, updated_by=actor)
-            else:
+            if action == "update":
                 for name, value in values.items():
                     setattr(contact, name, value)
                 contact.verified_at = now
                 contact.updated_by = actor
-                contact.save()
+                contact.updated_at = now  # auto_now is not applied by bulk_update
+                updates.append(contact)
+                fields.update(values)
+        if updates:
+            Contact.objects.bulk_update(updates, sorted(fields), batch_size=500)
         record("contacts.imported", actor=actor, via=via,
                data={"created": report.created, "updated": report.updated, "skipped": report.skipped})
     return report

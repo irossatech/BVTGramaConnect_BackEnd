@@ -14,6 +14,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.core.cache import caches
+from django.db.models import Count
 from django.http import HttpResponse
 from django.utils import timezone
 from django.utils.translation import gettext as _
@@ -37,8 +38,8 @@ from grama.csvsafe import safe_writer
 from grama.exceptions import ApiError, permission_denied
 from grama.pagination import PageNumberPagination
 from grama.renderers import JSONRenderer
-from apps.posts.models import Post, PostStatus, ReviewAction, SettingOverride
-from apps.posts.services import targets_within
+from apps.posts.models import Post, PostStatus, PostTarget, ReviewAction
+from apps.posts.services import runtime
 
 from .permissions import client_via
 from .transliteration import MAX_LENGTH, to_telugu
@@ -66,9 +67,13 @@ def hours_since(value, now) -> float | None:
 
 
 def escalation_hours() -> int:
-    override = SettingOverride.objects.filter(key="review_escalation_hours").first()
+    """The Super Admin's setting, read the one way every other part reads it (posts.services.runtime).
+
+    This used to look for the key "review_escalation_hours", which nothing writes (the console saves
+    "REVIEW_ESCALATION_HOURS"), so the dashboard and the review-time report ignored the setting.
+    """
     try:
-        return int(override.value) if override else settings.REVIEW_ESCALATION_HOURS
+        return int(runtime("REVIEW_ESCALATION_HOURS"))
     except (TypeError, ValueError):
         return settings.REVIEW_ESCALATION_HOURS
 
@@ -99,14 +104,45 @@ def audit_entry(row: AuditLog, describer: AreaDescriber) -> dict:
     }
 
 
-def posts_counts(queryset) -> dict:
-    statuses = list(queryset.values_list("status", flat=True))
+def counts_of(statuses: dict) -> dict:
+    """{status: n} -> the report's counts."""
     return {
-        "total": len(statuses),
-        "published": sum(1 for s in statuses if s == PostStatus.PUBLISHED),
-        "pending": sum(1 for s in statuses if s == PostStatus.PENDING),
-        "rejected": sum(1 for s in statuses if s in REJECTED),
+        "total": sum(statuses.values()),
+        "published": statuses.get(PostStatus.PUBLISHED, 0),
+        "pending": statuses.get(PostStatus.PENDING, 0),
+        "rejected": sum(statuses.get(status, 0) for status in REJECTED),
     }
+
+
+def posts_counts(queryset) -> dict:
+    """Counted by the database: one GROUP BY, not every status loaded into Python."""
+    rows = queryset.order_by().values("status").annotate(n=Count("id")).values_list("status", "n")
+    return counts_of(dict(rows))
+
+
+def districts_and_mandals_reached(post_ids) -> dict:
+    """{post_id: (district ids, mandal ids)} that each post's areas lie in, in four queries in all.
+
+    The same containment as posts.services.targets_within: a village target is inside its mandal
+    and district, a mandal target inside its district, a district target only in itself; a target
+    for Everyone (STATE) is inside no district.
+    """
+    targets = list(PostTarget.objects.filter(post_id__in=post_ids).values_list("post_id", "area_level", "area_id"))
+    village_ids = {area_id for _post, level, area_id in targets if level == AreaLevel.VILLAGE}
+    mandal_of = dict(Village.objects.filter(id__in=village_ids).values_list("id", "mandal_id"))
+    mandal_ids = set(mandal_of.values()) | {area_id for _post, level, area_id in targets if level == AreaLevel.MANDAL}
+    district_of = dict(Mandal.objects.filter(id__in=mandal_ids).values_list("id", "district_id"))
+    reached = defaultdict(lambda: (set(), set()))
+    for post_id, level, area_id in targets:
+        districts, mandals = reached[post_id]
+        mandal = mandal_of.get(area_id) if level == AreaLevel.VILLAGE else area_id if level == AreaLevel.MANDAL else None
+        if mandal is not None:
+            mandals.add(mandal)
+            if mandal in district_of:
+                districts.add(district_of[mandal])
+        elif level == AreaLevel.DISTRICT:
+            districts.add(area_id)
+    return reached
 
 
 class SuperAdminView(APIView):
@@ -124,11 +160,19 @@ class DashboardView(SuperAdminView):
         posts = Post.objects.exclude(status=PostStatus.DRAFT)
         pending = posts.filter(status=PostStatus.PENDING)
 
+        # Every pending post once, then counted into each district it reaches: a few queries in all,
+        # not one per district.
+        submitted_at = dict(pending.values_list("id", "submitted_at"))
+        per_district = defaultdict(list)
+        for post_id, (district_ids, _mandal_ids) in districts_and_mandals_reached(list(submitted_at)).items():
+            for district_id in district_ids:
+                per_district[district_id].append(submitted_at[post_id])
+        districts = list(District.objects.active().order_by("name_en"))
+        describer.prime(AreaRef(AreaLevel.DISTRICT, district.id) for district in districts)
         pending_by_district = []
-        for district in District.objects.active().order_by("name_en"):
+        for district in districts:
             ref = AreaRef(AreaLevel.DISTRICT, district.id)
-            inside = pending.filter(targets_within(ref))
-            submitted = list(inside.values_list("submitted_at", flat=True))
+            submitted = per_district.get(district.id, [])
             oldest = min((s for s in submitted if s), default=None)
             pending_by_district.append(
                 {
@@ -204,20 +248,34 @@ def report_summary(days: int) -> dict:
 
 
 def report_posts_by_area(days: int) -> list[dict]:
-    posts = window_posts(days)
+    """Posts per district and mandal. A post for several areas counts once in each district and
+    mandal it reaches. A fixed number of queries, whatever the number of districts and mandals."""
+    status_of = dict(window_posts(days).values_list("id", "status"))
+    by_district = defaultdict(lambda: defaultdict(int))
+    by_mandal = defaultdict(lambda: defaultdict(int))
+    for post_id, (district_ids, mandal_ids) in districts_and_mandals_reached(list(status_of)).items():
+        for district_id in district_ids:
+            by_district[district_id][status_of[post_id]] += 1
+        for mandal_id in mandal_ids:
+            by_mandal[mandal_id][status_of[post_id]] += 1
+
+    districts = list(District.objects.order_by("name_en"))
+    mandals_of = defaultdict(list)
+    for mandal in Mandal.objects.filter(id__in=list(by_mandal)).order_by("name_en"):
+        mandals_of[mandal.district_id].append(mandal)
     describer = AreaDescriber()
+    describer.prime(
+        [AreaRef(AreaLevel.DISTRICT, district.id) for district in districts]
+        + [AreaRef(AreaLevel.MANDAL, mandal_id) for mandal_id in by_mandal]
+    )
     rows = []
-    for district in District.objects.order_by("name_en"):
+    for district in districts:
         ref = AreaRef(AreaLevel.DISTRICT, district.id)
-        # A post for several areas counts once in each district and mandal it reaches.
-        row = {"district": describer.describe(ref), **posts_counts(posts.filter(targets_within(ref)))}
-        mandals = []
-        for mandal in Mandal.objects.filter(district=district).order_by("name_en"):
-            mref = AreaRef(AreaLevel.MANDAL, mandal.id)
-            counts = posts_counts(posts.filter(targets_within(mref)))
-            if counts["total"]:
-                mandals.append({"mandal": describer.describe(mref), **counts})
-        row["mandals"] = mandals
+        row = {"district": describer.describe(ref), **counts_of(by_district.get(district.id, {}))}
+        row["mandals"] = [
+            {"mandal": describer.describe(AreaRef(AreaLevel.MANDAL, mandal.id)), **counts_of(by_mandal[mandal.id])}
+            for mandal in mandals_of.get(district.id, [])
+        ]
         rows.append(row)
     return rows
 
