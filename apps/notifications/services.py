@@ -115,31 +115,41 @@ def _push_data(post, kind: str) -> dict:
     }
 
 
+def queue_pushes(messages: list[list[str]], body: str, data: dict) -> None:
+    """One push job for many officials: messages is [[user_id, title], ...]."""
+    if messages:
+        async_task("apps.notifications.tasks.send_push_to_users", messages, body, data, group="push")
+
+
 def notify_users(users, *, post, kind: str, template_key: str, **extra) -> list[Notification]:
-    """Inbox item and a queued push for each user, in their own language."""
-    created = []
-    for user in users:
-        language = user.preferred_language
-        text = render(template_key, language, **_values(post, language, **extra))
-        created.append(
-            Notification.objects.create(
-                user=user,
-                kind=kind,
-                title=text[:255],
-                body=post.title[:500],
-                post=post,
-                area_level=post.target_level,
-                area_id=post.target_area_id,
-            )
+    """Inbox item and a push for each user, in their own language.
+
+    This runs in the request that changed the post, so its cost must not grow with the number of
+    reviewers: the text is rendered once per language, the inbox items are one INSERT, and the
+    pushes are one job.
+    """
+    users = list(users)
+    if not users:
+        return []
+    texts = {
+        language: render(template_key, language, **_values(post, language, **extra))[:255]
+        for language in {user.preferred_language for user in users}
+    }
+    created = Notification.objects.bulk_create([
+        Notification(
+            user=user,
+            kind=kind,
+            title=texts[user.preferred_language],
+            body=post.title[:500],
+            post=post,
+            area_level=post.target_level,
+            area_id=post.target_area_id,
         )
-        async_task(
-            "apps.notifications.tasks.send_push_to_user",
-            str(user.pk),
-            text[:255],
-            post.title,
-            _push_data(post, kind),
-            group="push",
-        )
+        for user in users
+    ])
+    queue_pushes(
+        [[str(user.pk), texts[user.preferred_language]] for user in users], post.title, _push_data(post, kind),
+    )
     return created
 
 
@@ -227,60 +237,76 @@ def tell_super_admins(actor, user) -> list[Notification]:
         .exclude(pk__in=[actor.pk, user.pk])
         .distinct()
     )
-    created = []
-    for other in others:
-        language = other.preferred_language
+    others = list(others)
+
+    def text(language):
         actor_name = (actor.name_te if language == "te" and actor.name_te else actor.name) or actor.username
         user_name = (user.name_te if language == "te" and user.name_te else user.name) or user.username
-        text = render("super_admin_added", language, actor=actor_name, name=user_name)
-        created.append(Notification.objects.create(user=other, kind=NotificationKind.ACCOUNT, title=text[:255]))
-        async_task(
-            "apps.notifications.tasks.send_push_to_user",
-            str(other.pk),
-            text[:255],
-            "",
-            {"type": NotificationKind.ACCOUNT, "user_id": str(user.pk)},
-            group="push",
-        )
+        return render("super_admin_added", language, actor=actor_name, name=user_name)[:255]
+
+    texts = {language: text(language) for language in {other.preferred_language for other in others}}
+    created = Notification.objects.bulk_create([
+        Notification(user=other, kind=NotificationKind.ACCOUNT, title=texts[other.preferred_language])
+        for other in others
+    ])
+    queue_pushes(
+        [[str(other.pk), texts[other.preferred_language]] for other in others],
+        "",
+        {"type": NotificationKind.ACCOUNT, "user_id": str(user.pk)},
+    )
     return created
 
 
 SERVICE_MANAGE = "service_requests.manage_service_requests"
 
 
-def _service_request_note(user, request, template_key: str) -> Notification:
-    """Inbox item and queued push about a service request, in the user's language.
+def _service_request_notes(recipients: list, request) -> list[Notification]:
+    """Inbox items and pushes about a service request; recipients is [(user, template_key), ...].
 
-    The text names the service, the area and the citizen's name; never the phone, email or address.
+    Each text is in the user's language and names the service, the area and the citizen's name;
+    never the phone, email or address. One text per template and language, one INSERT, and one
+    push job per language (the push body is the service's name in that language).
     """
-    language = user.preferred_language
+    if not recipients:
+        return []
     village = AreaRef(AreaLevel.VILLAGE, request.village_id)
-    area = AreaDescriber(language).describe(village)
-    service = request.service.display_name(language)
-    text = render(template_key, language, area=area["name"] if area else "", service=service, name=request.name)
-    note = Notification.objects.create(
-        user=user,
-        kind=NotificationKind.SERVICE_REQUEST,
-        title=text[:255],
-        body=service[:500],
-        service_request=request,
-        area_level=AreaLevel.VILLAGE,
-        area_id=request.village_id,
-    )
-    async_task(
-        "apps.notifications.tasks.send_push_to_user",
-        str(user.pk),
-        text[:255],
-        service,
-        {
-            "type": NotificationKind.SERVICE_REQUEST,
-            "request_id": str(request.pk),
-            "area_level": AreaLevel.VILLAGE,
-            "area_id": request.village_id,
-        },
-        group="push",
-    )
-    return note
+    names = {}  # language -> (service name, area name)
+    texts = {}  # (template_key, language) -> text
+    for user, template_key in recipients:
+        language = user.preferred_language
+        if language not in names:
+            area = AreaDescriber(language).describe(village)
+            names[language] = (request.service.display_name(language), area["name"] if area else "")
+        if (template_key, language) not in texts:
+            service, area_name = names[language]
+            texts[template_key, language] = render(
+                template_key, language, area=area_name, service=service, name=request.name,
+            )[:255]
+    created = Notification.objects.bulk_create([
+        Notification(
+            user=user,
+            kind=NotificationKind.SERVICE_REQUEST,
+            title=texts[template_key, user.preferred_language],
+            body=names[user.preferred_language][0][:500],
+            service_request=request,
+            area_level=AreaLevel.VILLAGE,
+            area_id=request.village_id,
+        )
+        for user, template_key in recipients
+    ])
+    data = {
+        "type": NotificationKind.SERVICE_REQUEST,
+        "request_id": str(request.pk),
+        "area_level": AreaLevel.VILLAGE,
+        "area_id": request.village_id,
+    }
+    for language, (service, _area_name) in names.items():
+        queue_pushes(
+            [[str(user.pk), texts[key, language]] for user, key in recipients if user.preferred_language == language],
+            service,
+            data,
+        )
+    return created
 
 
 def notify_service_request(request) -> list[Notification]:
@@ -292,12 +318,13 @@ def notify_service_request(request) -> list[Notification]:
     village = AreaRef(AreaLevel.VILLAGE, request.village_id)
     areas = [AreaRef(level, area_id) for level, area_id in ancestry(village).items()]
     users = authz.holders(SERVICE_MANAGE, areas, platform_wide=False).distinct() if areas else User.objects.none()
-    return [
-        _service_request_note(
-            user, request, "service_request_assigned_you" if user.pk == request.assigned_to_id else "service_request_new"
-        )
-        for user in users
-    ]
+    return _service_request_notes(
+        [
+            (user, "service_request_assigned_you" if user.pk == request.assigned_to_id else "service_request_new")
+            for user in users
+        ],
+        request,
+    )
 
 
 def tell_assignee(request) -> Notification | None:
@@ -305,7 +332,7 @@ def tell_assignee(request) -> Notification | None:
     assignee = User.objects.filter(pk=request.assigned_to_id, is_active=True).first()
     if assignee is None:
         return None
-    return _service_request_note(assignee, request, "service_request_assigned_you")
+    return _service_request_notes([(assignee, "service_request_assigned_you")], request)[0]
 
 
 def tell_citizen_service_request(request) -> bool:

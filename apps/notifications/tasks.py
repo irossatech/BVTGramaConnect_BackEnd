@@ -66,14 +66,10 @@ def send_push_to_citizen(device_id: str, title: str, body: str, data: dict) -> b
     return True
 
 
-def send_push_to_user(user_id: str, title: str, body: str, data: dict) -> int:
-    """Push to every device of one official. Returns how many devices got it."""
-    gateway = get_push_gateway()
-    if not gateway.enabled:
-        return 0
+def _send_to_devices(gateway, devices, title_for, body: str, data: dict) -> int:
     sent = 0
-    for device in Device.objects.filter(user_id=user_id):
-        message = PushMessage(title=title, body=body, data=data, token=device.fcm_token)
+    for device in devices:
+        message = PushMessage(title=title_for(device), body=body, data=data, token=device.fcm_token)
         try:
             with_retries(lambda: gateway.send(message))
         except InvalidDeviceToken:
@@ -83,3 +79,25 @@ def send_push_to_user(user_id: str, title: str, body: str, data: dict) -> int:
         else:
             sent += 1
     return sent
+
+
+def send_push_to_user(user_id: str, title: str, body: str, data: dict) -> int:
+    """Push to every device of one official. Returns how many devices got it."""
+    gateway = get_push_gateway()
+    if not gateway.enabled:
+        return 0
+    return _send_to_devices(gateway, Device.objects.filter(user_id=user_id), lambda device: title, body, data)
+
+
+def send_push_to_users(messages: list[list[str]], body: str, data: dict) -> int:
+    """The same event for many officials in one job.
+
+    `messages` is [[user_id, title], ...], each title in that official's language. One gateway, so
+    one FCM session, serves all of them. Returns how many devices got it.
+    """
+    gateway = get_push_gateway()
+    if not gateway.enabled or not messages:
+        return 0
+    titles = {str(user_id): title for user_id, title in messages}
+    devices = Device.objects.filter(user_id__in=list(titles))
+    return _send_to_devices(gateway, devices, lambda device: titles[str(device.user_id)], body, data)
