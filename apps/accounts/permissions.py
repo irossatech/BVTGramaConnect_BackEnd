@@ -6,15 +6,18 @@
 has_permission() asks authz.can(user, perm, target). has_object_permission()
 asks it again for the object's own area (obj.target for posts, obj.area for
 anything else with an area), so DRF's get_object() refuses objects outside
-the user's areas with 403 out_of_area.
+the user's areas with 404 not_found: an object out of reach stays hidden
+(.claude/conventions.md). Creating something outside the area is a different
+case, answered 403 out_of_area by the code that creates it.
 """
 
 from __future__ import annotations
 
+from django.http import Http404
 from django.utils.translation import gettext_lazy as _
 from rest_framework.permissions import BasePermission
 
-from grama.exceptions import out_of_area, permission_denied
+from grama.exceptions import permission_denied
 
 from . import authz
 from .authz import ANYWHERE, PLATFORM  # noqa: F401  (re-exported for views)
@@ -54,7 +57,7 @@ class HasPerm(BasePermission):
     def has_object_permission(self, request, view, obj):
         area = object_area(obj)
         if area is not None and not authz.can(request.user, self.perm, area):
-            raise out_of_area()
+            raise Http404  # 404 not_found, the same answer as an id that does not exist
         return True
 
 

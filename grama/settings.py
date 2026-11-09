@@ -456,6 +456,8 @@ SITE_SHOWCASE_VILLAGE_ID = env.int("SITE_SHOWCASE_VILLAGE_ID", default=0) or Non
  
 GEO_PUBLIC_MAX_AGE = env.int("GEO_PUBLIC_MAX_AGE", default=600)
 GEO_BOUNDS = {"lat": (12.6, 19.95), "lng": (76.7, 84.8)}
+# geo/villages/import/ reads the whole file into memory: the state's ~18,000 villages are about 3 MB.
+GEO_IMPORT_MAX_BYTES = env.int("GEO_IMPORT_MAX_BYTES", default=20 * 1024 * 1024)
  
 CONTACTS_MAX_PER_AREA = env.int("CONTACTS_MAX_PER_AREA", default=200)
 CONTACTS_PUBLIC_MAX_AGE = env.int("CONTACTS_PUBLIC_MAX_AGE", default=300)

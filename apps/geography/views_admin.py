@@ -8,6 +8,7 @@ Areas are never deleted; deactivating one hides it and everything below it.
 
 from __future__ import annotations
 
+from django.conf import settings
 from django.utils.translation import gettext as _
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
@@ -260,6 +261,12 @@ class VillageImportView(APIView):
         if upload is None:
             raise ApiError("validation_error", _("Attach a CSV file."), fields={"file": [_("Required.")]})
         dry_run = request.query_params.get("dry_run") in ("1", "true", "yes")
+        if upload.size > settings.GEO_IMPORT_MAX_BYTES:
+            raise ApiError(
+                "file_too_large",
+                _("The file is too large: at most %(mb)s MB.") % {"mb": settings.GEO_IMPORT_MAX_BYTES // (1024 * 1024)},
+                status=413,
+            )
         try:
             text = upload.read().decode("utf-8-sig")
         except UnicodeDecodeError:
