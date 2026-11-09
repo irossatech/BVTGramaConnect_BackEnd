@@ -65,4 +65,4 @@ django-q2 with the Django ORM as broker (no Redis). Start the worker with `pytho
 - Translation of a post when it is published (`apps.posts.tasks.translate_post`), only while `TRANSLATION_PROVIDER` is on. A failed try comes back as a one-off schedule after 1, 5 and 15 minutes, then the post stays untranslated.
 - Escalation of overdue pending posts: a schedule created by `python manage.py ensure_schedules`, every ESCALATION_CHECK_MINUTES.
 - Daily housekeeping (`grama/housekeeping.py`, the same command registers it): deletes failed django-q tasks older than HOUSEKEEPING_KEEP_DAYS, expired JWT refresh tokens and expired sessions. django-q2 caps successful tasks itself (`save_limit`) and django-axes removes expired login attempts itself. The audit log is never cleaned.
-- Push retries with backoff (`grama/retry.py`, DELIVERY_RETRY_*). A final failure is audited as `push.failed`.
+- Push retries with backoff (DELIVERY_RETRY_*: 3 tries, waits 1 s then 4 s, `grama.retry.backoff_delays`). The wait is a one-off scheduled job (`apps.notifications.tasks._deliver`), never a sleep in the worker. A final failure is audited as `push.failed`.
