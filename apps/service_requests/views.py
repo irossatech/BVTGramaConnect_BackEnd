@@ -63,13 +63,16 @@ class PublicServicesView(APIView):
 
 class CitizenServiceRequestsView(CitizenView):
     @extend_schema(
-        summary="This phone's service requests, newest first",
+        summary="This install's service requests, newest first",
         parameters=TOKEN_PARAM,
         responses=CitizenServiceRequestSerializer(many=True),
     )
     def get(self, request):
         device = citizens.device_from_request(request)
-        rows = with_related(ServiceRequest.objects.filter(device__in=citizens.same_phone(device))).order_by("-created_at", "-id")
+        # Only this install's requests (decided 2026-11-09 on audit BE_01, BE-SEC-002): they hold
+        # the citizen's name, phone and address, and the Android ID that links installs is sent by the
+        # app unchecked. The daily limit and blocks still count every install of the phone.
+        rows = with_related(ServiceRequest.objects.filter(device=device)).order_by("-created_at", "-id")
         return Response(CitizenServiceRequestSerializer(rows[:MY_REQUESTS_LIMIT], many=True).data)
 
     @extend_schema(

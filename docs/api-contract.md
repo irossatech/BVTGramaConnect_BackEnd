@@ -1127,7 +1127,7 @@ Services are never deleted. The 8 services the app ships with are seeded with th
 |---|---|---|
 | `GET /services/` | public, no login | The **shown** services in Home order, a plain list of `Service`. `Cache-Control: max-age=300` (`SERVICES_PUBLIC_MAX_AGE`). |
 | `POST /citizen/service-requests/` | header `X-Citizen-Token`; JSON `{"service", "name", "phone", "email"?, "address", "details"?}` | `201 CitizenServiceRequest`, status `NEW`, for the phone's village. `400 validation_error` with `fields`: `service` ("This service is not available.": unknown or hidden), `name`, `phone`, `email`, `address` ("Enter your address."), `details`. `401 citizen_token_invalid`; `403 citizen_blocked` with `reason` and `blocked_until` (as for posts); `429 throttled` with `retry_after_s` after `SERVICE_REQUESTS_PER_DAY` (10) requests from one phone, all its installs, in 24 hours. |
-| `GET /citizen/service-requests/` | header `X-Citizen-Token` | `[CitizenServiceRequest]`, this phone's requests (all its installs), newest first, at most 50 |
+| `GET /citizen/service-requests/` | header `X-Citizen-Token` | `[CitizenServiceRequest]`, the requests made from **this install** (this token), newest first, at most 50. **Changed 2026-11-09** (decision on audit BE_01, BE-SEC-002): it used to include every install with the same `android_id`; a request holds the citizen's name, phone and address, and `android_id` is not verified. After a reinstall the app starts with an empty list; the officials still have every request. The daily limit and blocks still count all installs of the phone. |
 
 ```jsonc
 // CitizenServiceRequest
