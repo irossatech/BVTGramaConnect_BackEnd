@@ -374,6 +374,19 @@ SPECTACULAR_SETTINGS = {
     "SERVE_PERMISSIONS": ["apps.accounts.permissions.CanReadApiDocs"],
     "COMPONENT_SPLIT_REQUEST": True,
     "SCHEMA_PATH_PREFIX": r"/api/v[0-9]+",
+    # One stable name per choice set used in several places, instead of generated names such as
+    # "Level360Enum" that change when a serializer changes and break generated client code.
+    "ENUM_NAME_OVERRIDES": {
+        "AreaLevelEnum": "apps.geography.models.AreaLevel",
+        "LanguageEnum": "apps.accounts.models.Language",
+        "PostStatusEnum": "apps.posts.models.PostStatus",
+        "ServiceRequestStatusEnum": "apps.service_requests.models.RequestStatus",
+        "DevicePlatformEnum": "apps.notifications.models.Platform",
+        "MediaKindEnum": "apps.posts.models.MediaKind",
+        "NotificationKindEnum": "apps.notifications.models.NotificationKind",
+        "ServiceIconEnum": "apps.service_requests.models.ICONS",
+        "BillIconEnum": "apps.bills.models.ICONS",
+    },
 }
  
  

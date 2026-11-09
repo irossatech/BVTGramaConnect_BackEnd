@@ -9,4 +9,6 @@ Open work for the Backend team, most important first. Update this file as items 
 5. **Load test at the real size.** Run `deploy/loadtest/locustfile.py` against staging with Gunicorn once the owner gives [EXPECTED USERS].
 6. **Video on a real server.** Upload a real 60-second phone video on staging with ffmpeg installed. Check the poster, seeking over 3G (Nginx range requests on `/media/`) and the 50 MB limit end to end. Without ffmpeg the phone must send `duration_s` and a poster.
 7. **Citizen posts on a real phone.** Set `PLAY_INTEGRITY_PACKAGE` and a service account with the Play Integrity API enabled (the Firebase one works once the API is switched on in its Google Cloud project), install the app from a Play testing track, and check that registration passes with `CITIZEN_INTEGRITY_REQUIRED=True`. iPhones need Apple App Attest before integrity can be required for them (contract section 15, CP3).
-8. **Video metadata.** Videos are stored as sent, so a phone's GPS tag stays in the file. Ask the owner whether to re-encode with ffmpeg to strip it.
+8. **Audit BE_01 follow-ups** (`audit-reports/BE_01_RESPONSE_*.md`): the items left open there, chiefly
+   the decisions for the lead and owner (citizen identity, registration limits, files per citizen post)
+   and the production team's checks of the hosting panel (nginx, backups).

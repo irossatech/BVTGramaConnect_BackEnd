@@ -61,13 +61,13 @@ Common problems:
 sudo bash /srv/gramaconnect/backend/deploy/deploy.sh
 ```
 
-It pulls `GIT_BRANCH` of the backend repo and the web repo (BVTGramaConnect, setting `REPO_WEB`), installs packages, migrates, collects static files, builds the web repo once (`npm ci && npm run build`), copies `dist/` (without `console/`) to `/srv/gramaconnect/www/public` and `dist/console/` to `/srv/gramaconnect/www/console`, restarts the services, and checks the API. To roll back, check out the previous commit in the affected repo and run `deploy.sh` again with `GIT_BRANCH` pointing at a branch or tag that holds it. Migrations are not reversed automatically: restore a backup if a migration has to be undone.
+It pulls `GIT_BRANCH` of the backend repo and the web repo (BVTGramaConnect, setting `REPO_WEB`), installs packages, migrates, collects static files, uses the web repo's committed `dist/` (or builds it with `npm ci && npm run build` when `dist/` is not committed), copies `dist/` (without `console/`) to `/srv/gramaconnect/www/public` and `dist/console/` to `/srv/gramaconnect/www/console`, restarts the services, and checks the API. To roll back, check out the previous commit in the affected repo and run `deploy.sh` again with `GIT_BRANCH` pointing at a branch or tag that holds it. Migrations are not reversed automatically: restore a backup if a migration has to be undone.
 
 ### Servers set up before the web repos were merged
 
 The website and the console used to be two repos, cloned to `/srv/gramaconnect/public` and `/srv/gramaconnect/admin`. They are now one repo, BVTGramaConnect, cloned to `/srv/gramaconnect/web`. Nginx and the server env (`WEB_PUBLIC_DIR`, `WEB_ADMIN_DIR`) do not change. On such a server, once:
 
-1. Add `REPO_WEB=https://github.com/irossatech/BVTGramaConnect.git` to the deploy config (`/etc/gramaconnect/config.env`, or the `config.env` you pass to the scripts). Remove `REPO_PUBLIC` and `REPO_ADMIN`.
+1. Add `REPO_WEB=https://github.com/irossatech/BVTGramaConnect.git` to the deploy config (`/etc/gramaconnect/deploy.env`, or the config file you pass to the scripts). Remove `REPO_PUBLIC` and `REPO_ADMIN`.
 2. Run `deploy.sh`. On its first run it clones the web repo to `/srv/gramaconnect/web`.
 3. Check `/` and `/console/` in a browser, then delete the old clones: `sudo rm -rf /srv/gramaconnect/public /srv/gramaconnect/admin`.
 
