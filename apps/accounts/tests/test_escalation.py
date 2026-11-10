@@ -5,6 +5,7 @@ import pytest
 from axes.models import AccessAttempt
 from django.utils import timezone
 
+from apps.accounts.lockout import login_key
 from apps.accounts.models import RoleAssignment, User
 from apps.accounts.roles import Role
 from conftest import TEST_PASSWORD, assign, make_bare_post
@@ -103,7 +104,7 @@ def test_unlock_needs_the_unlock_permission_not_only_reach(api, world):
     group.permissions.remove(Permission.objects.get(content_type__app_label="accounts", codename="unlock_user"))
     target = world.users["pm_kolakaluru"]
     AccessAttempt.objects.create(
-        username=target.username, ip_address="10.0.0.9", user_agent="x", failures_since_start=5,
+        username=login_key(target.username), ip_address="10.0.0.9", user_agent="x", failures_since_start=5,
         attempt_time=timezone.now(), get_data="", post_data="", http_accept="", path_info="/",
     )
     response = api(world.users["va_kolakaluru"]).post(f"/api/v1/users/{target.id}/unlock/", {}, format="json")
