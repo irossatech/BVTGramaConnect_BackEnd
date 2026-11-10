@@ -32,7 +32,7 @@ Linux or macOS: the same with `python3 -m venv .venv` and `source .venv/bin/acti
 | Background worker | `python manage.py qcluster` |
 | Escalation and housekeeping schedules | `python manage.py ensure_schedules` (once per database; deploy runs it) |
 | Role groups and permissions | `python manage.py sync_role_permissions` (also runs after every `migrate`; safe to repeat) |
-| Unlock a username | `python manage.py axes_reset_username <username>`, or Unlock in the console |
+| Unlock a username | Unlock in the console, or `python manage.py shell -c "from apps.accounts.lockout import unlock; from apps.accounts.models import User; print(unlock(User.objects.get(username='<username>')))"` (axes stores a hash, so `axes_reset_username` does not find it) |
 | New sample passwords | `python manage.py seed_sample_data --reset-passwords` |
 | Demo content for a real mandal (qa testing on the state's own villages) | `python manage.py load_demo_area [--district Prakasam] [--mandal Kandukuru] [--villages 4] [--village <name> …]`: "demo." officials (temporary passwords printed once), posts in every place a citizen looks, numbers with unassignable 0+STD+000 phones. Adds no geography; safe to repeat. Use it instead of `seed_sample_data` on a server with the real state list, which would import its own Guntur/Krishna places and coordinates over it. |
 | Import villages | `python manage.py import_geography <file.csv> [--dry-run] [--missing-report out.csv]` |

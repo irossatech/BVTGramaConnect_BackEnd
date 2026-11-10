@@ -109,6 +109,7 @@ django-axes counts failed logins per **username and IP address together**:
 - During the lockout every try answers `429 locked_out` with `retry_after_s`, even with the right password. Tries during the lockout do not extend it.
 - A successful login clears the count.
 - A lockout is audited as `auth.locked_out`, and each failure as `auth.login_failed`.
+- axes' tables store a keyed hash of the username (`lockout.login_key`, HMAC-SHA256 with `SECRET_KEY`), never what was typed: a password typed into the username box must not stay there for 30 days. So axes' own `axes_reset_username` command needs the hash; use the shell command below. Changing `SECRET_KEY` only clears current lockouts.
 
 **IP-wide cap (password spraying):** 50 failed logins (`LOGIN_IP_MAX_FAILURES`) from one IP address, for any usernames, within 60 minutes (`LOGIN_IP_WINDOW_MINUTES`) block every app and console login from that address until the oldest of them is an hour old. The answer is the same `429 locked_out` with `retry_after_s`, checked before the password. Tries while blocked are not counted, a successful login does not reset the count, and an admin's unlock does not lift it: it is about an address, not a user, and ends by itself. It is audited once as `auth.ip_locked_out` with the limit and window only, never the IP. Mobile networks share IP addresses, so keep the limit well above what one office mistypes in an hour; `0` switches it off. To lift a block early, delete that IP's rows from axes' access failures (Django admin, or the shell command below).
 
@@ -119,7 +120,7 @@ django-axes counts failed logins per **username and IP address together**:
 From a shell on the server:
 
 ```bash
-python manage.py axes_reset_username <username>
+python manage.py shell -c "from apps.accounts.lockout import unlock; from apps.accounts.models import User; print(unlock(User.objects.get(username='<username>')))"
 # Lift an IP block early:
 python manage.py shell -c "from axes.models import AccessFailureLog; print(AccessFailureLog.objects.filter(ip_address='<ip>').delete())"
 ```

@@ -30,6 +30,7 @@ from django.test import Client
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from apps.accounts.lockout import login_key
 from apps.accounts.models import RoleAssignment, User
 from apps.accounts.role_matrix import ALL_PERMISSIONS, ROLE_GROUPS
 from apps.accounts.sync import wanted_permissions
@@ -278,7 +279,7 @@ def probe(world, client, actor: User, perm: str, area_key: str | None) -> bool:
         return outcome(client.post(f"/api/v1/users/{target.id}/reset-password/", {}, format="json"))
     if perm == "accounts.unlock_user":
         AccessAttempt.objects.create(
-            username=target.username, ip_address="10.0.0.9", user_agent="probe", failures_since_start=5,
+            username=login_key(target.username), ip_address="10.0.0.9", user_agent="probe", failures_since_start=5,
             attempt_time=timezone.now(), get_data="", post_data="", http_accept="", path_info="/api/v1/auth/login/",
         )
         return outcome(client.post(f"/api/v1/users/{target.id}/unlock/", {}, format="json"))
