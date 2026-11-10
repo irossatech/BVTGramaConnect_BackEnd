@@ -12,6 +12,12 @@ from apps.geography.models import District, Mandal, Village
 pytestmark = pytest.mark.django_db
 
 
+@pytest.fixture(autouse=True)
+def laptop(settings):
+    """These tests describe a developer's laptop; the server guard is in test_server_guard.py."""
+    settings.DEBUG = True
+
+
 def test_sample_data_has_every_role_and_every_post_state():
     from apps.posts.models import Post
 

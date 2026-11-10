@@ -18,7 +18,7 @@ python manage.py runserver
 Linux or macOS: the same with `python3 -m venv .venv` and `source .venv/bin/activate`.
 
 - No `.env` is needed locally; everything defaults to SQLite (`db.sqlite3`). Set `SQLITE_PATH` to use another file.
-- `seed_sample_data` creates 2 districts × 2 mandals × 3 villages, one official per role, and posts in every state. It prints each official's username and temporary password once; `--reset-passwords` prints new ones. Safe to run again.
+- `seed_sample_data` creates 2 districts × 2 mandals × 3 villages, one official per role, and posts in every state. It prints each official's username and temporary password once; `--reset-passwords` prints new ones. Safe to run again. On a server (DEBUG off) it and `load_demo_area` refuse unless `--allow-server` is given: qa only, never production.
 - The first Super Admin on a real database: `python manage.py create_super_admin --username <name> --name "<full name>"` (a state must be loaded). It prints a temporary password once. Django admin needs a staff account from `createsuperuser`.
 - Build the web parts before opening `/` or `/console/`: `npm run build` in BVTGramaConnect, which builds both.
 - Android emulator reaches the server at `http://10.0.2.2:8000`. For a real phone, run `runserver 0.0.0.0:8000` and add the PC's LAN address to `ALLOWED_HOSTS`.
@@ -34,7 +34,7 @@ Linux or macOS: the same with `python3 -m venv .venv` and `source .venv/bin/acti
 | Role groups and permissions | `python manage.py sync_role_permissions` (also runs after every `migrate`; safe to repeat) |
 | Unlock a username | `python manage.py axes_reset_username <username>`, or Unlock in the console |
 | New sample passwords | `python manage.py seed_sample_data --reset-passwords` |
-| Demo content for a real mandal (qa testing on the state's own villages) | `python manage.py load_demo_area [--district Prakasam] [--mandal Kandukuru] [--villages 4] [--village <name> …]`: "demo." officials (temporary passwords printed once), posts in every place a citizen looks, numbers with unassignable 0+STD+000 phones. Adds no geography; safe to repeat. Use it instead of `seed_sample_data` on a server with the real state list, which would import its own Guntur/Krishna places and coordinates over it. |
+| Demo content for a real mandal (qa testing on the state's own villages) | `python manage.py load_demo_area --allow-server [--district Prakasam] [--mandal Kandukuru] [--villages 4] [--village <name> …]`: "demo." officials (temporary passwords printed once), posts in every place a citizen looks, numbers with unassignable 0+STD+000 phones. Adds no geography; safe to repeat. Use it instead of `seed_sample_data` on a server with the real state list, which would import its own Guntur/Krishna places and coordinates over it. |
 | Import villages | `python manage.py import_geography <file.csv> [--dry-run] [--missing-report out.csv]` |
 | Duplicate area names, English or Telugu | `python manage.py geo_duplicates` (read-only; before migrating `geography.0003` it must print "No duplicates.") |
 | Census tags in village names ("(Ct)", "(Part)" …) | `python manage.py geo_clean_names` lists; `--apply` renames (audited; census spelling kept in `census_name`) |

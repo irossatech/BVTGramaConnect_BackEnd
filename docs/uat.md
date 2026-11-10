@@ -4,8 +4,8 @@ For the QA engineer and the client's testers during user acceptance testing. Wor
 
 ## Before you start
 
-1. Load the sample data on the UAT server: `python manage.py seed_sample_data`. It creates 2 districts with 2 mandals each and 3 villages per mandal, one official per role, posts in every state, four posts with upcoming event dates, and one urgent post for Tenali mandal. It also prints a media check: whether uploads can be stored and whether ffmpeg is installed for video posts.
-2. Note the usernames and temporary passwords it prints for each role; they are shown only once (`seed_sample_data --reset-passwords` prints new ones). Each official must choose a new password at first login. Nothing is emailed or texted: an admin hands over every temporary password in person.
+1. Load the sample data on the UAT server: `python manage.py seed_sample_data --allow-server` (on a server the command refuses without the flag; never on production). It creates 2 districts with 2 mandals each and 3 villages per mandal, one official per role, posts in every state, four posts with upcoming event dates, and one urgent post for Tenali mandal. It also prints a media check: whether uploads can be stored and whether ffmpeg is installed for video posts.
+2. Note the usernames and temporary passwords it prints for each role; they are shown only once (`seed_sample_data --reset-passwords --allow-server` prints new ones). Each official must choose a new password at first login. Nothing is emailed or texted: an admin hands over every temporary password in person.
 3. Test the app on a low-cost Android phone (2 GB RAM) on mobile data, and once with the network set to 3G or slower.
 4. Test the website on a phone (375 px wide) and a laptop (1280 px wide).
 5. Test both languages wherever there is a language switch. Telugu is the default; every Telugu word must show correctly, with no boxes or broken letters.

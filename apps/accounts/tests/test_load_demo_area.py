@@ -15,6 +15,12 @@ from apps.posts.models import Post, PostStatus
 pytestmark = pytest.mark.django_db
 
 
+@pytest.fixture(autouse=True)
+def laptop(settings):
+    """These tests describe a developer's laptop; the server guard is in test_server_guard.py."""
+    settings.DEBUG = True
+
+
 def run(*args) -> str:
     out = StringIO()
     call_command("load_demo_area", "--district", "Guntur", "--mandal", "Tenali", *args, stdout=out)
