@@ -96,7 +96,8 @@ the web developer built them; the server builds them (with Node.js 20.9+) only w
 before changing anything if someone edited tracked files on the server, so never run
 `npm run build` in the web repo on the server. `SEED=1` is refused once villages exist: the sample
 data would write its own places over the real list. Demo content for real villages:
-`manage.py load_demo_area` (`.claude/operations.md`).
+`manage.py load_demo_area --allow-server` (`.claude/operations.md`). Both sample-data commands
+refuse on a server without `--allow-server`; never use it on production.
 
 ## Backups
 

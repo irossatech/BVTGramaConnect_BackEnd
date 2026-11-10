@@ -89,7 +89,8 @@ main() {
     villages="$("$PYTHON" manage.py shell -c 'from apps.geography.models import Village; print(Village.objects.count())' | tail -n 1)"
     [[ "$villages" == "0" ]] || fail "SEED=1 refused: the database already has $villages villages, and the sample data would write its own places and coordinates over them. On a server with the real list, use: manage.py load_demo_area"
     echo "Loading sample data. Copy the temporary passwords below: they are shown only once."
-    "$PYTHON" manage.py seed_sample_data
+    # --allow-server: the command refuses on a server (DEBUG off) without it; production never gets here.
+    "$PYTHON" manage.py seed_sample_data --allow-server
   fi
 
   step "Starting"
