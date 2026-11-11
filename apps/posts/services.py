@@ -216,7 +216,9 @@ def can_reverse(user, reviewer: Grant | None, post: Post) -> bool:
     return reviewer.rank < decided_rank
 
 
-def allowed_actions(user, post: Post) -> list[str]:
+def allowed_actions(user, post: Post, *, citizen_blocked: bool | None = None) -> list[str]:
+    """citizen_blocked: whether the phone behind a citizen post is blocked, when the caller already knows
+    (the post serializer's phone summary); None asks the database."""
     actions: list[str] = []
     if post.author_id is not None and post.author_id == user.id:
         if post.status in EDITABLE:
@@ -237,9 +239,11 @@ def allowed_actions(user, post: Post) -> list[str]:
     if post.status != PostStatus.DRAFT and on_post(URGENT):
         actions.append("set_urgent")
     if post.citizen_id and on_post(BLOCK_CITIZEN):
-        from apps.citizens.services import active_block  # citizens builds on this module
+        if citizen_blocked is None:
+            from apps.citizens.services import active_block  # citizens builds on this module
 
-        actions.append("unblock_citizen" if active_block(post.citizen) else "block_citizen")
+            citizen_blocked = active_block(post.citizen) is not None
+        actions.append("unblock_citizen" if citizen_blocked else "block_citizen")
         actions.append("discard_citizen_posts")
     return actions
 

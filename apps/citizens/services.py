@@ -21,11 +21,12 @@ import hashlib
 import hmac
 import logging
 import secrets
+from dataclasses import dataclass
 from datetime import timedelta
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
-from django.db.models import Q
+from django.db.models import Count, F, Q
 from django.utils import timezone
 from django.utils.translation import gettext as _
 from rest_framework import serializers as drf_serializers
@@ -122,15 +123,79 @@ def same_phone(device: CitizenDevice):
 
 
 def active_block(device: CitizenDevice, now=None) -> CitizenDevice | None:
-    """The running block on this phone (any of its installs), or None. The longest one wins."""
+    """The running block on this phone (any of its installs), or None. The longest one wins; a block
+    without an end date (older blocks, or one set in Django admin) is the longest, on every database."""
     now = now or timezone.now()
     return (
         same_phone(device)
         .filter(blocked_at__isnull=False)
         .filter(Q(blocked_until__isnull=True) | Q(blocked_until__gt=now))
-        .order_by("-blocked_until")
+        .order_by(F("blocked_until").desc(nulls_first=True), "pk")
         .first()
     )
+
+
+def phone_key(device: CitizenDevice) -> str:
+    """What same_phone() groups by: the Android ID's hash, or the install itself when there is none."""
+    return device.android_id_hash or str(device.pk)
+
+
+def _longest_running(blocks: list[CitizenDevice], now) -> CitizenDevice | None:
+    """active_block()'s choice among rows already loaded: running blocks only, no end date first."""
+    running = [
+        row for row in blocks
+        if row.blocked_at is not None and (row.blocked_until is None or row.blocked_until > now)
+    ]
+
+    def order(row):  # as active_block(): no end date first, then the latest end, then by id
+        if row.blocked_until is None:
+            return (0, 0.0, str(row.pk))
+        return (1, -row.blocked_until.timestamp(), str(row.pk))
+
+    return min(running, key=order, default=None)
+
+
+@dataclass(frozen=True)
+class PhoneRecord:
+    """A phone's record for reviewers (contract section 15): its posts, discards and running block."""
+
+    posts_total: int
+    posts_discarded: int
+    block: CitizenDevice | None
+
+
+def phone_records(devices, now=None) -> dict:
+    """{install id: PhoneRecord} for many installs at once, with two queries whatever their number.
+
+    The same answers as same_phone(), Post counts and active_block() one install at a time.
+    """
+    devices = {device.pk: device for device in devices}
+    if not devices:
+        return {}
+    now = now or timezone.now()
+    hashes = {device.android_id_hash for device in devices.values() if device.android_id_hash}
+    installs = list(CitizenDevice.objects.filter(Q(pk__in=devices) | Q(android_id_hash__in=hashes)))
+    key_of = {install.pk: phone_key(install) for install in installs}
+    totals: dict[str, list[int]] = {}
+    counts = (
+        Post.objects.filter(citizen__in=key_of)
+        .order_by()
+        .values("citizen_id")
+        .annotate(total=Count("id"), discarded=Count("id", filter=Q(status=PostStatus.DISCARDED)))
+    )
+    for row in counts:
+        entry = totals.setdefault(key_of[row["citizen_id"]], [0, 0])
+        entry[0] += row["total"]
+        entry[1] += row["discarded"]
+    blocks: dict[str, list[CitizenDevice]] = {}
+    for install in installs:
+        blocks.setdefault(key_of[install.pk], []).append(install)
+    records = {}
+    for pk, device in devices.items():
+        key = phone_key(device)
+        total, discarded = totals.get(key, (0, 0))
+        records[pk] = PhoneRecord(total, discarded, _longest_running(blocks.get(key, []), now))
+    return records
 
 
 # --- Registration -------------------------------------------------------------------------------
