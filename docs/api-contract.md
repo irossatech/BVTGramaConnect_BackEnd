@@ -206,7 +206,7 @@ Returned by `GET /me/`, inside the app login response and inside the console ses
   "rules": {
     "admin_posts_auto_publish": true,
     "super_admin_can_post": false,
-    "max_photos_per_post": 5,
+    "max_photos_per_post": 0,
     "video_enabled": true
   }
 }
@@ -215,6 +215,7 @@ Returned by `GET /me/`, inside the app login response and inside the console ses
 - `assignments` lists every assignment, active or not. `role_assignments` lists the active ones in the older shape.
 - `capabilities` is **deprecated**. It is derived from `permissions` and kept so the current app keeps working.
 - `mobile` and `email` may be `null`. When `must_change_password` is true, clients go straight to the change-password screen.
+- `rules.max_photos_per_post`: **`0` means no limit** (the default since 2026-11-11, lead's decision): the app lets officials and the Super Admin add any number of photos and videos to a post, mixed. A positive number is a cap on photos only. Videos have no count limit.
 
 ### User (admin view)
 ```json
@@ -515,8 +516,8 @@ What `POST /posts` does:
 | `DELETE /posts/{id}/media/{media_id}` | author | — | `204` |
 
 - Allowed while the post is `DRAFT` or `RECHECK`. Because `POST /posts` submits by default, the app creates the post with `submit: false`, uploads media, then calls `/submit`.
-- Images: JPEG, PNG, WebP or HEIC, at most `MAX_IMAGE_UPLOAD_MB` (default 10) and `MAX_PHOTOS_PER_POST` (default 5) per post. Stored as WebP at most 1280 px, with a 640 px copy and a 320 px thumbnail. Too large: `413 file_too_large`. Not a photo: `415 unsupported_media`.
-- **Video (owner decision Q8):** multipart `file` (MP4 or MOV), `kind=video`, optional `duration_s`, optional `poster` image. At most `MAX_VIDEO_UPLOAD_MB` (default 50; larger: `413 file_too_large`) and `VIDEO_MAX_SECONDS` (60; longer: `400 video_too_long`). Other files: `415 unsupported_media`. One video per post, never together with photos: `409 media_conflict`.
+- Images: JPEG, PNG, WebP or HEIC, at most `MAX_IMAGE_UPLOAD_MB` (default 10) each. Any number of photos per post (`MAX_PHOTOS_PER_POST`, default 0 = no limit; lead's decision of 2026-11-11), with or without videos, each added after the files already there. Stored as WebP at most 1280 px, with a 640 px copy and a 320 px thumbnail. Too large: `413 file_too_large`. Not a photo: `415 unsupported_media`.
+- **Video (owner decision Q8):** multipart `file` (MP4 or MOV), `kind=video`, optional `duration_s`, optional `poster` image. At most `MAX_VIDEO_UPLOAD_MB` (default 50; larger: `413 file_too_large`) and `VIDEO_MAX_SECONDS` (60; longer: `400 video_too_long`). Other files: `415 unsupported_media`. Any number of videos per post, mixed with any number of photos (lead's decision of 2026-11-11, the same as citizen posts); each is added after the files already there. `409 media_conflict` is no longer sent.
   - Duration: measured with `ffprobe` when it is installed (the server has it). Without `ffprobe` the client's `duration_s` is required and still checked.
   - Poster: made with `ffmpeg` from the first second when it is installed. Otherwise `poster` (a photo) is required and processed like photos.
   - The video is stored without its metadata (GPS place, phone, dates): `ffmpeg` copies the video and audio streams without re-encoding, so quality and size stay as uploaded. A file it cannot copy: `415 unsupported_media`. Without `ffmpeg` it is stored as uploaded. The app compresses it before upload. The same applies to citizen videos (section 15) and banner videos (section 17).
@@ -883,7 +884,7 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Post title | 150 characters |
 | Post body | 5,000 characters |
 | Review comment | 500 characters |
-| Photos per post | `MAX_PHOTOS_PER_POST`, default 5 |
+| Photos and videos per post | Any number of each, mixed (`MAX_PHOTOS_PER_POST` default 0 = no limit; videos have no count limit). Officials, the Super Admin and citizens alike. |
 | Image upload | `MAX_IMAGE_UPLOAD_MB`, default 10 |
 | Video | one per post, `VIDEO_MAX_SECONDS` 60, `MAX_VIDEO_UPLOAD_MB` default 50 |
 | Page size | feed 20, admin lists 100 |
@@ -1048,7 +1049,7 @@ Every citizen endpoint answers `401 citizen_token_invalid` without a valid token
 
 - **Target:** always the phone's village (`village_id` of the device), never a mandal, district or the state. `event` and `is_urgent` are not available to citizens.
 - **Fields:** `category` an active category key; `language` `te` or `en`; `title` 1 to 150 characters; `body` 1 to 5,000; photos as officials' photos (JPEG, PNG or WebP, at most `MAX_IMAGE_UPLOAD_MB`, re-encoded to WebP with EXIF and GPS removed).
-- **Videos:** MP4 or MOV, each at most `MAX_VIDEO_UPLOAD_MB` (50) and, when the server can measure it, `VIDEO_MAX_SECONDS` (60). Any number, mixed with any number of photos (decision of 2026-10-27); stored photos first, then videos, in the order sent. The app never sends a length or a poster: with ffmpeg the server measures the video and cuts a poster frame; without it the length stays `null` and a plain placeholder poster is used. (Officials' video upload is unchanged: one video, never with photos, and without ffmpeg the phone sends `duration_s` and a `poster`.)
+- **Videos:** MP4 or MOV, each at most `MAX_VIDEO_UPLOAD_MB` (50) and, when the server can measure it, `VIDEO_MAX_SECONDS` (60). Any number, mixed with any number of photos (decision of 2026-10-27); stored photos first, then videos, in the order sent. The app never sends a length or a poster: with ffmpeg the server measures the video and cuts a poster frame; without it the length stays `null` and a plain placeholder poster is used. (Officials' posts also take any number of photos and videos, mixed, since 2026-11-11; they upload one file per request to `POST /posts/{id}/media/`, and without ffmpeg the phone sends `duration_s` and a `poster` for each video.)
 - **Feed:** a published citizen post shows like any post: `media_count` counts photos and videos, `video` is its first video, `image_url` its first photo, and `GET /feed/posts/{id}/` lists every photo and video in `media`.
 - **Review:** the post goes straight to `PENDING` and into the review queue of every official whose area contains the village: the Village Admin, the Mandal Admin, the District Admin and the Super Admin, at the same time (CP1). The Village, Mandal and District Admins are notified. The first decision wins; after `REVIEW_ESCALATION_HOURS` without a decision the next level up is alerted, exactly as for Panchayat members' posts (owner decision Q1).
 - **Separate queue:** `GET /review/queue/` and `GET /posts/` take `source=citizen` or `source=official`; without it they list both. The review queue also returns `"source_counts": {"official": 3, "citizen": 7}` (every other filter applied, `source` ignored) for the two tabs.

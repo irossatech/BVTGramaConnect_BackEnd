@@ -301,18 +301,19 @@ def test_not_a_video(api, world, make_post, ffmpeg, file):
     assert response.status_code == 415
 
 
-def test_one_video_and_never_with_photos(api, world, make_post, ffmpeg):
-    with_video = make_post("pm_kolakaluru", "kolakaluru", submit=False)
-    assert send_video(api, world, with_video).status_code == 201
-    second = send_video(api, world, with_video)
-    assert second.status_code == 409 and code(second) == "media_conflict"
-    photo = send_photo(api, world, with_video)
-    assert photo.status_code == 409 and code(photo) == "media_conflict"
+@pytest.mark.parametrize("author, area", [("pm_kolakaluru", "kolakaluru"), ("super", "ap")])
+def test_any_number_of_videos_mixed_with_photos(api, world, make_post, ffmpeg, super_admin_can_post, author, area):
+    """Lead's decision of 2026-11-11: officials and the Super Admin, like citizens, mix any number of each."""
+    post = make_post(author, area, submit=False)
+    kinds = ["video", "photo", "video", "photo", "photo", "video"]
+    for kind in kinds:
+        response = (send_video if kind == "video" else send_photo)(api, world, post, actor=author)
+        assert response.status_code == 201, response.json()
+    stored = list(post.media.order_by("order").values_list("kind", "order"))
+    assert stored == [("video" if k == "video" else "image", n) for n, k in enumerate(kinds)]
 
-    with_photo = make_post("pm_kolakaluru", "kolakaluru", submit=False, title="ఫోటో")
-    assert send_photo(api, world, with_photo).status_code == 201
-    video = send_video(api, world, with_photo)
-    assert video.status_code == 409 and code(video) == "media_conflict"
+    detail = api(world.users[author]).get(f"/api/v1/posts/{post.id}/").json()
+    assert [m["kind"] for m in detail["media"]] == [k if k == "video" else "image" for k in kinds]
 
 
 def test_video_posts_can_be_switched_off(api, world, make_post, ffmpeg, settings):
