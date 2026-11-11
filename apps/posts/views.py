@@ -23,8 +23,8 @@ from apps.audit.services import record
 from apps.citizens import services as citizen_services
 from apps.geography.areas import AreaRef, within_q
 from apps.geography.models import AreaLevel
-from grama.exceptions import ApiError, out_of_area
 from grama.pagination import use_known_count
+from grama.exceptions import ApiError, out_of_area
 
 from . import media as media_service
 from . import services
