@@ -38,7 +38,7 @@ gc showmigrations
 | Background jobs log | `journalctl -u gramaconnect-qcluster -f` |
 | Nginx logs | `/var/log/nginx/gramaconnect.access.log`, `gramaconnect.error.log` |
 | Restart the app | `sudo systemctl restart gramaconnect-gunicorn gramaconnect-qcluster` |
-| Health | `curl -s https://<domain>/api/v1/health/` |
+| Health | `curl -s https://<domain>/api/v1/health/` (`"worker": "late"` means the background jobs stopped: restart qcluster) |
 | Last backups | `systemctl list-timers gramaconnect-backup.timer` and `journalctl -u gramaconnect-backup -n 50` |
 | Banned IPs | `sudo fail2ban-client status sshd`, `sudo fail2ban-client status nginx-limit-req` |
 | Unban an IP | `sudo fail2ban-client set nginx-limit-req unbanip <ip>` |
