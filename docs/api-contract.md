@@ -1215,7 +1215,7 @@ Permission `service_requests.manage_services` (Super Admin only); everyone else 
 | An admin of the area, or the Super Admin, when **nobody holds** the request | `assign` only, so it is not stuck |
 | Everyone else who sees it (including the Village Admin after passing it on) | `[]` |
 
-- **Nobody holds it** when it was never assigned (the village has no Village Admin), or its assignee was later blocked or lost their role over the village.
+- **Nobody holds it** when it was never assigned (the village has no Village Admin), or its assignee was later blocked or lost their role over the village. A new official who has not yet changed their temporary password still holds it, and may be chosen as the assignee; they act on it after their first login.
 - Without the action: `403 permission_denied`. A `status` or a `note` needs `set_status`; `assigned_to` needs `assign`.
 - Permissions: `service_requests.view_service_requests` (the four admin groups and Panchayat members) and `service_requests.manage_service_requests` (the four admin groups), each over the request's village. `manage_service_requests` now only means "may assign a request nobody holds".
 - **Statuses:** `NEW` (default), `APPROVED`, `IN_PROGRESS`, `COMPLETED`, `REJECTED`. The assignee may set any of them; the app suggests NEW → APPROVED → IN_PROGRESS → COMPLETED.
