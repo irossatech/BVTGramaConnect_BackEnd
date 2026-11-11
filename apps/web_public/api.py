@@ -222,7 +222,14 @@ class ContactMessageListView(generics.ListAPIView):
     serializer_class = ContactMessageAdminSerializer
 
     def get_queryset(self):
-        queryset = ContactMessage.objects.select_related("handled_by").order_by("-created_at", "-id")
+        # Decision of 2026-11-11, like the audit log: unhandled messages are always listed; handled
+        # ones for CONTACT_MESSAGE_HANDLED_VISIBLE_DAYS after they were handled. Nothing is deleted.
+        cutoff = timezone.now() - timedelta(days=settings.CONTACT_MESSAGE_HANDLED_VISIBLE_DAYS)
+        queryset = (
+            ContactMessage.objects.select_related("handled_by")
+            .exclude(handled=True, handled_at__lt=cutoff)
+            .order_by("-created_at", "-id")
+        )
         wanted = self.request.query_params.get("status", "").strip().lower()
         if wanted == "new":
             queryset = queryset.filter(handled=False)
@@ -241,6 +248,11 @@ class ContactMessageListView(generics.ListAPIView):
     @extend_schema(summary="Website contact messages, newest first")
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
+
+    def list(self, request, *args, **kwargs):
+        response = super().list(request, *args, **kwargs)
+        response.data["handled_visible_days"] = settings.CONTACT_MESSAGE_HANDLED_VISIBLE_DAYS
+        return response
 
 
 class ContactMessageDetailView(APIView):

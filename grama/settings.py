@@ -478,6 +478,14 @@ CITIZEN_MAX_PHOTOS = env.int("CITIZEN_MAX_PHOTOS", default=0)
 CITIZEN_REGISTRATIONS_PER_IP_PER_DAY = env.int("CITIZEN_REGISTRATIONS_PER_IP_PER_DAY", default=0)
  
 SERVICE_REQUESTS_PER_DAY = env.int("SERVICE_REQUESTS_PER_DAY", default=10)
+# Officials' lists (decision of 2026-11-11): a completed or rejected request is listed while its last
+# change is at most this many days old; open requests always. Nothing is deleted.
+SERVICE_REQUEST_CLOSED_VISIBLE_DAYS = env.int("SERVICE_REQUEST_CLOSED_VISIBLE_DAYS", default=180)
+# The console's contact messages: a handled message is listed for this many days after it was
+# handled; unhandled ones always. Nothing is deleted.
+CONTACT_MESSAGE_HANDLED_VISIBLE_DAYS = env.int("CONTACT_MESSAGE_HANDLED_VISIBLE_DAYS", default=180)
+if SERVICE_REQUEST_CLOSED_VISIBLE_DAYS < 1 or CONTACT_MESSAGE_HANDLED_VISIBLE_DAYS < 1:
+    raise ImproperlyConfigured("SERVICE_REQUEST_CLOSED_VISIBLE_DAYS and CONTACT_MESSAGE_HANDLED_VISIBLE_DAYS must be at least 1.")
 SERVICES_PUBLIC_MAX_AGE = env.int("SERVICES_PUBLIC_MAX_AGE", default=300)
 SERVICE_LOGO_MAX_UPLOAD_MB = env.int("SERVICE_LOGO_MAX_UPLOAD_MB", default=2)
 SERVICE_LOGO_MIN_PX = env.int("SERVICE_LOGO_MIN_PX", default=64)
