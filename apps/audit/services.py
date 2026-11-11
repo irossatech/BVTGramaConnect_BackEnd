@@ -4,11 +4,31 @@
            area=AreaRef("VILLAGE", 12), via="app", data={"comment": "…"})
 
 Call it inside the same transaction as the change it describes.
+
+Every text inside `data` is cut at AUDIT_TEXT_MAX_CHARS (2,000 by default), with "…" at the end.
+The API already limits comments and notes to 500 characters, so this only catches text that
+something lets through by mistake: the audit log is never cleaned, so it must not fill up.
 """
 
 from __future__ import annotations
 
+from django.conf import settings
+
 from .models import AuditLog, type_for_action
+
+#: Put at the end of a text that was cut.
+CUT_MARK = "…"
+
+
+def _cap(value, limit: int):
+    """`value` with every text in it, at any depth, at most `limit` characters long."""
+    if isinstance(value, str):
+        return value if len(value) <= limit else value[: limit - len(CUT_MARK)] + CUT_MARK
+    if isinstance(value, dict):
+        return {key: _cap(item, limit) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_cap(item, limit) for item in value]
+    return value
 
 
 def record(
@@ -46,5 +66,5 @@ def record(
         area_level=area.level if area is not None else "",
         area_id=area.id if area is not None else None,
         via=via,
-        data=data or {},
+        data=_cap(data or {}, settings.AUDIT_TEXT_MAX_CHARS),
     )
