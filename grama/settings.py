@@ -385,6 +385,9 @@ Q_CLUSTER = {
     "name": "grama",
     "orm": "default",
     "workers": env.int("Q_WORKERS", default=2),
+    # Seconds between queue checks while idle. django-q2's default, 0.2, asks the database five times a
+    # second all day; 1 keeps pushes prompt at a fifth of the load (audit finding BE-DB-017).
+    "poll": env.float("Q_POLL", default=1.0),
     "timeout": 120,
     "retry": 180,
     "max_attempts": 3,
