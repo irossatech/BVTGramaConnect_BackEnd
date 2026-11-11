@@ -16,12 +16,14 @@ without metadata (strip_metadata, G7). Without them the app must send
 from __future__ import annotations
 
 import io
+import logging
 import os
 import shutil
 import subprocess
 import tempfile
 import warnings
 from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 
 from django.conf import settings
@@ -43,6 +45,41 @@ MAX_PIXELS = 40_000_000
 VIDEO_EXTENSIONS = {".mp4": "mp4", ".m4v": "mp4", ".mov": "mov"}
 #: A little slack for players that round 60.2 s up.
 DURATION_SLACK_S = 0.5
+
+logger = logging.getLogger("grama.media")
+
+# --- Files written inside a transaction ---------------------------------------------------------
+#
+# Photos and videos are saved to disk inside the database transaction that stores their PostMedia row.
+# When that transaction fails, the row is rolled back but a file would stay on disk with nothing pointing
+# to it (audit finding BE-DB-015). Callers wrap the transaction in files_removed_on_failure(); the store
+# functions note every file they write, and the files are deleted again when the block raises.
+
+_written: ContextVar[list | None] = ContextVar("media_files_written", default=None)
+
+
+def _noted(field) -> None:
+    written = _written.get()
+    if written is not None and field:
+        written.append((field.storage, field.name))
+
+
+@contextmanager
+def files_removed_on_failure():
+    """Delete the media files saved inside the block when the block raises (its rows are rolled back)."""
+    written: list = []
+    token = _written.set(written)
+    try:
+        yield
+    except BaseException:
+        for storage, name in written:
+            try:
+                storage.delete(name)
+            except Exception:  # never hide the error that undid the change
+                logger.warning("Could not remove an orphaned media file after a failed save.")
+        raise
+    finally:
+        _written.reset(token)
 
 
 def _unsupported(message=None) -> ApiError:
@@ -134,7 +171,7 @@ def add_photo(user, post: Post, upload, focus_y=None) -> PostMedia:
             fields={"file": [_("Too many photos.")]},
         )
     processed = process_image(upload)
-    with transaction.atomic():
+    with files_removed_on_failure(), transaction.atomic():
         return store_photo(post, processed, order=post.media.count())
 
 
@@ -143,8 +180,11 @@ def store_photo(post: Post, processed: tuple, order: int) -> PostMedia:
     large, medium, thumb, width, height = processed
     media = PostMedia(post=post, width=width, height=height, bytes=len(large), order=order)
     media.image.save(f"{media.id}-{settings.POST_IMAGE_MAX_PX}.webp", ContentFile(large), save=False)
+    _noted(media.image)
     media.medium.save(f"{media.id}-{settings.POST_MEDIUM_PX}.webp", ContentFile(medium), save=False)
+    _noted(media.medium)
     media.thumbnail.save(f"{media.id}-{settings.POST_THUMB_PX}.webp", ContentFile(thumb), save=False)
+    _noted(media.thumbnail)
     media.save()
     return media
 
@@ -352,9 +392,13 @@ def store_video(post: Post, prepared: PreparedVideo, order: int) -> PostMedia:
     )
     upload.seek(0)
     media.video.save(f"{media.id}.{prepared.container}", upload, save=False)
+    _noted(media.video)
     media.image.save(f"{media.id}-poster-{settings.POST_IMAGE_MAX_PX}.webp", ContentFile(large), save=False)
+    _noted(media.image)
     media.medium.save(f"{media.id}-poster-{settings.POST_MEDIUM_PX}.webp", ContentFile(medium), save=False)
+    _noted(media.medium)
     media.thumbnail.save(f"{media.id}-poster-{settings.POST_THUMB_PX}.webp", ContentFile(thumb), save=False)
+    _noted(media.thumbnail)
     media.save()
     return media
 
@@ -366,7 +410,7 @@ def add_video(user, post: Post, upload, *, duration_s=None, poster=None) -> Post
     if post.media.exists():
         raise _media_conflict(_("A post has either photos or one video."))
     prepared = prepare_video(upload, duration_s=duration_s, poster=poster)
-    with transaction.atomic():
+    with files_removed_on_failure(), transaction.atomic():
         return store_video(post, prepared, order=0)
 
 
