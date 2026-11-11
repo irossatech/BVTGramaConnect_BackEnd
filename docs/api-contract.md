@@ -681,8 +681,14 @@ Needs `audit.view_audit_log`; the export needs `audit.export_audit_log`.
 
 | Method and path | Request | Response |
 |---|---|---|
-| `GET /audit` | `q` (actor, action, target, area), `type`, `actor`, `action`, `from`, `to` (dates), `page` | Page of `AuditEntry`, plus `"counts_by_type"` |
-| `GET /audit/export?format=csv&…` | same filters | CSV file. UTF-8 with BOM so Excel shows Telugu. Writes `report.exported`. |
+| `GET /audit` | `q` (actor, action, target, area), `type`, `actor`, `action`, `from`, `to` (dates), `page` | Page of `AuditEntry`, plus `"counts_by_type"` and `"window": {"from": "2026-08-13", "to": "2026-11-11"}`, the days actually shown |
+| `GET /audit/export?format=csv&…` | same filters | CSV file. UTF-8 with BOM so Excel shows Telugu. Writes `report.exported`. More than 50,000 matching entries: `400 validation_error` on `from` and `to` ("Choose a shorter date range"), and nothing is written. |
+
+**Which days are shown** (owner decision of 2026-11-11), the same for the list, its counts and the export:
+- Without `from` and `to`: the last 90 days (`AUDIT_DEFAULT_DAYS`).
+- With `from` and/or `to`: those days, but never further back than 180 days (`AUDIT_VISIBLE_DAYS`, about six months). An earlier `from` starts at that limit; `window.from` says where it started. Only `to`: from the limit up to `to`.
+- Search (`q`) still matches text anywhere in the actor, action, target and role, inside these days.
+- Older entries stay in the database; no endpoint shows them.
 
 Audit entries are append-only. No endpoint edits or deletes them.
 

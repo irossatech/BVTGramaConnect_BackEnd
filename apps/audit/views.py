@@ -2,9 +2,10 @@
 
 import io
 import json
-from datetime import datetime, time
+from datetime import date, datetime, time, timedelta
 from functools import partial
 
+from django.conf import settings
 from django.core.paginator import Paginator
 from django.db.models import Count, Q
 from django.http import HttpResponse
@@ -66,16 +67,41 @@ class AuditEntrySerializer(serializers.ModelSerializer):
         return describer_from(self.context).describe(AreaRef(obj.area_level, obj.area_id))
 
 
-def _day(value: str, name: str, end: bool = False):
-    day = parse_date(value)
+def _date(value: str, name: str) -> date:
+    try:
+        day = parse_date(value)
+    except ValueError:  # well formed but impossible, such as 2026-13-40
+        day = None
     if day is None:
         raise ApiError("validation_error", _("Use a date like 2026-10-14."), fields={name: [_("Invalid date.")]})
+    return day
+
+
+def _moment(day: date, end: bool = False):
     return timezone.make_aware(datetime.combine(day, time.max if end else time.min))
+
+
+def audit_window(params) -> tuple[date, date | None]:
+    """The first and last day shown (the last is None: up to now). Contract section 8, "Which days are shown".
+
+    No dates: the last AUDIT_DEFAULT_DAYS. Dates: as asked, but never before the AUDIT_VISIBLE_DAYS limit;
+    older entries stay in the database and no screen shows them (owner decision of 2026-11-11).
+    """
+    today = timezone.localdate()
+    earliest = today - timedelta(days=settings.AUDIT_VISIBLE_DAYS)
+    start = _date(params["from"], "from") if params.get("from") else None
+    end = _date(params["to"], "to") if params.get("to") else None
+    if start is None and end is None:
+        start = today - timedelta(days=settings.AUDIT_DEFAULT_DAYS)
+    return max(start or earliest, earliest), end
 
 
 def filtered(request, *, with_type: bool = True):
     params = request.query_params
-    queryset = AuditLog.objects.all()
+    start, end = audit_window(params)
+    queryset = AuditLog.objects.filter(created_at__gte=_moment(start))
+    if end is not None:
+        queryset = queryset.filter(created_at__lte=_moment(end, end=True))
     query = params.get("q", "").strip()
     if query:
         queryset = queryset.filter(
@@ -88,10 +114,6 @@ def filtered(request, *, with_type: bool = True):
         queryset = queryset.filter(actor_id=params["actor"])
     if params.get("action"):
         queryset = queryset.filter(action=params["action"])
-    if params.get("from"):
-        queryset = queryset.filter(created_at__gte=_day(params["from"], "from"))
-    if params.get("to"):
-        queryset = queryset.filter(created_at__lte=_day(params["to"], "to", end=True))
     if with_type and params.get("type"):
         queryset = queryset.filter(type=params["type"])
     return queryset
@@ -147,6 +169,8 @@ class AuditListView(generics.ListAPIView):
         by_type = {t.value: 0 for t in AuditType}
         by_type.update(found)
         response.data["counts_by_type"] = by_type
+        start, end = audit_window(request.query_params)
+        response.data["window"] = {"from": start.isoformat(), "to": (end or timezone.localdate()).isoformat()}
         return response
 
 
@@ -163,11 +187,16 @@ class CSVRenderer(BaseRenderer):
         return data
 
 
-#: The export's columns, in file order, and its row limit.
+#: The export's columns, in file order. Its row limit is settings.AUDIT_EXPORT_MAX_ROWS.
 EXPORT_COLUMNS = (
     "created_at", "actor_name", "actor_role", "action", "type", "target_label", "area_level", "area_id", "via",
 )
-EXPORT_MAX_ROWS = 50000
+
+
+def too_many_rows(limit: int) -> ApiError:
+    message = _("More than %(n)d entries match. Choose a shorter date range.") % {"n": limit}
+    return ApiError("validation_error", message, fields={"from": [message], "to": [message]})
+
 
 #: Filters whose values hold no personal data; they are kept in the export's audit entry.
 PLAIN_FILTERS = ("type", "actor", "action", "from", "to", "format")
@@ -190,13 +219,13 @@ class AuditExportView(APIView):
     def get(self, request):
         if request.query_params.get("format", "csv") != "csv":
             raise ApiError("validation_error", _("Only CSV export is available."), fields={"format": ["csv"]})
+        limit = settings.AUDIT_EXPORT_MAX_ROWS
+        matching = in_reach(request, filtered(request), EXPORT).order_by("-created_at")
+        # Never a silently cut file (owner decision of 2026-11-11): too many rows is a 400, and nothing is audited.
+        if matching[: limit + 1].count() > limit:
+            raise too_many_rows(limit)
         # Only the columns the file holds (never the JSON `data`), read in chunks rather than all at once.
-        rows = (
-            in_reach(request, filtered(request), EXPORT)
-            .order_by("-created_at")
-            .values_list(*EXPORT_COLUMNS)[:EXPORT_MAX_ROWS]
-            .iterator(chunk_size=2000)
-        )
+        rows = matching.values_list(*EXPORT_COLUMNS)[:limit].iterator(chunk_size=2000)
         buffer = io.StringIO()
         writer = safe_writer(buffer)  # names and titles never run as spreadsheet formulas
         writer.writerow(["time", "user", "role", "action", "type", "target", "area_level", "area_id", "via"])

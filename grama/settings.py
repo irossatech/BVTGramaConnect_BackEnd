@@ -528,6 +528,17 @@ TRANSLATION_RETRY_MINUTES = [1, 5, 15]
 TRANSLITERATION_TIMEOUT_S = env.float("TRANSLITERATION_TIMEOUT_S", default=4.0)
 TRANSLITERATION_CACHE_S = env.int("TRANSLITERATION_CACHE_S", default=60 * 60 * 24 * 30)
 DELIVERY_RETRY_ATTEMPTS = env.int("DELIVERY_RETRY_ATTEMPTS", default=3)
+
+# Audit log screens (owner decision of 2026-11-11): the last AUDIT_DEFAULT_DAYS by default, never
+# further back than AUDIT_VISIBLE_DAYS; older entries stay in the database. Exports stop at
+# AUDIT_EXPORT_MAX_ROWS with a 400 asking for a shorter date range (apps.audit.views).
+AUDIT_DEFAULT_DAYS = env.int("AUDIT_DEFAULT_DAYS", default=90)
+AUDIT_VISIBLE_DAYS = env.int("AUDIT_VISIBLE_DAYS", default=180)
+AUDIT_EXPORT_MAX_ROWS = env.int("AUDIT_EXPORT_MAX_ROWS", default=50000)
+if not 1 <= AUDIT_DEFAULT_DAYS <= AUDIT_VISIBLE_DAYS:
+    raise ImproperlyConfigured("AUDIT_DEFAULT_DAYS must be at least 1 and no more than AUDIT_VISIBLE_DAYS.")
+if AUDIT_EXPORT_MAX_ROWS < 1:
+    raise ImproperlyConfigured("AUDIT_EXPORT_MAX_ROWS must be at least 1.")
  
  
 # ==============================================================================
