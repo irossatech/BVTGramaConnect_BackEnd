@@ -1,5 +1,7 @@
 """Shapes from docs/api-contract.md, section 17."""
 
+from collections.abc import Mapping
+
 from django.core.validators import URLValidator
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
@@ -28,6 +30,8 @@ class AdWriteSerializer(serializers.Serializer):
     duration_s = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=32767)
 
     def to_internal_value(self, data):
+        if not isinstance(data, Mapping):  # a JSON list or text: DRF's own 400 "Invalid data"
+            return super().to_internal_value(data)
         # An empty string means "none", in multipart forms and JSON alike.
         if hasattr(data, "dict"):
             data = data.dict()

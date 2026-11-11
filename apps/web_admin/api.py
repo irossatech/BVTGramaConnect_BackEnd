@@ -35,6 +35,7 @@ from apps.geography.models import AreaLevel, District, Mandal, Village
 from grama.csvsafe import safe_writer
 from grama.exceptions import ApiError, permission_denied
 from grama.pagination import PageNumberPagination
+from grama.params import is_number
 from grama.renderers import JSONRenderer
 from apps.posts.models import Post, PostStatus, ReviewAction, SettingOverride
 from apps.posts.services import targets_within
@@ -74,7 +75,7 @@ def escalation_hours() -> int:
 
 def days_param(request, default=30) -> int:
     raw = request.query_params.get("days", str(default))
-    if not raw.isdigit() or not 1 <= int(raw) <= 366:
+    if not is_number(raw) or not 1 <= int(raw) <= 366:
         raise ApiError("validation_error", _("days must be between 1 and 366."), fields={"days": [_("1 to 366.")]})
     return int(raw)
 

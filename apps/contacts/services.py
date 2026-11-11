@@ -444,6 +444,14 @@ class _Areas:
 
 
 def _read_rows(text: str, report: ImportReport) -> list[tuple[int, dict]]:
+    try:
+        return _read_csv(text, report)
+    except csv.Error as exc:  # a field over the csv module's limit (131,072 characters), for example
+        report.errors.append({"row": 0, "field": "file", "message": _("The file is not valid CSV: %s.") % exc})
+        return []
+
+
+def _read_csv(text: str, report: ImportReport) -> list[tuple[int, dict]]:
     reader = csv.DictReader(io.StringIO(text))
     headers = {(h or "").strip().lower() for h in (reader.fieldnames or [])}
     missing = REQUIRED_COLUMNS - headers

@@ -19,6 +19,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from grama.exceptions import ApiError
+from grama.params import is_number
 
 from .models import District, Mandal, State, Village
 from .nearest import nearest_village
@@ -51,7 +52,7 @@ def _int_param(request, name: str, *, required: bool) -> int | None:
         if required:
             raise ApiError("validation_error", f"The '{name}' query parameter is required.", fields={name: ["Required."]})
         return None
-    if not raw.isdigit():
+    if not is_number(raw):
         raise ApiError("validation_error", f"'{name}' must be a number.", fields={name: ["Must be a number."]})
     return int(raw)
 

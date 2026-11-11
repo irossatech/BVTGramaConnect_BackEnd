@@ -31,6 +31,7 @@ from apps.audit.services import record
 from apps.geography.areas import AreaRef, area_exists, within_q
 from apps.geography.models import AreaLevel
 from grama.exceptions import ApiError, out_of_area, permission_denied
+from grama.params import is_number
 
 from . import authz, lockout, peers
 from .authentication import client_via
@@ -165,7 +166,7 @@ class UserViewSet(
         if params.get("district"):
             level, area_id = AreaLevel.DISTRICT, params["district"]
         if level or area_id:
-            if level not in AreaLevel.values or not (area_id or "").isdigit():
+            if level not in AreaLevel.values or not is_number(area_id):
                 raise ApiError(
                     "validation_error",
                     _("Give both level and area_id."),

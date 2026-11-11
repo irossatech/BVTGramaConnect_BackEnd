@@ -22,6 +22,7 @@ from apps.accounts.authentication import client_via
 from apps.accounts.permissions import PLATFORM, HasPerm
 from apps.audit.services import record
 from grama.exceptions import ApiError
+from grama.params import is_number
 from grama.schema import ErrorSerializer
 
 from . import services
@@ -237,7 +238,7 @@ class GeoAdminVillagesView(APIView):
     )
     def get(self, request):
         mandal = request.query_params.get("mandal", "")
-        if not mandal.isdigit():
+        if not is_number(mandal):
             raise ApiError("validation_error", _("Give a mandal."), fields={"mandal": [_("Required.")]})
         villages = Village.objects.filter(mandal_id=int(mandal)).order_by("name_en")
         return Response([area_row(village) for village in villages])

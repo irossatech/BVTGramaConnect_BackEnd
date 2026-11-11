@@ -20,6 +20,7 @@ from apps.accounts.serializers import describer_from
 from apps.geography.areas import AreaRef
 from grama.csvsafe import safe_writer
 from grama.exceptions import ApiError
+from grama.params import uuid_or_none
 from grama.renderers import JSONRenderer
 from apps.accounts import authz
 from apps.accounts.authentication import client_via
@@ -83,7 +84,10 @@ def filtered(request, *, with_type: bool = True):
             | Q(actor_role__icontains=query)
         )
     if params.get("actor"):
-        queryset = queryset.filter(actor_id=params["actor"])
+        actor = uuid_or_none(params["actor"])
+        if actor is None:
+            raise ApiError("validation_error", _("Give a user id."), fields={"actor": [_("Not a user id.")]})
+        queryset = queryset.filter(actor_id=actor)
     if params.get("action"):
         queryset = queryset.filter(action=params["action"])
     if params.get("from"):

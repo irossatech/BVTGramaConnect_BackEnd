@@ -30,6 +30,7 @@ from apps.accounts.permissions import PLATFORM, HasPerm
 from apps.geography.areas import DEPTH, AreaDescriber, AreaRef, within_q
 from apps.geography.models import AreaLevel
 from grama.exceptions import ApiError
+from grama.params import UUID_REGEX, is_number
 
 from . import services
 from .models import Contact, ContactSection, ContactType
@@ -42,7 +43,6 @@ from .serializers import (
 )
 
 PERM = services.PERM
-UUID = r"[0-9a-fA-F-]{36}"
 
 LIST_FILTERS = [
     OpenApiParameter("section", OpenApiTypes.STR, enum=[s.value for s in ContactSection], description="Default AREA"),
@@ -61,7 +61,7 @@ def ordered(contacts):
 class AdminContactViewSet(viewsets.GenericViewSet):
     permission_classes = [IsAuthenticated, HasPerm(PERM)]
     serializer_class = AdminContactSerializer
-    lookup_value_regex = UUID
+    lookup_value_regex = UUID_REGEX
 
     def describe(self, contacts) -> dict:
         describer = AreaDescriber()
@@ -81,7 +81,7 @@ class AdminContactViewSet(viewsets.GenericViewSet):
             raise ApiError("validation_error", _("Section is AREA or HELPLINE."), fields={"section": list(ContactSection.values)})
         level, area_id = params.get("level"), params.get("area_id")
         if level or area_id:
-            if level not in AreaLevel.values or not (area_id or "").isdigit():
+            if level not in AreaLevel.values or not is_number(area_id):
                 raise ApiError("validation_error", _("Give both level and area_id."), fields={"area_id": [_("Required with level.")]})
             contacts = contacts.filter(within_q(AreaRef(level, int(area_id))))
         if params.get("type"):
@@ -176,6 +176,7 @@ class AdminContactTypeViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     serializer_class = AdminContactTypeSerializer
     pagination_class = None
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
+    lookup_value_regex = r"[0-9]+"  # /admin/contact-types/abc/ is a 404, not a crash
 
     def get_queryset(self):
         return ContactType.objects.live().annotate(

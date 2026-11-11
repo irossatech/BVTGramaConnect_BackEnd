@@ -21,6 +21,7 @@ from rest_framework.views import APIView
 from apps.accounts.permissions import PLATFORM, HasPerm
 from apps.geography.models import Village
 from grama.exceptions import ApiError
+from grama.params import is_number
 
 from . import services
 from .models import Ad
@@ -30,7 +31,7 @@ from .serializers import AdminAdSerializer, AdWriteSerializer, PublicAdSerialize
 def village_from(request) -> int:
     """The same answers as /contacts/: 400 without a number, 404 for an unknown or inactive village."""
     raw = request.query_params.get("village_id", "").strip()
-    if not raw.isdigit():
+    if not is_number(raw):
         raise ApiError("validation_error", _("Give a village id."), fields={"village_id": [_("Give a village id.")]})
     village_id = int(raw)
     if not Village.objects.active().filter(id=village_id).exists():
