@@ -461,6 +461,16 @@ POST_IMAGE_QUALITY = 80
  
 MAX_VIDEO_UPLOAD_MB = env.int("MAX_VIDEO_UPLOAD_MB", default=50)
 VIDEO_MAX_SECONDS = env.int("VIDEO_MAX_SECONDS", default=60)
+# How long the server may spend checking uploads (apps.posts.media, audit BE-PERF-003): each
+# ffprobe/ffmpeg step, and all photos and videos of one request together. A step that runs out of
+# time answers 415; a request over the budget answers 400. Keep the budget below Gunicorn's
+# --timeout (GUNICORN_TIMEOUT, 120 s), so a request is refused cleanly instead of being killed.
+VIDEO_PROBE_TIMEOUT_S = env.int("VIDEO_PROBE_TIMEOUT_S", default=15)
+VIDEO_POSTER_TIMEOUT_S = env.int("VIDEO_POSTER_TIMEOUT_S", default=20)
+VIDEO_STRIP_TIMEOUT_S = env.int("VIDEO_STRIP_TIMEOUT_S", default=45)
+MEDIA_PROCESSING_BUDGET_S = env.int("MEDIA_PROCESSING_BUDGET_S", default=90)
+if min(VIDEO_PROBE_TIMEOUT_S, VIDEO_POSTER_TIMEOUT_S, VIDEO_STRIP_TIMEOUT_S, MEDIA_PROCESSING_BUDGET_S) < 1:
+    raise ImproperlyConfigured("VIDEO_*_TIMEOUT_S and MEDIA_PROCESSING_BUDGET_S must be at least 1 second.")
 ESCALATION_CHECK_MINUTES = env.int("ESCALATION_CHECK_MINUTES", default=15)
 HOUSEKEEPING_KEEP_DAYS = env.int("HOUSEKEEPING_KEEP_DAYS", default=30)
  

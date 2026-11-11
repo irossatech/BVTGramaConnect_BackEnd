@@ -211,7 +211,7 @@ the scripts; the settings go by `DEBUG`), which the first production deploy writ
 | | qa | production on the panel |
 |---|---|---|
 | Settings | `DEBUG=False`, plus `SERVE_FILES`, `API_DOCS_PUBLIC` and integrity off for test builds | `DEBUG=False`: secure cookies, HSTS, the key and host checks |
-| Web server | `runserver` on `0.0.0.0:PORT` | Gunicorn on `127.0.0.1:PORT` (3 workers, `WEB_WORKERS`), no access log |
+| Web server | `runserver` on `0.0.0.0:PORT` | Gunicorn on `127.0.0.1:PORT` (3 workers, `WEB_WORKERS`; `--timeout` 120 s, `GUNICORN_TIMEOUT`), no access log |
 | Branch | `dev` | `main` (`BRANCH=dev` to override) |
 | Deploy also runs | | `check --deploy` before migrating, `collectstatic` |
 | Refused | | `SEED=1`, `QA_SQLITE=1` |

@@ -267,8 +267,10 @@ def create_post(
     if videos and not settings.VIDEO_POSTS_ENABLED:
         raise permission_denied(_("Video posts are switched off."))
     # Every file is checked (and photos re-encoded) before anything is written: 413/415 leave no post behind.
-    processed = [media.process_image(photo) for photo in photos]
-    prepared = [media.prepare_video(video, lenient=True) for video in videos]
+    # Any number of files (lead's decision), but one time budget for all of them (BE-PERF-003).
+    with media.media_budget("videos" if videos else "photos"):
+        processed = [media.process_image(photo) for photo in photos]
+        prepared = [media.prepare_video(video, lenient=True) for video in videos]
 
     def attach(post):
         for order, item in enumerate(processed):
