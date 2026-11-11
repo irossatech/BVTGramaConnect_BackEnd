@@ -36,7 +36,7 @@ from grama.csvsafe import safe_writer
 from grama.exceptions import ApiError, permission_denied
 from grama.pagination import PageNumberPagination
 from grama.renderers import JSONRenderer
-from apps.posts.models import Post, PostStatus, ReviewAction, SettingOverride
+from apps.posts.models import Post, PostStatus, ReviewAction
 from apps.posts.services import targets_within
 
 from .permissions import client_via
@@ -65,9 +65,13 @@ def hours_since(value, now) -> float | None:
 
 
 def escalation_hours() -> int:
-    override = SettingOverride.objects.filter(key="review_escalation_hours").first()
+    """The hours in force: the console's saved value, else the setting. Read through runtime(), which
+    uses the same key the console saves ("REVIEW_ESCALATION_HOURS"); the old lower-case lookup found it
+    only on MySQL, whose collation ignores case (audit finding BE-DB-021)."""
+    from apps.posts.services import runtime
+
     try:
-        return int(override.value) if override else settings.REVIEW_ESCALATION_HOURS
+        return int(runtime("REVIEW_ESCALATION_HOURS"))
     except (TypeError, ValueError):
         return settings.REVIEW_ESCALATION_HOURS
 
