@@ -667,7 +667,7 @@ Invite and reset emails use the same retries (section 3).
 | Method and path | Who | Request or response |
 |---|---|---|
 | `GET /admin/notification-templates/` | Super Admin | `[{"key", "name", "name_te", "name_en", "channel": "push", "recipient": "author"\|"citizens"\|"reviewers"\|"higher_admin"\|"citizen"\|"assignee"\|"super_admins", "text_te", "text_en", "variables": ["title", "comment"], "editable": true, "updated_at"}]` |
-| `PATCH /admin/notification-templates/{key}/` | Super Admin | `{"text_te", "text_en"}`, both required; only the listed `variables` may appear. Audited as `template.updated`. |
+| `PATCH /admin/notification-templates/{key}/` | Super Admin | `{"text_te", "text_en"}`, both required; only the listed `variables` may appear, each written as a plain `{name}` (nothing else inside the braces; a brace on its own is `{{` or `}}`). Anything else: `400 validation_error` on that field. Audited as `template.updated`. |
 
 Keys, seeded by a migration: `post_published`, `post_approved`, `post_recheck`, `post_discarded`, `post_unpublished`, `review_pending`, `escalation`, the service-request keys (section 16) and `super_admin_added` (recipient `super_admins`, variables `actor` and `name`; section 3), all push and editable. There are no SMS texts.
 

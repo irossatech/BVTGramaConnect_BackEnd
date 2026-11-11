@@ -81,8 +81,19 @@ class NotificationTemplateUpdateSerializer(serializers.Serializer):
         import string
 
         for field in ("text_te", "text_en"):
-            used = {name for _, name, _, _ in string.Formatter().parse(attrs[field]) if name}
-            unknown = used - allowed
+            # Only plain {name} fields: a stray "{", an empty "{}", or a format such as
+            # "{title:>999999999}" would break or blow up every push sent with this text.
+            try:
+                fields = [(name, spec, conversion) for _, name, spec, conversion in string.Formatter().parse(attrs[field]) if name is not None]
+            except ValueError:
+                raise serializers.ValidationError(
+                    {field: ["Braces do not match. Write a variable as {name}, and a brace on its own as {{ or }}."]}
+                ) from None
+            if any(not name or spec or conversion for name, spec, conversion in fields):
+                raise serializers.ValidationError(
+                    {field: [f"Write each variable as a plain {{name}}, without anything else inside the braces. Use: {', '.join(template.variables)}."]}
+                )
+            unknown = {name for name, _, _ in fields} - allowed
             if unknown:
                 raise serializers.ValidationError(
                     {field: [f"Unknown variable(s): {', '.join(sorted(unknown))}. Use: {', '.join(template.variables)}."]}

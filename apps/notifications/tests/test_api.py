@@ -152,3 +152,36 @@ def test_unknown_variables_are_rejected(api, world):
     )
     assert response.status_code == 400
     assert "text_te" in response.json()["error"]["fields"]
+
+
+@pytest.mark.parametrize(
+    "text_en",
+    [
+        "Please fix: {comment",          # a stray brace: answered 500 before
+        "Please fix: {}",                # positional field: every push of this kind failed
+        "Please fix: {comment:>999999999}",  # a format that builds a 1 GB text
+        "Please fix: {comment!r}",
+        "Please fix: {comment[0]}",
+    ],
+)
+def test_texts_that_would_break_the_push_are_rejected(api, world, text_en):
+    """BE_02, BE-SEC-105: only plain {name} fields; the stored text stays as it was."""
+    before = NotificationTemplate.objects.get(key="post_recheck").text_en
+    response = api(world.users["super"]).patch(
+        "/api/v1/admin/notification-templates/post_recheck/",
+        {"text_te": "సరిచేయండి: {comment}", "text_en": text_en},
+        format="json",
+    )
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "validation_error"
+    assert "text_en" in response.json()["error"]["fields"]
+    assert NotificationTemplate.objects.get(key="post_recheck").text_en == before
+
+
+def test_doubled_braces_are_still_allowed(api, world):
+    response = api(world.users["super"]).patch(
+        "/api/v1/admin/notification-templates/post_recheck/",
+        {"text_te": "సరిచేయండి: {comment}", "text_en": "Please fix {{now}}: {comment}"},
+        format="json",
+    )
+    assert response.status_code == 200
