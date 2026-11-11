@@ -70,6 +70,14 @@ def test_queries_do_not_grow_with_admins(api, world):
     assert queries() <= few
 
 
+def test_a_page_reads_only_its_own_admins(api, world):
+    """The old report read every admin and every decision into Python and then cut the page out."""
+    with CaptureQueriesContext(connection) as ctx:
+        assert api(world.users["super"]).get(f"{URL}?page_size=5").status_code == 200
+    admin_reads = [q["sql"] for q in ctx.captured_queries if 'FROM "accounts_user"' in q["sql"] and "reviewed" in q["sql"]]
+    assert admin_reads and all("LIMIT 5" in sql for sql in admin_reads if "COUNT(" not in sql.split("FROM")[0])
+
+
 def test_the_csv_still_has_every_admin(api, world):
     for index in range(30):
         make_official(world, f"va_extra_{index:02d}", Role.VILLAGE_ADMIN, "kolakaluru", f"9222{index:06d}")
