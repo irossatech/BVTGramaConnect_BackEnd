@@ -322,7 +322,11 @@ def _discard_pending(user, device: CitizenDevice, comment: str) -> int:
 
 
 def block(user, post: Post, comment: str, days: int) -> CitizenDevice:
-    """Block the phone that wrote `post` (all its installs) for `days`, then discard its pending posts."""
+    """Block the phone that wrote `post` (all its installs) for `days`, then discard its pending posts.
+
+    One transaction (audit finding BE-DB-023): the block and the discards are saved together or not at
+    all. A post another reviewer decided first is skipped, as before.
+    """
     grant = _super_admin_or_raise(user, post)
     comment = _comment_or_raise(comment)
     device = post.citizen
@@ -336,7 +340,7 @@ def block(user, post: Post, comment: str, days: int) -> CitizenDevice:
             data={"post_id": str(post.pk), "comment": comment, "days": days,
                   "until": drf_serializers.DateTimeField().to_representation(until)},
         )
-    _discard_pending(user, device, comment)
+        _discard_pending(user, device, comment)
     device.refresh_from_db()
     return device
 
@@ -358,13 +362,17 @@ def unblock(user, post: Post) -> CitizenDevice:
 
 
 def discard_all(user, post: Post, comment: str) -> int:
-    """Discard every pending post of the phone that wrote `post`, in one action. Returns how many."""
+    """Discard every pending post of the phone that wrote `post`, in one action. Returns how many.
+
+    The discards and their summary audit entry are saved together, in one transaction (BE-DB-023).
+    """
     grant = _super_admin_or_raise(user, post)
     comment = _comment_or_raise(comment)
-    count = _discard_pending(user, post.citizen, comment)
-    record(
-        "citizen.posts_discarded", actor=user, actor_role=grant.key, target=post.citizen,
-        target_label=str(post.citizen), area=post.target,
-        data={"post_id": str(post.pk), "comment": comment, "discarded": count},
-    )
+    with transaction.atomic():
+        count = _discard_pending(user, post.citizen, comment)
+        record(
+            "citizen.posts_discarded", actor=user, actor_role=grant.key, target=post.citizen,
+            target_label=str(post.citizen), area=post.target,
+            data={"post_id": str(post.pk), "comment": comment, "discarded": count},
+        )
     return count
