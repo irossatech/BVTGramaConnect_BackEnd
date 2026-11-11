@@ -34,7 +34,7 @@ from rest_framework import status
 from apps.accounts import authz
 from apps.audit.services import record
 from apps.geography.areas import AreaRef, area_exists
-from apps.geography.models import AreaLevel, District, Mandal, State, Village, clean_name, name_key
+from apps.geography.models import MODEL_BY_LEVEL, AreaLevel, District, Mandal, State, Village, clean_name, name_key
 from grama.exceptions import ApiError, out_of_area
 
 from .models import Contact, ContactSection, ContactType, PhoneKind
@@ -156,6 +156,13 @@ def check_capacity(area: AreaRef, exclude_id=None, extra: int = 1) -> None:
         raise invalid("area", _("This area already has the most numbers allowed."))
 
 
+def hold_area(area: AreaRef) -> None:
+    """Inside a transaction: wait for any other number being added to this area to finish (a row lock on
+    the area). With the checks made again after the write, the per-area limit holds under parallel adds."""
+    model = MODEL_BY_LEVEL[area.level]
+    list(model.objects.select_for_update().filter(id=area.id).values_list("pk", flat=True))
+
+
 def may_manage(actor, area: AreaRef) -> bool:
     return authz.can(actor, PERM, area)
 
@@ -197,6 +204,7 @@ def create_contact(actor, data: dict, *, via: str = "app") -> Contact:
     sort_order = check_sort_order(data.get("sort_order", 100))
     consent = bool(data.get("consent_recorded", False))
     check_consent(kind, consent)
+    hold_area(area)
     check_duplicate(contact_type, phone, area)
     check_capacity(area)
     contact = Contact.objects.create(
@@ -205,6 +213,9 @@ def create_contact(actor, data: dict, *, via: str = "app") -> Contact:
         verified_at=timezone.now(), created_by=actor, updated_by=actor,
     )
     _check_type_still_live(contact_type)
+    # Again with this number written (audit BE-DB-014): two adds at the same moment cannot pass either rule.
+    check_duplicate(contact_type, phone, area, exclude_id=contact.id)
+    check_capacity(area, extra=0)
     record("contact.created", actor=actor, target=contact, target_label=contact.name, area=area, via=via,
            data=_audit_data(contact))
     return contact

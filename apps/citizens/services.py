@@ -146,6 +146,15 @@ def _seconds_until(oldest, now) -> int:
     return max(1, int((oldest + DAY - now).total_seconds()) + 1)
 
 
+def _registrations_within(ip_hash: str, limit: int, now, *, written: bool = False) -> None:
+    """429 throttled once `limit` phones registered from this network in 24 hours (written: counting this one)."""
+    recent = CitizenDevice.objects.filter(registered_ip_hash=ip_hash, created_at__gt=now - DAY)
+    count = recent.count()
+    if count > limit or (count == limit and not written):
+        oldest = recent.order_by("-created_at").values_list("created_at", flat=True)[limit - 1]
+        raise throttled(_("Too many new registrations from this network today."), _seconds_until(oldest, now))
+
+
 def register(
     *, nonce: str, integrity_token: str, platform: str, village_id: int, app_version: str, ip: str | None,
     android_id: str = "", fcm_token: str = "", language: str = "te",
@@ -159,10 +168,7 @@ def register(
     ip_hash = hash_ip(ip)
     limit = settings.CITIZEN_REGISTRATIONS_PER_IP_PER_DAY
     if ip_hash and limit:
-        recent = CitizenDevice.objects.filter(registered_ip_hash=ip_hash, created_at__gt=now - DAY)
-        if recent.count() >= limit:
-            oldest = recent.order_by("-created_at").values_list("created_at", flat=True)[limit - 1]
-            raise throttled(_("Too many new registrations from this network today."), _seconds_until(oldest, now))
+        _registrations_within(ip_hash, limit, now)
 
     checked = settings.CITIZEN_INTEGRITY_REQUIRED
     if checked:
@@ -193,6 +199,9 @@ def register(
                 nonce=nonce,
                 integrity_checked=checked,
             )
+            if ip_hash and limit:
+                # Counted again with this phone written (audit BE-DB-014): over the limit undoes it.
+                _registrations_within(ip_hash, limit, now, written=True)
             record(
                 "citizen.registered",
                 target=device,
@@ -235,6 +244,26 @@ def posts_per_day() -> int:
     return int(post_services.runtime("CITIZEN_POSTS_PER_DAY"))
 
 
+def hold_phone(device: CitizenDevice) -> None:
+    """Inside a transaction: wait for any other write from this phone (any install) to finish (row locks).
+
+    With the count made again after the write, this keeps a daily limit from being passed by requests
+    sent at the same moment. Databases without row locks (SQLite) run one write at a time anyway.
+    """
+    list(same_phone(device).select_for_update().values_list("pk", flat=True))
+
+
+def _within_daily_limit(recent, limit: int, now, *, written: bool = False) -> None:
+    """429 throttled once the phone reached `limit` in the last 24 hours.
+
+    written=True counts the row this request just added: then only more than `limit` is refused.
+    """
+    count = recent.count()
+    if count > limit or (count == limit and not written):
+        oldest = recent.order_by("-created_at").values_list("created_at", flat=True)[limit - 1]
+        raise throttled(_("You can send at most %(n)d posts a day.") % {"n": limit}, _seconds_until(oldest, now))
+
+
 def posts_today(device: CitizenDevice, now=None):
     """Posts from this phone, any of its installs, in the last 24 hours."""
     now = now or timezone.now()
@@ -256,12 +285,7 @@ def create_post(
         raise blocked_error(block_row)
     limit = posts_per_day()
     if limit:
-        recent = posts_today(device, now)
-        if recent.count() >= limit:
-            oldest = recent.order_by("-created_at").values_list("created_at", flat=True)[limit - 1]
-            raise throttled(
-                _("You can send at most %(n)d posts a day.") % {"n": limit}, _seconds_until(oldest, now)
-            )
+        _within_daily_limit(posts_today(device, now), limit, now)
     if settings.CITIZEN_MAX_PHOTOS and len(photos) > settings.CITIZEN_MAX_PHOTOS:
         raise _validation("photos", _("At most %(n)d photos.") % {"n": settings.CITIZEN_MAX_PHOTOS})
     if videos and not settings.VIDEO_POSTS_ENABLED:
@@ -271,6 +295,11 @@ def create_post(
     prepared = [media.prepare_video(video, lenient=True) for video in videos]
 
     def attach(post):
+        # Inside the post's transaction, once the post is written: the daily limit again, with the phone's
+        # installs locked, so two posts sent at the same moment cannot both pass it (audit BE-DB-014).
+        if limit:
+            hold_phone(device)
+            _within_daily_limit(posts_today(device, now), limit, now, written=True)
         for order, item in enumerate(processed):
             media.store_photo(post, item, order)
         for order, item in enumerate(prepared, start=len(processed)):

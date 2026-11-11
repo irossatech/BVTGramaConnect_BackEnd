@@ -16,6 +16,8 @@ The Super Admin role is a peer role (peers.py): a Super Admin gives it with thei
 password, never to the point of more than MAX_SUPER_ADMINS, and never takes the last one away.
 """
 
+import functools
+
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Prefetch, Q
 from django.shortcuts import get_object_or_404
@@ -36,7 +38,7 @@ from . import authz, lockout, peers
 from .authentication import client_via
 from .authz import ANYWHERE, RoleInfo
 from .credentials import check_new_password, confirm_own_password, set_temporary_password
-from .models import RoleAssignment, User
+from .models import RoleAssignment, User, normalize_login
 from .permissions import ManagesUsers
 from .signals import super_admin_added
 from .serializers import (
@@ -100,6 +102,27 @@ def require_action(actor, perm: str, target: User, message) -> None:
 
 def duplicate(message, field: str) -> ApiError:
     return ApiError("duplicate", message, status=status.HTTP_409_CONFLICT, fields={field: [message]})
+
+
+def duplicates_as_conflict(view):
+    """A username or mobile number taken by another request at the same moment: the database's unique rule
+    refuses the second save; answer 409 duplicate as the checks before the save do, never a 500 (BE-DB-014)."""
+
+    @functools.wraps(view)
+    def wrapper(self, request, *args, **kwargs):
+        try:
+            return view(self, request, *args, **kwargs)
+        except IntegrityError:
+            data = request.data if hasattr(request.data, "get") else {}
+            username = normalize_login(data.get("username"))
+            if username and User.objects.filter(username=username).exists():
+                raise duplicate(_("This username is taken."), "username") from None
+            mobile = (data.get("mobile") or "").strip()
+            if mobile and User.objects.filter(mobile=mobile).exists():
+                raise duplicate(_("This mobile number already belongs to an official."), "mobile") from None
+            raise
+
+    return wrapper
 
 
 def assignments_prefetch() -> Prefetch:
@@ -245,6 +268,7 @@ class UserViewSet(
         request=UserCreateSerializer,
         responses={201: CREATED_RESPONSE},
     )
+    @duplicates_as_conflict
     def create(self, request, *args, **kwargs):
         data = UserCreateSerializer(data=request.data)
         data.is_valid(raise_exception=True)
@@ -285,6 +309,7 @@ class UserViewSet(
         return self._respond(user, status_code=status.HTTP_201_CREATED, temporary_password=generated, wrap=True)
 
     @extend_schema(summary="Change a user's name, language or contact details", request=UserUpdateSerializer, responses=UserSerializer)
+    @duplicates_as_conflict
     def partial_update(self, request, *args, **kwargs):
         user = self.get_object()
         data = UserUpdateSerializer(user, data=request.data, partial=True)
