@@ -89,7 +89,9 @@ class PlayIntegrityVerifier:
             url, data=json.dumps({"integrityToken": integrity_token}), headers={"Content-Type": "application/json"}, timeout=10
         )
         if response.status_code != 200:
-            raise IntegrityFailed(f"Google answered {response.status_code}: {response.text[:200]}")
+            # Only the status code: the message is logged (services.register), and Google's reply
+            # can echo the token and request details, which stay out of the logs.
+            raise IntegrityFailed(f"Google answered {response.status_code}")
         return response.json().get("tokenPayloadExternal", {})
 
     def verify(self, integrity_token: str, nonce: str, now: float | None = None) -> None:

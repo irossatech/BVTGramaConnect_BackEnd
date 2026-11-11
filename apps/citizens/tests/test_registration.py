@@ -214,6 +214,32 @@ def test_any_doubt_fails_the_verdict(play, changes):
         verifier.verify("token", "n-1")
 
 
+def test_a_refusal_from_google_keeps_its_reply_out_of_the_log(settings, monkeypatch):
+    """BE_02, BE-SEC-108: only the status code is kept, never Google's reply text."""
+    import google.auth.transport.requests as google_requests
+    from google.oauth2 import service_account
+
+    class Refused:
+        status_code = 400
+        text = '{"error": "bad token tok-SECRET-123 for nonce n-1"}'
+
+    class Session:
+        def __init__(self, credentials):
+            pass
+
+        def post(self, *args, **kwargs):
+            return Refused()
+
+    settings.PLAY_INTEGRITY_PACKAGE = "com.bvt.app"
+    settings.PLAY_INTEGRITY_CREDENTIALS_FILE = "unused.json"
+    monkeypatch.setattr(service_account.Credentials, "from_service_account_file", lambda *a, **k: object())
+    monkeypatch.setattr(google_requests, "AuthorizedSession", Session)
+    with pytest.raises(integrity.IntegrityFailed) as failure:
+        integrity.PlayIntegrityVerifier().decode("tok-SECRET-123")
+    assert str(failure.value) == "Google answered 400"
+    assert "SECRET" not in str(failure.value)
+
+
 def test_unconfigured_play_integrity_fails_closed(settings):
     settings.PLAY_INTEGRITY_PACKAGE = ""
     with pytest.raises(integrity.IntegrityFailed, match="not configured"):
