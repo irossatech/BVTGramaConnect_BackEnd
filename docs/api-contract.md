@@ -104,6 +104,8 @@ All errors share one shape:
 }
 ```
 
+**Request number (decision of 2026-11-11).** Every answer, success or error, carries the header `X-Request-ID`, a number for that request. The server's log lines for the request show the same number. A server error (`500 server_error`) also gives it in the body, `"request_id"`, so the app or console can show "Something went wrong (ref. 3f9c…)" and the number can be quoted when reporting it. A client may send its own `X-Request-ID` (letters, digits and dashes, 8 to 64 characters) and gets the same one back; anything else is replaced. Clients may ignore the header.
+
 | HTTP | `code` | When |
 |---|---|---|
 | 400 | `validation_error` | Bad or missing fields; `fields` lists them |

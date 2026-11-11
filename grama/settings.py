@@ -228,6 +228,8 @@ LOCAL_APPS = [
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
  
 MIDDLEWARE = [
+    # First: every answer, even an early error, carries X-Request-ID (grama/request_id.py).
+    "grama.request_id.RequestIdMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.middleware.http.ConditionalGetMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -537,11 +539,16 @@ DELIVERY_RETRY_ATTEMPTS = env.int("DELIVERY_RETRY_ATTEMPTS", default=3)
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
+    # Every line carries the request's number ("-" in background jobs), the same one the answer
+    # sends in X-Request-ID: search the log for it (grama/request_id.py).
+    "filters": {
+        "request_id": {"()": "grama.request_id.RequestIdFilter"},
+    },
     "formatters": {
-        "simple": {"format": "{asctime} {levelname} {name}: {message}", "style": "{"},
+        "simple": {"format": "{asctime} {levelname} [{request_id}] {name}: {message}", "style": "{"},
     },
     "handlers": {
-        "console": {"class": "logging.StreamHandler", "formatter": "simple"},
+        "console": {"class": "logging.StreamHandler", "formatter": "simple", "filters": ["request_id"]},
     },
     "root": {"handlers": ["console"], "level": env.str("LOG_LEVEL", default="INFO")},
     "loggers": {

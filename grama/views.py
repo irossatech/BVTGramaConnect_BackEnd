@@ -42,5 +42,10 @@ def not_found(request, exception=None):
 
 def server_error(request):
     if _is_api(request):
-        return JsonResponse({"error": {"code": "server_error", "message": "Something went wrong on the server."}}, status=500)
+        # request_id: the number to quote when reporting it; the server log has the details under it.
+        error = {"code": "server_error", "message": "Something went wrong on the server."}
+        request_id = getattr(request, "request_id", None)
+        if request_id:
+            error["request_id"] = request_id
+        return JsonResponse({"error": error}, status=500)
     return defaults.server_error(request)
