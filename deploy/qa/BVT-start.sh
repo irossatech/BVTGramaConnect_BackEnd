@@ -87,9 +87,11 @@ echo "$PORT" >"$STATE_DIR/port"
 if is_production; then
   # Production: Gunicorn, reachable only from this server (the panel's nginx forwards the domain
   # to it). No access log: addresses can carry search words, and those stay out of logs.
+  # --timeout: 120 s by default (GUNICORN_TIMEOUT). Uploads stop checking files after
+  # MEDIA_PROCESSING_BUDGET_S (90 s), so they answer before Gunicorn would kill the worker.
   [[ -x "$BACKEND_DIR/.venv/bin/gunicorn" ]] || fail "Gunicorn is missing from $BACKEND_DIR/.venv. Run BVT-deploy.sh."
   start_one web "$BACKEND_DIR/.venv/bin/gunicorn" grama.wsgi:application \
-    --bind "127.0.0.1:$PORT" --workers "${WEB_WORKERS:-3}" --timeout 300 \
+    --bind "127.0.0.1:$PORT" --workers "${WEB_WORKERS:-3}" --timeout "${GUNICORN_TIMEOUT:-120}" \
     --max-requests 1000 --max-requests-jitter 100 --error-logfile - --log-level warning
 else
   start_one web "$PYTHON" manage.py runserver "0.0.0.0:$PORT" --noreload
