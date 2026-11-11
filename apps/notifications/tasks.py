@@ -66,6 +66,22 @@ def send_push_to_citizen(device_id: str, title: str, body: str, data: dict) -> b
     return True
 
 
+def alert_escalation(post_id: str, level: str, hours: int) -> int:
+    """The escalation alert for one post (inbox items and pushes), queued by receivers.on_post_escalated.
+
+    Skipped when the post was decided in the meantime: there is nothing left to review. Returns how many
+    officials were told.
+    """
+    from apps.posts.models import Post, PostStatus
+
+    from . import services
+
+    post = Post.objects.select_related("category").filter(pk=post_id, status=PostStatus.PENDING).first()
+    if post is None:
+        return 0
+    return len(services.alert_escalation(post, level, hours))
+
+
 def send_push_to_user(user_id: str, title: str, body: str, data: dict) -> int:
     """Push to every device of one official. Returns how many devices got it."""
     gateway = get_push_gateway()

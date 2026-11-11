@@ -726,12 +726,18 @@ def escalate_overdue(now=None) -> int:
     the state's. Lower reviewers keep the post in their queue. A post for
     several areas climbs from its lowest one; the alert reaches the admins
     above each of its areas (notifications.services.alert_escalation).
+
+    At most ESCALATION_BATCH_SIZE posts per run, oldest submission first; the rest are taken by the next
+    run. The alerts go out as jobs of their own (notifications.receivers), so a run stays short.
     """
     now = now or timezone.now()
     cutoff = now - timedelta(hours=int(runtime("REVIEW_ESCALATION_HOURS")))
-    candidates = Post.objects.filter(status=PostStatus.PENDING).filter(
-        Q(escalated_at__isnull=True, submitted_at__lte=cutoff) | Q(escalated_at__lte=cutoff)
-    ).prefetch_related("targets")
+    candidates = (
+        Post.objects.filter(status=PostStatus.PENDING)
+        .filter(Q(escalated_at__isnull=True, submitted_at__lte=cutoff) | Q(escalated_at__lte=cutoff))
+        .order_by("submitted_at", "pk")
+        .prefetch_related("targets")[: settings.ESCALATION_BATCH_SIZE]
+    )
     count = 0
     for post in candidates:
         current = post.escalation_level or lowest_level(post.target_refs)
