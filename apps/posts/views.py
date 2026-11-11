@@ -1,5 +1,6 @@
 """Posts API: docs/api-contract.md, sections 5 and 10."""
 
+from django.db import transaction
 from django.db.models import Count, Prefetch, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -104,10 +105,13 @@ class AdminCategoryViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, mixin
     def get_queryset(self):
         return Category.objects.annotate(post_count=Count("posts")).order_by("order", "id")
 
+    # Each change and its audit entry are saved together or not at all (CLAUDE.md, audit rule).
+    @transaction.atomic
     def perform_create(self, serializer):
         category = serializer.save()
         record("category.created", actor=self.request.user, target=category, target_label=category.name_en, via="console")
 
+    @transaction.atomic
     def perform_update(self, serializer):
         category = serializer.save()
         record(
@@ -469,9 +473,11 @@ class AdminSettingsView(APIView):
                 raise ApiError("validation_error", _("Telugu cannot be switched off."), fields={"languages": [_("Telugu is required.")]})
             if "en" in languages:
                 changes["LANGUAGE_EN_ENABLED"] = languages["en"]
-        for key, value in changes.items():
-            SettingOverride.objects.update_or_create(key=key, defaults={"value": value, "updated_by": request.user})
-        after = current_settings()
-        if changes:
-            record("setting.changed", actor=request.user, via="console", data={"before": before, "after": after})
+        # The settings and their audit entry are saved together or not at all.
+        with transaction.atomic():
+            for key, value in changes.items():
+                SettingOverride.objects.update_or_create(key=key, defaults={"value": value, "updated_by": request.user})
+            after = current_settings()
+            if changes:
+                record("setting.changed", actor=request.user, via="console", data={"before": before, "after": after})
         return Response(after)
