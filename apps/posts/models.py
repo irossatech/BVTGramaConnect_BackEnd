@@ -110,8 +110,10 @@ class Post(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        # The feed finds a post's areas in PostTarget, so no index on target_level/target_area_id (audit BE-DB-007).
         indexes = [
-            models.Index(fields=["status", "target_level", "target_area_id", "published_at"]),
+            models.Index(fields=["status", "published_at"]),  # the citizen feed, newest first
+            models.Index(fields=["created_at"]),  # officials' posts list order, reports' window
             models.Index(fields=["status", "submitted_at"]),
             models.Index(fields=["author", "status"]),
             models.Index(fields=["status", "event_start"]),
