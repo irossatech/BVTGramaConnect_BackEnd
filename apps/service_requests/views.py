@@ -131,7 +131,9 @@ class ServiceRequestListView(generics.ListAPIView):
         return with_related(queryset).order_by("-updated_at", "-id")
 
     def list(self, request, *args, **kwargs):
-        response = super().list(request, *args, **kwargs)
+        page = self.paginate_queryset(self.get_queryset())
+        selectors.prime_page(request.user, page)  # areas and assignees' roles once, not per row
+        response = self.get_paginated_response(self.get_serializer(page, many=True).data)
         counts = {
             row["status"]: row["n"]
             for row in self._filtered_except_status().order_by().values("status").annotate(n=Count("id"))
