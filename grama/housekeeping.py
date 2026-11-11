@@ -52,7 +52,8 @@ def run_housekeeping(now=None) -> dict:
 def ensure_housekeeping_schedule() -> None:
     from django_q.models import Schedule
 
-    Schedule.objects.update_or_create(
-        name=HOUSEKEEPING_SCHEDULE,
-        defaults={"func": "grama.housekeeping.run_housekeeping", "schedule_type": Schedule.DAILY, "repeats": -1},
+    from grama.schedules import ensure_schedule
+
+    ensure_schedule(
+        HOUSEKEEPING_SCHEDULE, func="grama.housekeeping.run_housekeeping", schedule_type=Schedule.DAILY, repeats=-1
     )

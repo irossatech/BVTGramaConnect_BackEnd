@@ -84,12 +84,12 @@ def run_escalation() -> int:
 def ensure_escalation_schedule() -> None:
     from django_q.models import Schedule
 
-    Schedule.objects.update_or_create(
-        name=ESCALATION_SCHEDULE,
-        defaults={
-            "func": "apps.posts.tasks.run_escalation",
-            "schedule_type": Schedule.MINUTES,
-            "minutes": settings.ESCALATION_CHECK_MINUTES,
-            "repeats": -1,
-        },
+    from grama.schedules import ensure_schedule
+
+    ensure_schedule(
+        ESCALATION_SCHEDULE,
+        func="apps.posts.tasks.run_escalation",
+        schedule_type=Schedule.MINUTES,
+        minutes=settings.ESCALATION_CHECK_MINUTES,
+        repeats=-1,
     )

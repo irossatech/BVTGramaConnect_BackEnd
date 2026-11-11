@@ -280,7 +280,16 @@ def update_request(user, request: ServiceRequest, *, status=None, assigned_to=UN
     from apps.notifications import services as notifications
 
     with transaction.atomic():
+        # Another change to this request may have landed since it was read: wait for it and decide from
+        # the saved values, so history and audit name the real "from" (audit finding BE-DB-022).
+        locked = ServiceRequest.objects.select_for_update().only("status", "assigned_to", "note").get(pk=request.pk)
+        request.status, request.assigned_to_id, request.note = locked.status, locked.assigned_to_id, locked.note
         before = request.status
+        new_status = status if status is not None and status != before else None
+        if assigned_to is not UNSET:
+            assign_changed = (assignee.pk if assignee else None) != request.assigned_to_id
+        if new_status is None and not assign_changed and not note:
+            return request  # the other change already did it: nothing to write
         fields = ["updated_at"]
         if new_status is not None:
             request.status = new_status
