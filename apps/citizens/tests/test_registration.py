@@ -155,6 +155,30 @@ def test_failed_verdict_gets_nothing(world, required):
     assert not CitizenDevice.objects.exists()
 
 
+class GoogleDown:
+    def verify(self, integrity_token, nonce):
+        raise ConnectionError("playintegrity.googleapis.com unreachable")
+
+
+def test_google_unreachable_answers_try_again_later_not_a_server_error(world, required, settings):
+    """BE_02, BE-ERR-103 (decision of 2026-11-11): 503 integrity_unavailable, never a 500."""
+    settings.CITIZEN_INTEGRITY_VERIFIER = "apps.citizens.tests.test_registration.GoogleDown"
+    nonce = APIClient(REMOTE_ADDR="10.0.0.5").post(CHALLENGE).json()["nonce"]
+    body = {"nonce": nonce, "integrity_token": "play-token", "platform": "android", "village_id": world.areas["kolakaluru"].id}
+
+    response = APIClient().post(REGISTER, body, format="json")
+    assert response.status_code == 503
+    assert code(response) == "integrity_unavailable"
+    assert response.json()["error"]["retry_after_s"] == 60
+    assert response["Retry-After"] == "60"
+    assert "googleapis" not in response.json()["error"]["message"]
+    assert not CitizenDevice.objects.exists()
+
+    # Once Google answers again, the same challenge still works: it was not used up.
+    settings.CITIZEN_INTEGRITY_VERIFIER = "apps.citizens.tests.test_registration.Verifier"
+    assert APIClient().post(REGISTER, body, format="json").status_code == 201
+
+
 def test_iphones_wait_for_app_attest_while_integrity_is_required(world, required):
     response = register(world, platform="ios")
     assert response.status_code == 403 and code(response) == "integrity_failed"

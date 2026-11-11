@@ -46,6 +46,8 @@ logger = logging.getLogger("grama.citizens")
 
 TOKEN_HEADER = "HTTP_X_CITIZEN_TOKEN"
 DAY = timedelta(hours=24)
+#: How long the app is told to wait when Google's Play Integrity service cannot be reached.
+INTEGRITY_RETRY_SECONDS = 60
 
 
 # --- Errors -----------------------------------------------------------------------------------
@@ -177,6 +179,19 @@ def register(
                 _("This app could not be verified. Install it from the Play Store and try again."),
                 status=http.HTTP_403_FORBIDDEN,
             ) from None
+        except Exception as exc:  # noqa: BLE001 - Google unreachable or failing, credentials missing, an unreadable answer
+            # Not a verdict about the phone: Google could not be asked. Decision of 2026-11-11 (audit
+            # BE_02, BE-ERR-103): 503 integrity_unavailable, so the app says "try again later",
+            # instead of a server error. Only the error type is logged. The nonce is not used up.
+            logger.warning("Citizen registration: Play Integrity unavailable (%s)", type(exc).__name__)
+            error = ApiError(
+                "integrity_unavailable",
+                _("The phone check is not available right now. Try again in a few minutes."),
+                status=http.HTTP_503_SERVICE_UNAVAILABLE,
+                retry_after_s=INTEGRITY_RETRY_SECONDS,
+            )
+            error.wait = INTEGRITY_RETRY_SECONDS  # DRF turns this into the Retry-After header
+            raise error from None
 
     token = secrets.token_urlsafe(32)
     try:
