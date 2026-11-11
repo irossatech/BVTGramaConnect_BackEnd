@@ -425,6 +425,7 @@ MAX_VIDEO_UPLOAD_MB = env.int("MAX_VIDEO_UPLOAD_MB", default=50)
 VIDEO_MAX_SECONDS = env.int("VIDEO_MAX_SECONDS", default=60)
 ESCALATION_CHECK_MINUTES = env.int("ESCALATION_CHECK_MINUTES", default=15)
 HOUSEKEEPING_KEEP_DAYS = env.int("HOUSEKEEPING_KEEP_DAYS", default=30)
+NOTIFICATION_KEEP_DAYS = env.int("NOTIFICATION_KEEP_DAYS", default=90)  # read ones; 0 keeps them all
  
 PLAY_STORE_URL = env.str("PLAY_STORE_URL", default="")
 APP_STORE_URL = env.str("APP_STORE_URL", default="")
