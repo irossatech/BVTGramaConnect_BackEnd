@@ -46,14 +46,40 @@ class _Blank(dict):
         return ""
 
 
-def render(key: str, language: str, **values) -> str:
-    template = NotificationTemplate.objects.filter(key=key).first()
+_NOT_LOADED = object()
+
+
+def _format(template, key: str, language: str, values: dict) -> str:
     if template is not None:
         text = template.text(language)
     else:
         default = BY_KEY[key]
         text = default["text_te"] if (language or "te").startswith("te") else default["text_en"]
     return text.format_map(_Blank({k: "" if v is None else v for k, v in values.items()}))
+
+
+def render(key: str, language: str, **values) -> str:
+    return _format(NotificationTemplate.objects.filter(key=key).first(), key, language, values)
+
+
+class _Texts:
+    """Notification texts and area names for one fan-out: each template and each area is read once,
+    whatever the number of recipients (audit finding BE-DB-003). Same words as render()."""
+
+    def __init__(self):
+        self._templates: dict = {}
+        self._describers: dict = {}
+
+    def render(self, key: str, language: str, **values) -> str:
+        template = self._templates.get(key, _NOT_LOADED)
+        if template is _NOT_LOADED:
+            template = self._templates[key] = NotificationTemplate.objects.filter(key=key).first()
+        return _format(template, key, language, values)
+
+    def area(self, ref, language: str):
+        if language not in self._describers:
+            self._describers[language] = AreaDescriber(language)
+        return self._describers[language].describe(ref)
 
 
 def admins_over(post_target, *, levels=None, include_super_admins=False):
@@ -95,8 +121,8 @@ def reviewers_for(post):
     return admins_over_targets(dict.fromkeys(refs), include_super_admins=everyone).exclude(pk=post.author_id)
 
 
-def _values(post, language: str, **extra) -> dict:
-    area = AreaDescriber(language).describe(post.target)
+def _values(post, language: str, texts: _Texts | None = None, **extra) -> dict:
+    area = texts.area(post.target, language) if texts else AreaDescriber(language).describe(post.target)
     return {
         "title": post.title,
         "area": area["name"] if area else "",
@@ -116,22 +142,32 @@ def _push_data(post, kind: str) -> dict:
 
 
 def notify_users(users, *, post, kind: str, template_key: str, **extra) -> list[Notification]:
-    """Inbox item and a queued push for each user, in their own language."""
-    created = []
+    """Inbox item and a queued push for each user, in their own language.
+
+    The text is worked out once per language and the inbox items are written in one insert; each push
+    stays its own job, so one failing phone never holds up the others.
+    """
+    users = list(users)
+    texts = _Texts()
+    by_language: dict[str, str] = {}
     for user in users:
         language = user.preferred_language
-        text = render(template_key, language, **_values(post, language, **extra))
-        created.append(
-            Notification.objects.create(
-                user=user,
-                kind=kind,
-                title=text[:255],
-                body=post.title[:500],
-                post=post,
-                area_level=post.target_level,
-                area_id=post.target_area_id,
-            )
+        if language not in by_language:
+            by_language[language] = texts.render(template_key, language, **_values(post, language, texts, **extra))
+    created = Notification.objects.bulk_create(
+        Notification(
+            user=user,
+            kind=kind,
+            title=by_language[user.preferred_language][:255],
+            body=post.title[:500],
+            post=post,
+            area_level=post.target_level,
+            area_id=post.target_area_id,
         )
+        for user in users
+    )
+    for user in users:
+        text = by_language[user.preferred_language]
         async_task(
             "apps.notifications.tasks.send_push_to_user",
             str(user.pk),
@@ -228,11 +264,12 @@ def tell_super_admins(actor, user) -> list[Notification]:
         .distinct()
     )
     created = []
+    texts = _Texts()
     for other in others:
         language = other.preferred_language
         actor_name = (actor.name_te if language == "te" and actor.name_te else actor.name) or actor.username
         user_name = (user.name_te if language == "te" and user.name_te else user.name) or user.username
-        text = render("super_admin_added", language, actor=actor_name, name=user_name)
+        text = texts.render("super_admin_added", language, actor=actor_name, name=user_name)
         created.append(Notification.objects.create(user=other, kind=NotificationKind.ACCOUNT, title=text[:255]))
         async_task(
             "apps.notifications.tasks.send_push_to_user",
@@ -248,16 +285,17 @@ def tell_super_admins(actor, user) -> list[Notification]:
 SERVICE_MANAGE = "service_requests.manage_service_requests"
 
 
-def _service_request_note(user, request, template_key: str) -> Notification:
+def _service_request_note(user, request, template_key: str, texts: _Texts | None = None) -> Notification:
     """Inbox item and queued push about a service request, in the user's language.
 
     The text names the service, the area and the citizen's name; never the phone, email or address.
     """
+    texts = texts or _Texts()
     language = user.preferred_language
     village = AreaRef(AreaLevel.VILLAGE, request.village_id)
-    area = AreaDescriber(language).describe(village)
+    area = texts.area(village, language)
     service = request.service.display_name(language)
-    text = render(template_key, language, area=area["name"] if area else "", service=service, name=request.name)
+    text = texts.render(template_key, language, area=area["name"] if area else "", service=service, name=request.name)
     note = Notification.objects.create(
         user=user,
         kind=NotificationKind.SERVICE_REQUEST,
@@ -292,9 +330,11 @@ def notify_service_request(request) -> list[Notification]:
     village = AreaRef(AreaLevel.VILLAGE, request.village_id)
     areas = [AreaRef(level, area_id) for level, area_id in ancestry(village).items()]
     users = authz.holders(SERVICE_MANAGE, areas, platform_wide=False).distinct() if areas else User.objects.none()
+    texts = _Texts()
     return [
         _service_request_note(
-            user, request, "service_request_assigned_you" if user.pk == request.assigned_to_id else "service_request_new"
+            user, request, "service_request_assigned_you" if user.pk == request.assigned_to_id else "service_request_new",
+            texts,
         )
         for user in users
     ]
