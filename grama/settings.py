@@ -516,6 +516,11 @@ if not re.fullmatch(r"[A-Za-z0-9_.~%-]*", FCM_TOPIC_PREFIX):
     raise ImproperlyConfigured("FCM_TOPIC_PREFIX may hold only letters, digits and - _ . ~ %.")
 PUSH_TTL_SECONDS = env.int("PUSH_TTL_SECONDS", default=86400)
 PUSH_ALL_POSTS_HIGH_PRIORITY = env.bool("PUSH_ALL_POSTS_HIGH_PRIORITY", default=True)
+# A post's topic job stops starting new topics after this many seconds and queues the rest as a new
+# job, so it never reaches the worker's time limit (Q_CLUSTER "timeout") and is never re-run.
+PUSH_TOPICS_JOB_SECONDS = env.int("PUSH_TOPICS_JOB_SECONDS", default=60)
+if not 0 < PUSH_TOPICS_JOB_SECONDS < Q_CLUSTER["timeout"]:
+    raise ImproperlyConfigured("PUSH_TOPICS_JOB_SECONDS must be above 0 and below the job timeout (120).")
  
 TRANSLATION_PROVIDER = env.str("TRANSLATION_PROVIDER", default="off")
 GOOGLE_TRANSLATE_KEY = env.str("GOOGLE_TRANSLATE_KEY", default="")

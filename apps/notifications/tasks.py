@@ -42,8 +42,26 @@ def send_push_to_topic(topic: str, title: str, body: str, data: dict, priority: 
 
 
 def send_push_to_topics(topics: list[str], title: str, body: str, data: dict, priority: str = "high") -> int:
-    """The same push to several topics in one job (a post for many areas). Returns how many went out."""
-    return sum(send_push_to_topic(topic, title, body, data, priority) for topic in topics)
+    """The same push to several topics in one job (a post for many areas). Returns how many went out.
+
+    After PUSH_TOPICS_JOB_SECONDS the job starts no new topic and queues the ones left as a new
+    job. A post can have up to 200 areas; while Firebase is slow, sending them all in turn could
+    pass the worker's time limit, and the worker would stop the job and run it again from the
+    start, pushing the same post twice to the topics already done.
+    """
+    import time
+
+    from django.conf import settings
+    from django_q.tasks import async_task
+
+    deadline = time.monotonic() + settings.PUSH_TOPICS_JOB_SECONDS
+    sent = 0
+    for index, topic in enumerate(topics):
+        if index and time.monotonic() >= deadline:
+            async_task("apps.notifications.tasks.send_push_to_topics", topics[index:], title, body, data, priority, group="push")
+            break
+        sent += send_push_to_topic(topic, title, body, data, priority)
+    return sent
 
 
 def send_push_to_citizen(device_id: str, title: str, body: str, data: dict) -> bool:
