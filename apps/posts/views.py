@@ -1,6 +1,6 @@
 """Posts API: docs/api-contract.md, sections 5 and 10."""
 
-from django.db.models import Count, Prefetch, Q
+from django.db.models import BooleanField, Case, Count, Prefetch, Q, Value, When
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.decorators import method_decorator
@@ -24,6 +24,7 @@ from apps.citizens import services as citizen_services
 from apps.geography.areas import AreaRef, within_q
 from apps.geography.models import AreaLevel
 from grama.exceptions import ApiError, out_of_area
+from grama.pagination import use_known_count
 
 from . import media as media_service
 from . import services
@@ -154,7 +155,11 @@ def source_filter(request, queryset):
 
 
 def source_counts(queryset) -> dict:
-    return {name: queryset.filter(query).count() for name, query in SOURCE_Q.items()}
+    """{"official": n, "citizen": n} with one grouped count."""
+    is_citizen = Case(When(citizen__isnull=False, then=Value(True)), default=Value(False), output_field=BooleanField())
+    rows = queryset.order_by().annotate(is_citizen=is_citizen).values("is_citizen").annotate(n=Count("id"))
+    found = {bool(row["is_citizen"]): row["n"] for row in rows}
+    return {"official": found.get(False, 0), "citizen": found.get(True, 0)}
 
 
 def area_filter(request, queryset):
@@ -215,8 +220,13 @@ class PostViewSet(viewsets.GenericViewSet):
             if unknown:
                 raise ApiError("validation_error", _("Unknown status."), fields={"status": sorted(unknown)})
             queryset = queryset.filter(status__in=wanted)
+            total = sum(counts.get(value, 0) for value in set(wanted))
         else:
             queryset = queryset.exclude(Q(status=PostStatus.DRAFT) & ~Q(author=request.user))
+            # visible_posts() holds no one else's drafts, so the exclude removes nothing from the counts.
+            total = sum(counts.values())
+        # The page total comes from the status counts above: no second COUNT(*) (audit finding BE-DB-009).
+        use_known_count(self.paginator, total)
         page = self.paginate_queryset(queryset.order_by("-created_at", "id"))
         context = self.get_serializer_context()
         prime_posts(context, page)
@@ -385,11 +395,15 @@ class ReviewQueueView(generics.ListAPIView):
         return post_queryset(source_filter(self.request, self._queue()))
 
     def list(self, request, *args, **kwargs):
+        # One grouped count gives the tab counts and the page total (audit finding BE-DB-009).
+        counts = source_counts(self._queue())
+        source = request.query_params.get("source", "").strip().lower()
+        use_known_count(self.paginator, counts.get(source, 0) if source else sum(counts.values()))
         page = self.paginate_queryset(self.get_queryset())
         context = self.get_serializer_context()
         prime_posts(context, page)
         response = self.get_paginated_response(PostSerializer(page, many=True, context=context).data)
-        response.data["source_counts"] = source_counts(self._queue())
+        response.data["source_counts"] = counts
         return response
 
 
