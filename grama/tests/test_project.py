@@ -231,7 +231,9 @@ def test_a_crash_shows_nothing_internal(qa):
     with mock.patch("grama.views.connection.ensure_connection", side_effect=RuntimeError("db password=hunter2")):
         response = client.get("/api/v1/health/")
     assert response.status_code == 500
-    assert response.json() == {"error": {"code": "server_error", "message": "Something went wrong on the server."}}
+    request_id = response["X-Request-ID"]
+    # Only the request number is added (BE-OBS-101), to quote when reporting it.
+    assert response.json() == {"error": {"code": "server_error", "message": "Something went wrong on the server.", "request_id": request_id}}
     assert b"hunter2" not in response.content and b"Traceback" not in response.content
 
 
