@@ -51,7 +51,7 @@ Top level of the repo: `apps/`, `grama/` (settings, URLs, shared helpers, projec
 |---|---|
 | `/api/v1/` | REST API, every app's `urls.py` plus `apps/web_public/api_urls.py` and `apps/web_admin/api_urls.py` |
 | `/api/schema/`, `/api/docs/` | OpenAPI schema and Swagger UI |
-| `/django-admin/` | Django admin, developers only. In production Nginx allows only `OFFICE_IPS` from the deploy config, and nobody when it is empty. |
+| `/django-admin/` | Django admin, **laptops only** (`DJANGO_ADMIN_ENABLED`, on while `DEBUG` is on). Off on every server, qa included (lead's decision of 2026-11-11): the address does not exist there. Server work goes through the console or `manage.py shell`. |
 | `/console/` | Console files from `WEB_ADMIN_DIR` (default `../BVTGramaConnect/dist/console`), SERVE_FILES only |
 | `/media/`, `/static/` | Uploaded files and Django's static files, SERVE_FILES only |
 | `/` | Website files from `WEB_PUBLIC_DIR` (default `../BVTGramaConnect/dist`), SERVE_FILES only; must stay last |

@@ -169,6 +169,11 @@ else:  # DEV
     API_DOCS_PUBLIC = env.bool("API_DOCS_PUBLIC", default=True)
     SILENCED_SYSTEM_CHECKS = []
     SECURE_HSTS_SECONDS = 0
+
+# /django-admin/ (grama/urls.py): on for laptops (DEBUG on), off on every server, qa included (lead's
+# decision of 2026-11-11). Off, the address does not exist. Server work goes through the console or
+# `manage.py shell`. Turn it on for a server only by writing DJANGO_ADMIN_ENABLED=True in its .env.
+DJANGO_ADMIN_ENABLED = env.bool("DJANGO_ADMIN_ENABLED", default=DEBUG)
  
  
 # ==============================================================================

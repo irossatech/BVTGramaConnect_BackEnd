@@ -2,7 +2,7 @@
 
 Open work for the Backend team, most important first. Update this file as items close.
 
-1. **Office IPs for Django admin.** Nginx now allows `/django-admin/` only from `OFFICE_IPS` (deploy config) and blocks it when that is empty. Get the office's fixed IP addresses from the owner and set them on staging and production.
+1. ~~**Office IPs for Django admin.**~~ Done differently (lead's decision of 2026-11-11): Django admin is off on every server (`DJANGO_ADMIN_ENABLED`), so no office IP list is needed.
 2. **Console login over HTTPS.** Set `CSRF_TRUSTED_ORIGINS` on staging, then log in to `/console/` over HTTPS: the session and CSRF cookies are Secure, so this is the first real check of the session login, the 30-minute idle logout and the lockout behind Nginx.
 3. **Real push.** `apps.notifications.push.FcmGateway` has never sent to Firebase. Put a service-account file on staging (FCM_CREDENTIALS_FILE, FCM_PROJECT_ID) and confirm a topic push and a device push reach a phone.
 4. **Staging deploy.** Run `deploy/setup.sh` once on an Ubuntu VM with MySQL and once with PostgreSQL (the server database is not chosen yet; everyone develops on SQLite). Fix whatever the dry run finds. Then run the backup and restore drill in `deploy/RUNBOOK.md`.

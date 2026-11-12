@@ -9,7 +9,7 @@ Development runs on SQLite; the server runs MySQL or PostgreSQL. Only **master a
 | Notification templates | django-q tasks and schedules (`django_q`) |
 | | Posts, media, audit log, sessions, Django admin log |
 
-Officials are created on the server, through the console or Django admin. Test posts stay on laptops.
+Officials are created on the server, through the console (Django admin is off on servers). Test posts stay on laptops.
 
 ## Preferred: geography from the CSV file
 
@@ -55,7 +55,7 @@ gc loaddata /tmp/seed.json
 `loaddata` keeps the primary keys from the file:
 - **Empty server:** load as above.
 - **Server already has geography:** do not loaddata geography; the ids would clash or overwrite rows. Export the laptop's villages to the CSV layout and use `import_geography` instead.
-- Categories and templates are matched by their key when the models define natural keys; otherwise check the server's rows first with Django admin.
+- Categories and templates are matched by their key when the models define natural keys; otherwise check the server's rows first with `manage.py shell` (Django admin is off on servers).
 
 ### 3. Check
 

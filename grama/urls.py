@@ -2,7 +2,8 @@
 
 /api/v1/...    REST API (docs/api-contract.md)
 /api/schema/   OpenAPI schema; /api/docs/ shows it in Swagger UI
-/django-admin/ Django's built-in admin, for developers only
+/django-admin/ Django's built-in admin: laptops only. Off on every server (DJANGO_ADMIN_ENABLED,
+               lead's decision of 2026-11-11), where the address does not exist (404)
 /console/      Super Admin console (web_admin app)
 /media/        uploaded files, /static/ static files: while SERVE_FILES is on (Nginx on the server)
 /p/<code>/, /app/, /.well-known/assetlinks.json   shared links (share app), always Django
@@ -11,6 +12,7 @@
 Unknown addresses under /api/ answer the contract's JSON 404 once DEBUG is off.
 """
 
+from django.conf import settings
 from django.contrib import admin
 from django.urls import include, path, re_path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
@@ -44,7 +46,6 @@ urlpatterns = [
     path("api/v1/", include(api_v1)),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
-    path("django-admin/", admin.site.urls),
     path("console/", include("apps.web_admin.urls")),
     re_path(r"^media/(?P<path>.*)$", serve_media, name="media"),
     re_path(r"^static/(?P<path>.*)$", serve_static, name="static"),
@@ -54,3 +55,9 @@ urlpatterns = [
     path(".well-known/assetlinks.json", share_views.assetlinks, name="assetlinks"),
     path("", include("apps.web_public.urls")),
 ]
+
+# Django admin exists only where DJANGO_ADMIN_ENABLED is on: laptops by default, never a server unless
+# its .env asks for it (lead's decision of 2026-11-11). Its login is a target for the most powerful
+# accounts, and nobody uses it on the servers. Placed before the website, which must stay last.
+if settings.DJANGO_ADMIN_ENABLED:
+    urlpatterns.insert(-1, path("django-admin/", admin.site.urls))
