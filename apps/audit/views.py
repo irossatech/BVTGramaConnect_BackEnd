@@ -3,7 +3,9 @@
 import io
 import json
 from datetime import datetime, time
+from functools import partial
 
+from django.core.paginator import Paginator
 from django.db.models import Count, Q
 from django.http import HttpResponse
 from django.utils import timezone
@@ -107,6 +109,18 @@ def in_reach(request, queryset, perm: str):
     return queryset.filter(scope)
 
 
+class KnownCountPaginator(Paginator):
+    """A Django paginator told its row count, so it never runs a COUNT(*) of its own."""
+
+    def __init__(self, *args, count: int, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._known_count = count
+
+    @property
+    def count(self) -> int:
+        return self._known_count
+
+
 class AuditListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated, HasPerm(VIEW, message="Only Super Admins can read the audit log.")]
     serializer_class = AuditEntrySerializer
@@ -116,15 +130,22 @@ class AuditListView(generics.ListAPIView):
 
     @extend_schema(summary="Audit log", parameters=FILTERS)
     def get(self, request, *args, **kwargs):
+        # One grouped count per page view. It gives the tabs' counts and, from them, the page total:
+        # the same filters without the type tab, so the total is one tab's count or the sum of all.
+        rows = in_reach(request, filtered(request, with_type=False), VIEW).order_by().values("type").annotate(n=Count("id"))
+        found = {row["type"]: row["n"] for row in rows}
+        wanted = request.query_params.get("type")
+        total = found.get(wanted, 0) if wanted else sum(found.values())
+        self.paginator.django_paginator_class = partial(KnownCountPaginator, count=total)
+
         page = self.paginate_queryset(self.get_queryset())
         context = self.get_serializer_context()
         describer_from(context).prime(
             [AreaRef(e.area_level, e.area_id) for e in page if e.area_level and e.area_id is not None]
         )
         response = self.get_paginated_response(AuditEntrySerializer(page, many=True, context=context).data)
-        counts = in_reach(request, filtered(request, with_type=False), VIEW).order_by().values("type").annotate(n=Count("id"))
         by_type = {t.value: 0 for t in AuditType}
-        by_type.update({row["type"]: row["n"] for row in counts})
+        by_type.update(found)
         response.data["counts_by_type"] = by_type
         return response
 
@@ -141,6 +162,12 @@ class CSVRenderer(BaseRenderer):
             return json.dumps(data, ensure_ascii=False).encode("utf-8")
         return data
 
+
+#: The export's columns, in file order, and its row limit.
+EXPORT_COLUMNS = (
+    "created_at", "actor_name", "actor_role", "action", "type", "target_label", "area_level", "area_id", "via",
+)
+EXPORT_MAX_ROWS = 50000
 
 #: Filters whose values hold no personal data; they are kept in the export's audit entry.
 PLAIN_FILTERS = ("type", "actor", "action", "from", "to", "format")
@@ -163,15 +190,21 @@ class AuditExportView(APIView):
     def get(self, request):
         if request.query_params.get("format", "csv") != "csv":
             raise ApiError("validation_error", _("Only CSV export is available."), fields={"format": ["csv"]})
-        rows = in_reach(request, filtered(request), EXPORT).order_by("-created_at")[:50000]
+        # Only the columns the file holds (never the JSON `data`), read in chunks rather than all at once.
+        rows = (
+            in_reach(request, filtered(request), EXPORT)
+            .order_by("-created_at")
+            .values_list(*EXPORT_COLUMNS)[:EXPORT_MAX_ROWS]
+            .iterator(chunk_size=2000)
+        )
         buffer = io.StringIO()
         writer = safe_writer(buffer)  # names and titles never run as spreadsheet formulas
         writer.writerow(["time", "user", "role", "action", "type", "target", "area_level", "area_id", "via"])
-        for entry in rows:
+        for created_at, actor_name, actor_role, action, kind, target_label, area_level, area_id, via in rows:
             writer.writerow([
-                timezone.localtime(entry.created_at).strftime("%Y-%m-%d %H:%M:%S"),
-                entry.actor_name or "System", entry.actor_role, entry.action, entry.type,
-                entry.target_label, entry.area_level, entry.area_id or "", entry.via,
+                timezone.localtime(created_at).strftime("%Y-%m-%d %H:%M:%S"),
+                actor_name or "System", actor_role, action, kind,
+                target_label, area_level, area_id or "", via,
             ])
         record("report.exported", actor=request.user, via=client_via(request),
                data={"report": "audit", "filters": export_filters(request.query_params)})
