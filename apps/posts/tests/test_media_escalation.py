@@ -66,13 +66,22 @@ def test_small_photos_are_not_enlarged(api, world, make_post, media_root):
         assert medium.size == (500, 400)
 
 
-def test_at_most_five_photos(api, world, make_post):
+def test_any_number_of_photos(api, world, make_post):
+    """Lead's decision of 2026-11-11: no limit for officials, as for citizens (MAX_PHOTOS_PER_POST 0)."""
     post = make_post("pm_kolakaluru", "kolakaluru", submit=False)
-    for _ in range(5):
+    for _ in range(8):
         assert upload(api, world, "pm_kolakaluru", post, jpeg(400, 300, exif=False)).status_code == 201
-    sixth = upload(api, world, "pm_kolakaluru", post, jpeg(400, 300, exif=False))
-    assert sixth.status_code == 400
-    assert post.media.count() == 5
+    assert list(post.media.order_by("order").values_list("order", flat=True)) == list(range(8))
+
+
+def test_a_cap_in_the_settings_still_limits_photos(api, world, make_post, settings):
+    settings.MAX_PHOTOS_PER_POST = 2
+    post = make_post("pm_kolakaluru", "kolakaluru", submit=False)
+    for _ in range(2):
+        assert upload(api, world, "pm_kolakaluru", post, jpeg(400, 300, exif=False)).status_code == 201
+    third = upload(api, world, "pm_kolakaluru", post, jpeg(400, 300, exif=False))
+    assert third.status_code == 400 and third.json()["error"]["code"] == "validation_error"
+    assert post.media.count() == 2
 
 
 def test_not_an_image(api, world, make_post):

@@ -461,7 +461,11 @@ MAX_SUPER_ADMINS = env.int("MAX_SUPER_ADMINS", default=5)
 if MAX_SUPER_ADMINS < 0:
     raise ImproperlyConfigured("MAX_SUPER_ADMINS must be 0 (no limit) or more.")
  
-MAX_PHOTOS_PER_POST = env.int("MAX_PHOTOS_PER_POST", default=5)
+# Photos per official's or Super Admin's post: 0 (the default) is no limit, as for citizens
+# (lead's decision of 2026-11-11). Videos have no count limit; photos and videos may be mixed.
+MAX_PHOTOS_PER_POST = env.int("MAX_PHOTOS_PER_POST", default=0)
+if MAX_PHOTOS_PER_POST < 0:
+    raise ImproperlyConfigured("MAX_PHOTOS_PER_POST must be 0 (no limit) or more.")
 POST_MAX_TARGETS = env.int("POST_MAX_TARGETS", default=200)
 VIDEO_POSTS_ENABLED = env.bool("VIDEO_POSTS_ENABLED", default=True)
  
