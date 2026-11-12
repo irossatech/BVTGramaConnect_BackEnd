@@ -11,6 +11,12 @@ compresses it first. With ffprobe and ffmpeg on PATH (the server installs
 them) the server measures the length, cuts a poster frame and stores a copy
 without metadata (strip_metadata, G7). Without them the app must send
 `duration_s` and a `poster` photo, and the file is stored as uploaded.
+
+Time limits (audit BE-PERF-003): uploads are checked inside the request, so citizens get an
+answer at once, but never for long. Each ffprobe/ffmpeg step stops after VIDEO_*_TIMEOUT_S and
+answers 415, and all photos and videos of one request share MEDIA_PROCESSING_BUDGET_S (see
+media_budget); a request over it answers 400 and stores nothing. Normal videos take a few
+seconds: the streams are copied, never re-encoded.
 """
 
 from __future__ import annotations
@@ -20,8 +26,10 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 import warnings
 from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 
 from django.conf import settings
@@ -65,6 +73,85 @@ def _media_conflict(message) -> ApiError:
     return ApiError("media_conflict", message, status=http.HTTP_409_CONFLICT)
 
 
+def _unreadable_video() -> ApiError:
+    return _unsupported(_("This video could not be read. Upload an MP4 or MOV file."))
+
+
+# --- Time budget ------------------------------------------------------------------------
+
+
+class MediaBudget:
+    """The time one request may spend checking its photos and videos (MEDIA_PROCESSING_BUDGET_S).
+
+    `field` is the form field a refusal names: "videos" for citizen posts, "file" for an
+    official's upload, "video" for a banner ad.
+    """
+
+    def __init__(self, field: str = "file", seconds: float | None = None):
+        self.field = field
+        self.deadline = time.monotonic() + (seconds if seconds is not None else settings.MEDIA_PROCESSING_BUDGET_S)
+
+    def remaining(self) -> float:
+        return self.deadline - time.monotonic()
+
+    def exceeded(self) -> ApiError:
+        return ApiError(
+            "validation_error",
+            _("These files took too long to check. Send fewer or shorter videos in one post."),
+            fields={self.field: [_("Took too long to check.")]},
+        )
+
+    def check(self) -> None:
+        if self.remaining() <= 0:
+            raise self.exceeded()
+
+
+#: The budget of the request being handled; read by every step, so the steps keep their arguments.
+_budget: ContextVar[MediaBudget | None] = ContextVar("media_budget", default=None)
+
+
+@contextmanager
+def media_budget(field: str = "file"):
+    """Give the code inside one MediaBudget. Nested calls share the outer one, so a citizen post
+    with many files has one budget for all of them."""
+    current = _budget.get()
+    if current is not None:
+        yield current
+        return
+    budget = MediaBudget(field)
+    token = _budget.set(budget)
+    try:
+        yield budget
+    finally:
+        _budget.reset(token)
+
+
+def check_budget() -> None:
+    """Refuse when the current request has used up its budget; nothing to do outside one."""
+    budget = _budget.get()
+    if budget is not None:
+        budget.check()
+
+
+def _run_tool(command: list[str], step_limit: float, **kwargs) -> subprocess.CompletedProcess:
+    """Run ffprobe or ffmpeg for at most `step_limit` seconds, or what is left of the budget.
+
+    Running out of the step's own time: 415, the file is treated as unreadable. Running out of
+    the request's budget: 400 from MediaBudget.exceeded. Either way subprocess stops the tool.
+    """
+    budget = _budget.get()
+    timeout = step_limit
+    if budget is not None:
+        budget.check()
+        timeout = min(step_limit, budget.remaining())
+    try:
+        return subprocess.run(command, timeout=timeout, check=False, **kwargs)
+    except subprocess.TimeoutExpired:
+        if budget is not None and timeout < step_limit:
+            raise budget.exceeded() from None
+        raise _unreadable_video() from None
+
+
 def _encode(image: Image.Image, max_px: int) -> tuple[bytes, int, int]:
     copy = image.copy()
     copy.thumbnail((max_px, max_px), Image.Resampling.LANCZOS)
@@ -75,6 +162,7 @@ def _encode(image: Image.Image, max_px: int) -> tuple[bytes, int, int]:
 
 def process_image(upload) -> tuple[bytes, bytes, bytes, int, int]:
     """(large WebP, medium WebP, thumbnail WebP, width, height) for an uploaded photo."""
+    check_budget()
     if upload.size > settings.MAX_IMAGE_UPLOAD_MB * 1024 * 1024:
         raise _too_large(settings.MAX_IMAGE_UPLOAD_MB, _("Photos"))
     try:
@@ -179,17 +267,16 @@ def probe_duration(path: str) -> float | None:
     ffprobe = shutil.which("ffprobe")
     if not ffprobe:
         return None
-    result = subprocess.run(
+    result = _run_tool(
         [ffprobe, "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", path],
+        settings.VIDEO_PROBE_TIMEOUT_S,
         capture_output=True,
         text=True,
-        timeout=30,
-        check=False,
     )
     try:
         return float(result.stdout.strip())
     except ValueError:
-        raise _unsupported(_("This video could not be read. Upload an MP4 or MOV file.")) from None
+        raise _unreadable_video() from None
 
 
 def extract_poster(path: str, at_seconds: float) -> bytes | None:
@@ -197,11 +284,10 @@ def extract_poster(path: str, at_seconds: float) -> bytes | None:
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         return None
-    result = subprocess.run(
+    result = _run_tool(
         [ffmpeg, "-v", "error", "-ss", f"{at_seconds:.2f}", "-i", path, "-frames:v", "1", "-f", "image2pipe", "-vcodec", "png", "-"],
+        settings.VIDEO_POSTER_TIMEOUT_S,
         capture_output=True,
-        timeout=60,
-        check=False,
     )
     return result.stdout or None
 
@@ -221,15 +307,14 @@ def strip_metadata(path: str, container: str) -> File | None:
     handle, out = tempfile.mkstemp(suffix=f".{container}")
     os.close(handle)
     try:
-        result = subprocess.run(
+        result = _run_tool(
             [ffmpeg, "-v", "error", "-y", "-i", path, "-map", "0:v", "-map", "0:a?", "-c", "copy",
              "-map_metadata", "-1", "-map_chapters", "-1", "-movflags", "+faststart", "-f", container, out],
+            settings.VIDEO_STRIP_TIMEOUT_S,
             capture_output=True,
-            timeout=120,
-            check=False,
         )
         if result.returncode != 0 or os.path.getsize(out) == 0:
-            raise _unsupported(_("This video could not be read. Upload an MP4 or MOV file."))
+            raise _unreadable_video()
         # An anonymous temporary file goes away by itself when it is closed or collected.
         copy = tempfile.TemporaryFile()
         with open(out, "rb") as stripped:
@@ -289,7 +374,16 @@ def prepare_video(
     length may stay unknown and a placeholder poster is used instead.
     max_mb and max_seconds default to the post limits (None); banner ads pass their own, and
     max_seconds=0 means any length (owner decision of 2026-11-02 for banners).
+    Runs inside the request's media_budget, or a budget of its own when called alone.
     """
+    with media_budget():
+        return _prepare_video(
+            upload, duration_s=duration_s, poster=poster, lenient=lenient,
+            max_mb=max_mb, max_seconds=max_seconds, process_poster=process_poster,
+        )
+
+
+def _prepare_video(upload, *, duration_s, poster, lenient, max_mb, max_seconds, process_poster) -> PreparedVideo:
     max_mb = max_mb if max_mb is not None else settings.MAX_VIDEO_UPLOAD_MB
     max_seconds = max_seconds if max_seconds is not None else settings.VIDEO_MAX_SECONDS
     if upload.size > max_mb * 1024 * 1024:

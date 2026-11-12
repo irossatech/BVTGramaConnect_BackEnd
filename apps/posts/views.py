@@ -8,8 +8,8 @@ from django.utils.translation import gettext as _
 from django.utils.translation import gettext_lazy
 from django.views.decorators.cache import cache_control
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter, extend_schema
-from rest_framework import generics, mixins, status, viewsets
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
+from rest_framework import generics, mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -90,7 +90,10 @@ class AppConfigView(APIView):
     permission_classes = [AllowAny]
     authentication_classes: list = []
 
-    @extend_schema(summary="Public app settings: the languages switched on")
+    @extend_schema(
+        summary="Public app settings: the languages switched on",
+        responses=inline_serializer("AppConfig", {"languages": serializers.DictField(child=serializers.BooleanField())}),
+    )
     def get(self, request):
         return Response({"languages": {"te": True, "en": bool(services.runtime("LANGUAGE_EN_ENABLED"))}})
 
@@ -174,6 +177,8 @@ class PostViewSet(viewsets.GenericViewSet):
     serializer_class = PostSerializer
 
     def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):  # drf-spectacular: the model, for the {id} type
+            return Post.objects.none()
         return post_queryset(services.visible_posts(self.request.user))
 
     def get_object(self) -> Post:
@@ -399,6 +404,7 @@ class StatsView(APIView):
     @extend_schema(
         summary="Counts for an area dashboard",
         parameters=[OpenApiParameter("level", OpenApiTypes.STR), OpenApiParameter("area_id", OpenApiTypes.INT)],
+        responses=OpenApiTypes.OBJECT,  # docs/api-contract.md, "GET /stats"
     )
     def get(self, request):
         perm = "posts.view_stats"

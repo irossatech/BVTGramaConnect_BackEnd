@@ -26,6 +26,7 @@ Contents:
 
 ### Base URL and format
 - Base path `/api/v1/`. Django serves it behind Nginx on the same origin as the website (`/`) and the console (`/console/`), so the web parts need no CORS. The mobile app calls the absolute URL.
+- Health check: `GET /health/`, public, `200 {"status": "ok", "time"}` while Django and the database answer. For uptime monitors and the deploy scripts; no client calls it.
 - OpenAPI schema: `GET /api/schema/`. Swagger UI: `/api/docs/`. Open to everyone on laptops and the QA server (`API_DOCS_PUBLIC`); in production only for console users (a Super Admin's console session or token): anyone else gets `401` or `403`.
 - JSON in UTF-8 both ways. Telugu is sent as raw UTF-8, not `\u` escapes; a Telugu letter costs 3 bytes instead of 6, which matters on 2G. Nginx compresses JSON with gzip.
 - Field names are `snake_case`. Enum values are `UPPER_CASE`, except category keys and language codes.
@@ -415,7 +416,7 @@ Writes, Super Admin only (`geography.manage_master_data`). `apps/geography/servi
 | `PATCH /geo/mandals/{id}` | same as districts |
 | `POST /geo/villages` | `{"mandal_id", "name_en", "name_te"?, "latitude", "longitude", "pin_code"?, "lgd_code"?}` |
 | `PATCH /geo/villages/{id}` | any of the above plus `is_active` |
-| `POST /geo/villages/import` | multipart `file` (UTF-8 CSV, same columns as `manage.py import_geography`); `?dry_run=1` saves nothing. `200 {"ok", "dry_run", "rows", "errors", "warnings", "counts": {"state"\|"district"\|"mandal"\|"village": {"created", "updated", "unchanged"}}, "missing_coordinates": [first 200], "missing_coordinates_count", "missing_coordinates_total", "missing_telugu"}`. `missing_coordinates` and `missing_coordinates_count` are the file's villages that still have no coordinates; `missing_coordinates_total` is every active village in the database without coordinates after the import (on a dry run, what the import would leave). "Use my location" (`GET /geo/nearest/`) can never find those villages, so the console should show the total. Any error: `400 validation_error` with the same object in `error.report`, and nothing is saved. |
+| `POST /geo/villages/import` | multipart `file` (UTF-8 CSV, same columns as `manage.py import_geography`, at most `GEO_IMPORT_MAX_BYTES`, 20 MB; larger: `413 file_too_large`); `?dry_run=1` saves nothing. `200 {"ok", "dry_run", "rows", "errors", "warnings", "counts": {"state"\|"district"\|"mandal"\|"village": {"created", "updated", "unchanged"}}, "missing_coordinates": [first 200], "missing_coordinates_count", "missing_coordinates_total", "missing_telugu"}`. `missing_coordinates` and `missing_coordinates_count` are the file's villages that still have no coordinates; `missing_coordinates_total` is every active village in the database without coordinates after the import (on a dry run, what the import would leave). "Use my location" (`GET /geo/nearest/`) can never find those villages, so the console should show the total. Any error: `400 validation_error` with the same object in `error.report`, and nothing is saved. |
 
 Every write answers, for example:
 ```json
@@ -520,6 +521,7 @@ What `POST /posts` does:
   - Duration: measured with `ffprobe` when it is installed (the server has it). Without `ffprobe` the client's `duration_s` is required and still checked.
   - Poster: made with `ffmpeg` from the first second when it is installed. Otherwise `poster` (a photo) is required and processed like photos.
   - The video is stored without its metadata (GPS place, phone, dates): `ffmpeg` copies the video and audio streams without re-encoding, so quality and size stay as uploaded. A file it cannot copy: `415 unsupported_media`. Without `ffmpeg` it is stored as uploaded. The app compresses it before upload. The same applies to citizen videos (section 15) and banner videos (section 17).
+  - **Time limits (audit BE-PERF-003):** the server checks each upload for a limited time. Measuring the length, cutting the poster and copying without metadata stop after `VIDEO_PROBE_TIMEOUT_S` (15), `VIDEO_POSTER_TIMEOUT_S` (20) and `VIDEO_STRIP_TIMEOUT_S` (45) seconds; a video that takes longer answers `415 unsupported_media`, like an unreadable one. All photos and videos of one request share `MEDIA_PROCESSING_BUDGET_S` (90 s); a request over it answers `400 validation_error` on the file field (`file` here, `videos` or `photos` for citizens, `video` for banners) and stores nothing. Normal videos take a few seconds.
 
 ### Review
 
@@ -626,7 +628,7 @@ Feed rule: published posts with **any** area that is the village, its mandal, it
 | Method and path | Who | Request | Response |
 |---|---|---|---|
 | `POST /devices/` | public or bearer | `{"fcm_token", "platform": "android"\|"ios"\|"web", "language": "te"\|"en", "village_id"?, "app_version"?}` | `201` when new, `200` when the token was known: `{"id", "fcm_token", "platform", "language", "village_id", "app_version"}`. Upserts by `fcm_token`. With a bearer token the device is linked to that official. Without one, a new token makes an unlinked device, but a token already linked to an official is left as it is (`200`, unchanged): only `DELETE /devices/{id}/` or another official's login on the phone unlinks it, so the app's logout deletes the device before registering again without a login. `400` for an unknown or inactive village. |
-| `PATCH /devices/{id}/` | the app that registered it | `{"village_id"?, "language"?, "fcm_token"?}` | `200`, same shape. A device linked to an official answers `404` to anyone else. |
+| `PATCH /devices/{id}/` | the app that registered it | `{"village_id"?, "language"?, "fcm_token"?}` | `200`, same shape. A device linked to an official answers `404` to anyone else. A new `fcm_token` replaces the row that held it, unless that row is an official's device and the caller is not that official logged in: then `409 duplicate` on `fcm_token`, and nothing changes (as for `POST /devices/`). |
 | `DELETE /devices/{id}/` | same | — | `204` (logout or opt-out) |
 ### Inbox (officials)
 
@@ -808,9 +810,9 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Screen | Endpoints |
 |---|---|
 | Splash, language, welcome | none; `GET /categories` and geography warm the cache |
-| Location step (to be designed, see inventory) | `GET /geo/villages/nearest`, then the picker if needed |
+| Location step | `GET /geo/nearest?lat=&lng=` (section 4), then the picker if needed |
 | Change village | `GET /geo/states`, `/geo/districts`, `/geo/mandals`, `/geo/villages`; `PATCH /devices/{id}` |
-| Citizen home | `GET /feed/summary` or the first page of `GET /feed` |
+| Citizen home | the first page of `GET /feed`, with `GET /feed/urgent` and `GET /feed/upcoming` |
 | News deck, videos | `GET /feed` with `category` or `has_video=1` |
 | Post detail | `GET /feed/posts/{id}` |
 | Saved posts | `GET /feed/posts?ids=` |
@@ -886,6 +888,7 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Photos per post | `MAX_PHOTOS_PER_POST`, default 5 |
 | Image upload | `MAX_IMAGE_UPLOAD_MB`, default 10 |
 | Video | one per post, `VIDEO_MAX_SECONDS` 60, `MAX_VIDEO_UPLOAD_MB` default 50 |
+| Checking uploads | per step `VIDEO_PROBE_TIMEOUT_S` 15, `VIDEO_POSTER_TIMEOUT_S` 20, `VIDEO_STRIP_TIMEOUT_S` 45 (over: `415`); per request `MEDIA_PROCESSING_BUDGET_S` 90 (over: `400 validation_error`, nothing stored) |
 | Page size | feed 20, admin lists 100 |
 | Important numbers | 200 active per area (`CONTACTS_MAX_PER_AREA`); name 150, custom type 40 characters; CSV import 2 MB and 5,000 rows |
 | Home banner ads | Image at most 5 MB and at least 800 px wide, stored at most 1600 px; title 80, link 500 characters; at most 10 per village's Home |
@@ -1013,7 +1016,7 @@ Built (`apps.citizens`). A citizen posts news or an issue for the village chosen
 | `POST /citizen/register/` | `{"nonce", "integrity_token", "platform": "android", "village_id", "app_version"?, "android_id"?, "fcm_token"?, "language"?}`. `android_id` is Android's `Settings.Secure.ANDROID_ID` (stored only as a keyed hash; it links reinstalls of the same phone, so a block and the daily limit survive them). `fcm_token` lets the server push the decision on each post (CP4). `language` `te` (default) or `en`, for those pushes. | `201 {"token": "…", "device": CitizenDevice}`. `400 validation_error` (expired or reused nonce: `fields.nonce`; unknown or inactive village: `fields.village_id`); `403 integrity_failed` (Google's verdict is not genuine). No limit on registrations by default; only if `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY` is set: `429 throttled` with `retry_after_s` after that many from one IP address in 24 hours. |
 | `GET /citizen/me/` | token | `CitizenDevice` |
 | `PATCH /citizen/me/` | token; any of `{"village_id", "fcm_token", "language"}` | `CitizenDevice`. The village posts go to; a new FCM token when Firebase rotates it; the language of pushes. |
-| `POST /citizen/posts/` | token; multipart `category`, `language`, `title`, `body`, `photos` and `videos` (any number of each, together or alone; repeat the field per file), and optional `targets`: a JSON string such as `[{"level":"DISTRICT","id":16},{"level":"VILLAGE","id":3226}]`, the same rules as officials' `targets` (section 3, "Posts"). Without it the post is for the phone's village. `CITIZEN_CAN_TARGET_STATE` (on) and `CITIZEN_MAX_TARGETS` (0: as officials) can narrow what citizens choose; a refusal is `400 fields.targets` with a message to show. | `201 CitizenPost`, already `PENDING`, in the queue of the admins over each chosen area. `400 validation_error`; `400 video_too_long`; `403 citizen_blocked` with `reason` and `blocked_until` (show both to the citizen); `403 permission_denied` for videos while `VIDEO_POSTS_ENABLED` is off; `413 file_too_large` (a photo over `MAX_IMAGE_UPLOAD_MB`, a video over `MAX_VIDEO_UPLOAD_MB`); `415 unsupported_media`; `429 throttled` with `retry_after_s` after the daily limit (5 posts per phone in 24 hours by default, all installs of the phone together; the Super Admin changes it in Settings). One bad file refuses the whole post and stores nothing. |
+| `POST /citizen/posts/` | token; multipart `category`, `language`, `title`, `body`, `photos` and `videos` (any number of each, together or alone; repeat the field per file), and optional `targets`: a JSON string such as `[{"level":"DISTRICT","id":16},{"level":"VILLAGE","id":3226}]`, the same rules as officials' `targets` (section 3, "Posts"). Without it the post is for the phone's village. `CITIZEN_CAN_TARGET_STATE` (on) and `CITIZEN_MAX_TARGETS` (0: as officials) can narrow what citizens choose; a refusal is `400 fields.targets` with a message to show. | `201 CitizenPost`, already `PENDING`, in the queue of the admins over each chosen area. `400 validation_error`; `400 video_too_long`; `403 citizen_blocked` with `reason` and `blocked_until` (show both to the citizen); `403 permission_denied` for videos while `VIDEO_POSTS_ENABLED` is off; `413 file_too_large` (a photo over `MAX_IMAGE_UPLOAD_MB`, a video over `MAX_VIDEO_UPLOAD_MB`); `415 unsupported_media` (also a video the server cannot check within its time limit); `400 validation_error` on `videos` (or `photos`) when all files together take longer than `MEDIA_PROCESSING_BUDGET_S` (90 s) to check: send fewer or shorter videos; `429 throttled` with `retry_after_s` after the daily limit (5 posts per phone in 24 hours by default, all installs of the phone together; the Super Admin changes it in Settings). One bad file refuses the whole post and stores nothing. |
 | `GET /citizen/posts/` | token | `[CitizenPost]`, this phone's posts, newest first, at most 50 |
 
 Every citizen endpoint answers `401 citizen_token_invalid` without a valid token. A blocked phone can still read `GET /citizen/me/` and its posts, but cannot post.
@@ -1126,7 +1129,7 @@ Services are never deleted. The 8 services the app ships with are seeded with th
 |---|---|---|
 | `GET /services/` | public, no login | The **shown** services in Home order, a plain list of `Service`. `Cache-Control: max-age=300` (`SERVICES_PUBLIC_MAX_AGE`). |
 | `POST /citizen/service-requests/` | header `X-Citizen-Token`; JSON `{"service", "name", "phone", "email"?, "address", "details"?}` | `201 CitizenServiceRequest`, status `NEW`, for the phone's village. `400 validation_error` with `fields`: `service` ("This service is not available.": unknown or hidden), `name`, `phone`, `email`, `address` ("Enter your address."), `details`. `401 citizen_token_invalid`; `403 citizen_blocked` with `reason` and `blocked_until` (as for posts); `429 throttled` with `retry_after_s` after `SERVICE_REQUESTS_PER_DAY` (10) requests from one phone, all its installs, in 24 hours. |
-| `GET /citizen/service-requests/` | header `X-Citizen-Token` | `[CitizenServiceRequest]`, this phone's requests (all its installs), newest first, at most 50 |
+| `GET /citizen/service-requests/` | header `X-Citizen-Token` | `[CitizenServiceRequest]`, the requests made from **this install** (this token), newest first, at most 50. **Changed 2026-11-09** (decision on audit BE_01, BE-SEC-002): it used to include every install with the same `android_id`; a request holds the citizen's name, phone and address, and `android_id` is not verified. After a reinstall the app starts with an empty list; the officials still have every request. The daily limit and blocks still count all installs of the phone. |
 
 ```jsonc
 // CitizenServiceRequest

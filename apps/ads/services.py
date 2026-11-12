@@ -35,7 +35,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from apps.audit.services import record
 from apps.geography.areas import AreaRef, ancestry, area_exists
 from apps.geography.models import AreaLevel
-from apps.posts.media import ALLOWED_FORMATS, MAX_PIXELS, PreparedVideo, prepare_video
+from apps.posts.media import ALLOWED_FORMATS, MAX_PIXELS, PreparedVideo, media_budget, prepare_video
 from grama.exceptions import ApiError
 
 from .models import Ad
@@ -97,14 +97,15 @@ def _delete_file_after_commit(name: str) -> None:
 
 def prepare(video, duration_s=None) -> tuple[PreparedVideo, bytes]:
     """The checked video and its poster as banner WebP. Runs ffprobe and ffmpeg: call outside a transaction."""
-    prepared = prepare_video(
-        video,
-        duration_s=duration_s,
-        lenient=True,
-        max_mb=settings.ADS_VIDEO_MAX_MB,
-        max_seconds=settings.ADS_VIDEO_MAX_SECONDS,
-        process_poster=False,
-    )
+    with media_budget("video"):
+        prepared = prepare_video(
+            video,
+            duration_s=duration_s,
+            lenient=True,
+            max_mb=settings.ADS_VIDEO_MAX_MB,
+            max_seconds=settings.ADS_VIDEO_MAX_SECONDS,
+            process_poster=False,
+        )
     return prepared, process_image(prepared.poster_source, min_width=False)
 
 

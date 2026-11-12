@@ -9,7 +9,7 @@ share a name with a service.
 
 from __future__ import annotations
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Max
 from django.utils import timezone
 from django.utils.text import slugify
@@ -52,18 +52,23 @@ def _delete_logo_after_commit(name: str) -> None:
 def create_bill(user, values: dict, logo=None) -> Bill:
     _check_name(values["name_en"])
     data = logos.process_logo(logo) if logo is not None else None
-    with transaction.atomic():
-        last = Bill.objects.aggregate(last=Max("order"))["last"]
-        bill = Bill.objects.create(
-            key=_new_key(values["name_en"]),
-            order=0 if last is None else last + 1,
-            **{name: values[name] for name in BILL_FIELDS if name in values},
-        )
-        if data is not None:
-            logos.store_logo(bill.logo, bill.key, data)
-            bill.save(update_fields=["logo"])
-        record("bill.created", actor=user, target=bill, target_label=bill.name_en,
-               data={"key": bill.key, "logo": data is not None})
+    try:
+        with transaction.atomic():
+            last = Bill.objects.aggregate(last=Max("order"))["last"]
+            bill = Bill.objects.create(
+                key=_new_key(values["name_en"]),
+                order=0 if last is None else last + 1,
+                **{name: values[name] for name in BILL_FIELDS if name in values},
+            )
+            if data is not None:
+                logos.store_logo(bill.logo, bill.key, data)
+                bill.save(update_fields=["logo"])
+            record("bill.created", actor=user, target=bill, target_label=bill.name_en,
+                   data={"key": bill.key, "logo": data is not None})
+    except IntegrityError:
+        # Two creates with the same name at once: the second gets the name check's answer.
+        _check_name(values["name_en"])
+        raise
     return bill
 
 

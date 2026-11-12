@@ -26,8 +26,12 @@ environ.Env.read_env(BASE_DIR / ".env")
 # In production, set DEBUG=False in .env; defaults to True for local development.
 DEBUG = env.bool("DEBUG", default=True)
  
-# Detect if pytest is running to accelerate test execution
-_RUNNING_TESTS = "pytest" in sys.modules or (len(sys.argv) > 1 and sys.argv[1] == "test")
+# Tests: pytest is imported AND has set PYTEST_VERSION (pytest 8.2+ sets it for the run), or
+# `manage.py test`. Both pytest signals are needed, so a server process that merely imports pytest
+# never switches to the test settings (MD5 hashing, no push).
+_RUNNING_TESTS = ("pytest" in sys.modules and "PYTEST_VERSION" in os.environ) or (
+    len(sys.argv) > 1 and sys.argv[1] == "test"
+)
  
  
 # ==============================================================================
@@ -55,6 +59,19 @@ if not DEBUG and (
     )
  
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
+
+# DEBUG is on unless .env says otherwise, which is right for laptops and wrong for a server whose
+# .env lost its DEBUG=False line. A server is recognised by a domain name in ALLOWED_HOSTS:
+# development mode refuses to start with one. Laptops use localhost and IP addresses.
+_LOCAL_HOST = re.compile(r"^(localhost|\.?[\w-]+\.(localhost|local)|\[[0-9a-fA-F:]+\]|[0-9.]+)$")
+if DEBUG and not _RUNNING_TESTS and not env.bool("DEBUG_ON_PUBLIC_HOST", default=False):
+    _public_hosts = [host for host in ALLOWED_HOSTS if not _LOCAL_HOST.match(host)]
+    if _public_hosts:
+        raise ImproperlyConfigured(
+            f"DEBUG is on (it is unset or True) but ALLOWED_HOSTS names {', '.join(_public_hosts)}. "
+            "A server must set DEBUG=False in its .env. On a laptop, remove those hosts, or set "
+            "DEBUG_ON_PUBLIC_HOST=True if you really mean to run development mode under that name."
+        )
  
  
 # ==============================================================================
@@ -86,11 +103,14 @@ SQLITE_DATABASE = {
     },
 }
  
-if not DEBUG:
+if _RUNNING_TESTS:
+    # Tests always run on SQLite, whatever DEBUG and DATABASE_URL say: never on a server's database.
+    DATABASES = {"default": SQLITE_DATABASE}
+elif not DEBUG:
     DATABASES = {"default": database_config(env.str("DATABASE_URL"))}
 else:  # DEV
     _db_url = env.str("DATABASE_URL", default="")
-    DATABASES = {"default": database_config(_db_url) if _db_url and not _RUNNING_TESTS else SQLITE_DATABASE}
+    DATABASES = {"default": database_config(_db_url) if _db_url else SQLITE_DATABASE}
  
  
 # ==============================================================================
@@ -107,12 +127,17 @@ def _dir_from_env(name: str, default: str) -> Path:
 WEB_PUBLIC_DIR = _dir_from_env("WEB_PUBLIC_DIR", "../BVTGramaConnect/dist")
 WEB_ADMIN_DIR = _dir_from_env("WEB_ADMIN_DIR", "../BVTGramaConnect/dist/console")
  
-if not DEBUG:
+if _RUNNING_TESTS:
+    # Never a server's media folder, whatever DEBUG says.
+    MEDIA_ROOT = BASE_DIR / ".test-media"
+    STATIC_ROOT = BASE_DIR / "staticfiles"
+    SERVE_FILES = env.bool("SERVE_FILES", default=DEBUG)
+elif not DEBUG:
     MEDIA_ROOT = Path(env.str("MEDIA_ROOT"))
     STATIC_ROOT = Path(env.str("STATIC_ROOT"))
     SERVE_FILES = env.bool("SERVE_FILES", default=False)  # Nginx serves files in production
 else:  # DEV
-    MEDIA_ROOT = BASE_DIR / (".test-media" if _RUNNING_TESTS else "media")
+    MEDIA_ROOT = BASE_DIR / "media"
     STATIC_ROOT = BASE_DIR / "staticfiles"
     SERVE_FILES = env.bool("SERVE_FILES", default=True)   # Django serves files in dev
  
@@ -379,6 +404,19 @@ SPECTACULAR_SETTINGS = {
     "SERVE_PERMISSIONS": ["apps.accounts.permissions.CanReadApiDocs"],
     "COMPONENT_SPLIT_REQUEST": True,
     "SCHEMA_PATH_PREFIX": r"/api/v[0-9]+",
+    # One stable name per choice set used in several places, instead of generated names such as
+    # "Level360Enum" that change when a serializer changes and break generated client code.
+    "ENUM_NAME_OVERRIDES": {
+        "AreaLevelEnum": "apps.geography.models.AreaLevel",
+        "LanguageEnum": "apps.accounts.models.Language",
+        "PostStatusEnum": "apps.posts.models.PostStatus",
+        "ServiceRequestStatusEnum": "apps.service_requests.models.RequestStatus",
+        "DevicePlatformEnum": "apps.notifications.models.Platform",
+        "MediaKindEnum": "apps.posts.models.MediaKind",
+        "NotificationKindEnum": "apps.notifications.models.NotificationKind",
+        "ServiceIconEnum": "apps.service_requests.models.ICONS",
+        "BillIconEnum": "apps.bills.models.ICONS",
+    },
 }
  
  
@@ -428,6 +466,16 @@ POST_IMAGE_QUALITY = 80
  
 MAX_VIDEO_UPLOAD_MB = env.int("MAX_VIDEO_UPLOAD_MB", default=50)
 VIDEO_MAX_SECONDS = env.int("VIDEO_MAX_SECONDS", default=60)
+# How long the server may spend checking uploads (apps.posts.media, audit BE-PERF-003): each
+# ffprobe/ffmpeg step, and all photos and videos of one request together. A step that runs out of
+# time answers 415; a request over the budget answers 400. Keep the budget below Gunicorn's
+# --timeout (GUNICORN_TIMEOUT, 120 s), so a request is refused cleanly instead of being killed.
+VIDEO_PROBE_TIMEOUT_S = env.int("VIDEO_PROBE_TIMEOUT_S", default=15)
+VIDEO_POSTER_TIMEOUT_S = env.int("VIDEO_POSTER_TIMEOUT_S", default=20)
+VIDEO_STRIP_TIMEOUT_S = env.int("VIDEO_STRIP_TIMEOUT_S", default=45)
+MEDIA_PROCESSING_BUDGET_S = env.int("MEDIA_PROCESSING_BUDGET_S", default=90)
+if min(VIDEO_PROBE_TIMEOUT_S, VIDEO_POSTER_TIMEOUT_S, VIDEO_STRIP_TIMEOUT_S, MEDIA_PROCESSING_BUDGET_S) < 1:
+    raise ImproperlyConfigured("VIDEO_*_TIMEOUT_S and MEDIA_PROCESSING_BUDGET_S must be at least 1 second.")
 ESCALATION_CHECK_MINUTES = env.int("ESCALATION_CHECK_MINUTES", default=15)
 HOUSEKEEPING_KEEP_DAYS = env.int("HOUSEKEEPING_KEEP_DAYS", default=30)
  
@@ -461,6 +509,8 @@ SITE_SHOWCASE_VILLAGE_ID = env.int("SITE_SHOWCASE_VILLAGE_ID", default=0) or Non
  
 GEO_PUBLIC_MAX_AGE = env.int("GEO_PUBLIC_MAX_AGE", default=600)
 GEO_BOUNDS = {"lat": (12.6, 19.95), "lng": (76.7, 84.8)}
+# geo/villages/import/ reads the whole file into memory: the state's ~18,000 villages are about 3 MB.
+GEO_IMPORT_MAX_BYTES = env.int("GEO_IMPORT_MAX_BYTES", default=20 * 1024 * 1024)
  
 CONTACTS_MAX_PER_AREA = env.int("CONTACTS_MAX_PER_AREA", default=200)
 CONTACTS_PUBLIC_MAX_AGE = env.int("CONTACTS_PUBLIC_MAX_AGE", default=300)

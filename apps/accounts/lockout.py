@@ -10,6 +10,12 @@ Failed logins and lockouts are written to the audit log here, for the API and
 for Django admin alike. The audit entry never holds the password; the IP
 address stays in axes' own tables only.
 
+axes' tables never hold the typed username either: AXES_USERNAME_CALLABLE gives
+login_key(), a keyed hash (HMAC-SHA256 with SECRET_KEY) of the username as login
+compares it. What was typed may be a password typed into the wrong box, and
+AccessFailureLog keeps it for HOUSEKEEPING_KEEP_DAYS. Every lookup by username
+goes through login_key(). Changing SECRET_KEY only clears current lockouts.
+
 On top of that, an IP-wide cap against password spraying (one password tried on
 many usernames): LOGIN_IP_MAX_FAILURES failed logins from one IP within
 LOGIN_IP_WINDOW_MINUTES block every app and console login from that IP until
@@ -20,6 +26,8 @@ it, and an admin's unlock does not either: it is about an address, not a user.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 from datetime import timedelta
 
 from axes.handlers.proxy import AxesProxyHandler
@@ -32,6 +40,7 @@ from django.dispatch import receiver
 from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
 
+from apps.audit.masking import mask_text
 from grama.http import client_ip
 
 from .models import User, normalize_login
@@ -40,12 +49,25 @@ from .models import User, normalize_login
 SESSION_TOKEN_VERSION = "gc_tv"
 
 
-def axes_username(request, credentials) -> str:
-    """AXES_USERNAME_CALLABLE: the username as login compares it (trimmed, lower case)."""
+def typed_username(request, credentials) -> str:
+    """The username as login compares it (trimmed, lower case). For the audit log only, never axes."""
     value = (credentials or {}).get("username")
     if value is None and request is not None:
         value = request.POST.get("username")
     return normalize_login(value)[:150]
+
+
+def login_key(username) -> str:
+    """What axes stores for a username: a keyed hash, never the typed text. "" stays ""."""
+    value = normalize_login(username)[:150]
+    if not value:
+        return ""
+    return hmac.new(settings.SECRET_KEY.encode(), b"axes-username:" + value.encode(), hashlib.sha256).hexdigest()
+
+
+def axes_username(request, credentials) -> str:
+    """AXES_USERNAME_CALLABLE: the keyed hash of the typed username."""
+    return login_key(typed_username(request, credentials))
 
 
 def axes_client_ip(request) -> str | None:
@@ -60,7 +82,7 @@ def _cool_off() -> timedelta:
 def seconds_left(username: str, ip: str | None) -> int:
     """How long the (username, IP) pair stays locked, in whole seconds (at least 1)."""
     latest = (
-        AccessAttempt.objects.filter(username=username, ip_address=ip)
+        AccessAttempt.objects.filter(username=login_key(username), ip_address=ip)
         .order_by("-attempt_time")
         .values_list("attempt_time", flat=True)
         .first()
@@ -75,11 +97,11 @@ def locked_usernames(usernames) -> set[str]:
     """Which of these usernames are locked from at least one IP address right now."""
     since = timezone.now() - _cool_off()
     limit = get_failure_limit(None, None)
-    return set(
-        AccessAttempt.objects.filter(
-            username__in=list(usernames), attempt_time__gte=since, failures_since_start__gte=limit
-        ).values_list("username", flat=True)
-    )
+    by_key = {login_key(name): name for name in usernames}
+    locked = AccessAttempt.objects.filter(
+        username__in=list(by_key), attempt_time__gte=since, failures_since_start__gte=limit
+    ).values_list("username", flat=True)
+    return {by_key[key] for key in locked}
 
 
 def ip_window() -> timedelta:
@@ -106,7 +128,7 @@ def ip_seconds_left(ip: str | None, now=None) -> int:
 
 def unlock(user: User) -> int:
     """Clear every failed attempt for this user's username, from any IP. Returns the rows removed."""
-    return AxesProxyHandler.reset_attempts(username=user.username)
+    return AxesProxyHandler.reset_attempts(username=login_key(user.username))
 
 
 def _via(request) -> str:
@@ -122,32 +144,47 @@ def _via(request) -> str:
 def audit_failed_login(sender, credentials=None, request=None, **kwargs):
     from apps.audit.services import record
 
-    username = axes_username(request, credentials)
+    username = typed_username(request, credentials)
     target = User.objects.filter(username=username).first() if username else None
+    shown = _username_for_audit(username, target)
     record(
         "auth.login_failed",
         target=target,
-        target_label=username,
+        target_label=shown,
         via=_via(request),
-        data={"username": username, "locked": bool(getattr(request, "axes_locked_out", False))},
+        data={"username": shown, "locked": bool(getattr(request, "axes_locked_out", False))},
     )
+
+
+def _username_for_audit(username: str, target) -> str:
+    """A real account's username as is; anything else masked.
+
+    What was typed for an unknown account may be a password typed into the wrong box, or an
+    email address, so the audit log keeps only its first character.
+    """
+    return username if target is not None else mask_text(username)
 
 
 @receiver(user_locked_out, dispatch_uid="audit_lockout")
 def audit_lockout(sender, request=None, username=None, ip_address=None, **kwargs):
-    """axes sends this on the failure that locks, and again on tries during the lockout; audit the first."""
+    """axes sends this on the failure that locks, and again on tries during the lockout; audit the first.
+
+    The signal's `username` is the hash (login_key); the typed name comes from the credentials
+    axes keeps on the request just before it sends the signal.
+    """
     if getattr(request, "axes_failures_since_start", None) is None:
         return
     from apps.audit.services import record
 
-    username = normalize_login(username)
+    username = typed_username(request, getattr(request, "axes_credentials", None))
     target = User.objects.filter(username=username).first() if username else None
+    shown = _username_for_audit(username, target)
     record(
         "auth.locked_out",
         target=target,
-        target_label=username,
+        target_label=shown,
         via=_via(request),
-        data={"username": username, "minutes": int(_cool_off().total_seconds() // 60)},
+        data={"username": shown, "minutes": int(_cool_off().total_seconds() // 60)},
     )
 
 

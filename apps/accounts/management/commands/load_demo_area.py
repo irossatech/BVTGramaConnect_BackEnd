@@ -34,6 +34,7 @@ from django.utils import timezone
 from django.utils.text import slugify
 
 from apps.accounts.credentials import generate_password
+from apps.accounts.management.server_guard import add_allow_server, refuse_on_server
 from apps.accounts.models import RoleAssignment, RoleGroup, User
 from apps.accounts.roles import Role
 from apps.geography.areas import AreaRef
@@ -53,8 +54,10 @@ class Command(BaseCommand):
         parser.add_argument("--villages", type=int, default=4, help="How many villages (default 4).")
         parser.add_argument("--village", action="append", default=[], help="A village by name; repeat for more.")
         parser.add_argument("--std-code", default="08598", help="Landline prefix for the demo numbers (Kandukur 08598).")
+        add_allow_server(parser)
 
-    def handle(self, *args, district, mandal, villages, village, std_code, **options):
+    def handle(self, *args, district, mandal, villages, village, std_code, allow_server=False, **options):
+        refuse_on_server("load_demo_area", allow_server)
         out = getattr(self.stdout, "_out", None)
         if hasattr(out, "reconfigure"):
             out.reconfigure(errors="backslashreplace")

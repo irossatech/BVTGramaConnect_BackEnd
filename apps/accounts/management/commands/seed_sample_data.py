@@ -32,6 +32,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.accounts.credentials import generate_password
+from apps.accounts.management.server_guard import add_allow_server, refuse_on_server
 from apps.accounts.models import RoleAssignment, RoleGroup, User
 from apps.accounts.roles import Role
 from apps.geography.areas import AreaRef
@@ -92,8 +93,10 @@ class Command(BaseCommand):
             "--reset-passwords", action="store_true",
             help="Give every sample official a new temporary password and print it.",
         )
+        add_allow_server(parser)
 
-    def handle(self, *args, reset_passwords=False, **options):
+    def handle(self, *args, reset_passwords=False, allow_server=False, **options):
+        refuse_on_server("seed_sample_data", allow_server)
         out = getattr(self.stdout, "_out", None)
         if hasattr(out, "reconfigure"):
             out.reconfigure(errors="backslashreplace")

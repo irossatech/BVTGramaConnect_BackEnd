@@ -556,7 +556,7 @@ def delete_post(user, post: Post) -> None:
             raise invalid_transition(_reload(post), "deleted")
         record("post.deleted", actor=user, target_label=post.title, area=post.target, data={"post_id": str(post.pk)})
     for item in media:
-        for field in (item.image, item.medium, item.thumbnail):
+        for field in (item.image, item.medium, item.thumbnail, item.video):
             if field:
                 field.storage.delete(field.name)
 

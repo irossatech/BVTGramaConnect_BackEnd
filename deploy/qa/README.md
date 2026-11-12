@@ -96,11 +96,35 @@ the web developer built them; the server builds them (with Node.js 20.9+) only w
 before changing anything if someone edited tracked files on the server, so never run
 `npm run build` in the web repo on the server. `SEED=1` is refused once villages exist: the sample
 data would write its own places over the real list. Demo content for real villages:
-`manage.py load_demo_area` (`.claude/operations.md`).
+`manage.py load_demo_area --allow-server` (`.claude/operations.md`). Both sample-data commands
+refuse on a server without `--allow-server`; never use it on production.
+
+## Backups
+
+`bash BVT-backup.sh --install` runs one every night. The data dump holds password hashes and
+personal data, so on production (and preferably on qa) encrypt it and keep a copy off the server:
+
+1. A passphrase file, once:
+   ```
+   mkdir -p ~/secrets && chmod 700 ~/secrets
+   python3 -c 'import secrets; print(secrets.token_urlsafe(32))' > ~/secrets/backup.passphrase
+   chmod 600 ~/secrets/backup.passphrase
+   ```
+   Store the passphrase in the team's password manager too: without it no backup can be restored.
+2. Optional off-site copy: configure an rclone remote for this account (`rclone config`), then add
+   to the crontab line's environment, or to `~/.profile`: `export BACKUP_RCLONE_REMOTE=<remote>:bvt-backups`.
+
+Each run warns while either is missing.
 
 ## Restoring a backup
 
-Into an empty database, or after `flush` (which deletes every row: never on the wrong database):
+Into an empty database, or after `flush` (which deletes every row: never on the wrong database).
+An encrypted backup (`*.gpg`) is decrypted first:
+```
+cd ~/bvt-backups/<folder>
+for f in *.gpg; do gpg --batch --pinentry-mode loopback --passphrase-file ~/secrets/backup.passphrase -o "${f%.gpg}" -d "$f"; done
+```
+Then:
 ```
 bash BVT-stop.sh
 cd BVTGramaConnect_BackEnd
@@ -112,7 +136,8 @@ tar -xzf ~/bvt-backups/<folder>/media.tgz
 .venv/bin/python manage.py ensure_schedules
 cd .. && bash BVT-start.sh
 ```
-Sessions and app tokens are not in a backup: everyone logs in again once.
+Delete the decrypted `data.json.gz` and `media.tgz` afterwards. Sessions and app tokens are not
+in a backup: everyone logs in again once.
 
 ## The domain
 
@@ -148,10 +173,12 @@ ln -s BVTGramaConnect_BackEnd/staticfiles static
 `downloads` holds the app's APK (`/downloads/bvt-grama-connect.apk`). `static` holds what every
 deploy collects (`collectstatic`): the pictures WhatsApp shows for shared posts without a photo
 (`/static/share/og-*.jpg`), and the Django admin and API docs styles.
-Remove them (`rm _next _ds assets fonts downloads media`) once nginx serves those folders. This is fine
-for qa only: production uses `deploy/setup.sh`, whose nginx serves the website, the
-console, `/static/` and `/media/` with their cache rules and sends only `/api/` and
-`/django-admin/` to Gunicorn.
+Remove them (`rm _next _ds assets fonts downloads media`) once nginx serves those folders. On a
+server set up with `deploy/setup.sh`, our own nginx serves the website, the console, `/static/` and
+`/media/` with their cache rules and sends only `/api/` and `/django-admin/` to Gunicorn. Production
+on the hosting panel (below) is not such a server: there the panel's nginx sits in front, and the
+headers, body-size limits, rate limits and the `/django-admin/` office-IP rule that
+`deploy/templates/` gives must be checked on the panel itself.
 
 ## Push notifications
 
@@ -184,7 +211,7 @@ the scripts; the settings go by `DEBUG`), which the first production deploy writ
 | | qa | production on the panel |
 |---|---|---|
 | Settings | `DEBUG=False`, plus `SERVE_FILES`, `API_DOCS_PUBLIC` and integrity off for test builds | `DEBUG=False`: secure cookies, HSTS, the key and host checks |
-| Web server | `runserver` on `0.0.0.0:PORT` | Gunicorn on `127.0.0.1:PORT` (3 workers, `WEB_WORKERS`), no access log |
+| Web server | `runserver` on `0.0.0.0:PORT` | Gunicorn on `127.0.0.1:PORT` (3 workers, `WEB_WORKERS`; `--timeout` 120 s, `GUNICORN_TIMEOUT`), no access log |
 | Branch | `dev` | `main` (`BRANCH=dev` to override) |
 | Deploy also runs | | `check --deploy` before migrating, `collectstatic` |
 | Refused | | `SEED=1`, `QA_SQLITE=1` |

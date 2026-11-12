@@ -4,10 +4,15 @@
            area=AreaRef("VILLAGE", 12), via="app", data={"comment": "…"})
 
 Call it inside the same transaction as the change it describes.
+
+Safety net: `data` and `target_label` pass through masking.scrub / scrub_label here, so an email,
+mobile or phone is masked and a password, token or secret is removed even if a caller forgets.
+Callers should still mask first (masking.py); this only catches what slips through.
 """
 
 from __future__ import annotations
 
+from .masking import scrub, scrub_label
 from .models import AuditLog, type_for_action
 
 
@@ -42,9 +47,9 @@ def record(
         type=type_for_action(action),
         target_type=target_type,
         target_id=target_id,
-        target_label=(target_label or "")[:255],
+        target_label=scrub_label(target_label)[:255],
         area_level=area.level if area is not None else "",
         area_id=area.id if area is not None else None,
         via=via,
-        data=data or {},
+        data=scrub(data or {}),
     )

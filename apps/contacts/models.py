@@ -111,7 +111,10 @@ class Contact(models.Model):
         permissions = [("manage_contact", "Add, edit and remove important numbers in own area")]
 
     def __str__(self):
-        return f"{self.name} {self.phone}"
+        # Shown in Django admin and kept in its change log: never the full number.
+        from .phones import mask
+
+        return f"{self.name} {mask(self.phone)}"
 
     @property
     def area(self) -> AreaRef:

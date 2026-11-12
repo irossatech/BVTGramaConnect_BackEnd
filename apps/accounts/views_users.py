@@ -27,6 +27,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from apps.audit.masking import changes
 from apps.audit.services import record
 from apps.geography.areas import AreaRef, area_exists, within_q
 from apps.geography.models import AreaLevel
@@ -268,20 +269,26 @@ class UserViewSet(
         if values["password"]:
             check_new_password(values["password"], user, group_ids=[role.group_id])
 
-        with transaction.atomic():
-            user.set_unusable_password()
-            user.save()
-            generated = set_temporary_password(user, values["password"] or None)
-            assignment = RoleAssignment.objects.create(
-                user=user, group_id=role.group_id, area_level=area.level, area_id=area.id, assigned_by=request.user
-            )
-            record(
-                "user.super_admin_created" if peers.is_peer_role(role) else "user.created",
-                actor=request.user, target=user, target_label=user.name,
-                area=assignment.area, via=via(request),
-                data={"role": role.key, "password": "generated" if generated else "set by admin"},
-            )
-            announce_peer(request, role, user)
+        try:
+            with transaction.atomic():
+                user.set_unusable_password()
+                user.save()
+                generated = set_temporary_password(user, values["password"] or None)
+                assignment = RoleAssignment.objects.create(
+                    user=user, group_id=role.group_id, area_level=area.level, area_id=area.id, assigned_by=request.user
+                )
+                record(
+                    "user.super_admin_created" if peers.is_peer_role(role) else "user.created",
+                    actor=request.user, target=user, target_label=user.name,
+                    area=assignment.area, via=via(request),
+                    data={"role": role.key, "password": "generated" if generated else "set by admin"},
+                )
+                announce_peer(request, role, user)
+        except IntegrityError:
+            # Another request took the username or mobile between the checks above and the save.
+            if User.objects.filter(username=values["username"]).exists():
+                raise duplicate(_("This username is taken."), "username") from None
+            raise duplicate(_("This mobile number already belongs to an official."), "mobile") from None
         return self._respond(user, status_code=status.HTTP_201_CREATED, temporary_password=generated, wrap=True)
 
     @extend_schema(summary="Change a user's name, language or contact details", request=UserUpdateSerializer, responses=UserSerializer)
@@ -289,8 +296,16 @@ class UserViewSet(
         user = self.get_object()
         data = UserUpdateSerializer(user, data=request.data, partial=True)
         data.is_valid(raise_exception=True)
-        data.save()
-        record("user.updated", actor=request.user, target=user, target_label=user.name, via=via(request), data=dict(data.validated_data))
+        before = {name: getattr(user, name) for name in data.validated_data}
+        with transaction.atomic():
+            data.save()
+            changed = changes(before, user)
+            if changed:
+                # Only what changed, and email and mobile masked: the audit log never holds them in full.
+                record(
+                    "user.updated", actor=request.user, target=user, target_label=user.name,
+                    via=via(request), data={"changed": changed},
+                )
         return self._respond(user)
 
     def update(self, request, *args, **kwargs):

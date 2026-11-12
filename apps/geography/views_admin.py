@@ -8,6 +8,8 @@ Areas are never deleted; deactivating one hides it and everything below it.
 
 from __future__ import annotations
 
+from django.conf import settings
+from django.db.models import Count
 from django.utils.translation import gettext as _
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
@@ -198,9 +200,10 @@ class GeoTreeView(APIView):
         states = list(State.objects.order_by("name_en"))
         districts = list(District.objects.order_by("name_en"))
         mandals = list(Mandal.objects.order_by("name_en"))
-        village_counts: dict[int, int] = {}
-        for mandal_id in Village.objects.values_list("mandal_id", flat=True):
-            village_counts[mandal_id] = village_counts.get(mandal_id, 0) + 1
+        # Counted by the database: one GROUP BY row per mandal, not one row per village.
+        village_counts = dict(
+            Village.objects.order_by().values("mandal_id").annotate(n=Count("id")).values_list("mandal_id", "n")
+        )
         villages_by_mandal: dict[int, list] = {}
         if request.query_params.get("villages") in ("1", "true"):
             for village in Village.objects.order_by("name_en"):
@@ -260,6 +263,12 @@ class VillageImportView(APIView):
         if upload is None:
             raise ApiError("validation_error", _("Attach a CSV file."), fields={"file": [_("Required.")]})
         dry_run = request.query_params.get("dry_run") in ("1", "true", "yes")
+        if upload.size > settings.GEO_IMPORT_MAX_BYTES:
+            raise ApiError(
+                "file_too_large",
+                _("The file is too large: at most %(mb)s MB.") % {"mb": settings.GEO_IMPORT_MAX_BYTES // (1024 * 1024)},
+                status=413,
+            )
         try:
             text = upload.read().decode("utf-8-sig")
         except UnicodeDecodeError:
