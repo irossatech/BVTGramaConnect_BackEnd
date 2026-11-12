@@ -1,6 +1,6 @@
 # Prototype inventory
 
-Status: written 2026-10-21 from a full read of the prototype folder. Read-only reference; nothing in the prototype folder was changed.
+Status: written 2026-10-21 from a full read of the prototype folder. Read-only reference; nothing in the prototype folder was changed. Summary and section 5 updated 2026-11-07 for the Next.js web app.
 
 > **Update 2026-10-21 (owner):** officials now log in with a username and a password. There is no OTP, SMS or email login, and roles are Django groups and permissions. The OTP screens and endpoints below are prototype history; the current flow is in [authorization.md](authorization.md).
 
@@ -13,8 +13,8 @@ Endpoint names below refer to `api-contract.md` in this folder. Line numbers (L1
 | Part | Approved file | Built with | Port approach | Lives in |
 |---|---|---|---|---|
 | Mobile app, all roles | `Grama Connect Mobile V2.dc.html` | Design Canvas runtime on React 18 | Rebuild in Flutter, per CLAUDE.md | BVTGramaConnect_Mobile |
-| Web public | `Public Website.dc.html` | Design Canvas runtime on React 18 | Framework route: keep the files, wire data in the logic class | BVTGramaConnect, `src/`, served at `/` |
-| Web admin | `Super Admin Console.dc.html` | Design Canvas runtime on React 18 | Framework route, same as web public | BVTGramaConnect, `console/`, served at `/console/` |
+| Web public | `Public Website.dc.html` | Design Canvas runtime on React 18 | Ported as is, data wired in the logic class; one Next.js app since 2026-10-22 (section 5) | BVTGramaConnect, `src/website/`, served at `/` |
+| Web admin | `Super Admin Console.dc.html` | Design Canvas runtime on React 18 | Same as web public | BVTGramaConnect, `src/console/`, served at `/console/` |
 
 Contents:
 1. Shared technology
@@ -373,63 +373,68 @@ Client-side validation, exactly as coded:
 
 ## 5. Porting approach for the web parts
 
-### 5.1 Decision: framework route for both
-Both web parts use a framework: the Design Canvas runtime on React 18. CLAUDE.md's framework rule applies to both.
+> **Updated 2026-11-07:** this section describes the web parts as they are now, one Next.js app. The web repo's `.claude/architecture.md` and `.claude/conventions.md` hold the details.
 
-The plain-HTML route does not fit. The markup is a template language only the runtime understands. All behaviour lives in the logic class: page switching, the language toggle, accordions, forms, modals, filters, panels. Turning it into Django templates would mean rewriting that behaviour, which breaks "port as is".
+### 5.1 Decision: framework route, now Next.js
+Both prototypes are framework pages: the Design Canvas runtime on React 18, which compiles an HTML template and a logic class in the browser. CLAUDE.md's framework rule applies to both.
+
+The plain-HTML route does not fit. All behaviour lives in the logic class: page switching, the language toggle, accordions, forms, modals, filters, panels. Turning it into Django templates would mean rewriting that behaviour, which breaks "port as is".
+
+Until 2026-10-22 the two pages ran on the runtime itself. On 2026-10-22, with the owner's approval, they were converted to one Next.js app (Next.js 16, React 19, TypeScript, Pages Router, static export) with no visible change: every page of both apps was compared pixel by pixel with the runtime version at 375, 1280 and 1440 px, in both languages, and matched exactly (decision 10 in section 7).
 
 ### 5.2 Where the code lives
 
 | Part | Folder in the brief | Repo | Served at |
 |---|---|---|---|
-| Web public | /web-public | BVTGramaConnect, folder `src/` | `/` |
-| Web admin | /web-admin | BVTGramaConnect, folder `console/` | `/console/` |
+| Web public | /web-public | BVTGramaConnect, `src/website/` (pages `src/pages/index.tsx` and `src/pages/[page].tsx`) | `/`, `/howitworks/`, `/officials/`, `/faq/`, `/contact/`, `/privacy/`, `/terms/` |
+| Web admin | /web-admin | BVTGramaConnect, `src/console/` (page `src/pages/console/index.tsx`) | `/console/` |
 | API, Django admin, media | /backend | BVTGramaConnect_BackEnd | `/api/`, `/django-admin/`, `/media/` |
 
-Everything sits on one origin, so the console's refresh cookie needs no CORS and the website calls the API with relative URLs. The `web_public` and `web_admin` Django apps serve the web repo's build in development. Until 2026-10-21 the website and the console were two repos; they are now one, BVTGramaConnect, owned by one web developer.
+Everything sits on one origin, so the console's session cookie needs no CORS and both apps call the API with relative URLs. The `web_public` and `web_admin` Django apps serve the web repo's build in development. Until 2026-10-21 the website and the console were two repos; they are now one, BVTGramaConnect, owned by one web developer.
 
 ### 5.3 Layout of the web repo
 
 ```
 BVTGramaConnect/
-  src/              website: index.html (the .dc.html page, renamed), gc-api.js, assets/icon-location.png
-  console/src/      console: index.html (generated by console/tools/port.py), gc-api.js
-  console/tools/    logic.js, port.py, visual-check scripts
-  shared/           identical for both apps, never edited by hand:
-    support.js      dc-runtime, byte-for-byte copy
-    vendor/         React 18.3.1 and ReactDOM 18.3.1 UMD, the same files the runtime would fetch
-    _ds/…/          design system, unchanged
-    assets/         common images, unchanged
-    config.js       window.GC_CONFIG = { apiBase, consoleUrl }
-  build.mjs         one build: dist/ for the website, dist/console/ for the console
+  src/pages/        routes only (Pages Router): index.tsx, [page].tsx, console/index.tsx, _document.tsx
+  src/website/      website: Site.tsx (the logic class), sections/, locales/te.json and en.json, ui/, api.ts
+  src/console/      console: Console.tsx (the logic class), screens/, panels/, layout/, ui/, api.ts, ds.tsx
+  src/shared/       used by both: PageHead.tsx, dc.tsx (the old runtime's rendering rules), config.ts
+  public/           _ds/ (design system, never edited), assets/, fonts/
+  scripts/          seo-files.mjs (robots.txt, sitemap.xml, llms.txt), defer-hydration.mjs and boot.js
+  next.config.ts    static export to dist/
 ```
 
-The build has no dependencies. It copies `shared/` and each app's own files into `dist/` and `dist/console/` byte for byte and writes `config.js` from `GC_API_BASE` and `GC_CONSOLE_URL`. The pages use relative paths, so nothing in the markup changed when the two apps moved into one repo.
+Each component is one React class component in the prototype's shape: the logic class (`state`, `componentDidMount`, `renderVals()`) kept as it was, and `render()` the prototype template converted one to one to JSX. `src/shared/dc.tsx` keeps the output identical to the runtime's.
+
+`npm run build` runs `next build --webpack` and the two scripts. It writes `dist/` (the website's pages, `_next/` scripts and the files from `public/`) and `dist/console/index.html`, with `GC_API_BASE` and `GC_SITE_URL` built in. The web developer commits `dist/`.
 
 ### 5.4 What may change during the port
-Only these changes are allowed. Anything else is a design change and needs sign-off.
-1. The page file is renamed to `index.html`. The runtime takes its root name from the file name, so any name works.
-2. In `<head>`, before `support.js`: script tags for `vendor/react…`, `vendor/react-dom…`, `config.js` and `gc-api.js`. The runtime skips its unpkg download when `window.React` and `window.ReactDOM` already exist (support.js L1838-1846). Production then loads no third-party script.
-3. `window.__resources` must **not** be defined. Defining it switches off the runtime's re-read of the raw page, and the console's tables and selects would break.
-4. `data-ds-base="assets"` on `<html>`, so design-system icons resolve. This fixes the console's broken Settings icons and changes nothing on the website.
-5. In the logic class only: mock constants become `state` filled from the API in `componentDidMount` and in handlers. An adapter turns API objects into the shapes `renderVals()` already returns, so the template does not change. Loading and error states reuse what the page has: toasts, empty lists, disabled buttons.
-6. Hard-coded values inside the template become `{{ }}` bindings: the website's contact details and phone mockup; the console's post photo `src` (L328) and category filter options (L212).
-7. Demo-only controls are removed: the console's demo login and demo OTP buttons, the website's demo toasts once real URLs exist.
-8. Markup, inline styles, CSS files, fonts and assets stay as they are.
+Only these changes are allowed. Anything else is a design change and needs sign-off. The list is kept in the web repo's `.claude/conventions.md` ("Zero visual change"); in short:
+1. The prototypes run as a Next.js static export. The markup is the prototype template converted one to one to JSX.
+2. React, fonts, design-system CSS and images load from the site itself.
+3. Data wiring only in the logic class: mock values become `state` filled from the API. Loading and error states reuse what the page already has, such as the toast. No new layout.
+4. Hard-coded values in the markup become `renderVals()` values: for example the website's phone picture, and the console's post photos and category filter.
+5. Demo-only controls are removed or pointed at the real target: the console's demo login, the website's demo toasts.
+6. Markup, inline styles, CSS files, fonts, images and animations stay as they are.
+7. Website speed work the owner approved on 2026-11-06: WebP images, woff2 fonts, the phone and wide layouts in CSS, and scripts started after the first paint.
+
+The console's documented additions (username and password login, change password, pagers, roles in the user panel, the contact-messages page and others) are listed in the web repo's `.claude/architecture.md`, section "Console".
 
 ### 5.5 How it is served
 - **Development:** Django serves both folders when `DEBUG` is on. `web_public` maps `/` to `WEB_PUBLIC_DIR` (default `../BVTGramaConnect/dist`); `web_admin` maps `/console/` to `WEB_ADMIN_DIR` (default `../BVTGramaConnect/dist/console`).
-- **Production:** the deploy script uses the build committed in the web repo's `dist/` (built by the web developer; built on the server only when the repo has none) and copies `dist/` to the folder Nginx serves at `/` and `dist/console/` to the folder it serves at `/console/`. Nginx proxies `/api/` and `/django-admin/` to Gunicorn and serves `/media/` from `/var/media`.
-- Files are served byte for byte. No HTML minifier, because the runtime re-reads the raw page.
-- Nginx sends `charset utf-8`, gzip for HTML, JS, CSS and JSON, long cache headers for `vendor/`, `_ds/` and `assets/`, a year (`immutable`) for the website's `_next/static/`, and `no-cache` with an ETag for every `.html` page and `support.js`.
+- **Production:** the deploy script uses the build committed in the web repo's `dist/` (built on the server only when the repo has none). It copies `dist/` without `console/` to the folder Nginx serves at `/` and `dist/console/` to the folder it serves at `/console/`. Nginx proxies `/api/` and `/django-admin/` to Gunicorn and serves `/media/` from `/var/media`.
+- Nginx sends `charset utf-8`, gzip for HTML, JS, CSS and JSON, a year (`immutable`) for `/_next/static/` (Next.js names those files by their content), 30 days for `_ds/`, `assets/` and `fonts/`, and `no-cache` for every `.html` page, so a new build shows at once.
 
 ### 5.6 Constraints the port inherits
-- **Content Security Policy:** the runtime uses `new Function` and the markup uses inline styles. These pages need `script-src 'self' 'unsafe-eval'`, `style-src 'self' 'unsafe-inline'`, `font-src 'self' data:`, `connect-src 'self'`. Since 2026-11-04 both serve their fonts from `/fonts/` on the site itself, so no page loads anything from Google. This is why the console keeps its refresh token in an HttpOnly cookie and its access token in memory only.
-- **Generated runtime:** `support.js` is never edited. When the designer re-exports a page, the new file replaces the old one whole and the data wiring is carried over by hand.
-- **No URL per page:** browser Back leaves the site and pages cannot be linked to (Q16).
-- **Search engines** see the raw template with `{{ }}` placeholders until JavaScript runs. This weakens the public site's search ranking.
+- **Content Security Policy:** the pages run only external scripts from `/_next/` and keep the prototype's inline styles, so they need `script-src 'self'`, `style-src 'self' 'unsafe-inline'`, `font-src 'self'` and `connect-src 'self'`. This is why the web repo keeps the Pages Router and `next build --webpack`: the App Router and Turbopack add inline scripts. `deploy/templates/nginx-security.conf` still allows `'unsafe-eval'`, which only the old runtime needed; removing it is open.
+- **Fonts** come from `/fonts/` on the site itself (since 2026-11-04), so no page loads anything from Google.
+- **Console sign-in** is a Django session: the HttpOnly `sessionid` cookie plus the CSRF header. Page scripts never see a token.
+- **Design system:** `public/_ds/` is never edited. When the designer re-exports a prototype page, the change is carried into the JSX and the logic class by hand.
+- **Addresses:** every website page has its own URL, and Back and Forward work (Q16).
+- **Search engines:** the website is rendered at build time, so its text is in the HTML without JavaScript; the build writes `robots.txt`, `sitemap.xml` and `llms.txt`. The console is `noindex`.
 - **Console width:** the console is a fixed 1440 px canvas and clips on narrower screens.
-- **Page weight:** about 69 KB of runtime, about 140 KB of React (about 45 KB compressed), 24 KB of design-system code, the page itself (62 KB website, 108 KB console), web fonts and images. `logo-mark.png` is 107 KB but shown at 44 px. Shrinking images changes file names in the markup and needs sign-off.
+- **Page weight:** the browser no longer downloads the runtime (about 69 KB) or compiles templates, and the website's HTML paints before React starts (`scripts/boot.js`).
 
 ---
 
@@ -481,9 +486,11 @@ These are not open questions. Change them by editing this file and CLAUDE.md.
 6. Flutter adds pull-to-refresh, loading, offline and error states in the prototype's visual style; the prototype has none.
 7. **Decision, 2026-10-21 (owner): no SMS.** OTP login and every SMS were dropped. Officials log in with a username (or email) and password. An admin invites them; based on the role they get an email with their username and the role's default password, and must change it at first login. The Super Admin can change each role's default password. The prototypes' mobile-number and OTP screens become username/password and change-password screens in the same visual style. Questions about SMS and DLT no longer apply. *Changed later the same day: no email invites and no default passwords; see decision 9.*
 
-8. **Decision, 2026-10-21 (owner): one web repo.** The website and the Super Admin console were merged into one repo, BVTGramaConnect, owned by one web developer: the website in `src/`, the console in `console/`, files identical for both in `shared/`, one `npm run build`. The separate Admin repo was removed. Nothing visible changed: both built outputs match the old builds byte for byte except the generated `config.js`.
+8. **Decision, 2026-10-21 (owner): one web repo.** The website and the Super Admin console were merged into one repo, BVTGramaConnect, owned by one web developer: the website in `src/`, the console in `console/`, files identical for both in `shared/`, one `npm run build`. The separate Admin repo was removed. Nothing visible changed: both built outputs match the old builds byte for byte except the generated `config.js`. *Changed 2026-10-22: one Next.js app with the website in `src/website/`, the console in `src/console/` and shared code in `src/shared/`; see decision 10.*
 
 9. **Decision, 2026-10-21 (owner): Django auth, groups and permissions.** Login is a username and a password only; email is an optional contact field. The admin who adds or resets an official sets a temporary password or has one generated and shown once; nothing is emailed. django-axes locks a username and IP pair after 5 failures for 15 minutes, and a higher admin can unlock it. The app keeps JWT; the console uses a Django session with CSRF. Roles are Django groups and every check asks for a Django permission inside the assignment's area. Full detail: [authorization.md](authorization.md).
+
+10. **Decision, 2026-10-22 (owner): Next.js for the web parts.** The website and the console were converted from the Design Canvas runtime to one Next.js app (React, TypeScript, Pages Router, static export) with no visible change. Section 5 describes the result.
 
 ---
 
