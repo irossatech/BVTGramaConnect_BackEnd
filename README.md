@@ -89,7 +89,7 @@ This creates the review-escalation job, which runs every 15 minutes and alerts t
 | http://127.0.0.1:8000/api/v1/geo/states/ | REST API. `/api/v1/` is the base path of every endpoint and answers 404 on its own; `docs/api-contract.md` lists the endpoints |
 | http://127.0.0.1:8000/api/schema/ | OpenAPI schema |
 | http://127.0.0.1:8000/api/docs/ | Swagger UI for the schema |
-| http://127.0.0.1:8000/django-admin/ | Django admin, developers only |
+| http://127.0.0.1:8000/django-admin/ | Django admin, on laptops only (off on every server: `DJANGO_ADMIN_ENABLED`) |
 | http://127.0.0.1:8000/console/ | Super Admin console from `../BVTGramaConnect/dist/console` |
 | http://127.0.0.1:8000/ | Public website from `../BVTGramaConnect/dist` |
 
