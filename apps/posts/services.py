@@ -33,6 +33,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from django.conf import settings
+from django.core.cache import cache
 from django.db import transaction
 from django.db.models import Exists, OuterRef, Q, QuerySet
 from django.utils import timezone
@@ -96,9 +97,23 @@ RUNTIME_SETTINGS = {
 }
 
 
+#: How long a process keeps a runtime setting before reading it again (audit finding BE-DB-027). A save
+#: clears it at once in the saving process (receivers.forget_runtime_setting); other processes see a
+#: change within this many seconds.
+RUNTIME_CACHE_SECONDS = 30
+_NOT_CACHED = object()
+
+
+def runtime_cache_key(name: str) -> str:
+    return f"runtime-setting:{name}"
+
+
 def runtime(name: str):
     if name in RUNTIME_SETTINGS:
-        override = SettingOverride.objects.filter(key=name).values_list("value", flat=True).first()
+        override = cache.get(runtime_cache_key(name), _NOT_CACHED)
+        if override is _NOT_CACHED:
+            override = SettingOverride.objects.filter(key=name).values_list("value", flat=True).first()
+            cache.set(runtime_cache_key(name), override, RUNTIME_CACHE_SECONDS)  # None: no override, also kept
         if override is not None:
             return override
     if name == "LANGUAGE_EN_ENABLED":
