@@ -10,7 +10,7 @@ Console sessions store the same number (authentication.py), so they end too.
 from __future__ import annotations
 
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import F
 from django.utils.translation import gettext as _
 from rest_framework_simplejwt.exceptions import TokenError
@@ -55,13 +55,31 @@ def rotate_refresh(raw_refresh: str) -> dict[str, str]:
     user_for_token(refresh)
 
     data = {"access": str(refresh.access_token)}
-    refresh.blacklist()
+    _use_once(refresh)
     refresh.set_jti()
     refresh.set_exp()
     refresh.set_iat()
     refresh.outstand()
     data["refresh"] = str(refresh)
     return data
+
+
+def _use_once(refresh) -> None:
+    """Blacklist the refresh token being exchanged, so that only one request can use it (audit BE-DB-022).
+
+    simplejwt's blacklist() uses get_or_create, so two requests with the same token at the same moment both
+    passed and both got new tokens. A plain insert lets the database's unique rule pick one: the other
+    request answers 401 session_revoked, as for any used token.
+    """
+    token = OutstandingToken.objects.filter(jti=refresh[api_settings.JTI_CLAIM]).first()
+    if token is None:  # issued outside issue_tokens(): keep simplejwt's way
+        refresh.blacklist()
+        return
+    try:
+        with transaction.atomic():
+            BlacklistedToken.objects.create(token=token)
+    except IntegrityError:
+        raise session_revoked() from None
 
 
 def blacklist_refresh(raw_refresh: str) -> None:
