@@ -66,11 +66,19 @@ def area_of(request: ServiceRequest) -> AreaRef:
 
 def _holder_id(request: ServiceRequest):
     """The assignee while they can still act on the request; None when nobody can (never assigned,
-    or the assignee was blocked or lost their role over the village), so it is not stuck."""
+    or the assignee was blocked or lost their role over the village), so it is not stuck.
+
+    A new official still on their temporary password holds it too: their admin made them for this area,
+    and they act on it once they have chosen their own password."""
     assignee = request.assigned_to
-    if assignee is None or not assignee.is_active or not authz.can(assignee, VIEW, area_of(request)):
+    if assignee is None or not assignee.is_active or not _can_view(assignee, request):
         return None
     return assignee.pk
+
+
+def _can_view(official, request: ServiceRequest) -> bool:
+    """May this official see the request, counting one who has not yet changed their temporary password."""
+    return authz.can(official, VIEW, area_of(request), pending_change_ok=True)
 
 
 def allowed_actions(user, request: ServiceRequest) -> list[str]:
@@ -245,11 +253,11 @@ def create_request(device, *, service: str, name: str, phone: str, address: str,
 
 
 def _assignee_or_raise(user_id, request: ServiceRequest):
-    """An active official whose area contains the request's village."""
+    """An active official whose area contains the request's village, temporary password or not."""
     from apps.accounts.models import User
 
     assignee = User.objects.filter(pk=user_id, is_active=True).first()
-    if assignee is None or not authz.can(assignee, VIEW, area_of(request)):
+    if assignee is None or not _can_view(assignee, request):
         raise _validation("assigned_to", _("Assign the request to an active official of this area."))
     return assignee
 
