@@ -6,9 +6,12 @@ Officials (JWT or session): list, read and change the requests they may see.
 Super Admin:                admin/services/ list, create, change, reorder.
 """
 
+from datetime import timedelta
+
 from django.conf import settings
 from django.db.models import Count, Prefetch, Q
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.utils.translation import gettext as _
 from django.utils.translation import gettext_lazy
@@ -94,6 +97,20 @@ class CitizenServiceRequestsView(CitizenView):
 
 VIEW_PERM = HasPerm(selectors.VIEW, message=gettext_lazy("Your role cannot see service requests."))
 
+#: Finished requests; listed only for SERVICE_REQUEST_CLOSED_VISIBLE_DAYS after their last change.
+CLOSED = (RequestStatus.COMPLETED, RequestStatus.REJECTED)
+
+
+def without_old_closed(queryset):
+    """Drop completed and rejected requests whose last change is older than the visible days.
+
+    Decision of 2026-11-11, like the audit log: open requests are always listed; finished ones
+    for a while; nothing is deleted, and a request still opens by its id. A later change (a note,
+    a new status) moves updated_at and lists it again.
+    """
+    cutoff = timezone.now() - timedelta(days=settings.SERVICE_REQUEST_CLOSED_VISIBLE_DAYS)
+    return queryset.exclude(status__in=CLOSED, updated_at__lt=cutoff)
+
 
 class ServiceRequestListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated, VIEW_PERM]
@@ -112,7 +129,7 @@ class ServiceRequestListView(generics.ListAPIView):
 
     def _filtered_except_status(self):
         params = self.request.query_params
-        queryset = selectors.visible_requests(self.request.user)
+        queryset = without_old_closed(selectors.visible_requests(self.request.user))
         if params.get("assigned") == "me":
             queryset = queryset.filter(assigned_to=self.request.user)
         query = " ".join(params.get("q", "").split())
@@ -142,6 +159,7 @@ class ServiceRequestListView(generics.ListAPIView):
             for row in self._filtered_except_status().order_by().values("status").annotate(n=Count("id"))
         }
         response.data["status_counts"] = {value: counts.get(value, 0) for value in RequestStatus.values}
+        response.data["closed_visible_days"] = settings.SERVICE_REQUEST_CLOSED_VISIBLE_DAYS
         return response
 
 
