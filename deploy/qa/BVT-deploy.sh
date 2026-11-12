@@ -74,6 +74,7 @@ main() {
     "$PYTHON" manage.py check --deploy --tag security --fail-level WARNING \
       || fail "Django's security check failed (above). Fix .env, then deploy again."
   fi
+  backup_before_migrating
   "$PYTHON" manage.py migrate --noinput
   "$PYTHON" manage.py ensure_schedules
   # Shared posts' category pictures, Django admin and API docs styles: the panel's nginx serves
@@ -248,6 +249,27 @@ check_database_setting() {
   else
     fail "No DATABASE_URL in $BACKEND_DIR/.env. Add it (deploy/qa/README.md, \"The database\"), or QA_SQLITE=1 for a throwaway SQLite server."
   fi
+}
+
+# A backup with BVT-backup.sh right before migrating, when there are migrations to apply (audit
+# finding BE-DB-013): on MySQL a migration that fails part-way stays half applied, and the nightly
+# backup can be a day old. Skipped on a new, empty database. The backups go to their own folder
+# (newest 3 kept), so they never push the nightly ones out. BACKUP_BEFORE_DEPLOY=0 skips it.
+backup_before_migrating() {
+  [[ "${BACKUP_BEFORE_DEPLOY:-1}" == "1" ]] || { echo "Backup before migrating: off (BACKUP_BEFORE_DEPLOY=0)."; return 0; }
+  if "$PYTHON" manage.py migrate --check >/dev/null 2>&1; then
+    echo "No migrations to apply: no backup needed."
+    return 0
+  fi
+  local applied
+  applied="$("$PYTHON" manage.py showmigrations --list 2>/dev/null | grep -c '\[X\]' || true)"
+  if [[ "$applied" == "0" ]]; then
+    echo "A new, empty database: no backup needed."
+    return 0
+  fi
+  echo "Backing up before migrating."
+  BACKUP_ROOT="${BACKUP_BEFORE_DEPLOY_DIR:-$HOME/bvt-backups-before-deploy}" KEEP=3 bash "$QA_DIR/BVT-backup.sh" \
+    || fail "The backup before migrating failed (above); nothing was migrated. Fix it, or set BACKUP_BEFORE_DEPLOY=0 to deploy without one."
 }
 
 # All on one line: git pull may replace this file while it runs, and bash reads scripts as it goes.

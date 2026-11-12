@@ -14,10 +14,22 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$HERE/lib.sh"
 load_config "$GC_DEPLOY_ENV"
 
+# A backup before anything changes (audit finding BE-DB-013): on MySQL a migration that fails part-way
+# stays half applied, and the nightly backup can be a day old. backup.sh needs root, so it runs here,
+# before root hands over to the deploy user. A failed backup stops the deploy with nothing changed.
+if [[ "$BACKUP_BEFORE_DEPLOY" == "1" ]]; then
+  if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
+    log "Backup before deploying"
+    bash "$HERE/backup.sh" || die "The backup before deploying failed; nothing was changed. Fix it, or set BACKUP_BEFORE_DEPLOY=0 to deploy without one."
+  elif [[ -z "${GC_BACKUP_DONE:-}" ]]; then
+    warn "Started as $(id -un), not root: no backup was taken before deploying. Run it with sudo to get one."
+  fi
+fi
+
 # Everything below runs as the deploy user; root re-runs this script as that user.
 if [[ "$(id -un)" != "$APP_USER" ]]; then
   [[ ${EUID:-$(id -u)} -eq 0 ]] || die "Run as $APP_USER or root."
-  exec sudo -u "$APP_USER" -H bash "$0" "$@"
+  exec sudo -u "$APP_USER" -H env GC_BACKUP_DONE=1 bash "$0" "$@"
 fi
 
 [[ -r "$GC_APP_ENV" ]] || die "$GC_APP_ENV is missing or unreadable; run setup.sh first."

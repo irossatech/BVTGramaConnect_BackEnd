@@ -94,7 +94,10 @@ if is_production; then
     --bind "127.0.0.1:$PORT" --workers "${WEB_WORKERS:-3}" --timeout "${GUNICORN_TIMEOUT:-120}" \
     --max-requests 1000 --max-requests-jitter 100 --error-logfile - --log-level warning
 else
-  start_one web "$PYTHON" manage.py runserver "0.0.0.0:$PORT" --noreload
+  # runserver starts a thread per request, and each thread opens its own database connection:
+  # kept open (CONN_MAX_AGE) they are never reused and only pile up, so qa closes each one at the
+  # end of its request, as Django advises (audit finding BE-DB-011). Production uses Gunicorn above.
+  start_one web env DB_CONN_MAX_AGE="${QA_DB_CONN_MAX_AGE:-0}" "$PYTHON" manage.py runserver "0.0.0.0:$PORT" --noreload
 fi
 start_one worker "$PYTHON" manage.py qcluster
 
