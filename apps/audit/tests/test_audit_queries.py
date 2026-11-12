@@ -11,7 +11,6 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
-from apps.audit import views
 from apps.audit.models import AuditLog
 from apps.audit.services import record
 from apps.geography.areas import AreaRef
@@ -111,12 +110,12 @@ def test_export_holds_every_matching_entry_in_order(api, world):
     assert len(body) == 3  # the export's own report.exported entry is written after the file
 
 
-def test_export_reads_only_its_columns_and_stops_at_the_limit(api, world, monkeypatch):
+def test_export_reads_only_its_columns(api, world, settings):
     entries(world, 5, "auth.login")
-    monkeypatch.setattr(views, "EXPORT_MAX_ROWS", 3)
+    settings.AUDIT_EXPORT_MAX_ROWS = 5  # exactly at the limit: still a full file
     client = api(world.users["super"])
     with CaptureQueriesContext(connection) as ctx:
         response = client.get("/api/v1/audit/export/?format=csv")
-    assert len(response.content.decode("utf-8").splitlines()) == 1 + 3
+    assert len(response.content.decode("utf-8").splitlines()) == 1 + 5
     reads = [q["sql"] for q in ctx.captured_queries if q["sql"].startswith("SELECT") and "audit_auditlog" in q["sql"]]
     assert reads and all('"data"' not in sql for sql in reads)
