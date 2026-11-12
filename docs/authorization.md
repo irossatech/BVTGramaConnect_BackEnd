@@ -356,7 +356,7 @@ python manage.py sync_role_permissions
 - Only users holding `accounts.manage_groups` on the platform, the Super Admins, can see or edit Groups, `RoleGroup` rows and role assignments in `/django-admin/`.
 - Every change to a group's permissions is audited as `setting.group_permissions_changed`, with what was added and removed.
 - An edit there lasts until the next `migrate` or `sync_role_permissions`, which restores the dict. Change `role_matrix.py` for a lasting change.
-- On the server, `/django-admin/` is reachable only from `OFFICE_IPS`.
+- On servers, `/django-admin/` is off (404) since 2026-11-11 (lead's decision): `DJANGO_ADMIN_ENABLED` is off whenever `DEBUG` is off. The points above apply on laptops, or on a server whose `.env` turns it on.
 
 ---
 
