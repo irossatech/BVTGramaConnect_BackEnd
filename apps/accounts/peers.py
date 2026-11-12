@@ -49,6 +49,23 @@ def peer_roles_of(user: User, *, active_only: bool = True) -> list[RoleInfo]:
     return list(found.values())
 
 
+def _limit_reached(limit: int) -> ApiError:
+    return ApiError(
+        "super_admin_limit",
+        _("The limit of Super Admins is reached."),
+        status=status.HTTP_409_CONFLICT,
+        limit=limit,
+    )
+
+
+def _last_one() -> ApiError:
+    return ApiError(
+        "last_super_admin",
+        _("There must always be at least one active Super Admin."),
+        status=status.HTTP_409_CONFLICT,
+    )
+
+
 def check_room_for_one_more(role: RoleInfo, user: User | None = None) -> None:
     """S4: refuse when `role` already has MAX_SUPER_ADMINS active holders (`user` not counted twice)."""
     limit = settings.MAX_SUPER_ADMINS
@@ -58,12 +75,7 @@ def check_room_for_one_more(role: RoleInfo, user: User | None = None) -> None:
     if user is not None and user.pk:
         holders = holders.exclude(pk=user.pk)
     if holders.count() >= limit:
-        raise ApiError(
-            "super_admin_limit",
-            _("The limit of Super Admins is reached."),
-            status=status.HTTP_409_CONFLICT,
-            limit=limit,
-        )
+        raise _limit_reached(limit)
 
 
 def check_not_last(role: RoleInfo, user: User) -> None:
@@ -74,8 +86,33 @@ def check_not_last(role: RoleInfo, user: User) -> None:
     if not holders.filter(pk=user.pk).exists():
         return  # they do not count now, so nothing changes
     if not holders.exclude(pk=user.pk).exists():
-        raise ApiError(
-            "last_super_admin",
-            _("There must always be at least one active Super Admin."),
-            status=status.HTTP_409_CONFLICT,
-        )
+        raise _last_one()
+
+
+# --- The same rules inside the change's transaction (audit finding BE-DB-004) ----------------------
+#
+# The checks above run before the write, so two changes at the same moment could both pass them:
+# two Super Admins blocking each other would leave none. Inside the transaction, lock() makes changes
+# to a peer role wait for each other, and confirm() checks the rule again after the write; when it no
+# longer holds, it raises and the whole change is rolled back. confirm() is the real guard on databases
+# without row locks (SQLite, which also runs one write at a time).
+
+
+def lock(role: RoleInfo) -> None:
+    """Inside a transaction: wait for any other change to this peer role to finish (a row lock)."""
+    if is_peer_role(role):
+        from .models import RoleGroup
+
+        list(RoleGroup.objects.select_for_update().filter(group_id=role.group_id).values_list("pk", flat=True))
+
+
+def confirm(role: RoleInfo, *, adding: bool) -> None:
+    """After the write, in the same transaction: S4 when holders were added, S3 when some were taken away."""
+    if not is_peer_role(role):
+        return
+    holders = active_holders(role).count()
+    limit = settings.MAX_SUPER_ADMINS
+    if adding and limit and holders > limit:
+        raise _limit_reached(limit)
+    if not adding and holders == 0:
+        raise _last_one()

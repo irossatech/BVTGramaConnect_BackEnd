@@ -272,12 +272,14 @@ class UserViewSet(
 
         try:
             with transaction.atomic():
+                peers.lock(role)
                 user.set_unusable_password()
                 user.save()
                 generated = set_temporary_password(user, values["password"] or None)
                 assignment = RoleAssignment.objects.create(
                     user=user, group_id=role.group_id, area_level=area.level, area_id=area.id, assigned_by=request.user
                 )
+                peers.confirm(role, adding=True)
                 record(
                     "user.super_admin_created" if peers.is_peer_role(role) else "user.created",
                     actor=request.user, target=user, target_label=user.name,
@@ -320,10 +322,15 @@ class UserViewSet(
         reason = BlockSerializer(data=request.data)
         reason.is_valid(raise_exception=True)
         if user.is_active:
-            for role in peers.peer_roles_of(user):
+            held = peers.peer_roles_of(user)
+            for role in held:
                 peers.check_not_last(role, user)
             with transaction.atomic():
+                for role in held:
+                    peers.lock(role)
                 block_user(user)
+                for role in held:
+                    peers.confirm(role, adding=False)
                 record(
                     "user.blocked", actor=request.user, target=user, target_label=user.name, via=via(request),
                     data={"reason": reason.validated_data.get("reason", "")},
@@ -336,10 +343,15 @@ class UserViewSet(
         user = self.get_object()
         require_action(request.user, "accounts.block_user", user, _("Your role cannot unblock this user."))
         if not user.is_active:
-            for role in peers.peer_roles_of(user):
+            held = peers.peer_roles_of(user)
+            for role in held:
                 peers.check_room_for_one_more(role, user)
             with transaction.atomic():
+                for role in held:
+                    peers.lock(role)
                 unblock_user(user)
+                for role in held:
+                    peers.confirm(role, adding=True)
                 record("user.unblocked", actor=request.user, target=user, target_label=user.name, via=via(request))
         return self._respond(user)
 
@@ -407,9 +419,11 @@ class RoleAssignmentViewSet(viewsets.GenericViewSet):
         check_giving_peer_role(request, role, data.validated_data["current_password"], user)
         try:
             with transaction.atomic():
+                peers.lock(role)
                 assignment = RoleAssignment.objects.create(
                     user=user, group_id=role.group_id, area_level=area.level, area_id=area.id, assigned_by=request.user
                 )
+                peers.confirm(role, adding=True)
                 record(
                     "user.super_admin_role_added" if peers.is_peer_role(role) else "user.assignment_added",
                     actor=request.user, target=user, target_label=user.name,
@@ -452,7 +466,11 @@ class RoleAssignmentViewSet(viewsets.GenericViewSet):
         if fields:
             try:
                 with transaction.atomic():
+                    if "is_active" in fields:
+                        peers.lock(role)
                     assignment.save(update_fields=fields)
+                    if "is_active" in fields:
+                        peers.confirm(role, adding=assignment.is_active)
                     action_name = "user.reassigned" if "area_id" in fields else "user.assignment_changed"
                     if peers.is_peer_role(role) and "is_active" in fields:
                         action_name = "user.super_admin_role_added" if assignment.is_active else "user.super_admin_role_removed"
@@ -472,7 +490,9 @@ class RoleAssignmentViewSet(viewsets.GenericViewSet):
         if assignment.is_active:
             peers.check_not_last(role, user)
         with transaction.atomic():
+            peers.lock(role)
             assignment.delete()
+            peers.confirm(role, adding=False)
             record(
                 "user.super_admin_role_removed" if peers.is_peer_role(role) else "user.assignment_removed",
                 actor=request.user, target=user, target_label=user.name,
