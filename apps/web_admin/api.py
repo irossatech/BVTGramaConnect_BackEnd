@@ -3,6 +3,10 @@
 Used by the web console and the app's state console. Dates are bucketed in
 Python in Asia/Kolkata time, so no database time-zone functions are needed
 (MySQL without time-zone tables would otherwise return NULL).
+
+Counts per district and mandal are grouped in the database: each post target is
+mapped to its district (and mandal) in one query, so the number of queries does
+not grow with the number of areas.
 """
 
 from __future__ import annotations
@@ -14,7 +18,8 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.core.cache import caches
-from django.db.models import Count
+from django.db.models import Case, Count, F, IntegerField, Min, OuterRef, Q, Subquery, When
+from django.db.models.functions import Coalesce
 from django.http import HttpResponse
 from django.utils import timezone
 from django.utils.translation import gettext as _
@@ -71,7 +76,8 @@ def escalation_hours() -> int:
     """The Super Admin's setting, read the one way every other part reads it (posts.services.runtime).
 
     This used to look for the key "review_escalation_hours", which nothing writes (the console saves
-    "REVIEW_ESCALATION_HOURS"), so the dashboard and the review-time report ignored the setting.
+    "REVIEW_ESCALATION_HOURS"), so the dashboard and the review-time report ignored the setting. The
+    old lower-case lookup found it only on MySQL, whose collation ignores case (audit BE-DB-021).
     """
     try:
         return int(runtime("REVIEW_ESCALATION_HOURS"))
@@ -105,45 +111,76 @@ def audit_entry(row: AuditLog, describer: AreaDescriber) -> dict:
     }
 
 
-def counts_of(statuses: dict) -> dict:
-    """{status: n} -> the report's counts."""
+def _count_fields(counted: str, status: str, *, distinct: bool = False) -> dict:
+    """total / published / pending / rejected as database counts of `counted`, by the `status` field."""
+
+    def count(condition=None):
+        return Count(counted, distinct=distinct, filter=condition)
+
     return {
-        "total": sum(statuses.values()),
-        "published": statuses.get(PostStatus.PUBLISHED, 0),
-        "pending": statuses.get(PostStatus.PENDING, 0),
-        "rejected": sum(statuses.get(status, 0) for status in REJECTED),
+        "total": count(),
+        "published": count(Q(**{status: PostStatus.PUBLISHED})),
+        "pending": count(Q(**{status: PostStatus.PENDING})),
+        "rejected": count(Q(**{f"{status}__in": REJECTED})),
     }
 
 
+EMPTY_COUNTS = {"total": 0, "published": 0, "pending": 0, "rejected": 0}
+
+
 def posts_counts(queryset) -> dict:
-    """Counted by the database: one GROUP BY, not every status loaded into Python."""
-    rows = queryset.order_by().values("status").annotate(n=Count("id")).values_list("status", "n")
-    return counts_of(dict(rows))
+    """One aggregate query: four numbers, never a row per post."""
+    return queryset.aggregate(**_count_fields("id", "status"))
 
 
-def districts_and_mandals_reached(post_ids) -> dict:
-    """{post_id: (district ids, mandal ids)} that each post's areas lie in, in four queries in all.
+def district_of_target():
+    """A PostTarget's district: the district itself, a mandal's district, or a village's mandal's district.
 
-    The same containment as posts.services.targets_within: a village target is inside its mandal
-    and district, a mandal target inside its district, a district target only in itself; a target
-    for Everyone (STATE) is inside no district.
+    STATE targets have none, as in targets_within(): a post for Everyone counts in no district.
     """
-    targets = list(PostTarget.objects.filter(post_id__in=post_ids).values_list("post_id", "area_level", "area_id"))
-    village_ids = {area_id for _post, level, area_id in targets if level == AreaLevel.VILLAGE}
-    mandal_of = dict(Village.objects.filter(id__in=village_ids).values_list("id", "mandal_id"))
-    mandal_ids = set(mandal_of.values()) | {area_id for _post, level, area_id in targets if level == AreaLevel.MANDAL}
-    district_of = dict(Mandal.objects.filter(id__in=mandal_ids).values_list("id", "district_id"))
-    reached = defaultdict(lambda: (set(), set()))
-    for post_id, level, area_id in targets:
-        districts, mandals = reached[post_id]
-        mandal = mandal_of.get(area_id) if level == AreaLevel.VILLAGE else area_id if level == AreaLevel.MANDAL else None
-        if mandal is not None:
-            mandals.add(mandal)
-            if mandal in district_of:
-                districts.add(district_of[mandal])
-        elif level == AreaLevel.DISTRICT:
-            districts.add(area_id)
-    return reached
+    return Case(
+        When(area_level=AreaLevel.DISTRICT, then=F("area_id")),
+        When(
+            area_level=AreaLevel.MANDAL,
+            then=Subquery(Mandal.objects.filter(pk=OuterRef("area_id")).values("district_id")[:1]),
+        ),
+        When(
+            area_level=AreaLevel.VILLAGE,
+            then=Subquery(Village.objects.filter(pk=OuterRef("area_id")).values("mandal__district_id")[:1]),
+        ),
+        default=None,
+        output_field=IntegerField(),
+    )
+
+
+def mandal_of_target():
+    """A PostTarget's mandal: the mandal itself or a village's mandal; none for districts and the state."""
+    return Case(
+        When(area_level=AreaLevel.MANDAL, then=F("area_id")),
+        When(
+            area_level=AreaLevel.VILLAGE,
+            then=Subquery(Village.objects.filter(pk=OuterRef("area_id")).values("mandal_id")[:1]),
+        ),
+        default=None,
+        output_field=IntegerField(),
+    )
+
+
+def targets_by_area(posts, area):
+    """The targets of `posts`, one group per area id given by `area` (district_of_target or mandal_of_target)."""
+    return (
+        PostTarget.objects.filter(post__in=posts)
+        .annotate(area=area)
+        .filter(area__isnull=False)
+        .order_by()
+        .values("area")
+    )
+
+
+def counts_by_area(posts, area) -> dict[int, dict]:
+    """{area id: counts}. A post for several areas inside one area counts once there (distinct posts)."""
+    rows = targets_by_area(posts, area).annotate(**_count_fields("post", "post__status", distinct=True))
+    return {row["area"]: {key: row[key] for key in EMPTY_COUNTS} for row in rows}
 
 
 class SuperAdminView(APIView):
@@ -161,26 +198,25 @@ class DashboardView(SuperAdminView):
         posts = Post.objects.exclude(status=PostStatus.DRAFT)
         pending = posts.filter(status=PostStatus.PENDING)
 
-        # Every pending post once, then counted into each district it reaches: a few queries in all,
-        # not one per district.
-        submitted_at = dict(pending.values_list("id", "submitted_at"))
-        per_district = defaultdict(list)
-        for post_id, (district_ids, _mandal_ids) in districts_and_mandals_reached(list(submitted_at)).items():
-            for district_id in district_ids:
-                per_district[district_id].append(submitted_at[post_id])
+        # One grouped query for every district: pending posts reaching it, and the oldest submission.
+        pending_rows = {
+            row["area"]: row
+            for row in targets_by_area(pending, district_of_target()).annotate(
+                n=Count("post", distinct=True), oldest=Min("post__submitted_at")
+            )
+        }
         districts = list(District.objects.active().order_by("name_en"))
-        describer.prime(AreaRef(AreaLevel.DISTRICT, district.id) for district in districts)
+        describer.prime([AreaRef(AreaLevel.DISTRICT, district.id) for district in districts])
         pending_by_district = []
         for district in districts:
             ref = AreaRef(AreaLevel.DISTRICT, district.id)
-            submitted = per_district.get(district.id, [])
-            oldest = min((s for s in submitted if s), default=None)
+            row = pending_rows.get(district.id, {})
             pending_by_district.append(
                 {
                     "district": describer.describe(ref),
                     "name_te": district.name_te,
-                    "pending": len(submitted),
-                    "oldest_pending_hours": hours_since(oldest, now),
+                    "pending": row.get("n", 0),
+                    "oldest_pending_hours": hours_since(row.get("oldest"), now),
                 }
             )
         pending_by_district.sort(key=lambda row: (-row["pending"], row["district"]["name"]))
@@ -198,15 +234,14 @@ class DashboardView(SuperAdminView):
             for day in (start + timedelta(days=offset) for offset in range(14))
         ]
 
-        published_today = sum(
-            1 for value in posts.filter(published_at__gte=window_start).values_list("published_at", flat=True)
-            if local_date(value) == today
-        )
+        published_today = published_days[today]  # the same rows as above, not read again
         oldest_pending = pending.order_by("submitted_at").values_list("submitted_at", flat=True).first()
         admins = RoleAssignment.objects.filter(
             group__role_group__key__in=area_admin_roles(), is_active=True, user__is_active=True
         )
-        recent = [audit_entry(row, describer) for row in AuditLog.objects.order_by("-created_at")[:6]]
+        recent_rows = list(AuditLog.objects.order_by("-created_at")[:6])
+        describer.prime([AreaRef(row.area_level, row.area_id) for row in recent_rows if row.area_level and row.area_id])
+        recent = [audit_entry(row, describer) for row in recent_rows]
 
         return Response(
             {
@@ -249,33 +284,30 @@ def report_summary(days: int) -> dict:
 
 
 def report_posts_by_area(days: int) -> list[dict]:
-    """Posts per district and mandal. A post for several areas counts once in each district and
-    mandal it reaches. A fixed number of queries, whatever the number of districts and mandals."""
-    status_of = dict(window_posts(days).values_list("id", "status"))
-    by_district = defaultdict(lambda: defaultdict(int))
-    by_mandal = defaultdict(lambda: defaultdict(int))
-    for post_id, (district_ids, mandal_ids) in districts_and_mandals_reached(list(status_of)).items():
-        for district_id in district_ids:
-            by_district[district_id][status_of[post_id]] += 1
-        for mandal_id in mandal_ids:
-            by_mandal[mandal_id][status_of[post_id]] += 1
-
+    posts = window_posts(days)
+    # A post for several areas counts once in each district and mandal it reaches: two grouped
+    # queries in all, whatever the number of districts and mandals.
+    by_district = counts_by_area(posts, district_of_target())
+    by_mandal = counts_by_area(posts, mandal_of_target())
     districts = list(District.objects.order_by("name_en"))
-    mandals_of = defaultdict(list)
-    for mandal in Mandal.objects.filter(id__in=list(by_mandal)).order_by("name_en"):
-        mandals_of[mandal.district_id].append(mandal)
+    mandals_by_district: dict[int, list] = defaultdict(list)
+    used = [mandal_id for mandal_id, counts in by_mandal.items() if counts["total"]]
+    for mandal in Mandal.objects.filter(id__in=used).order_by("name_en"):
+        mandals_by_district[mandal.district_id].append(mandal)
     describer = AreaDescriber()
     describer.prime(
         [AreaRef(AreaLevel.DISTRICT, district.id) for district in districts]
-        + [AreaRef(AreaLevel.MANDAL, mandal_id) for mandal_id in by_mandal]
+        + [AreaRef(AreaLevel.MANDAL, mandal_id) for mandal_id in used]
     )
     rows = []
     for district in districts:
-        ref = AreaRef(AreaLevel.DISTRICT, district.id)
-        row = {"district": describer.describe(ref), **counts_of(by_district.get(district.id, {}))}
+        row = {
+            "district": describer.describe(AreaRef(AreaLevel.DISTRICT, district.id)),
+            **by_district.get(district.id, EMPTY_COUNTS),
+        }
         row["mandals"] = [
-            {"mandal": describer.describe(AreaRef(AreaLevel.MANDAL, mandal.id)), **counts_of(by_mandal[mandal.id])}
-            for mandal in mandals_of.get(district.id, [])
+            {"mandal": describer.describe(AreaRef(AreaLevel.MANDAL, mandal.id)), **by_mandal[mandal.id]}
+            for mandal in mandals_by_district[district.id]
         ]
         rows.append(row)
     return rows
@@ -331,45 +363,72 @@ def report_review_time(days: int) -> list[dict]:
     ]
 
 
-def report_admin_activity(days: int) -> list[dict]:
+def _decisions(since, *actions):
+    return ReviewAction.objects.filter(action__in=actions or DECISIONS, created_at__gte=since, actor__isnull=False)
+
+
+def admin_activity_users(days: int):
+    """Area admins with their decision counts in the window, most active first, then by name and id.
+
+    The counting, ordering and paging happen in the database, so a page loads only its own admins
+    (audit finding BE-DB-001, admin-activity).
+    """
     since = timezone.now() - timedelta(days=days)
-    describer = AreaDescriber()
-    assignments = (
-        RoleAssignment.objects.filter(group__role_group__key__in=area_admin_roles())
-        .select_related("user", "group__role_group")
-        .order_by("user__name", "group__role_group__rank", "assigned_at")
-    )
-    stats = defaultdict(lambda: {"reviewed": 0, "published": 0, "recheck": 0, "discarded": 0, "hours": []})
-    actions = ReviewAction.objects.filter(action__in=DECISIONS, created_at__gte=since, actor__isnull=False)
-    for actor_id, action in actions.values_list("actor_id", "action"):
-        entry = stats[actor_id]
-        entry["reviewed"] += 1
-        key = {"PUBLISH": "published", "RECHECK": "recheck", "DISCARD": "discarded"}[action]
-        entry[key] += 1
-    for actor_id, _role, hours in decision_hours(actions):
-        stats[actor_id]["hours"].append(hours)
-    seen = set()
-    rows = []
-    for assignment in assignments:
-        user = assignment.user
-        if user.id in seen:
-            continue
-        seen.add(user.id)
-        entry = stats[user.id]
-        rows.append(
-            {
-                "user": {"id": str(user.id), "name": user.name, "role": assignment.group.role_group.key},
-                "area": describer.describe(assignment.area),
-                "reviewed": entry["reviewed"],
-                "published": entry["published"],
-                "recheck": entry["recheck"],
-                "discarded": entry["discarded"],
-                "avg_review_hours": average(sum(entry["hours"]), len(entry["hours"])),
-                "last_active_at": user.last_login,
-            }
+
+    def count(*actions):
+        per_actor = (
+            _decisions(since, *actions).filter(actor=OuterRef("pk")).order_by().values("actor").annotate(n=Count("pk"))
         )
-    rows.sort(key=lambda row: (-row["reviewed"], row["user"]["name"]))
-    return rows
+        return Coalesce(Subquery(per_actor.values("n"), output_field=IntegerField()), 0)
+
+    admins = RoleAssignment.objects.filter(group__role_group__key__in=area_admin_roles()).values("user_id")
+    return (
+        User.objects.filter(id__in=admins)
+        .annotate(
+            reviewed=count(),
+            published=count(ReviewAction.Action.PUBLISH),
+            recheck=count(ReviewAction.Action.RECHECK),
+            discarded=count(ReviewAction.Action.DISCARD),
+        )
+        .order_by("-reviewed", "name", "id")
+    )
+
+
+def admin_activity_rows(users, days: int) -> list[dict]:
+    """The report rows for these admins (one page, or all for the CSV): their highest role and its area,
+    and the average review hours, in a fixed number of queries."""
+    users = list(users)
+    since = timezone.now() - timedelta(days=days)
+    first: dict = {}
+    for assignment in (
+        RoleAssignment.objects.filter(user__in=users, group__role_group__key__in=area_admin_roles())
+        .select_related("group__role_group")
+        .order_by("group__role_group__rank", "assigned_at")
+    ):
+        first.setdefault(assignment.user_id, assignment)  # the highest role, the earliest assignment
+    describer = AreaDescriber()
+    describer.prime([assignment.area for assignment in first.values()])
+    hours = defaultdict(list)
+    for actor_id, _role, spent in decision_hours(_decisions(since).filter(actor__in=users)):
+        hours[actor_id].append(spent)
+    return [
+        {
+            "user": {"id": str(user.id), "name": user.name, "role": first[user.id].group.role_group.key},
+            "area": describer.describe(first[user.id].area),
+            "reviewed": user.reviewed,
+            "published": user.published,
+            "recheck": user.recheck,
+            "discarded": user.discarded,
+            "avg_review_hours": average(sum(hours[user.id]), len(hours[user.id])),
+            "last_active_at": user.last_login,
+        }
+        for user in users
+    ]
+
+
+def report_admin_activity(days: int) -> list[dict]:
+    """Every admin's row (the CSV export); the screen pages with admin_activity_users() instead."""
+    return admin_activity_rows(admin_activity_users(days), days)
 
 
 REPORTS = {
@@ -386,13 +445,13 @@ class ReportView(SuperAdminView):
     @extend_schema(summary="Super Admin report", responses=OpenApiTypes.OBJECT)  # contract, section 11
     def get(self, request):
         days = days_param(request)
-        data = REPORTS[self.report](days)
         if self.report == "admin-activity":
             paginator = PageNumberPagination()
-            page = paginator.paginate_queryset(data, request, view=self)
-            response = paginator.get_paginated_response(page)
+            page = paginator.paginate_queryset(admin_activity_users(days), request, view=self)
+            response = paginator.get_paginated_response(admin_activity_rows(page, days))
             response.data["days"] = days
             return response
+        data = REPORTS[self.report](days)
         return Response(data if isinstance(data, list) else {**data, "days": days})
 
 

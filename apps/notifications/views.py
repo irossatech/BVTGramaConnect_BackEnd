@@ -1,6 +1,6 @@
 """Devices, the officials' inbox and notification texts. docs/api-contract.md, section 7."""
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
@@ -51,7 +51,14 @@ class DeviceRegisterView(APIView):
             linked = Device.objects.filter(fcm_token=token, user__isnull=False).first()
             if linked:
                 return Response(DeviceSerializer(linked).data, status=status.HTTP_200_OK)
-        device, created = Device.objects.update_or_create(fcm_token=token, defaults=values)
+        try:
+            with transaction.atomic():
+                device, created = Device.objects.update_or_create(fcm_token=token, defaults=values)
+        except IntegrityError:
+            # The same token registered by another request at the same moment (audit BE-DB-014): it exists
+            # now, so update it as the second request would have.
+            Device.objects.filter(fcm_token=token).update(**values)
+            device, created = Device.objects.get(fcm_token=token), False
         return Response(DeviceSerializer(device).data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
 

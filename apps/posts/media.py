@@ -6,8 +6,9 @@ most POST_IMAGE_MAX_PX (1280), plus a POST_MEDIUM_PX (640) copy for big cards
 and a POST_THUMB_PX (320) thumbnail.
 
 Videos (owner decision Q8): MP4 or MOV up to MAX_VIDEO_UPLOAD_MB and
-VIDEO_MAX_SECONDS, one per post and never together with photos. The app
-compresses it first. With ffprobe and ffmpeg on PATH (the server installs
+VIDEO_MAX_SECONDS. Any number of photos and videos per post, mixed in any
+order, for officials and the Super Admin as for citizens (lead's decision of
+2026-11-11; MAX_PHOTOS_PER_POST 0 is no limit). The app compresses videos first. With ffprobe and ffmpeg on PATH (the server installs
 them) the server measures the length, cuts a poster frame and stores a copy
 without metadata (strip_metadata, G7). Without them the app must send
 `duration_s` and a `poster` photo, and the file is stored as uploaded.
@@ -22,6 +23,7 @@ seconds: the streams are copied, never re-encoded.
 from __future__ import annotations
 
 import io
+import logging
 import os
 import shutil
 import subprocess
@@ -52,6 +54,41 @@ VIDEO_EXTENSIONS = {".mp4": "mp4", ".m4v": "mp4", ".mov": "mov"}
 #: A little slack for players that round 60.2 s up.
 DURATION_SLACK_S = 0.5
 
+logger = logging.getLogger("grama.media")
+
+# --- Files written inside a transaction ---------------------------------------------------------
+#
+# Photos and videos are saved to disk inside the database transaction that stores their PostMedia row.
+# When that transaction fails, the row is rolled back but a file would stay on disk with nothing pointing
+# to it (audit finding BE-DB-015). Callers wrap the transaction in files_removed_on_failure(); the store
+# functions note every file they write, and the files are deleted again when the block raises.
+
+_written: ContextVar[list | None] = ContextVar("media_files_written", default=None)
+
+
+def _noted(field) -> None:
+    written = _written.get()
+    if written is not None and field:
+        written.append((field.storage, field.name))
+
+
+@contextmanager
+def files_removed_on_failure():
+    """Delete the media files saved inside the block when the block raises (its rows are rolled back)."""
+    written: list = []
+    token = _written.set(written)
+    try:
+        yield
+    except BaseException:
+        for storage, name in written:
+            try:
+                storage.delete(name)
+            except Exception:  # never hide the error that undid the change
+                logger.warning("Could not remove an orphaned media file after a failed save.")
+        raise
+    finally:
+        _written.reset(token)
+
 
 def _unsupported(message=None) -> ApiError:
     return ApiError(
@@ -67,10 +104,6 @@ def _too_large(mb: int, what: str) -> ApiError:
         _("%(what)s can be at most %(mb)d MB.") % {"what": what, "mb": mb},
         status=http.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
     )
-
-
-def _media_conflict(message) -> ApiError:
-    return ApiError("media_conflict", message, status=http.HTTP_409_CONFLICT)
 
 
 def _unreadable_video() -> ApiError:
@@ -213,16 +246,17 @@ def _check_can_add(user, post: Post) -> None:
 
 def add_photo(user, post: Post, upload, focus_y=None) -> PostMedia:
     _check_can_add(user, post)
-    if post.media.filter(kind=MediaKind.VIDEO).exists():
-        raise _media_conflict(_("This post has a video. A post has either photos or one video."))
-    if post.media.count() >= settings.MAX_PHOTOS_PER_POST:
+    # Any number by default (MAX_PHOTOS_PER_POST 0), with or without videos. A number in the
+    # settings brings back a cap on photos only.
+    limit = settings.MAX_PHOTOS_PER_POST
+    if limit and post.media.filter(kind=MediaKind.IMAGE).count() >= limit:
         raise ApiError(
             "validation_error",
-            _("A post can have at most %(n)d photos.") % {"n": settings.MAX_PHOTOS_PER_POST},
+            _("A post can have at most %(n)d photos.") % {"n": limit},
             fields={"file": [_("Too many photos.")]},
         )
     processed = process_image(upload)
-    with transaction.atomic():
+    with files_removed_on_failure(), transaction.atomic():
         return store_photo(post, processed, order=post.media.count())
 
 
@@ -231,8 +265,11 @@ def store_photo(post: Post, processed: tuple, order: int) -> PostMedia:
     large, medium, thumb, width, height = processed
     media = PostMedia(post=post, width=width, height=height, bytes=len(large), order=order)
     media.image.save(f"{media.id}-{settings.POST_IMAGE_MAX_PX}.webp", ContentFile(large), save=False)
+    _noted(media.image)
     media.medium.save(f"{media.id}-{settings.POST_MEDIUM_PX}.webp", ContentFile(medium), save=False)
+    _noted(media.medium)
     media.thumbnail.save(f"{media.id}-{settings.POST_THUMB_PX}.webp", ContentFile(thumb), save=False)
+    _noted(media.thumbnail)
     media.save()
     return media
 
@@ -446,9 +483,13 @@ def store_video(post: Post, prepared: PreparedVideo, order: int) -> PostMedia:
     )
     upload.seek(0)
     media.video.save(f"{media.id}.{prepared.container}", upload, save=False)
+    _noted(media.video)
     media.image.save(f"{media.id}-poster-{settings.POST_IMAGE_MAX_PX}.webp", ContentFile(large), save=False)
+    _noted(media.image)
     media.medium.save(f"{media.id}-poster-{settings.POST_MEDIUM_PX}.webp", ContentFile(medium), save=False)
+    _noted(media.medium)
     media.thumbnail.save(f"{media.id}-poster-{settings.POST_THUMB_PX}.webp", ContentFile(thumb), save=False)
+    _noted(media.thumbnail)
     media.save()
     return media
 
@@ -457,11 +498,10 @@ def add_video(user, post: Post, upload, *, duration_s=None, poster=None) -> Post
     if not settings.VIDEO_POSTS_ENABLED:
         raise permission_denied(_("Video posts are switched off."))
     _check_can_add(user, post)
-    if post.media.exists():
-        raise _media_conflict(_("A post has either photos or one video."))
+    # Any number of videos, with or without photos; each goes after the files already there.
     prepared = prepare_video(upload, duration_s=duration_s, poster=poster)
-    with transaction.atomic():
-        return store_video(post, prepared, order=0)
+    with files_removed_on_failure(), transaction.atomic():
+        return store_video(post, prepared, order=post.media.count())
 
 
 def remove_photo(user, post: Post, media: PostMedia) -> None:

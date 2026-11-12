@@ -91,8 +91,12 @@ def test_running_twice_is_safe(world):
 
     login_failure(minutes_ago=61)
 
-    assert run_housekeeping() == {"failed_tasks": 1, "expired_tokens": 1, "expired_sessions": 1, "login_failures": 1}
-    assert run_housekeeping() == {"failed_tasks": 0, "expired_tokens": 0, "expired_sessions": 0, "login_failures": 0}
+    assert run_housekeeping() == {
+        "failed_tasks": 1, "expired_tokens": 1, "expired_sessions": 1, "login_failures": 1, "read_notifications": 0,
+    }
+    assert run_housekeeping() == {
+        "failed_tasks": 0, "expired_tokens": 0, "expired_sessions": 0, "login_failures": 0, "read_notifications": 0,
+    }
 
 
 def test_keep_days_setting(settings):

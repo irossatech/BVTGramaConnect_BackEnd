@@ -28,6 +28,7 @@ from apps.accounts.permissions import PLATFORM, HasPerm
 from apps.citizens import services as citizens
 from apps.citizens.views import TOKEN_PARAM, CitizenView
 from grama.exceptions import ApiError
+from grama.pagination import use_known_count
 
 from . import selectors, services
 from .models import RequestStatus, Service, ServiceRequest, ServiceRequestEvent
@@ -151,13 +152,17 @@ class ServiceRequestListView(generics.ListAPIView):
         return with_related(queryset).order_by("-updated_at", "-id")
 
     def list(self, request, *args, **kwargs):
-        page = self.paginate_queryset(self.get_queryset())
-        selectors.prime_page(request.user, page)  # areas and assignees' roles once, not per row
-        response = self.get_paginated_response(self.get_serializer(page, many=True).data)
+        # One grouped count gives the tab counts and the page total (audit finding BE-DB-009).
         counts = {
             row["status"]: row["n"]
             for row in self._filtered_except_status().order_by().values("status").annotate(n=Count("id"))
         }
+        queryset = self.get_queryset()  # checks ?status=
+        wanted = self.request.query_params.get("status", "").strip().upper()
+        use_known_count(self.paginator, counts.get(wanted, 0) if wanted else sum(counts.values()))
+        page = self.paginate_queryset(queryset)
+        selectors.prime_page(request.user, page)  # areas and assignees' roles once, not per row
+        response = self.get_paginated_response(self.get_serializer(page, many=True).data)
         response.data["status_counts"] = {value: counts.get(value, 0) for value in RequestStatus.values}
         response.data["closed_visible_days"] = settings.SERVICE_REQUEST_CLOSED_VISIBLE_DAYS
         return response

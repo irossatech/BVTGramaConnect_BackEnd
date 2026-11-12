@@ -8,6 +8,11 @@
 - django-axes AccessFailureLog rows (one per failed login, with the IP) older
   than the IP-wide cap's window (LOGIN_IP_WINDOW_MINUTES): nothing reads them
   after that, and IP addresses are not kept longer than needed.
+- Officials' read notifications older than NOTIFICATION_KEEP_DAYS (90; 0 keeps
+  them all). Unread ones stay until read (owner decision, audit finding BE-DB-018).
+
+Push devices, citizen phones, contact messages, posts, service requests and the
+audit log are never deleted here (owner decision).
 
 django-axes AccessAttempt rows need nothing here: axes deletes attempts older
 than the lockout on every login, failed login and logout. The audit log is
@@ -60,7 +65,17 @@ def run_housekeeping(now=None) -> dict:
         "expired_tokens": expired_tokens,
         "expired_sessions": sessions,
         "login_failures": login_failures,
+        "read_notifications": _delete_old_read_notifications(now),
     }
+
+
+def _delete_old_read_notifications(now) -> int:
+    from apps.notifications.models import Notification
+
+    if settings.NOTIFICATION_KEEP_DAYS <= 0:
+        return 0
+    cutoff = now - timedelta(days=settings.NOTIFICATION_KEEP_DAYS)
+    return _delete_in_batches(Notification.objects.filter(created_at__lt=cutoff, read_at__isnull=False))
 
 
 def ensure_housekeeping_schedule() -> None:

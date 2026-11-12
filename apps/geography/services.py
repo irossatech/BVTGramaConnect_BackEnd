@@ -62,7 +62,10 @@ def _check_unique(model, parent_field, parent_id, name, lgd, exclude_id=None, na
         siblings = siblings.exclude(id=exclude_id)
     if name and siblings.filter(name_key=name_key(name)).exists():
         raise _duplicate("name_en", _("This name already exists here."))
-    if clean_name(name_te) and siblings.filter(name_te=clean_name(name_te)).exists():
+    telugu = clean_name(name_te)
+    # Compared in Python, character by character, so every database agrees: MySQL's usual collation
+    # can treat some Telugu vowel signs as equal (audit finding BE-DB-021). One parent's areas are few.
+    if telugu and telugu in set(siblings.values_list("name_te", flat=True)):
         raise _duplicate("name_te", _("This Telugu name already exists here."))
     if lgd:
         clash = model.objects.filter(lgd_code=lgd)

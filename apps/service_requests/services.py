@@ -204,6 +204,18 @@ def reorder_services(user, keys: list[str]) -> None:
 # --- Citizens ------------------------------------------------------------------------------------
 
 
+def _within_daily_limit(device, limit: int, now, *, written: bool = False) -> None:
+    """429 throttled once the phone sent `limit` requests in the last 24 hours (written: counting this one)."""
+    recent = ServiceRequest.objects.filter(device__in=citizens.same_phone(device), created_at__gt=now - DAY)
+    count = recent.count()
+    if count > limit or (count == limit and not written):
+        oldest = recent.order_by("-created_at").values_list("created_at", flat=True)[limit - 1]
+        raise citizens.throttled(
+            _("You can send at most %(n)d service requests a day.") % {"n": limit},
+            max(1, int((oldest + DAY - now).total_seconds()) + 1),
+        )
+
+
 def create_request(device, *, service: str, name: str, phone: str, address: str, email: str = "",
                    details: str = "") -> ServiceRequest:
     """A citizen's request for the phone's village, assigned to its Village Admin. Officials are told after commit."""
@@ -216,13 +228,7 @@ def create_request(device, *, service: str, name: str, phone: str, address: str,
         raise _validation("service", _("This service is not available."))
     limit = settings.SERVICE_REQUESTS_PER_DAY
     if limit:
-        recent = ServiceRequest.objects.filter(device__in=citizens.same_phone(device), created_at__gt=now - DAY)
-        if recent.count() >= limit:
-            oldest = recent.order_by("-created_at").values_list("created_at", flat=True)[limit - 1]
-            raise citizens.throttled(
-                _("You can send at most %(n)d service requests a day.") % {"n": limit},
-                max(1, int((oldest + DAY - now).total_seconds()) + 1),
-            )
+        _within_daily_limit(device, limit, now)
     if not Village.objects.active().filter(id=device.village_id).exists():
         raise _validation("village_id", _("Your village is not available any more. Choose your village again."))
 
@@ -232,6 +238,11 @@ def create_request(device, *, service: str, name: str, phone: str, address: str,
             service=chosen, name=name, phone=phone, email=email, address=address, details=details,
             village_id=device.village_id, device=device, assigned_to=assignee,
         )
+        if limit:
+            # Again after the write, with the phone's installs locked: two requests sent at the same
+            # moment cannot both pass the limit (audit BE-DB-014). Raising rolls the request back.
+            citizens.hold_phone(device)
+            _within_daily_limit(device, limit, now, written=True)
         area = area_of(request)
         # No name, phone, email or address in the audit log: only the service and the phone's device id.
         record("service_request.created", target=request, target_label=chosen.name_en, area=area, via="citizen",
