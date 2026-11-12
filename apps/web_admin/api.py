@@ -76,7 +76,8 @@ def escalation_hours() -> int:
     """The Super Admin's setting, read the one way every other part reads it (posts.services.runtime).
 
     This used to look for the key "review_escalation_hours", which nothing writes (the console saves
-    "REVIEW_ESCALATION_HOURS"), so the dashboard and the review-time report ignored the setting.
+    "REVIEW_ESCALATION_HOURS"), so the dashboard and the review-time report ignored the setting. The
+    old lower-case lookup found it only on MySQL, whose collation ignores case (audit BE-DB-021).
     """
     try:
         return int(runtime("REVIEW_ESCALATION_HOURS"))
