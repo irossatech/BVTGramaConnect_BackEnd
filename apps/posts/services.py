@@ -33,6 +33,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from django.conf import settings
+from django.core.cache import cache
 from django.db import transaction
 from django.db.models import Exists, OuterRef, Q, QuerySet
 from django.utils import timezone
@@ -48,7 +49,7 @@ from grama.exceptions import ApiError, out_of_area, permission_denied
 
 from . import signals
 from .models import CITIZEN_ROLE, Category, Post, PostStatus, PostTarget, ReviewAction, SettingOverride
-from .sharing import share_code_once
+from .sharing import publish_with_share_code
 from .translation import detect_language
 
 CREATE = "posts.create_post"
@@ -96,9 +97,23 @@ RUNTIME_SETTINGS = {
 }
 
 
+#: How long a process keeps a runtime setting before reading it again (audit finding BE-DB-027). A save
+#: clears it at once in the saving process (receivers.forget_runtime_setting); other processes see a
+#: change within this many seconds.
+RUNTIME_CACHE_SECONDS = 30
+_NOT_CACHED = object()
+
+
+def runtime_cache_key(name: str) -> str:
+    return f"runtime-setting:{name}"
+
+
 def runtime(name: str):
     if name in RUNTIME_SETTINGS:
-        override = SettingOverride.objects.filter(key=name).values_list("value", flat=True).first()
+        override = cache.get(runtime_cache_key(name), _NOT_CACHED)
+        if override is _NOT_CACHED:
+            override = SettingOverride.objects.filter(key=name).values_list("value", flat=True).first()
+            cache.set(runtime_cache_key(name), override, RUNTIME_CACHE_SECONDS)  # None: no override, also kept
         if override is not None:
             return override
     if name == "LANGUAGE_EN_ENABLED":
@@ -216,7 +231,9 @@ def can_reverse(user, reviewer: Grant | None, post: Post) -> bool:
     return reviewer.rank < decided_rank
 
 
-def allowed_actions(user, post: Post) -> list[str]:
+def allowed_actions(user, post: Post, *, citizen_blocked: bool | None = None) -> list[str]:
+    """citizen_blocked: whether the phone behind a citizen post is blocked, when the caller already knows
+    (the post serializer's phone summary); None asks the database."""
     actions: list[str] = []
     if post.author_id is not None and post.author_id == user.id:
         if post.status in EDITABLE:
@@ -237,9 +254,11 @@ def allowed_actions(user, post: Post) -> list[str]:
     if post.status != PostStatus.DRAFT and on_post(URGENT):
         actions.append("set_urgent")
     if post.citizen_id and on_post(BLOCK_CITIZEN):
-        from apps.citizens.services import active_block  # citizens builds on this module
+        if citizen_blocked is None:
+            from apps.citizens.services import active_block  # citizens builds on this module
 
-        actions.append("unblock_citizen" if active_block(post.citizen) else "block_citizen")
+            citizen_blocked = active_block(post.citizen) is not None
+        actions.append("unblock_citizen" if citizen_blocked else "block_citizen")
         actions.append("discard_citizen_posts")
     return actions
 
@@ -337,13 +356,21 @@ def _posting_or_raise(user, targets: list[AreaRef] | AreaRef | None = None, perm
     return assignment
 
 
+def _update(queryset, new_status: str, values: dict) -> int:
+    """The conditional UPDATE of a status move; one that publishes also gives the post its share code."""
+    if new_status == PostStatus.PUBLISHED:
+        return publish_with_share_code(queryset, **values)
+    return queryset.update(**values)
+
+
 def _move_on_submit(post: Post, user, assignment: Grant, *, resubmit: bool) -> Post:
     """DRAFT or RECHECK onward: published at once when the author may publish, else reviewed."""
     now = timezone.now()
     from_status = post.status
     auto = PUBLISH in assignment.permissions and settings.ADMIN_POSTS_AUTO_PUBLISH
     if auto:
-        changed = Post.objects.filter(pk=post.pk, status__in=EDITABLE).update(
+        changed = publish_with_share_code(
+            Post.objects.filter(pk=post.pk, status__in=EDITABLE),
             status=PostStatus.PUBLISHED,
             submitted_at=now,
             published_at=now,
@@ -351,7 +378,6 @@ def _move_on_submit(post: Post, user, assignment: Grant, *, resubmit: bool) -> P
             decided_by=user,
             decided_by_role=assignment.key,
             updated_at=now,
-            share_code=share_code_once(),
         )
         action, to_status, signal = ReviewAction.Action.AUTO_PUBLISH, PostStatus.PUBLISHED, signals.post_published
     else:
@@ -612,10 +638,9 @@ def review(user, post: Post, action: str, comment: str = "", to_status: str | No
     }
     if new_status == PostStatus.PUBLISHED:
         values["published_at"] = now
-        values["share_code"] = share_code_once()
 
     with transaction.atomic():
-        changed = Post.objects.filter(pk=post.pk, status=from_status).update(**values)
+        changed = _update(Post.objects.filter(pk=post.pk, status=from_status), new_status, values)
         if not changed:
             current = _reload(post)
             if from_status == PostStatus.PENDING and current.status in DECIDED and current.decided_at:
@@ -657,13 +682,13 @@ def _reverse(user, reviewer: Grant, post: Post, comment: str, to_status: str | N
     }
     if to_status == PostStatus.PUBLISHED and not post.published_at:
         values["published_at"] = now
-    if to_status == PostStatus.PUBLISHED:
-        values["share_code"] = share_code_once()
     if to_status == PostStatus.PENDING:
         values.update(submitted_at=now, escalated_at=None, escalation_level="")
 
     with transaction.atomic():
-        changed = Post.objects.filter(pk=post.pk, status=post.status, decided_at=post.decided_at).update(**values)
+        changed = _update(
+            Post.objects.filter(pk=post.pk, status=post.status, decided_at=post.decided_at), to_status, values
+        )
         if not changed:
             raise AlreadyDecided(_reload(post))
         from_status = post.status
@@ -726,12 +751,18 @@ def escalate_overdue(now=None) -> int:
     the state's. Lower reviewers keep the post in their queue. A post for
     several areas climbs from its lowest one; the alert reaches the admins
     above each of its areas (notifications.services.alert_escalation).
+
+    At most ESCALATION_BATCH_SIZE posts per run, oldest submission first; the rest are taken by the next
+    run. The alerts go out as jobs of their own (notifications.receivers), so a run stays short.
     """
     now = now or timezone.now()
     cutoff = now - timedelta(hours=int(runtime("REVIEW_ESCALATION_HOURS")))
-    candidates = Post.objects.filter(status=PostStatus.PENDING).filter(
-        Q(escalated_at__isnull=True, submitted_at__lte=cutoff) | Q(escalated_at__lte=cutoff)
-    ).prefetch_related("targets")
+    candidates = (
+        Post.objects.filter(status=PostStatus.PENDING)
+        .filter(Q(escalated_at__isnull=True, submitted_at__lte=cutoff) | Q(escalated_at__lte=cutoff))
+        .order_by("submitted_at", "pk")
+        .prefetch_related("targets")[: settings.ESCALATION_BATCH_SIZE]
+    )
     count = 0
     for post in candidates:
         current = post.escalation_level or lowest_level(post.target_refs)

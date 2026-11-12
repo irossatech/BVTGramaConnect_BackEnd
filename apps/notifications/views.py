@@ -1,5 +1,6 @@
 """Devices, the officials' inbox and notification texts. docs/api-contract.md, section 7."""
 
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
@@ -172,13 +173,15 @@ class NotificationTemplateDetailView(APIView):
         template.text_te = data.validated_data["text_te"]
         template.text_en = data.validated_data["text_en"]
         template.updated_by = request.user
-        template.save()
-        record(
-            "template.updated",
-            actor=request.user,
-            target=template,
-            target_label=template.name_en,
-            via=client_via(request),
-            data={"before": before},
-        )
+        # The new text and its audit entry are saved together or not at all.
+        with transaction.atomic():
+            template.save()
+            record(
+                "template.updated",
+                actor=request.user,
+                target=template,
+                target_label=template.name_en,
+                via=client_via(request),
+                data={"before": before},
+            )
         return Response(NotificationTemplateSerializer(template).data)

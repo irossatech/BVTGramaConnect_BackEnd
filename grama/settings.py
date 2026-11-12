@@ -430,6 +430,9 @@ Q_CLUSTER = {
     "name": "grama",
     "orm": "default",
     "workers": env.int("Q_WORKERS", default=2),
+    # Seconds between queue checks while idle. django-q2's default, 0.2, asks the database five times a
+    # second all day; 1 keeps pushes prompt at a fifth of the load (audit finding BE-DB-017).
+    "poll": env.float("Q_POLL", default=1.0),
     "timeout": 120,
     "retry": 180,
     "max_attempts": 3,
@@ -448,6 +451,11 @@ Q_CLUSTER = {
 ADMIN_POSTS_AUTO_PUBLISH = env.bool("ADMIN_POSTS_AUTO_PUBLISH", default=True)
 REVIEW_FIRST_DECISION_WINS = env.bool("REVIEW_FIRST_DECISION_WINS", default=True)
 REVIEW_ESCALATION_HOURS = env.int("REVIEW_ESCALATION_HOURS", default=24)
+# Overdue posts escalated per run of the escalation job (every ESCALATION_CHECK_MINUTES), oldest first;
+# the rest wait for the next run, so one run stays well inside the job timeout.
+ESCALATION_BATCH_SIZE = env.int("ESCALATION_BATCH_SIZE", default=200)
+if ESCALATION_BATCH_SIZE < 1:
+    raise ImproperlyConfigured("ESCALATION_BATCH_SIZE must be at least 1.")
 SUPER_ADMIN_CAN_POST = env.bool("SUPER_ADMIN_CAN_POST", default=True)
 MAX_SUPER_ADMINS = env.int("MAX_SUPER_ADMINS", default=5)
 if MAX_SUPER_ADMINS < 0:
@@ -484,6 +492,8 @@ HOUSEKEEPING_KEEP_DAYS = env.int("HOUSEKEEPING_KEEP_DAYS", default=30)
 PLAY_STORE_URL = env.str("PLAY_STORE_URL", default="")
 APP_STORE_URL = env.str("APP_STORE_URL", default="")
 CONTACT_MESSAGES_PER_IP_PER_HOUR = env.int("CONTACT_MESSAGES_PER_IP_PER_HOUR", default=5)
+# The console lists contact messages from this many days back; older ones are kept, not shown.
+CONTACT_MESSAGES_VISIBLE_DAYS = env.int("CONTACT_MESSAGES_VISIBLE_DAYS", default=90)
 SITE_WEBSITE_URL = env.str("SITE_WEBSITE_URL", default="https://example.in/")
  
 PUBLIC_BASE_URL = env.str("PUBLIC_BASE_URL", default="")
@@ -535,6 +545,11 @@ CITIZEN_MAX_PHOTOS = env.int("CITIZEN_MAX_PHOTOS", default=0)
 CITIZEN_REGISTRATIONS_PER_IP_PER_DAY = env.int("CITIZEN_REGISTRATIONS_PER_IP_PER_DAY", default=0)
  
 SERVICE_REQUESTS_PER_DAY = env.int("SERVICE_REQUESTS_PER_DAY", default=10)
+# Officials' lists (decision of 2026-11-11): a completed or rejected request is listed while its last
+# change is at most this many days old; open requests always. Nothing is deleted.
+SERVICE_REQUEST_CLOSED_VISIBLE_DAYS = env.int("SERVICE_REQUEST_CLOSED_VISIBLE_DAYS", default=180)
+if SERVICE_REQUEST_CLOSED_VISIBLE_DAYS < 1:
+    raise ImproperlyConfigured("SERVICE_REQUEST_CLOSED_VISIBLE_DAYS must be at least 1.")
 SERVICES_PUBLIC_MAX_AGE = env.int("SERVICES_PUBLIC_MAX_AGE", default=300)
 SERVICE_LOGO_MAX_UPLOAD_MB = env.int("SERVICE_LOGO_MAX_UPLOAD_MB", default=2)
 SERVICE_LOGO_MIN_PX = env.int("SERVICE_LOGO_MIN_PX", default=64)
@@ -573,6 +588,11 @@ if not re.fullmatch(r"[A-Za-z0-9_.~%-]*", FCM_TOPIC_PREFIX):
     raise ImproperlyConfigured("FCM_TOPIC_PREFIX may hold only letters, digits and - _ . ~ %.")
 PUSH_TTL_SECONDS = env.int("PUSH_TTL_SECONDS", default=86400)
 PUSH_ALL_POSTS_HIGH_PRIORITY = env.bool("PUSH_ALL_POSTS_HIGH_PRIORITY", default=True)
+# A post's topic job stops starting new topics after this many seconds and queues the rest as a new
+# job, so it never reaches the worker's time limit (Q_CLUSTER "timeout") and is never re-run.
+PUSH_TOPICS_JOB_SECONDS = env.int("PUSH_TOPICS_JOB_SECONDS", default=60)
+if not 0 < PUSH_TOPICS_JOB_SECONDS < Q_CLUSTER["timeout"]:
+    raise ImproperlyConfigured("PUSH_TOPICS_JOB_SECONDS must be above 0 and below the job timeout (120).")
  
 TRANSLATION_PROVIDER = env.str("TRANSLATION_PROVIDER", default="off")
 GOOGLE_TRANSLATE_KEY = env.str("GOOGLE_TRANSLATE_KEY", default="")
@@ -585,6 +605,17 @@ TRANSLATION_RETRY_MINUTES = [1, 5, 15]
 TRANSLITERATION_TIMEOUT_S = env.float("TRANSLITERATION_TIMEOUT_S", default=4.0)
 TRANSLITERATION_CACHE_S = env.int("TRANSLITERATION_CACHE_S", default=60 * 60 * 24 * 30)
 DELIVERY_RETRY_ATTEMPTS = env.int("DELIVERY_RETRY_ATTEMPTS", default=3)
+
+# Audit log screens (owner decision of 2026-11-11): the last AUDIT_DEFAULT_DAYS by default, never
+# further back than AUDIT_VISIBLE_DAYS; older entries stay in the database. Exports stop at
+# AUDIT_EXPORT_MAX_ROWS with a 400 asking for a shorter date range (apps.audit.views).
+AUDIT_DEFAULT_DAYS = env.int("AUDIT_DEFAULT_DAYS", default=90)
+AUDIT_VISIBLE_DAYS = env.int("AUDIT_VISIBLE_DAYS", default=180)
+AUDIT_EXPORT_MAX_ROWS = env.int("AUDIT_EXPORT_MAX_ROWS", default=50000)
+if not 1 <= AUDIT_DEFAULT_DAYS <= AUDIT_VISIBLE_DAYS:
+    raise ImproperlyConfigured("AUDIT_DEFAULT_DAYS must be at least 1 and no more than AUDIT_VISIBLE_DAYS.")
+if AUDIT_EXPORT_MAX_ROWS < 1:
+    raise ImproperlyConfigured("AUDIT_EXPORT_MAX_ROWS must be at least 1.")
  
  
 # ==============================================================================

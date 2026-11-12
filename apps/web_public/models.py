@@ -33,4 +33,7 @@ class ContactMessage(models.Model):
         permissions = [("manage_contact_messages", "Read and close contact messages")]
 
     def __str__(self):
-        return f"{self.name} ({self.mobile}) {self.created_at:%Y-%m-%d}"
+        # Django admin keeps this text in its change history: never the full mobile number.
+        from apps.contacts.phones import mask
+
+        return f"{self.name} ({mask(self.mobile)}) {self.created_at:%Y-%m-%d}"

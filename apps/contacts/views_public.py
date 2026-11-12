@@ -17,6 +17,7 @@ from rest_framework.views import APIView
 from apps.geography.areas import AreaDescriber, AreaRef
 from apps.geography.models import AreaLevel, Village
 from grama.exceptions import ApiError
+from grama.params import is_number
 
 from .models import ContactSection, ContactType
 from .selectors import contacts_for_village, grouped
@@ -32,7 +33,7 @@ class PublicView(APIView):
 
 def village_from(request) -> int:
     raw = request.query_params.get("village_id", "").strip()
-    if not raw.isdigit():
+    if not is_number(raw):
         raise ApiError("validation_error", _("Give a village id."), fields={"village_id": [_("Give a village id.")]})
     village_id = int(raw)
     if not Village.objects.active().filter(id=village_id).exists():

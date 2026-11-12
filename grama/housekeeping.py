@@ -22,6 +22,22 @@ from django.conf import settings
 from django.utils import timezone
 
 HOUSEKEEPING_SCHEDULE = "daily-housekeeping"
+#: Rows removed per DELETE: each batch is a short statement of its own, never one long delete holding
+#: locks on a big table (audit finding BE-DB-019).
+DELETE_BATCH = 1000
+
+
+def _delete_in_batches(queryset) -> int:
+    """Delete every row of `queryset`, DELETE_BATCH at a time. Returns how many rows of its model went
+    (rows removed with them, such as a token's blacklist entry, are not counted)."""
+    model = queryset.model
+    removed = 0
+    while True:
+        batch = list(queryset.order_by("pk").values_list("pk", flat=True)[:DELETE_BATCH])
+        if not batch:
+            return removed
+        model.objects.filter(pk__in=batch).delete()
+        removed += len(batch)
 
 
 def run_housekeeping(now=None) -> dict:
@@ -33,14 +49,12 @@ def run_housekeeping(now=None) -> dict:
 
     now = now or timezone.now()
     cutoff = now - timedelta(days=settings.HOUSEKEEPING_KEEP_DAYS)
-    failed_tasks, _rows = Failure.objects.filter(stopped__lt=cutoff).delete()
-    tokens = OutstandingToken.objects.filter(expires_at__lte=now)
-    expired_tokens = tokens.count()
-    tokens.delete()
-    sessions, _rows = Session.objects.filter(expire_date__lt=now).delete()
-    login_failures, _rows = AccessFailureLog.objects.filter(
-        attempt_time__lte=now - timedelta(minutes=settings.LOGIN_IP_WINDOW_MINUTES)
-    ).delete()
+    failed_tasks = _delete_in_batches(Failure.objects.filter(stopped__lt=cutoff))
+    expired_tokens = _delete_in_batches(OutstandingToken.objects.filter(expires_at__lte=now))
+    sessions = _delete_in_batches(Session.objects.filter(expire_date__lt=now))
+    login_failures = _delete_in_batches(
+        AccessFailureLog.objects.filter(attempt_time__lte=now - timedelta(minutes=settings.LOGIN_IP_WINDOW_MINUTES))
+    )
     return {
         "failed_tasks": failed_tasks,
         "expired_tokens": expired_tokens,
@@ -52,7 +66,8 @@ def run_housekeeping(now=None) -> dict:
 def ensure_housekeeping_schedule() -> None:
     from django_q.models import Schedule
 
-    Schedule.objects.update_or_create(
-        name=HOUSEKEEPING_SCHEDULE,
-        defaults={"func": "grama.housekeeping.run_housekeeping", "schedule_type": Schedule.DAILY, "repeats": -1},
+    from grama.schedules import ensure_schedule
+
+    ensure_schedule(
+        HOUSEKEEPING_SCHEDULE, func="grama.housekeeping.run_housekeeping", schedule_type=Schedule.DAILY, repeats=-1
     )

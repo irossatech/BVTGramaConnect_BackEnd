@@ -155,6 +155,30 @@ def test_failed_verdict_gets_nothing(world, required):
     assert not CitizenDevice.objects.exists()
 
 
+class GoogleDown:
+    def verify(self, integrity_token, nonce):
+        raise ConnectionError("playintegrity.googleapis.com unreachable")
+
+
+def test_google_unreachable_answers_try_again_later_not_a_server_error(world, required, settings):
+    """BE_02, BE-ERR-103 (decision of 2026-11-11): 503 integrity_unavailable, never a 500."""
+    settings.CITIZEN_INTEGRITY_VERIFIER = "apps.citizens.tests.test_registration.GoogleDown"
+    nonce = APIClient(REMOTE_ADDR="10.0.0.5").post(CHALLENGE).json()["nonce"]
+    body = {"nonce": nonce, "integrity_token": "play-token", "platform": "android", "village_id": world.areas["kolakaluru"].id}
+
+    response = APIClient().post(REGISTER, body, format="json")
+    assert response.status_code == 503
+    assert code(response) == "integrity_unavailable"
+    assert response.json()["error"]["retry_after_s"] == 60
+    assert response["Retry-After"] == "60"
+    assert "googleapis" not in response.json()["error"]["message"]
+    assert not CitizenDevice.objects.exists()
+
+    # Once Google answers again, the same challenge still works: it was not used up.
+    settings.CITIZEN_INTEGRITY_VERIFIER = "apps.citizens.tests.test_registration.Verifier"
+    assert APIClient().post(REGISTER, body, format="json").status_code == 201
+
+
 def test_iphones_wait_for_app_attest_while_integrity_is_required(world, required):
     response = register(world, platform="ios")
     assert response.status_code == 403 and code(response) == "integrity_failed"
@@ -221,6 +245,32 @@ def test_any_doubt_fails_the_verdict(play, changes):
     box["payload"] = verdict("n-1", **changes)
     with pytest.raises(integrity.IntegrityFailed):
         verifier.verify("token", "n-1")
+
+
+def test_a_refusal_from_google_keeps_its_reply_out_of_the_log(settings, monkeypatch):
+    """BE_02, BE-SEC-108: only the status code is kept, never Google's reply text."""
+    import google.auth.transport.requests as google_requests
+    from google.oauth2 import service_account
+
+    class Refused:
+        status_code = 400
+        text = '{"error": "bad token tok-SECRET-123 for nonce n-1"}'
+
+    class Session:
+        def __init__(self, credentials):
+            pass
+
+        def post(self, *args, **kwargs):
+            return Refused()
+
+    settings.PLAY_INTEGRITY_PACKAGE = "com.bvt.app"
+    settings.PLAY_INTEGRITY_CREDENTIALS_FILE = "unused.json"
+    monkeypatch.setattr(service_account.Credentials, "from_service_account_file", lambda *a, **k: object())
+    monkeypatch.setattr(google_requests, "AuthorizedSession", Session)
+    with pytest.raises(integrity.IntegrityFailed) as failure:
+        integrity.PlayIntegrityVerifier().decode("tok-SECRET-123")
+    assert str(failure.value) == "Google answered 400"
+    assert "SECRET" not in str(failure.value)
 
 
 def test_unconfigured_play_integrity_fails_closed(settings):

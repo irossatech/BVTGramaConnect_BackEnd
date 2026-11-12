@@ -34,6 +34,15 @@ def visible_requests(user) -> QuerySet:
     return ServiceRequest.objects.filter(scope)
 
 
+def prime_page(user, requests) -> None:
+    """Before serializing requests for `user`: load, once for the whole page, the villages' ancestry and the
+    assignees' roles that allowed_actions and assigned_to check row by row (audit finding BE-DB-006)."""
+    requests = list(requests)
+    villages = {AreaRef(AreaLevel.VILLAGE, request.village_id) for request in requests}
+    assignees = [request.assigned_to for request in requests if request.assigned_to_id is not None]
+    authz.prime_users([user, *assignees], villages)
+
+
 def village_admin_of(village_id: int):
     """The official who gets a new request: an active user managing requests with an assignment on exactly
     this village (the Village Admin). The earliest such assignment wins; None when there is none.

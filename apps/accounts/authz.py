@@ -104,13 +104,16 @@ def _setting_allows(requires: dict, perm: str) -> bool:
     return setting is None or bool(getattr(settings, setting, False))
 
 
-def _load(user) -> _Cache:
+def _load_many(user_ids) -> dict:
+    """{user id: _Cache} for many users with two queries; every id gets an entry (no grants: empty)."""
     from django.contrib.auth.models import Group
 
     from .models import RoleAssignment
 
+    user_ids = set(user_ids)
     rows = list(
-        RoleAssignment.objects.filter(user_id=user.pk, is_active=True, group__role_group__isnull=False).values(
+        RoleAssignment.objects.filter(user_id__in=user_ids, is_active=True, group__role_group__isnull=False).values(
+            "user_id",
             "id",
             "group_id",
             "group__name",
@@ -130,11 +133,11 @@ def _load(user) -> _Cache:
             group_id__in={row["group_id"] for row in rows}
         ).values_list("group_id", "permission__content_type__app_label", "permission__codename"):
             perms.setdefault(group_id, set()).add(f"{app_label}.{codename}")
-    grants = []
+    grants: dict = {user_id: [] for user_id in user_ids}
     for row in rows:
         requires = row["group__role_group__requires_setting"] or {}
         allowed = frozenset(p for p in perms.get(row["group_id"], ()) if _setting_allows(requires, p))
-        grants.append(
+        grants[row["user_id"]].append(
             Grant(
                 assignment_id=row["id"],
                 group_id=row["group_id"],
@@ -147,8 +150,13 @@ def _load(user) -> _Cache:
                 permissions=allowed,
             )
         )
-    grants.sort(key=lambda grant: (grant.rank, grant.area.level, grant.area.id))
-    return _Cache(grants=grants)
+    for found in grants.values():
+        found.sort(key=lambda grant: (grant.rank, grant.area.level, grant.area.id))
+    return {user_id: _Cache(grants=found) for user_id, found in grants.items()}
+
+
+def _load(user) -> _Cache:
+    return _load_many([user.pk])[user.pk]
 
 
 def _cache(user) -> _Cache:
@@ -193,6 +201,27 @@ def prime(user, areas: Iterable[AreaRef]) -> None:
     missing = {area for area in areas if isinstance(area, AreaRef) and area not in cache.ancestry}
     if missing:
         cache.ancestry.update(ancestries(missing))
+
+
+def prime_users(users: Iterable, areas: Iterable[AreaRef] = ()) -> None:
+    """prime() for many users at once: their grants with two queries, and the areas' ancestry with one.
+
+    For lists that check other people's rights row by row (a service request's assignee). Several objects
+    of the same person share one cache. Answers are the same as loading each user on its own.
+    """
+    users = [user for user in users if user is not None and getattr(user, "pk", None) is not None]
+    missing = {user.pk for user in users if getattr(user, _CACHE_ATTR, None) is None}
+    loaded = _load_many(missing) if missing else {}
+    for user in users:
+        if getattr(user, _CACHE_ATTR, None) is None:
+            setattr(user, _CACHE_ATTR, loaded[user.pk])
+    areas = {area for area in areas if isinstance(area, AreaRef)}
+    caches = {id(cache): cache for cache in (getattr(user, _CACHE_ATTR) for user in users)}.values()
+    unknown = {area for cache in caches for area in areas if area not in cache.ancestry}
+    if unknown:
+        found = ancestries(unknown)
+        for cache in caches:
+            cache.ancestry.update(found)
 
 
 def _ancestry(user, area: AreaRef) -> dict[str, int]:
@@ -265,10 +294,6 @@ def permissions_by_area(user, *, pending_change_ok: bool = False) -> list[tuple[
     for grant in grants(user, pending_change_ok=pending_change_ok):
         merged.setdefault(grant.area, set()).update(grant.permissions)
     return [(area, sorted(perms)) for area, perms in merged.items()]
-
-
-def is_platform_wide(user, perm: str) -> bool:
-    return can(user, perm, PLATFORM)
 
 
 # --- Area pickers ("Visible to" for posts, "Who sees it" for important numbers) -------------

@@ -14,7 +14,8 @@ import uuid
 from datetime import timedelta
 
 from django.conf import settings
-from django.db.models import Count, Exists, OuterRef, Q, Subquery
+from django.db.models import Count, Exists, IntegerField, OuterRef, Q, Subquery
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import cache_control
@@ -29,6 +30,7 @@ from rest_framework.views import APIView
 from apps.geography.areas import AreaDescriber, AreaRef, ancestry
 from apps.geography.models import AreaLevel, Village
 from grama.exceptions import ApiError
+from grama.params import is_number
 from apps.posts.models import MediaKind, Post, PostMedia, PostStatus
 from apps.posts.services import targets_match
 
@@ -53,6 +55,9 @@ def published_posts():
     # 1080 px phone screens. A video's poster stays in video.poster_url.
     first_image = media.filter(kind=MediaKind.IMAGE).order_by("order", "created_at").values("image")[:1]
     video = media.filter(kind=MediaKind.VIDEO)
+    # Counted per post in a subquery, like the media above: Count("media") would join and GROUP BY every
+    # published post before the newest page could be picked (audit finding BE-DB-008).
+    media_total = media.order_by().values("post").annotate(n=Count("pk")).values("n")
     return (
         # A category the Super Admin switched off hides its posts from every citizen read and the
         # public pages; officials' lists (posts.views) still show them.
@@ -62,7 +67,7 @@ def published_posts():
         .annotate(
             thumbnail_name=Subquery(first_thumb),
             image_name=Subquery(first_image),
-            media_count=Count("media"),
+            media_count=Coalesce(Subquery(media_total, output_field=IntegerField()), 0),
             video_name=Subquery(video.values("video")[:1]),
             video_poster_name=Subquery(video.values("image")[:1]),
             video_duration=Subquery(video.values("duration_s")[:1]),
@@ -72,7 +77,7 @@ def published_posts():
 
 def village_from(request) -> int:
     raw = request.query_params.get("village_id", "").strip()
-    if not raw.isdigit():
+    if not is_number(raw):
         raise ApiError(
             "validation_error",
             "The 'village_id' query parameter is required.",

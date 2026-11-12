@@ -247,33 +247,41 @@ class PostSerializer(serializers.ModelSerializer):
         """The phone behind a citizen post (contract section 15); null on officials' posts."""
         if not obj.citizen_id:
             return None
-        from apps.citizens.services import active_block, same_phone
-
         summaries = self.context.setdefault("citizen_summaries", {})
-        if obj.citizen_id not in summaries:
-            posts = Post.objects.filter(citizen__in=same_phone(obj.citizen))
-            block = active_block(obj.citizen)
-            summaries[obj.citizen_id] = {
-                "device_id": str(obj.citizen_id),
-                "blocked": block is not None,
-                "blocked_until": serializers.DateTimeField().to_representation(block.blocked_until)
-                if block and block.blocked_until else None,
-                "posts_total": posts.count(),
-                "posts_discarded": posts.filter(status=PostStatus.DISCARDED).count(),
-            }
+        if obj.citizen_id not in summaries:  # not prepared by prime_posts: this post's phone alone
+            prime_citizens(self.context, [obj])
         return summaries[obj.citizen_id]
 
     def get_allowed_actions(self, obj) -> list[str]:
         request = self.context.get("request")
         if request is None or not request.user.is_authenticated:
             return []
-        return allowed_actions(request.user, obj)
+        blocked = self.get_citizen(obj)["blocked"] if obj.citizen_id else None
+        return allowed_actions(request.user, obj, citizen_blocked=blocked)
+
+
+def prime_citizens(context, posts) -> None:
+    """The phone summaries of every citizen post in `posts`, with two queries in all (audit BE-DB-005)."""
+    from apps.citizens.services import phone_records  # citizens builds on posts
+
+    summaries = context.setdefault("citizen_summaries", {})
+    devices = [post.citizen for post in posts if post.citizen_id and post.citizen_id not in summaries]
+    for device_id, phone in phone_records(devices).items():
+        until = phone.block.blocked_until if phone.block else None
+        summaries[device_id] = {
+            "device_id": str(device_id),
+            "blocked": phone.block is not None,
+            "blocked_until": serializers.DateTimeField().to_representation(until) if until else None,
+            "posts_total": phone.posts_total,
+            "posts_discarded": phone.posts_discarded,
+        }
 
 
 def prime_posts(context, posts) -> None:
     describer_from(context).prime(
         [ref for post in posts for ref in (*post.target_refs, post.target, post.posted_as)]
     )
+    prime_citizens(context, posts)
 
 
 def describe_targets(describer, post) -> list[dict]:

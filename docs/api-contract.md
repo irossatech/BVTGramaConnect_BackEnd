@@ -117,6 +117,7 @@ All errors share one shape:
 | 401 | `citizen_token_invalid` | A citizen endpoint without a valid `X-Citizen-Token` (section 15) |
 | 403 | `citizen_blocked` | The phone was blocked by an official and cannot post (section 15) |
 | 403 | `integrity_failed` | Google Play Integrity did not confirm a genuine app on a real phone (section 15) |
+| 503 | `integrity_unavailable` | Google Play Integrity could not be reached, so the phone could not be checked. Try again later: `retry_after_s` (60) and the `Retry-After` header say when; the challenge (`nonce`) is still valid until it expires (section 15) |
 | 403 | `account_blocked` | Blocked user tries to log in |
 | 403 | `not_console_user` | Console login without `web_admin.access_web_console`; no session is created |
 | 403 | `password_change_required` | The official must choose a new password first; only `GET /me/`, `POST /auth/password/change/`, `/auth/session/logout/`, `/auth/refresh/` and `/auth/logout/` work, for sessions and tokens alike |
@@ -671,7 +672,7 @@ Invite and reset emails use the same retries (section 3).
 | Method and path | Who | Request or response |
 |---|---|---|
 | `GET /admin/notification-templates/` | Super Admin | `[{"key", "name", "name_te", "name_en", "channel": "push", "recipient": "author"\|"citizens"\|"reviewers"\|"higher_admin"\|"citizen"\|"assignee"\|"super_admins", "text_te", "text_en", "variables": ["title", "comment"], "editable": true, "updated_at"}]` |
-| `PATCH /admin/notification-templates/{key}/` | Super Admin | `{"text_te", "text_en"}`, both required; only the listed `variables` may appear. Audited as `template.updated`. |
+| `PATCH /admin/notification-templates/{key}/` | Super Admin | `{"text_te", "text_en"}`, both required; only the listed `variables` may appear, each written as a plain `{name}` (nothing else inside the braces; a brace on its own is `{{` or `}}`). Anything else: `400 validation_error` on that field. Audited as `template.updated`. |
 
 Keys, seeded by a migration: `post_published`, `post_approved`, `post_recheck`, `post_discarded`, `post_unpublished`, `review_pending`, `escalation`, the service-request keys (section 16) and `super_admin_added` (recipient `super_admins`, variables `actor` and `name`; section 3), all push and editable. There are no SMS texts.
 
@@ -685,8 +686,14 @@ Needs `audit.view_audit_log`; the export needs `audit.export_audit_log`.
 
 | Method and path | Request | Response |
 |---|---|---|
-| `GET /audit` | `q` (actor, action, target, area), `type`, `actor`, `action`, `from`, `to` (dates), `page` | Page of `AuditEntry`, plus `"counts_by_type"` |
-| `GET /audit/export?format=csv&…` | same filters | CSV file. UTF-8 with BOM so Excel shows Telugu. Writes `report.exported`. |
+| `GET /audit` | `q` (actor, action, target, area), `type`, `actor`, `action`, `from`, `to` (dates), `page` | Page of `AuditEntry`, plus `"counts_by_type"` and `"window": {"from": "2026-08-13", "to": "2026-11-11"}`, the days actually shown |
+| `GET /audit/export?format=csv&…` | same filters | CSV file. UTF-8 with BOM so Excel shows Telugu. Writes `report.exported`. More than 50,000 matching entries: `400 validation_error` on `from` and `to` ("Choose a shorter date range"), and nothing is written. |
+
+**Which days are shown** (owner decision of 2026-11-11), the same for the list, its counts and the export:
+- Without `from` and `to`: the last 90 days (`AUDIT_DEFAULT_DAYS`).
+- With `from` and/or `to`: those days, but never further back than 180 days (`AUDIT_VISIBLE_DAYS`, about six months). An earlier `from` starts at that limit; `window.from` says where it started. Only `to`: from the limit up to `to`.
+- Search (`q`) still matches text anywhere in the actor, action, target and role, inside these days.
+- Older entries stay in the database; no endpoint shows them.
 
 Audit entries are append-only. No endpoint edits or deletes them.
 
@@ -732,7 +739,7 @@ Built (web_admin app). `days` is 1 to 366, default 30, and counts posts created 
 |---|---|---|---|
 | `GET /public/site-config/` | public | — | `{"play_store_url", "website_url", "invite_url", "helplines": [{"number": "112", "label_te": "అత్యవసరం", "label_en": "Emergency"}, …]}`. `invite_url` is `https://<domain>/app/` for "Invite your neighbours" (section 20), `null` while the server has no `PUBLIC_BASE_URL`; new on 2026-11-04. An empty `play_store_url` keeps the website's "coming soon" toast. Removed on 2026-11-07: `office_address_te`, `office_address_en`, `phone`, `email`, `hours_te`, `hours_en` and `app_store_url`; the website keeps its own contact details and download links. Cacheable for 5 minutes. |
 | `GET /public/showcase/` | public | — | `{"location": Area\|null, "featured": FeedItem\|null, "items": [FeedItem, FeedItem]}` for the home page's phone picture. Cacheable for 60 s. |
-| `GET /admin/contact-messages/` | Super Admin | Query: `status=new\|handled`, `q` (name, mobile, village, message), `page` | Page of `{"id", "name", "mobile", "village_text", "message", "language", "created_at", "handled", "handled_at", "handled_by": {"id", "name"}\|null}`, newest first |
+| `GET /admin/contact-messages/` | Super Admin | Query: `status=new\|handled`, `q` (name, mobile, village, message), `page` | Page of `{"id", "name", "mobile", "village_text", "message", "language", "created_at", "handled", "handled_at", "handled_by": {"id", "name"}\|null}`, newest first, from the last `CONTACT_MESSAGES_VISIBLE_DAYS` (default 90) only. Older messages are kept in the database but not listed. |
 | `PATCH /admin/contact-messages/{id}/` | Super Admin | `{"handled": true\|false}` | The message. Sets or clears `handled_at` and `handled_by`; audited as `contact.handled` or `contact.reopened`. |
 | `POST /public/contact-messages/` | public | `{"name", "mobile", "village_text", "message", "language", "website"?}` | `201 {"id", "created_at"}`. `village_text` is required (since 2026-11-04): missing or blank answers `400` with `fields.village_text`. |
 
@@ -1015,7 +1022,7 @@ Built (`apps.citizens`). A citizen posts news or an issue for the village chosen
 | Method and path | Request | Response |
 |---|---|---|
 | `POST /citizen/challenge/` | — | `{"nonce": "…", "expires_in": 300}`. The nonce is signed by the server, valid for `CITIZEN_CHALLENGE_SECONDS` (300) and usable once. |
-| `POST /citizen/register/` | `{"nonce", "integrity_token", "platform": "android", "village_id", "app_version"?, "android_id"?, "fcm_token"?, "language"?}`. `android_id` is Android's `Settings.Secure.ANDROID_ID` (stored only as a keyed hash; it links reinstalls of the same phone, so a block and the daily limit survive them). `fcm_token` lets the server push the decision on each post (CP4). `language` `te` (default) or `en`, for those pushes. | `201 {"token": "…", "device": CitizenDevice}`. `400 validation_error` (expired or reused nonce: `fields.nonce`; unknown or inactive village: `fields.village_id`); `403 integrity_failed` (Google's verdict is not genuine). No limit on registrations by default; only if `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY` is set: `429 throttled` with `retry_after_s` after that many from one IP address in 24 hours. |
+| `POST /citizen/register/` | `{"nonce", "integrity_token", "platform": "android", "village_id", "app_version"?, "android_id"?, "fcm_token"?, "language"?}`. `android_id` is Android's `Settings.Secure.ANDROID_ID` (stored only as a keyed hash; it links reinstalls of the same phone, so a block and the daily limit survive them). `fcm_token` lets the server push the decision on each post (CP4). `language` `te` (default) or `en`, for those pushes. | `201 {"token": "…", "device": CitizenDevice}`. `400 validation_error` (expired or reused nonce: `fields.nonce`; unknown or inactive village: `fields.village_id`); `403 integrity_failed` (Google's verdict is not genuine); `503 integrity_unavailable` with `retry_after_s` (Google could not be reached: show "try again in a few minutes"; the same nonce may be retried while it is fresh, decision of 2026-11-11). No limit on registrations by default; only if `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY` is set: `429 throttled` with `retry_after_s` after that many from one IP address in 24 hours. |
 | `GET /citizen/me/` | token | `CitizenDevice` |
 | `PATCH /citizen/me/` | token; any of `{"village_id", "fcm_token", "language"}` | `CitizenDevice`. The village posts go to; a new FCM token when Firebase rotates it; the language of pushes. |
 | `POST /citizen/posts/` | token; multipart `category`, `language`, `title`, `body`, `photos` and `videos` (any number of each, together or alone; repeat the field per file), and optional `targets`: a JSON string such as `[{"level":"DISTRICT","id":16},{"level":"VILLAGE","id":3226}]`, the same rules as officials' `targets` (section 3, "Posts"). Without it the post is for the phone's village. `CITIZEN_CAN_TARGET_STATE` (on) and `CITIZEN_MAX_TARGETS` (0: as officials) can narrow what citizens choose; a refusal is `400 fields.targets` with a message to show. | `201 CitizenPost`, already `PENDING`, in the queue of the admins over each chosen area. `400 validation_error`; `400 video_too_long`; `403 citizen_blocked` with `reason` and `blocked_until` (show both to the citizen); `403 permission_denied` for videos while `VIDEO_POSTS_ENABLED` is off; `413 file_too_large` (a photo over `MAX_IMAGE_UPLOAD_MB`, a video over `MAX_VIDEO_UPLOAD_MB`); `415 unsupported_media` (also a video the server cannot check within its time limit); `400 validation_error` on `videos` (or `photos`) when all files together take longer than `MEDIA_PROCESSING_BUDGET_S` (90 s) to check: send fewer or shorter videos; `429 throttled` with `retry_after_s` after the daily limit (5 posts per phone in 24 hours by default, all installs of the phone together; the Super Admin changes it in Settings). One bad file refuses the whole post and stores nothing. |
@@ -1165,7 +1172,7 @@ A request belongs to the phone's village at the time it is sent; changing villag
 
 | Method and path | Who | Request | Response |
 |---|---|---|---|
-| `GET /service-requests/` | `service_requests.view_service_requests` | `status` (one of the five, or empty), `q` (the citizen's name, or digits of the phone), `assigned=me` (optional), `page`, `page_size` (at most 100) | Page of `ServiceRequest`, latest change first, plus `status_counts` for all five statuses with every filter applied except `status` |
+| `GET /service-requests/` | `service_requests.view_service_requests` | `status` (one of the five, or empty), `q` (the citizen's name, or digits of the phone), `assigned=me` (optional), `page`, `page_size` (at most 100) | Page of `ServiceRequest`, latest change first, plus `status_counts` for all five statuses with every filter applied except `status`, and `"closed_visible_days": 180`. **Which requests are listed (decision of 2026-11-11):** every open request (`NEW`, `APPROVED`, `IN_PROGRESS`) however old; a `COMPLETED` or `REJECTED` request only while its last change is at most `SERVICE_REQUEST_CLOSED_VISIBLE_DAYS` (180) days old. Older closed requests stay in the database, are not counted in `status_counts`, and still open with `GET /service-requests/{id}/`; a change to one (a note, a new status) shows it again. The citizen's own list (`GET /citizen/service-requests/`) is not affected. |
 | `GET /service-requests/{id}/` | same | — | `ServiceRequest`; `404` when it is outside reach |
 | `PATCH /service-requests/{id}/` | the assignee; the rules below | any of `{"status", "assigned_to", "note"}`; `assigned_to` is a user id as in `GET /users/` (a UUID string), or `null` to unassign | The updated `ServiceRequest`. One history event per call that changes something; a call that changes nothing writes nothing. After passing it on, the answer still comes back (with `allowed_actions: []`), even when the caller no longer sees the request. |
 
@@ -1220,7 +1227,7 @@ Permission `service_requests.manage_services` (Super Admin only); everyone else 
 | An admin of the area, or the Super Admin, when **nobody holds** the request | `assign` only, so it is not stuck |
 | Everyone else who sees it (including the Village Admin after passing it on) | `[]` |
 
-- **Nobody holds it** when it was never assigned (the village has no Village Admin), or its assignee was later blocked or lost their role over the village.
+- **Nobody holds it** when it was never assigned (the village has no Village Admin), or its assignee was later blocked or lost their role over the village. A new official who has not yet changed their temporary password still holds it, and may be chosen as the assignee; they act on it after their first login.
 - Without the action: `403 permission_denied`. A `status` or a `note` needs `set_status`; `assigned_to` needs `assign`.
 - Permissions: `service_requests.view_service_requests` (the four admin groups and Panchayat members) and `service_requests.manage_service_requests` (the four admin groups), each over the request's village. `manage_service_requests` now only means "may assign a request nobody holds".
 - **Statuses:** `NEW` (default), `APPROVED`, `IN_PROGRESS`, `COMPLETED`, `REJECTED`. The assignee may set any of them; the app suggests NEW → APPROVED → IN_PROGRESS → COMPLETED.
@@ -1402,7 +1409,7 @@ Built (`apps.share`, `apps.posts.sharing`). Not under `/api/v1/`: these are page
 | `GET /.well-known/assetlinks.json` | anyone | Android App Links: `[{"relation": ["delegate_permission/common.handle_all_urls"], "target": {"namespace": "android_app", "package_name": ANDROID_PACKAGE, "sha256_cert_fingerprints": ANDROID_CERT_SHA256}}]` |
 | `GET /api/v1/feed/share/{code}/` | anyone | The post as `FeedPost` (section 6), for the app when a shared link opens it |
 
-- **Share code:** 8 random letters and digits (`[A-Za-z0-9]`), made the first time a post is published and never changed, also after a take-down and a reverse. Not a counter or the id, so links cannot be guessed in turn. Posts published before 2026-11-04 got one from migration `posts.0009`.
+- **Share code:** 8 random small letters and digits (`[a-z0-9]`; codes made before 2026-11-11 may also have capitals, and keep working; clients treat the code as opaque), made the first time a post is published and never changed, also after a take-down and a reverse. Not a counter or the id, so links cannot be guessed in turn. Posts published before 2026-11-04 got one from migration `posts.0009`.
 - **Links:** `share_url` (`Post`, `FeedItem`, `FeedPost`) is `PUBLIC_BASE_URL + "p/" + code + "/"`, and `invite_url` (site-config) is `PUBLIC_BASE_URL + "app/"`. Both are `null` while `PUBLIC_BASE_URL` is empty.
 - **Preview card:** `og:title` (the title), `og:description` (the first 200 characters), `og:url` and `<link rel="canonical">` (the `share_url`), `og:type` `article`, `og:locale` `te_IN` or `en_IN`, and `og:image`: a 1200 × 630 JPEG under 300 KB made once from the first photo, or a video's poster frame, kept as `/media/og/{code}.jpg`. A post without a photo uses `static/share/og-{category}.jpg` or `og-default.jpg` when those pictures exist, else has no `og:image` (`twitter:card` `summary`).
 - **No personal data:** a citizen post shows "Citizen" (పౌరుడు), an official's post their role and area, never a name, phone, device or email.

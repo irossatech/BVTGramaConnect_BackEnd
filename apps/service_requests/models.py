@@ -124,6 +124,7 @@ class ServiceRequest(models.Model):
             models.Index(fields=["village", "status"]),
             models.Index(fields=["assigned_to", "status"]),
             models.Index(fields=["device", "created_at"]),
+            models.Index(fields=["updated_at"]),  # officials' list order, newest change first (audit BE-DB-007)
         ]
         # Checked per area by accounts.authz (docs/authorization.md).
         permissions = [

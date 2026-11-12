@@ -38,6 +38,17 @@ def _fresh_login_throttle():
     caches["throttle"].clear()
 
 
+@pytest.fixture(autouse=True)
+def _fresh_runtime_settings():
+    """Every test reads runtime settings from its own database: a value cached by an earlier test
+    (posts.services.runtime) is forgotten, because a test's rollback sends no delete signal."""
+    from django.core.cache import cache
+
+    from apps.posts.services import RUNTIME_SETTINGS, runtime_cache_key
+
+    cache.delete_many([runtime_cache_key(name) for name in RUNTIME_SETTINGS])
+
+
 MAP = {
     "guntur": ("గుంటూరు", {
         "tenali": ("తెనాలి", {

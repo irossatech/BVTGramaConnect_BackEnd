@@ -48,7 +48,12 @@ def test_log_lines_carry_the_requests_number(client):
 
     with mock.patch("grama.views.connection.ensure_connection", side_effect=capture):
         response = client.get("/api/v1/health/")
-    assert seen == [response["X-Request-ID"]]
+        
+        
+    # The health check may touch the database more than once (it also checks the worker); every
+    # touch carries this request's number.
+    assert seen and set(seen) == {response["X-Request-ID"]}
+
     # Outside a request (background jobs, commands) the number is "-".
     assert request_id.current.get() == "-"
 
