@@ -362,7 +362,9 @@ def create_post(
         category=category, language=language, title=title, body=body,
         target=AreaRef(AreaLevel.VILLAGE, device.village_id), targets=targets,
     )
-    return post_services.create_citizen_post(device, data, attach=attach)
+    # The files are written inside the post's transaction; if it fails, they are deleted again.
+    with media.files_removed_on_failure():
+        return post_services.create_citizen_post(device, data, attach=attach)
 
 
 # --- Super Admin: block, unblock, discard all ---------------------------------------------------
