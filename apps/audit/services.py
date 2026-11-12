@@ -8,12 +8,32 @@ Call it inside the same transaction as the change it describes.
 Safety net: `data` and `target_label` pass through masking.scrub / scrub_label here, so an email,
 mobile or phone is masked and a password, token or secret is removed even if a caller forgets.
 Callers should still mask first (masking.py); this only catches what slips through.
+
+Every text inside `data` is cut at AUDIT_TEXT_MAX_CHARS (2,000 by default), with "…" at the end.
+The API already limits comments and notes to 500 characters, so this only catches text that
+something lets through by mistake: the audit log is never cleaned, so it must not fill up.
 """
 
 from __future__ import annotations
 
+from django.conf import settings
+
 from .masking import scrub, scrub_label
 from .models import AuditLog, type_for_action
+
+#: Put at the end of a text that was cut.
+CUT_MARK = "…"
+
+
+def _cap(value, limit: int):
+    """`value` with every text in it, at any depth, at most `limit` characters long."""
+    if isinstance(value, str):
+        return value if len(value) <= limit else value[: limit - len(CUT_MARK)] + CUT_MARK
+    if isinstance(value, dict):
+        return {key: _cap(item, limit) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_cap(item, limit) for item in value]
+    return value
 
 
 def record(
@@ -51,5 +71,5 @@ def record(
         area_level=area.level if area is not None else "",
         area_id=area.id if area is not None else None,
         via=via,
-        data=scrub(data or {}),
+        data=_cap(scrub(data or {}), settings.AUDIT_TEXT_MAX_CHARS),
     )

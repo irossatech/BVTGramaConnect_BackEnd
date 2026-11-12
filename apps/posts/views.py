@@ -118,9 +118,10 @@ class AdminCategoryViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, mixin
     @transaction.atomic
     def perform_update(self, serializer):
         category = serializer.save()
+        # Only the fields the serializer accepted and checked, never the raw request body.
         record(
             "category.updated", actor=self.request.user, target=category, target_label=category.name_en,
-            via="console", data=dict(self.request.data),
+            via="console", data=dict(serializer.validated_data),
         )
 
 

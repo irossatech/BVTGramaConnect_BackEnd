@@ -488,6 +488,10 @@ if min(VIDEO_PROBE_TIMEOUT_S, VIDEO_POSTER_TIMEOUT_S, VIDEO_STRIP_TIMEOUT_S, MED
     raise ImproperlyConfigured("VIDEO_*_TIMEOUT_S and MEDIA_PROCESSING_BUDGET_S must be at least 1 second.")
 ESCALATION_CHECK_MINUTES = env.int("ESCALATION_CHECK_MINUTES", default=15)
 HOUSEKEEPING_KEEP_DAYS = env.int("HOUSEKEEPING_KEEP_DAYS", default=30)
+# Longest text kept in an audit entry's data; longer text is cut with "…" (apps.audit.services).
+AUDIT_TEXT_MAX_CHARS = env.int("AUDIT_TEXT_MAX_CHARS", default=2000)
+if AUDIT_TEXT_MAX_CHARS < 10:
+    raise ImproperlyConfigured("AUDIT_TEXT_MAX_CHARS must be at least 10.")
  
 PLAY_STORE_URL = env.str("PLAY_STORE_URL", default="")
 APP_STORE_URL = env.str("APP_STORE_URL", default="")
