@@ -39,7 +39,10 @@ def test_posts_by_area_and_dashboard_do_not_cost_a_query_per_area(world, api):
     post_for(world, "kolakaluru")
     post_for(world, "kaza", PostStatus.PENDING)
     client = api(world.users["super"])
-    before ={url: queries(client, url) for url in ("/api/v1/admin/reports/posts-by-area/", "/api/v1/admin/dashboard/")}
+    urls = ("/api/v1/admin/reports/posts-by-area/", "/api/v1/admin/dashboard/")
+    for url in urls:  # runtime settings are cached for 30 s: count both rounds with a warm cache
+        client.get(url)
+    before = {url: queries(client, url) for url in urls}
     add_areas(world, 6)
     after = {url: queries(client, url) for url in before}
     assert after == before
