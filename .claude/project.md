@@ -62,7 +62,7 @@ States: DRAFT > PENDING > PUBLISHED, RECHECK or DISCARDED; RECHECK > PENDING; PU
 ## Configurable rules
 
 Django settings, overridable by environment variables:
-ADMIN_POSTS_AUTO_PUBLISH=True, REVIEW_FIRST_DECISION_WINS=True, REVIEW_ESCALATION_HOURS=24, SUPER_ADMIN_CAN_POST=True, MAX_PHOTOS_PER_POST=5. Languages: Telugu (default) and English. A changed password at first login is always required; it is not a setting.
+ADMIN_POSTS_AUTO_PUBLISH=True, REVIEW_FIRST_DECISION_WINS=True, REVIEW_ESCALATION_HOURS=24, SUPER_ADMIN_CAN_POST=True, MAX_PHOTOS_PER_POST=0 (no limit). Languages: Telugu (default) and English. A changed password at first login is always required; it is not a setting.
 
 ## Non-negotiables
 
@@ -102,6 +102,7 @@ ADMIN_POSTS_AUTO_PUBLISH=True, REVIEW_FIRST_DECISION_WINS=True, REVIEW_ESCALATIO
 - 2026-10-27 · **Citizens post from the app** without logging in. Each install gets a posting token after Google Play Integrity confirms the genuine app. Every citizen post goes to review; 5 posts per phone a day by default, which the Super Admin can change. BackEnd repo, `docs/api-contract.md`, section 15.
 - 2026-10-28 · **Who will see it:** every poster, citizens included, picks Everyone or any districts, mandals and villages anywhere, in any mix, in one post. Admins' posts still publish at once wherever they go; the admins of every chosen area review the others. This replaces the 2026-10-21 visibility rule. BackEnd repo, `docs/api-contract.md`, section 5.
 - 2026-11-04 · **The Super Admin may post.** SUPER_ADMIN_CAN_POST is True by default; setting it to False removes "New post" again.
+- 2026-11-11 · **No limit on photos or videos per post**, for citizens, officials and the Super Admin. MAX_PHOTOS_PER_POST is 0 (no limit) by default; each file keeps its size limit, and each video its 60 seconds.
 
 ## Working across repos
 

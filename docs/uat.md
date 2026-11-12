@@ -42,7 +42,7 @@ For the QA engineer and the client's testers during user acceptance testing. Wor
 | P3a | Unlock | While the member is locked out, the Village Admin sees "Unlock" for them and unlocking lets them log in at once. The audit log shows the lockout and the unlock. |
 | P3b | Forgot password | The Village Admin resets the password: typed or generated, shown once. The member is logged out everywhere at once, the old password stops working, any lockout is cleared, and the member must change the password again. |
 | P3c | Change password | From the profile, the member changes their own password with the current one. Their other phones are logged out. |
-| P4 | Create post | Title, description, category, up to 5 photos. Photos upload quickly on mobile data. |
+| P4 | Create post | Title, description, category, any number of photos and videos (no count limit since 2026-11-11). Photos upload quickly on mobile data. |
 | P5 | After submitting | The post shows as Pending in "My posts". It is not in the citizen feed. |
 | P6 | Sent back | When an admin sends it back, the comment shows and "Edit & resubmit" works. The post returns to Pending. |
 | P7 | Discarded | The reason shows. The post cannot be edited. |

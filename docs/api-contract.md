@@ -209,7 +209,7 @@ Returned by `GET /me/`, inside the app login response and inside the console ses
   },
   "rules": {
     "admin_posts_auto_publish": true,
-    "super_admin_can_post": false,
+    "super_admin_can_post": true,
     "max_photos_per_post": 0,
     "video_enabled": true
   }
@@ -557,7 +557,7 @@ What `POST /posts` does:
   "citizen_posts_per_day": 5,
   "admin_posts_auto_publish": true,
   "review_first_decision_wins": true,
-  "super_admin_can_post": false
+  "super_admin_can_post": true
 }
 ```
 - Values start from Django settings and environment variables, as CLAUDE.md defines. A value saved here overrides the default and is audited as `setting.changed`.
