@@ -29,6 +29,7 @@ from rest_framework.views import APIView
 from apps.geography.areas import AreaDescriber, AreaRef, ancestry
 from apps.geography.models import AreaLevel, Village
 from grama.exceptions import ApiError
+from grama.params import is_number
 from apps.posts.models import MediaKind, Post, PostMedia, PostStatus
 from apps.posts.services import targets_match
 
@@ -72,7 +73,7 @@ def published_posts():
 
 def village_from(request) -> int:
     raw = request.query_params.get("village_id", "").strip()
-    if not raw.isdigit():
+    if not is_number(raw):
         raise ApiError(
             "validation_error",
             "The 'village_id' query parameter is required.",

@@ -24,6 +24,7 @@ from apps.citizens import services as citizen_services
 from apps.geography.areas import AreaRef, within_q
 from apps.geography.models import AreaLevel
 from grama.exceptions import ApiError, out_of_area
+from grama.params import UUID_REGEX, is_number, uuid_or_none
 
 from . import media as media_service
 from . import services
@@ -166,7 +167,7 @@ def area_filter(request, queryset):
     if params.get("district"):
         level, area_id = AreaLevel.DISTRICT, params["district"]
     if level or area_id:
-        if level not in AreaLevel.values or not (area_id or "").isdigit():
+        if level not in AreaLevel.values or not is_number(area_id):
             raise ApiError("validation_error", _("Give both level and area_id."), fields={"area_id": [_("Required with level.")]})
         queryset = queryset.filter(services.targets_within(AreaRef(level, int(area_id))))
     return queryset
@@ -175,6 +176,7 @@ def area_filter(request, queryset):
 class PostViewSet(viewsets.GenericViewSet):
     permission_classes = [IsAuthenticated]
     serializer_class = PostSerializer
+    lookup_value_regex = UUID_REGEX  # /posts/abc/ is a 404, not a crash
 
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):  # drf-spectacular: the model, for the {id} type
@@ -195,7 +197,10 @@ class PostViewSet(viewsets.GenericViewSet):
         if params.get("mine") in ("1", "true", "True"):
             queryset = queryset.filter(author=self.request.user)
         if params.get("author"):
-            queryset = queryset.filter(author_id=params["author"])
+            author = uuid_or_none(params["author"])
+            if author is None:
+                raise ApiError("validation_error", _("Give a user id."), fields={"author": [_("Not a user id.")]})
+            queryset = queryset.filter(author_id=author)
         if params.get("category"):
             queryset = queryset.filter(category__key=params["category"])
         if params.get("target_level"):
@@ -350,7 +355,7 @@ class PostViewSet(viewsets.GenericViewSet):
         return Response(services.posting_targets(request.user))
 
     @extend_schema(summary="Remove a photo or the video", responses={204: None})
-    @action(detail=True, methods=["delete"], url_path=r"media/(?P<media_id>[0-9a-f-]+)")
+    @action(detail=True, methods=["delete"], url_path=rf"media/(?P<media_id>{UUID_REGEX})")
     def remove_media(self, request, pk=None, media_id=None):
         post = self.get_object()
         media = get_object_or_404(PostMedia, pk=media_id, post=post)
@@ -410,7 +415,7 @@ class StatsView(APIView):
         perm = "posts.view_stats"
         params = request.query_params
         if params.get("level") or params.get("area_id"):
-            if params.get("level") not in AreaLevel.values or not (params.get("area_id") or "").isdigit():
+            if params.get("level") not in AreaLevel.values or not is_number(params.get("area_id")):
                 raise ApiError("validation_error", _("Give both level and area_id."))
             area = AreaRef(params["level"], int(params["area_id"]))
             if not authz.can(request.user, perm, area):

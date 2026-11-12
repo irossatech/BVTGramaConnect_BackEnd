@@ -130,7 +130,10 @@ def _header(name: str) -> str:
 
 
 def _decimal(raw: str) -> Decimal:
-    return Decimal(raw.strip()).quantize(SIX_PLACES, rounding=ROUND_HALF_UP)
+    value = Decimal(raw.strip())
+    if not value.is_finite():  # "NaN" and "Infinity" parse, but cannot be compared or stored
+        raise InvalidOperation(raw)
+    return value.quantize(SIX_PLACES, rounding=ROUND_HALF_UP)
 
 
 class GeographyImporter:
@@ -154,6 +157,15 @@ class GeographyImporter:
         return self.run(io.StringIO(text))
 
     def run(self, handle) -> ImportReport:
+        try:
+            return self._run(handle)
+        except csv.Error as exc:
+            # Raised while reading, before anything is written: a field over the csv module's
+            # limit (131,072 characters), for example.
+            self.report.errors.append(f"The file is not valid CSV: {exc}.")
+            return self.report
+
+    def _run(self, handle) -> ImportReport:
         reader = csv.DictReader(handle)
         if not reader.fieldnames:
             self.report.errors.append("The file is empty.")
