@@ -62,7 +62,7 @@ Common problems:
 sudo bash /srv/gramaconnect/backend/deploy/deploy.sh
 ```
 
-It pulls `GIT_BRANCH` of the backend repo and the web repo (BVTGramaConnect, setting `REPO_WEB`), installs packages, migrates, collects static files, uses the web repo's committed `dist/` (or builds it with `npm ci && npm run build` when `dist/` is not committed), copies `dist/` (without `console/`) to `/srv/gramaconnect/www/public` and `dist/console/` to `/srv/gramaconnect/www/console`, restarts the services, and checks the API. To roll back, check out the previous commit in the affected repo and run `deploy.sh` again with `GIT_BRANCH` pointing at a branch or tag that holds it. Migrations are not reversed automatically: restore a backup if a migration has to be undone.
+It pulls `GIT_BRANCH` of the backend repo and the web repo (BVTGramaConnect, setting `REPO_WEB`), installs packages, migrates, collects static files, uses the web repo's committed `dist/` (or builds it with `npm ci && npm run build` when `dist/` is not committed), copies `dist/` (without `console/`) to `/srv/gramaconnect/www/public` and `dist/console/` to `/srv/gramaconnect/www/console`, restarts the services, and checks the API. Before it changes anything, it takes a backup with `backup.sh` (only when started as root, as above; `BACKUP_BEFORE_DEPLOY=0` in `/etc/gramaconnect/deploy.env` skips it for an emergency), so a failed migration can be undone with `restore.sh` from minutes before, not from last night. To roll back, check out the previous commit in the affected repo and run `deploy.sh` again with `GIT_BRANCH` pointing at a branch or tag that holds it. Migrations are not reversed automatically: restore a backup if a migration has to be undone.
 
 ### Servers set up before the web repos were merged
 

@@ -99,6 +99,13 @@ data would write its own places over the real list. Demo content for real villag
 `manage.py load_demo_area --allow-server` (`.claude/operations.md`). Both sample-data commands
 refuse on a server without `--allow-server`; never use it on production.
 
+When there are migrations to apply, it first takes a backup with `BVT-backup.sh` into
+`~/bvt-backups-before-deploy/` (the newest 3 are kept, apart from the nightly ones), and stops
+without migrating if that backup fails. `BACKUP_BEFORE_DEPLOY=0 bash BVT-deploy.sh` skips it for an
+emergency. On qa, `runserver` closes its database connection after every request
+(`DB_CONN_MAX_AGE=0`; `QA_DB_CONN_MAX_AGE` changes it), because its per-request threads never reuse
+one; production's Gunicorn keeps `DB_CONN_MAX_AGE` from `.env`.
+
 ## Backups
 
 `bash BVT-backup.sh --install` runs one every night. The data dump holds password hashes and
