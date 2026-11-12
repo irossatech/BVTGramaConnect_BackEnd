@@ -5,6 +5,7 @@ import logging
 
 from django.conf import settings
 from django.dispatch import receiver
+from django_q.tasks import async_task
 
 from apps.accounts.signals import super_admin_added
 from apps.posts.signals import post_decided, post_escalated, post_published, post_submitted
@@ -57,7 +58,11 @@ def _escalation_hours() -> int:
 
 @receiver(post_escalated, dispatch_uid="notifications.post_escalated")
 def on_post_escalated(sender, post, level=None, **kwargs):
-    _safely(services.alert_escalation, post, level, _escalation_hours())
+    # A job per post: the escalation run stays short, and one post's alerts never hold up the others'.
+    _safely(
+        async_task, "apps.notifications.tasks.alert_escalation", str(post.pk), level, _escalation_hours(),
+        group="alerts",
+    )
 
 
 @receiver(super_admin_added, dispatch_uid="notifications.super_admin_added")
