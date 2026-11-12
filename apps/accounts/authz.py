@@ -296,10 +296,6 @@ def permissions_by_area(user, *, pending_change_ok: bool = False) -> list[tuple[
     return [(area, sorted(perms)) for area, perms in merged.items()]
 
 
-def is_platform_wide(user, perm: str) -> bool:
-    return can(user, perm, PLATFORM)
-
-
 # --- Area pickers ("Visible to" for posts, "Who sees it" for important numbers) -------------
 
 LEVEL_ORDER = ["STATE", "DISTRICT", "MANDAL", "VILLAGE"]
