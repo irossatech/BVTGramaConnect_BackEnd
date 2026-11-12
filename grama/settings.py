@@ -490,6 +490,8 @@ HOUSEKEEPING_KEEP_DAYS = env.int("HOUSEKEEPING_KEEP_DAYS", default=30)
 PLAY_STORE_URL = env.str("PLAY_STORE_URL", default="")
 APP_STORE_URL = env.str("APP_STORE_URL", default="")
 CONTACT_MESSAGES_PER_IP_PER_HOUR = env.int("CONTACT_MESSAGES_PER_IP_PER_HOUR", default=5)
+# The console lists contact messages from this many days back; older ones are kept, not shown.
+CONTACT_MESSAGES_VISIBLE_DAYS = env.int("CONTACT_MESSAGES_VISIBLE_DAYS", default=90)
 SITE_WEBSITE_URL = env.str("SITE_WEBSITE_URL", default="https://example.in/")
  
 PUBLIC_BASE_URL = env.str("PUBLIC_BASE_URL", default="")

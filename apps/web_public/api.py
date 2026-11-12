@@ -222,7 +222,14 @@ class ContactMessageListView(generics.ListAPIView):
     serializer_class = ContactMessageAdminSerializer
 
     def get_queryset(self):
-        queryset = ContactMessage.objects.select_related("handled_by").order_by("-created_at", "-id")
+        # Only the last CONTACT_MESSAGES_VISIBLE_DAYS are shown; older messages stay in the database
+        # (owner decision of 2026-11-11, as for the audit log).
+        since = timezone.now() - timedelta(days=settings.CONTACT_MESSAGES_VISIBLE_DAYS)
+        queryset = (
+            ContactMessage.objects.select_related("handled_by")
+            .filter(created_at__gte=since)
+            .order_by("-created_at", "-id")
+        )
         wanted = self.request.query_params.get("status", "").strip().lower()
         if wanted == "new":
             queryset = queryset.filter(handled=False)
