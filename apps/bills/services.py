@@ -29,6 +29,10 @@ def _validation(field: str, message) -> ApiError:
     return ApiError("validation_error", message, fields={field: [message]})
 
 
+#: Keys tried when another create took the new bill's key at the same moment.
+KEY_TRIES = 3
+
+
 def _new_key(name_en: str) -> str:
     base = slugify(name_en).replace("-", "_")[:36].strip("_") or "bill"
     key, n = base, 2
@@ -52,24 +56,29 @@ def _delete_logo_after_commit(name: str) -> None:
 def create_bill(user, values: dict, logo=None) -> Bill:
     _check_name(values["name_en"])
     data = logos.process_logo(logo) if logo is not None else None
-    try:
-        with transaction.atomic():
-            last = Bill.objects.aggregate(last=Max("order"))["last"]
-            bill = Bill.objects.create(
-                key=_new_key(values["name_en"]),
-                order=0 if last is None else last + 1,
-                **{name: values[name] for name in BILL_FIELDS if name in values},
-            )
-            if data is not None:
-                logos.store_logo(bill.logo, bill.key, data)
-                bill.save(update_fields=["logo"])
-            record("bill.created", actor=user, target=bill, target_label=bill.name_en,
-                   data={"key": bill.key, "logo": data is not None})
-    except IntegrityError:
-        # Two creates with the same name at once: the second gets the name check's answer.
-        _check_name(values["name_en"])
-        raise
-    return bill
+    for attempt in range(KEY_TRIES):
+        try:
+            with transaction.atomic():
+                last = Bill.objects.aggregate(last=Max("order"))["last"]
+                bill = Bill.objects.create(
+                    key=_new_key(values["name_en"]),
+                    order=0 if last is None else last + 1,
+                    **{name: values[name] for name in BILL_FIELDS if name in values},
+                )
+                if data is not None:
+                    logos.store_logo(bill.logo, bill.key, data)
+                    bill.save(update_fields=["logo"])
+                record("bill.created", actor=user, target=bill, target_label=bill.name_en,
+                       data={"key": bill.key, "logo": data is not None})
+            return bill
+        except IntegrityError:
+            # Two creates at once. The same name: the second gets the name check's answer. Two names
+            # with the same key ("Power Bill", "Power-Bill"): the second tries the next free key
+            # (audit finding BE-DB-014).
+            _check_name(values["name_en"])
+            if attempt == KEY_TRIES - 1:
+                raise
+    raise AssertionError("not reached")
 
 
 def update_bill(user, bill: Bill, changes: dict, logo=None, remove_logo: bool = False) -> Bill:

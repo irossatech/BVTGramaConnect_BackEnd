@@ -112,6 +112,10 @@ def _after_commit(function, *args) -> None:
 # --- Services (Super Admin) ------------------------------------------------------------------------
 
 
+#: Keys tried when another create took the new service's key at the same moment.
+KEY_TRIES = 3
+
+
 def _new_key(name_en: str) -> str:
     base = slugify(name_en).replace("-", "_")[:36].strip("_") or "service"
     key, n = base, 2
@@ -139,24 +143,29 @@ def _delete_logo_after_commit(name: str) -> None:
 def create_service(user, values: dict, logo=None) -> Service:
     _check_name(values["name_en"])
     data = logos.process_logo(logo) if logo is not None else None
-    try:
-        with transaction.atomic():
-            last = Service.objects.aggregate(last=Max("order"))["last"]
-            service = Service.objects.create(
-                key=_new_key(values["name_en"]),
-                order=0 if last is None else last + 1,
-                **{name: values[name] for name in SERVICE_FIELDS if name in values},
-            )
-            if data is not None:
-                _store_logo(service, data)
-                service.save(update_fields=["logo"])
-            record("service.created", actor=user, target=service, target_label=service.name_en,
-                   data={"key": service.key, "logo": data is not None})
-    except IntegrityError:
-        # Two creates with the same name at once: the second gets the name check's answer.
-        _check_name(values["name_en"])
-        raise
-    return service
+    for attempt in range(KEY_TRIES):
+        try:
+            with transaction.atomic():
+                last = Service.objects.aggregate(last=Max("order"))["last"]
+                service = Service.objects.create(
+                    key=_new_key(values["name_en"]),
+                    order=0 if last is None else last + 1,
+                    **{name: values[name] for name in SERVICE_FIELDS if name in values},
+                )
+                if data is not None:
+                    _store_logo(service, data)
+                    service.save(update_fields=["logo"])
+                record("service.created", actor=user, target=service, target_label=service.name_en,
+                       data={"key": service.key, "logo": data is not None})
+            return service
+        except IntegrityError:
+            # Two creates at once. The same name: the second gets the name check's answer. Two names
+            # with the same key ("PAN Card", "PAN-Card"): the second tries the next free key
+            # (audit finding BE-DB-014).
+            _check_name(values["name_en"])
+            if attempt == KEY_TRIES - 1:
+                raise
+    raise AssertionError("not reached")
 
 
 def update_service(user, service: Service, changes: dict, logo=None, remove_logo: bool = False) -> Service:
