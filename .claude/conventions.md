@@ -21,6 +21,7 @@
 - Portable ORM only: no raw SQL, no vendor-specific fields, no spatial types, no `select_for_update` as the only guard. Tests run on SQLite; the server runs MySQL (utf8mb4) or PostgreSQL.
 - Never edit a migration that has been merged. Add a new one. Before every pull request run `python manage.py makemigrations --check --dry-run`.
 - Seed data that must exist everywhere (categories, notification templates) goes in data migrations.
+- Data migrations (`RunPython`): give them a reverse step where one exists; if there is none, say "irreversible" in the pull request, since undoing it means restoring a backup. Work in batches (`iterator()`, `bulk_create`, `bulk_update`, as in `posts/0008`), never one UPDATE per row. Keep schema changes and data steps in separate migrations: MySQL commits each schema change at once, so a mixed migration that fails part-way stays half applied. The deploy scripts take a backup before migrating.
 
 ## Telugu
 
