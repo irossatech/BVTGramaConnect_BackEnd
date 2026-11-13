@@ -44,8 +44,9 @@ class AdWriteSerializer(serializers.Serializer):
     def validate_link(self, value):
         value = value.strip()
         if value:
-            # Only http(s): no javascript:, intent:, file: or similar links in the app.
-            URLValidator(schemes=["http", "https"], message="Give an http:// or https:// link.")(value)
+            # Only https (decision of 2026-11-13, audit WEB-SEC-010): no plain http, and no javascript:,
+            # intent:, file: or similar links in the app. Saved ads keep their link until it is changed.
+            URLValidator(schemes=["https"], message="Give an https:// link.")(value)
         return value
 
 

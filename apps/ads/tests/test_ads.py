@@ -118,6 +118,9 @@ def test_only_the_super_admin_manages_ads(api, world, media_root, name):
         ({"link": "intent://open#Intent;end"}, "link"),
         ({"link": "file:///etc/passwd"}, "link"),
         ({"link": "not a link"}, "link"),
+        ({"link": "http://example.org/eye-camp"}, "link"),  # https only (WEB-SEC-010)
+        ({"link": "HTTP://example.org/eye-camp"}, "link"),
+        ({"link": "ftp://example.org/eye-camp"}, "link"),
         ({"area_id": 999999}, "area_id"),
         ({"area_level": "COUNTRY"}, "area_level"),
         ({"starts_on": "2026-11-10", "ends_on": "2026-11-01"}, "ends_on"),
