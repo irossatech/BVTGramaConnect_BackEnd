@@ -39,6 +39,7 @@ from .serializers import (
     ServiceOrderSerializer,
     ServiceRequestSerializer,
     ServiceRequestUpdateSerializer,
+    ServiceRequestWithoutContactSerializer,
     ServiceSerializer,
     ServiceWriteSerializer,
 )
@@ -123,10 +124,19 @@ class ServiceRequestListView(generics.ListAPIView):
             OpenApiParameter("status", OpenApiTypes.STR, enum=RequestStatus.values),
             OpenApiParameter("assigned", OpenApiTypes.STR, enum=["me"], description="me: only those assigned to you"),
             OpenApiParameter("q", OpenApiTypes.STR, description="The citizen's name or phone"),
+            OpenApiParameter("contact", OpenApiTypes.STR, enum=["0"],
+                             description="0: leave out the citizen's phone, email and address (the console's table)"),
         ],
     )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
+
+    def get_serializer_class(self):
+        # The console's table shows only the name; its panel reads one request with its details
+        # (audit WEB-DP-001). The app's list still gets them: it shows them without a second call.
+        if self.request.query_params.get("contact") == "0":
+            return ServiceRequestWithoutContactSerializer
+        return ServiceRequestSerializer
 
     def _filtered_except_status(self):
         params = self.request.query_params
