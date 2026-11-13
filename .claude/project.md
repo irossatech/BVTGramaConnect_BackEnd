@@ -97,12 +97,13 @@ ADMIN_POSTS_AUTO_PUBLISH=True, REVIEW_FIRST_DECISION_WINS=True, REVIEW_ESCALATIO
 - 2026-10-21 · **Website:** the home page's phone picture shows live posts, every page has its own URL, and contact messages are read in the console.
 - 2026-10-21 · **Sharing a post** sends its text plus a link to the website. There is no public post page.
 - 2026-10-21 · **Console:** "Reset password" sits in the user panel, not in the users table.
-- 2026-10-21 · **/django-admin/** is reachable on the server only from office IP addresses.
+- 2026-10-21 · ~~**/django-admin/** is reachable on the server only from office IP addresses.~~ Replaced on 2026-11-11, see below.
 - 2026-10-22 · **Web is React and Next.js; mobile is Flutter.** The website and the console are one Next.js app (React, Pages Router) in BVTGramaConnect, exported as static files and served by Nginx; the mobile app stays Flutter. The conversion kept the approved design pixel for pixel.
 - 2026-10-27 · **Citizens post from the app** without logging in. Each install gets a posting token after Google Play Integrity confirms the genuine app. Every citizen post goes to review; 5 posts per phone a day by default, which the Super Admin can change. BackEnd repo, `docs/api-contract.md`, section 15.
 - 2026-10-28 · **Who will see it:** every poster, citizens included, picks Everyone or any districts, mandals and villages anywhere, in any mix, in one post. Admins' posts still publish at once wherever they go; the admins of every chosen area review the others. This replaces the 2026-10-21 visibility rule. BackEnd repo, `docs/api-contract.md`, section 5.
 - 2026-11-04 · **The Super Admin may post.** SUPER_ADMIN_CAN_POST is True by default; setting it to False removes "New post" again.
 - 2026-11-11 · **No limit on photos or videos per post**, for citizens, officials and the Super Admin. MAX_PHOTOS_PER_POST is 0 (no limit) by default; each file keeps its size limit, and each video its 60 seconds.
+- 2026-11-11 · **Django admin is off on every server** (lead's decision), qa included: `/django-admin/` answers 404 there. It stays on developers' laptops. Officials, roles and settings are managed in the console. This replaces the 2026-10-21 office-IP rule.
 
 ## Working across repos
 
