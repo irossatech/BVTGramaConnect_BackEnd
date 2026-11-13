@@ -261,22 +261,29 @@ def test_without_ffmpeg_the_phone_sends_length_and_poster(api, world, make_post,
     assert PostMedia.objects.count() == 1
 
 
-def test_measured_length_wins_over_the_phones(api, world, make_post, ffmpeg):
+def test_measured_length_wins_over_the_phones(api, world, make_post, ffmpeg, settings):
+    settings.VIDEO_MAX_SECONDS = 60  # a length limit, when one is set again
     post = make_post("pm_kolakaluru", "kolakaluru", submit=False)
     ffmpeg["length"] = 75.0
     response = send_video(api, world, post, duration_s="20")
     assert response.status_code == 400 and code(response) == "video_too_long"
 
 
-@pytest.mark.parametrize("length, expected", [(60.4, 201), (61.0, 400)])
-def test_at_most_sixty_seconds(api, world, make_post, ffmpeg, length, expected):
+@pytest.mark.parametrize("length", [61.0, 5 * 60.0, 3 * 3600.0])
+def test_a_video_of_any_length(api, world, make_post, ffmpeg, length):
+    """Lead's decision of 2026-11-13: post videos have no length limit, like banner videos."""
     post = make_post("pm_kolakaluru", "kolakaluru", submit=False)
     ffmpeg["length"] = length
     response = send_video(api, world, post)
-    assert response.status_code == expected
-    if expected == 400:
-        assert code(response) == "video_too_long"
-        assert not PostMedia.objects.exists()
+    assert response.status_code == 201, response.json()
+    assert response.json()["duration_s"] == round(length)
+
+
+def test_the_lead_s_numbers_are_the_defaults():
+    from django.conf import settings as defaults
+
+    assert defaults.MAX_VIDEO_UPLOAD_MB == 60 and defaults.VIDEO_MAX_SECONDS == 0
+    assert defaults.MAX_PHOTOS_PER_POST == 3 and defaults.MAX_IMAGE_UPLOAD_MB == 10
 
 
 def test_video_too_large(api, world, make_post, ffmpeg, settings):
@@ -301,19 +308,22 @@ def test_not_a_video(api, world, make_post, ffmpeg, file):
     assert response.status_code == 415
 
 
-@pytest.mark.parametrize("author, area", [("pm_kolakaluru", "kolakaluru"), ("super", "ap")])
-def test_any_number_of_videos_mixed_with_photos(api, world, make_post, ffmpeg, super_admin_can_post, author, area):
-    """Lead's decision of 2026-11-11: officials and the Super Admin, like citizens, mix any number of each."""
-    post = make_post(author, area, submit=False)
-    kinds = ["video", "photo", "video", "photo", "photo", "video"]
-    for kind in kinds:
-        response = (send_video if kind == "video" else send_photo)(api, world, post, actor=author)
-        assert response.status_code == 201, response.json()
-    stored = list(post.media.order_by("order").values_list("kind", "order"))
-    assert stored == [("video" if k == "video" else "image", n) for n, k in enumerate(kinds)]
+@pytest.mark.parametrize("author, area", [("pm_kolakaluru", "kolakaluru"), ("va_kolakaluru", "kolakaluru"), ("super", "ap")])
+def test_photos_or_one_video_never_both(api, world, make_post, ffmpeg, author, area):
+    """Lead's decision of 2026-11-13: a post has up to 3 photos, or one video, for everyone who posts."""
+    with_video = make_post(author, area, submit=False)
+    assert send_video(api, world, with_video, actor=author).status_code == 201
+    second_video = send_video(api, world, with_video, actor=author)
+    assert second_video.status_code == 409 and code(second_video) == "media_conflict"
+    photo_after_video = send_photo(api, world, with_video, actor=author)
+    assert photo_after_video.status_code == 409 and code(photo_after_video) == "media_conflict"
+    assert list(with_video.media.values_list("kind", "order")) == [("video", 0)]
 
-    detail = api(world.users[author]).get(f"/api/v1/posts/{post.id}/").json()
-    assert [m["kind"] for m in detail["media"]] == [k if k == "video" else "image" for k in kinds]
+    with_photo = make_post(author, area, submit=False, title="రెండో పోస్ట్")
+    assert send_photo(api, world, with_photo, actor=author).status_code == 201
+    video_after_photo = send_video(api, world, with_photo, actor=author)
+    assert video_after_photo.status_code == 409 and code(video_after_photo) == "media_conflict"
+    assert list(with_photo.media.values_list("kind", flat=True)) == ["image"]
 
 
 def test_video_posts_can_be_switched_off(api, world, make_post, ffmpeg, settings):

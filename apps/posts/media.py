@@ -5,10 +5,11 @@ EXIF orientation, re-encoded as WebP (which drops all metadata), large side at
 most POST_IMAGE_MAX_PX (1280), plus a POST_MEDIUM_PX (640) copy for big cards
 and a POST_THUMB_PX (320) thumbnail.
 
-Videos (owner decision Q8): MP4 or MOV up to MAX_VIDEO_UPLOAD_MB and
-VIDEO_MAX_SECONDS. Any number of photos and videos per post, mixed in any
-order, for officials and the Super Admin as for citizens (lead's decision of
-2026-11-11; MAX_PHOTOS_PER_POST 0 is no limit). The app compresses videos first. With ffprobe and ffmpeg on PATH (the server installs
+A post has up to MAX_PHOTOS_PER_POST (3) photos, or one video, never both, for
+everyone who posts: citizens, Panchayat members, admins and the Super Admin
+(lead's decision of 2026-11-13). Videos: MP4 or MOV up to MAX_VIDEO_UPLOAD_MB
+(60), of any length (VIDEO_MAX_SECONDS 0), like banner videos.
+The app compresses videos first. With ffprobe and ffmpeg on PATH (the server installs
 them) the server measures the length, cuts a poster frame and stores a copy
 without metadata (strip_metadata, G7). Without them the app must send
 `duration_s` and a `poster` photo, and the file is stored as uploaded.
@@ -237,6 +238,20 @@ def add_medium(media: PostMedia) -> bool:
     return True
 
 
+def media_conflict(message) -> ApiError:
+    """409: a post has photos or one video, never both, and never two videos (contract section 5)."""
+    return ApiError("media_conflict", message, status=409)
+
+
+def too_many_photos() -> ApiError:
+    limit = settings.MAX_PHOTOS_PER_POST
+    return ApiError(
+        "validation_error",
+        _("A post can have at most %(n)d photos.") % {"n": limit},
+        fields={"file": [_("Too many photos.")]},
+    )
+
+
 def _check_can_add(user, post: Post) -> None:
     if post.author_id != user.id:
         raise permission_denied(_("Only the author can add photos or a video."))
@@ -246,15 +261,10 @@ def _check_can_add(user, post: Post) -> None:
 
 def add_photo(user, post: Post, upload, focus_y=None) -> PostMedia:
     _check_can_add(user, post)
-    # Any number by default (MAX_PHOTOS_PER_POST 0), with or without videos. A number in the
-    # settings brings back a cap on photos only.
-    limit = settings.MAX_PHOTOS_PER_POST
-    if limit and post.media.filter(kind=MediaKind.IMAGE).count() >= limit:
-        raise ApiError(
-            "validation_error",
-            _("A post can have at most %(n)d photos.") % {"n": limit},
-            fields={"file": [_("Too many photos.")]},
-        )
+    if post.media.filter(kind=MediaKind.VIDEO).exists():
+        raise media_conflict(_("This post has a video. A post has either photos or one video."))
+    if post.media.count() >= settings.MAX_PHOTOS_PER_POST:
+        raise too_many_photos()
     processed = process_image(upload)
     with files_removed_on_failure(), transaction.atomic():
         return store_photo(post, processed, order=post.media.count())
@@ -498,10 +508,11 @@ def add_video(user, post: Post, upload, *, duration_s=None, poster=None) -> Post
     if not settings.VIDEO_POSTS_ENABLED:
         raise permission_denied(_("Video posts are switched off."))
     _check_can_add(user, post)
-    # Any number of videos, with or without photos; each goes after the files already there.
+    if post.media.exists():
+        raise media_conflict(_("A post has either photos or one video."))
     prepared = prepare_video(upload, duration_s=duration_s, poster=poster)
     with files_removed_on_failure(), transaction.atomic():
-        return store_video(post, prepared, order=post.media.count())
+        return store_video(post, prepared, order=0)
 
 
 def remove_photo(user, post: Post, media: PostMedia) -> None:

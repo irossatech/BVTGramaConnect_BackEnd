@@ -26,11 +26,12 @@ For the QA engineer and the client's testers during user acceptance testing. Wor
 | C10 | Save, share, listen | Saved posts stay on the phone. Share opens WhatsApp and others and sends the post text plus the website link. Listen reads the post aloud. |
 | C11 | No login needed | At no point does the app ask a citizen to log in. |
 | C12 | News search | Searching a word from a title or description finds the post, in Telugu and in English, whatever the letter case. One letter asks for at least two. |
-| C13 | Video post | A video post shows its poster picture. It plays on tap, can be paused and moved forward or back, and is at most 60 seconds. |
+| C13 | Video post | A video post shows its poster picture. It plays on tap and can be paused and moved forward or back. A video of any length up to 60 MB plays. |
 | C14 | "Don't miss" | Posts with an event date from today on show soonest first: at most 10. Events that ended yesterday are gone. |
 | C15 | Urgent banner | An urgent post from the last 7 days shows at the top. Its push alert arrives even when the phone is idle. |
 | C16 | Help lines | The help-line screen lists 112, 108, 1930, 181, 1098 and 1912 with Telugu names. Tapping one opens the dialler. |
 | C17 | Contacts tab | "For you" lists the numbers of your village, your mandal and your district, grouped by type (VRO, Mee Seva, Sachivalayam …) with the village's first; "Government helplines" lists the state's numbers. Nothing from a neighbouring village, mandal or district. Telugu and English both work. Tapping a number opens the dialler. A number an official removed is gone within 5 minutes. With no signal the last list still shows, and 112 and 108 always work. |
+| C18 | Post news | Without logging in, a citizen sends a post with up to 3 photos, or one video (up to 60 MB, any length), or neither; a fourth photo, or photos and a video together, are refused with a message. The post goes to review. After the day's limit set in the console (Settings, 5 by default) the app says when they can post again. |
 
 ## Panchayat Member (mobile app)
 
@@ -42,13 +43,13 @@ For the QA engineer and the client's testers during user acceptance testing. Wor
 | P3a | Unlock | While the member is locked out, the Village Admin sees "Unlock" for them and unlocking lets them log in at once. The audit log shows the lockout and the unlock. |
 | P3b | Forgot password | The Village Admin resets the password: typed or generated, shown once. The member is logged out everywhere at once, the old password stops working, any lockout is cleared, and the member must change the password again. |
 | P3c | Change password | From the profile, the member changes their own password with the current one. Their other phones are logged out. |
-| P4 | Create post | Title, description, category, any number of photos and videos (no count limit since 2026-11-11). Photos upload quickly on mobile data. |
+| P4 | Create post | Title, description, category, and up to 3 photos (optional; lead's decision of 2026-11-13). A fourth cannot be added. Photos upload quickly on mobile data. |
 | P5 | After submitting | The post shows as Pending in "My posts". It is not in the citizen feed. |
 | P6 | Sent back | When an admin sends it back, the comment shows and "Edit & resubmit" works. The post returns to Pending. |
 | P7 | Discarded | The reason shows. The post cannot be edited. |
 | P8 | Other villages | The member can post only to their own village. |
 | P9 | No admin screens | No review queue, no user management. |
-| P10 | Event date and video | An optional event (deadline, camp, distribution, closure or meeting) with a start and optional end date can be added. A video of at most 60 seconds can be attached instead of photos, never both. |
+| P10 | Event date and video | An optional event (deadline, camp, distribution, closure or meeting) with a start and optional end date can be added. One video of any length, up to 60 MB, can be attached instead of photos, never both. |
 | P11 | No "urgent" | A Panchayat member cannot mark a post as urgent; the option is not offered. |
 | P12 | Important numbers | The member adds, edits and removes numbers for their own village only, and citizens of the village see them. "Who sees it" offers only the village. Helplines can be read but not changed. |
 

@@ -66,12 +66,21 @@ def test_small_photos_are_not_enlarged(api, world, make_post, media_root):
         assert medium.size == (500, 400)
 
 
-def test_any_number_of_photos(api, world, make_post):
-    """Lead's decision of 2026-11-11: no limit for officials, as for citizens (MAX_PHOTOS_PER_POST 0)."""
+@pytest.mark.parametrize("author, area", [("pm_kolakaluru", "kolakaluru"), ("va_kolakaluru", "kolakaluru"), ("super", "ap")])
+def test_at_most_three_photos(api, world, make_post, author, area):
+    """Lead's decision of 2026-11-13: up to 3 photos per post, for every official and the Super Admin."""
+    post = make_post(author, area, submit=False)
+    for _ in range(3):
+        assert upload(api, world, author, post, jpeg(400, 300, exif=False)).status_code == 201
+    fourth = upload(api, world, author, post, jpeg(400, 300, exif=False))
+    assert fourth.status_code == 400 and fourth.json()["error"]["code"] == "validation_error"
+    assert list(post.media.order_by("order").values_list("order", flat=True)) == [0, 1, 2]
+
+
+def test_photos_are_optional(api, world, make_post):
     post = make_post("pm_kolakaluru", "kolakaluru", submit=False)
-    for _ in range(8):
-        assert upload(api, world, "pm_kolakaluru", post, jpeg(400, 300, exif=False)).status_code == 201
-    assert list(post.media.order_by("order").values_list("order", flat=True)) == list(range(8))
+    response = api(world.users["pm_kolakaluru"]).post(f"/api/v1/posts/{post.id}/submit/")
+    assert response.status_code == 200 and post.media.count() == 0
 
 
 def test_a_cap_in_the_settings_still_limits_photos(api, world, make_post, settings):

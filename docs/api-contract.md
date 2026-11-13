@@ -132,6 +132,7 @@ All errors share one shape:
 | 409 | `protected` | The "Other" contact type cannot be deleted (section 14) |
 | 409 | `last_super_admin` | Blocking a Super Admin, or removing or switching off their role, would leave no active Super Admin (section 3) |
 | 409 | `super_admin_limit` | There are already `MAX_SUPER_ADMINS` active Super Admins (section 3); `limit` gives the number |
+| 409 | `media_conflict` | A post has up to 3 photos or one video, never both: a photo for a post with a video, a second video, or a video for a post with photos (sections 5 and 15) |
 | 413 | `file_too_large` | Upload over the limit |
 | 415 | `unsupported_media` | File type not allowed |
 | 429 | `locked_out` | 5 failed logins for this username from this IP address, or 50 failed logins from this IP address for any usernames within an hour; `retry_after_s` gives the seconds left |
@@ -210,7 +211,7 @@ Returned by `GET /me/`, inside the app login response and inside the console ses
   "rules": {
     "admin_posts_auto_publish": true,
     "super_admin_can_post": true,
-    "max_photos_per_post": 0,
+    "max_photos_per_post": 3,
     "video_enabled": true
   }
 }
@@ -219,7 +220,7 @@ Returned by `GET /me/`, inside the app login response and inside the console ses
 - `assignments` lists every assignment, active or not. `role_assignments` lists the active ones in the older shape.
 - `capabilities` is **deprecated**. It is derived from `permissions` and kept so the current app keeps working.
 - `mobile` and `email` may be `null`. When `must_change_password` is true, clients go straight to the change-password screen.
-- `rules.max_photos_per_post`: **`0` means no limit** (the default since 2026-11-11, lead's decision): the app lets officials and the Super Admin add any number of photos and videos to a post, mixed. A positive number is a cap on photos only. Videos have no count limit.
+- `rules.max_photos_per_post`: photos per post, **3** (lead's decision of 2026-11-13). A post has up to that many photos, or one video (when `video_enabled`), never both (section 5).
 
 ### User (admin view)
 ```json
@@ -520,9 +521,10 @@ What `POST /posts` does:
 | `DELETE /posts/{id}/media/{media_id}` | author | — | `204` |
 
 - Allowed while the post is `DRAFT` or `RECHECK`. Because `POST /posts` submits by default, the app creates the post with `submit: false`, uploads media, then calls `/submit`.
-- Images: JPEG, PNG, WebP or HEIC, at most `MAX_IMAGE_UPLOAD_MB` (default 10) each. Any number of photos per post (`MAX_PHOTOS_PER_POST`, default 0 = no limit; lead's decision of 2026-11-11), with or without videos, each added after the files already there. Stored as WebP at most 1280 px, with a 640 px copy and a 320 px thumbnail. Too large: `413 file_too_large`. Not a photo: `415 unsupported_media`.
-- **Video (owner decision Q8):** multipart `file` (MP4 or MOV), `kind=video`, optional `duration_s`, optional `poster` image. At most `MAX_VIDEO_UPLOAD_MB` (default 50; larger: `413 file_too_large`) and `VIDEO_MAX_SECONDS` (60; longer: `400 video_too_long`). Other files: `415 unsupported_media`. Any number of videos per post, mixed with any number of photos (lead's decision of 2026-11-11, the same as citizen posts); each is added after the files already there. `409 media_conflict` is no longer sent.
-  - Duration: measured with `ffprobe` when it is installed (the server has it). Without `ffprobe` the client's `duration_s` is required and still checked.
+- **A post has up to 3 photos, or one video, never both** (lead's decision of 2026-11-13), for everyone who posts: Panchayat members, admins and the Super Admin here, citizens in section 15. Media is optional: a post may have none.
+- Images: JPEG, PNG, WebP or HEIC, at most `MAX_IMAGE_UPLOAD_MB` (default 10) each, at most `MAX_PHOTOS_PER_POST` (default 3) per post; a fourth answers `400 validation_error` on `file`. A photo for a post that has a video answers `409 media_conflict`. Stored as WebP at most 1280 px, with a 640 px copy and a 320 px thumbnail. Too large: `413 file_too_large`. Not a photo: `415 unsupported_media`.
+- **Video:** multipart `file` (MP4 or MOV), `kind=video`, optional `duration_s`, optional `poster` image. At most `MAX_VIDEO_UPLOAD_MB` (default 60; larger: `413 file_too_large`), of any length (`VIDEO_MAX_SECONDS` 0, the same as banner videos; a number above 0 brings back `400 video_too_long`). Other files: `415 unsupported_media`. One video per post, on a post with no photos: otherwise `409 media_conflict` ("A post has either photos or one video."). Remove the photos or the video first to switch.
+  - Duration: measured with `ffprobe` when it is installed (the server has it). Without `ffprobe` the client's `duration_s` is required.
   - Poster: made with `ffmpeg` from the first second when it is installed. Otherwise `poster` (a photo) is required and processed like photos.
   - The video is stored without its metadata (GPS place, phone, dates): `ffmpeg` copies the video and audio streams without re-encoding, so quality and size stay as uploaded. A file it cannot copy: `415 unsupported_media`. Without `ffmpeg` it is stored as uploaded. The app compresses it before upload. The same applies to citizen videos (section 15) and banner videos (section 17).
   - **Time limits (audit BE-PERF-003):** the server checks each upload for a limited time. Measuring the length, cutting the poster and copying without metadata stop after `VIDEO_PROBE_TIMEOUT_S` (15), `VIDEO_POSTER_TIMEOUT_S` (20) and `VIDEO_STRIP_TIMEOUT_S` (45) seconds; a video that takes longer answers `415 unsupported_media`, like an unreadable one. All photos and videos of one request share `MEDIA_PROCESSING_BUDGET_S` (90 s); a request over it answers `400 validation_error` on the file field (`file` here, `videos` or `photos` for citizens, `video` for banners) and stores nothing. Normal videos take a few seconds.
@@ -895,16 +897,16 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Post title | 150 characters |
 | Post body | 5,000 characters |
 | Review comment | 500 characters |
-| Photos and videos per post | Any number of each, mixed (`MAX_PHOTOS_PER_POST` default 0 = no limit; videos have no count limit). Officials, the Super Admin and citizens alike. |
+| Photos and videos per post | Up to 3 photos (`MAX_PHOTOS_PER_POST`), or one video, never both; optional. Everyone who posts, citizens included (lead's decision of 2026-11-13). |
 | Image upload | `MAX_IMAGE_UPLOAD_MB`, default 10 |
-| Video | one per post, `VIDEO_MAX_SECONDS` 60, `MAX_VIDEO_UPLOAD_MB` default 50 |
+| Video | one per post, never with photos; `MAX_VIDEO_UPLOAD_MB` default 60, any length (`VIDEO_MAX_SECONDS` 0) |
 | Checking uploads | per step `VIDEO_PROBE_TIMEOUT_S` 15, `VIDEO_POSTER_TIMEOUT_S` 20, `VIDEO_STRIP_TIMEOUT_S` 45 (over: `415`); per request `MEDIA_PROCESSING_BUDGET_S` 90 (over: `400 validation_error`, nothing stored) |
 | Page size | feed 20, admin lists 100 |
 | Important numbers | 200 active per area (`CONTACTS_MAX_PER_AREA`); name 150, custom type 40 characters; CSV import 2 MB and 5,000 rows |
 | Home banner ads | Image at most 5 MB and at least 800 px wide, stored at most 1600 px; title 80, link 500 characters; at most 10 per village's Home |
 | Service requests | 10 per phone in 24 hours (`SERVICE_REQUESTS_PER_DAY`, 0 is no limit); name 100, address 5–300, details 500 characters |
 | Services | name 2–60 characters (unique, any case); `icon` and `color` from the lists in section 16; logo JPEG, PNG or WebP, at most 2 MB, at least 64 px a side, stored at most 256 px |
-| Citizen posts | 5 posts per phone in 24 hours (the Super Admin changes it in Settings; 0 is no limit); any number of photos and videos per post (switchable: `CITIZEN_MAX_PHOTOS`); each photo at most `MAX_IMAGE_UPLOAD_MB`, each video at most `MAX_VIDEO_UPLOAD_MB` and `VIDEO_MAX_SECONDS`; no limit on new phones (switchable: `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY`) |
+| Citizen posts | 5 posts per phone in 24 hours (the Super Admin changes it in Settings; 0 is no limit); up to 3 photos (`MAX_PHOTOS_PER_POST`) or one video per post, never both; each photo at most `MAX_IMAGE_UPLOAD_MB` (10), the video at most `MAX_VIDEO_UPLOAD_MB` (60), any length; no limit on new phones (switchable: `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY`) |
 
 ---
 
@@ -1026,7 +1028,7 @@ Built (`apps.citizens`). A citizen posts news or an issue for the village chosen
 | `POST /citizen/register/` | `{"nonce", "integrity_token", "platform": "android", "village_id", "app_version"?, "android_id"?, "fcm_token"?, "language"?}`. `android_id` is Android's `Settings.Secure.ANDROID_ID` (stored only as a keyed hash; it links reinstalls of the same phone, so a block and the daily limit survive them). `fcm_token` lets the server push the decision on each post (CP4). `language` `te` (default) or `en`, for those pushes. | `201 {"token": "…", "device": CitizenDevice}`. `400 validation_error` (expired or reused nonce: `fields.nonce`; unknown or inactive village: `fields.village_id`); `403 integrity_failed` (Google's verdict is not genuine); `503 integrity_unavailable` with `retry_after_s` (Google could not be reached: show "try again in a few minutes"; the same nonce may be retried while it is fresh, decision of 2026-11-11). No limit on registrations by default; only if `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY` is set: `429 throttled` with `retry_after_s` after that many from one IP address in 24 hours. |
 | `GET /citizen/me/` | token | `CitizenDevice` |
 | `PATCH /citizen/me/` | token; any of `{"village_id", "fcm_token", "language"}` | `CitizenDevice`. The village posts go to; a new FCM token when Firebase rotates it; the language of pushes. |
-| `POST /citizen/posts/` | token; multipart `category`, `language`, `title`, `body`, `photos` and `videos` (any number of each, together or alone; repeat the field per file), and optional `targets`: a JSON string such as `[{"level":"DISTRICT","id":16},{"level":"VILLAGE","id":3226}]`, the same rules as officials' `targets` (section 3, "Posts"). Without it the post is for the phone's village. `CITIZEN_CAN_TARGET_STATE` (on) and `CITIZEN_MAX_TARGETS` (0: as officials) can narrow what citizens choose; a refusal is `400 fields.targets` with a message to show. | `201 CitizenPost`, already `PENDING`, in the queue of the admins over each chosen area. `400 validation_error`; `400 video_too_long`; `403 citizen_blocked` with `reason` and `blocked_until` (show both to the citizen); `403 permission_denied` for videos while `VIDEO_POSTS_ENABLED` is off; `413 file_too_large` (a photo over `MAX_IMAGE_UPLOAD_MB`, a video over `MAX_VIDEO_UPLOAD_MB`); `415 unsupported_media` (also a video the server cannot check within its time limit); `400 validation_error` on `videos` (or `photos`) when all files together take longer than `MEDIA_PROCESSING_BUDGET_S` (90 s) to check: send fewer or shorter videos; `429 throttled` with `retry_after_s` after the daily limit (5 posts per phone in 24 hours by default, all installs of the phone together; the Super Admin changes it in Settings). One bad file refuses the whole post and stores nothing. |
+| `POST /citizen/posts/` | token; multipart `category`, `language`, `title`, `body`, `photos` (up to 3) or one `videos` file, never both, or neither (lead's decision of 2026-11-13; repeat the field per photo), and optional `targets`: a JSON string such as `[{"level":"DISTRICT","id":16},{"level":"VILLAGE","id":3226}]`, the same rules as officials' `targets` (section 3, "Posts"). Without it the post is for the phone's village. `CITIZEN_CAN_TARGET_STATE` (on) and `CITIZEN_MAX_TARGETS` (0: as officials) can narrow what citizens choose; a refusal is `400 fields.targets` with a message to show. | `201 CitizenPost`, already `PENDING`, in the queue of the admins over each chosen area. `400 validation_error` (a fourth photo: `fields.photos`; a second video: `fields.videos`); `409 media_conflict` (photos and a video together); `403 citizen_blocked` with `reason` and `blocked_until` (show both to the citizen); `403 permission_denied` for videos while `VIDEO_POSTS_ENABLED` is off; `413 file_too_large` (a photo over `MAX_IMAGE_UPLOAD_MB`, a video over `MAX_VIDEO_UPLOAD_MB`); `415 unsupported_media` (also a video the server cannot check within its time limit); `400 validation_error` on `videos` (or `photos`) when the files take longer than `MEDIA_PROCESSING_BUDGET_S` (90 s) to check; `429 throttled` with `retry_after_s` after the daily limit (5 posts per phone in 24 hours by default, all installs of the phone together; the Super Admin changes it in Settings). One bad file refuses the whole post and stores nothing. |
 | `GET /citizen/posts/` | token | `[CitizenPost]`, this phone's posts, newest first, at most 50 |
 
 Every citizen endpoint answers `401 citizen_token_invalid` without a valid token. A blocked phone can still read `GET /citizen/me/` and its posts, but cannot post.
@@ -1061,7 +1063,7 @@ Every citizen endpoint answers `401 citizen_token_invalid` without a valid token
 
 - **Target:** always the phone's village (`village_id` of the device), never a mandal, district or the state. `event` and `is_urgent` are not available to citizens.
 - **Fields:** `category` an active category key; `language` `te` or `en`; `title` 1 to 150 characters; `body` 1 to 5,000; photos as officials' photos (JPEG, PNG or WebP, at most `MAX_IMAGE_UPLOAD_MB`, re-encoded to WebP with EXIF and GPS removed).
-- **Videos:** MP4 or MOV, each at most `MAX_VIDEO_UPLOAD_MB` (50) and, when the server can measure it, `VIDEO_MAX_SECONDS` (60). Any number, mixed with any number of photos (decision of 2026-10-27); stored photos first, then videos, in the order sent. The app never sends a length or a poster: with ffmpeg the server measures the video and cuts a poster frame; without it the length stays `null` and a plain placeholder poster is used. (Officials' posts also take any number of photos and videos, mixed, since 2026-11-11; they upload one file per request to `POST /posts/{id}/media/`, and without ffmpeg the phone sends `duration_s` and a `poster` for each video.)
+- **Video:** one MP4 or MOV per post, never with photos, at most `MAX_VIDEO_UPLOAD_MB` (60), of any length (`VIDEO_MAX_SECONDS` 0), the same as officials' (lead's decision of 2026-11-13). The app never sends a length or a poster: with ffmpeg the server measures the video and cuts a poster frame; without it the length stays `null` and a plain placeholder poster is used. (Officials upload one file per request to `POST /posts/{id}/media/`, and without ffmpeg the phone sends `duration_s` and a `poster` for the video.)
 - **Feed:** a published citizen post shows like any post: `media_count` counts photos and videos, `video` is its first video, `image_url` its first photo, and `GET /feed/posts/{id}/` lists every photo and video in `media`.
 - **Review:** the post goes straight to `PENDING` and into the review queue of every official whose area contains the village: the Village Admin, the Mandal Admin, the District Admin and the Super Admin, at the same time (CP1). The Village, Mandal and District Admins are notified. The first decision wins; after `REVIEW_ESCALATION_HOURS` without a decision the next level up is alerted, exactly as for Panchayat members' posts (owner decision Q1).
 - **Separate queue:** `GET /review/queue/` and `GET /posts/` take `source=citizen` or `source=official`; without it they list both. The review queue also returns `"source_counts": {"official": 3, "citizen": 7}` (every other filter applied, `source` ignored) for the two tabs.
@@ -1083,7 +1085,7 @@ Every citizen endpoint answers `401 citizen_token_invalid` without a valid token
 | `PLAY_INTEGRITY_PACKAGE` | — | The app's package name, e.g. `com.bvt.app` |
 | `PLAY_INTEGRITY_CREDENTIALS_FILE` | `FCM_CREDENTIALS_FILE` | Service account allowed to call the Play Integrity API |
 | `CITIZEN_POSTS_PER_DAY` | 5 | Posts per phone in 24 hours; 0 is no limit. The Super Admin changes it at runtime: `PATCH /admin/settings/` `{"citizen_posts_per_day"}` (0 to 1000), stored over this default. |
-| `CITIZEN_MAX_PHOTOS` | 0 (no limit) | Photos per citizen post, when set |
+| `MAX_PHOTOS_PER_POST` | 3 | Photos per post, citizens' and officials' alike; a post has these or one video (2026-11-13). `CITIZEN_MAX_PHOTOS` is gone |
 | `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY` | 0 (no limit) | New phones per IP address in 24 hours, when set. Mobile networks put many phones behind one IP, so keep it high if used. |
 
 ### Open decisions and defaults
@@ -1091,7 +1093,7 @@ Every citizen endpoint answers `401 citizen_token_invalid` without a valid token
 | # | Question | Default until decided |
 |---|---|---|
 | CP1 | Do all levels see a citizen post at once, or one level at a time? | **Decided 2026-10-27:** all at once, all notified, escalation after 24 h (owner decision Q1) |
-| CP2 | Photos only, or video too? | **Decided 2026-10-27:** photos and videos, any number of each, together in one post |
+| CP2 | Photos only, or video too? | **Decided 2026-10-27:** photos and videos, any number of each, together in one post. **Changed 2026-11-13 (lead):** up to 3 photos, or one video, never both, the same as officials |
 | CP3 | iPhones: Play Integrity is Android only. Apple App Attest is needed for iOS. | iOS registration works only while `CITIZEN_INTEGRITY_REQUIRED` is off |
 | CP4 | Is the citizen told when the post is published or discarded? | **Decided 2026-10-27:** yes, a push to the phone (see Rules), and "My posts" |
 | CP5 | Limits and blocking | **Decided 2026-10-27:** 5 posts per phone a day (Super Admin changes it); blocks are temporary, set and lifted only by the Super Admin, shown to the citizen with the reason, and survive a reinstall; the Super Admin may discard all of a phone's pending posts |

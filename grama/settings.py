@@ -472,11 +472,11 @@ MAX_SUPER_ADMINS = env.int("MAX_SUPER_ADMINS", default=5)
 if MAX_SUPER_ADMINS < 0:
     raise ImproperlyConfigured("MAX_SUPER_ADMINS must be 0 (no limit) or more.")
  
-# Photos per official's or Super Admin's post: 0 (the default) is no limit, as for citizens
-# (lead's decision of 2026-11-11). Videos have no count limit; photos and videos may be mixed.
-MAX_PHOTOS_PER_POST = env.int("MAX_PHOTOS_PER_POST", default=0)
-if MAX_PHOTOS_PER_POST < 0:
-    raise ImproperlyConfigured("MAX_PHOTOS_PER_POST must be 0 (no limit) or more.")
+# Media per post, for everyone who posts: citizens, Panchayat members, admins and the Super Admin
+# (lead's decision of 2026-11-13): up to MAX_PHOTOS_PER_POST photos, or one video, never both.
+MAX_PHOTOS_PER_POST = env.int("MAX_PHOTOS_PER_POST", default=3)
+if MAX_PHOTOS_PER_POST < 1:
+    raise ImproperlyConfigured("MAX_PHOTOS_PER_POST must be 1 or more.")
 POST_MAX_TARGETS = env.int("POST_MAX_TARGETS", default=200)
 VIDEO_POSTS_ENABLED = env.bool("VIDEO_POSTS_ENABLED", default=True)
  
@@ -489,8 +489,10 @@ POST_MEDIUM_PX = env.int("POST_MEDIUM_PX", default=640)
 POST_THUMB_PX = 320
 POST_IMAGE_QUALITY = 80
  
-MAX_VIDEO_UPLOAD_MB = env.int("MAX_VIDEO_UPLOAD_MB", default=50)
-VIDEO_MAX_SECONDS = env.int("VIDEO_MAX_SECONDS", default=60)
+# A post's video: at most 60 MB, of any length, like a banner video (lead's decision of
+# 2026-11-13). VIDEO_MAX_SECONDS 0 is any length; a number above 0 brings back a length limit.
+MAX_VIDEO_UPLOAD_MB = env.int("MAX_VIDEO_UPLOAD_MB", default=60)
+VIDEO_MAX_SECONDS = env.int("VIDEO_MAX_SECONDS", default=0)
 # How long the server may spend checking uploads (apps.posts.media, audit BE-PERF-003): each
 # ffprobe/ffmpeg step, and all photos and videos of one request together. A step that runs out of
 # time answers 415; a request over the budget answers 400. Keep the budget below Gunicorn's
@@ -561,7 +563,6 @@ CITIZEN_CHALLENGE_SECONDS = env.int("CITIZEN_CHALLENGE_SECONDS", default=300)
 CITIZEN_POSTS_PER_DAY = env.int("CITIZEN_POSTS_PER_DAY", default=5)
 CITIZEN_MAX_TARGETS = env.int("CITIZEN_MAX_TARGETS", default=0)
 CITIZEN_CAN_TARGET_STATE = env.bool("CITIZEN_CAN_TARGET_STATE", default=True)
-CITIZEN_MAX_PHOTOS = env.int("CITIZEN_MAX_PHOTOS", default=0)
 CITIZEN_REGISTRATIONS_PER_IP_PER_DAY = env.int("CITIZEN_REGISTRATIONS_PER_IP_PER_DAY", default=0)
  
 SERVICE_REQUESTS_PER_DAY = env.int("SERVICE_REQUESTS_PER_DAY", default=10)

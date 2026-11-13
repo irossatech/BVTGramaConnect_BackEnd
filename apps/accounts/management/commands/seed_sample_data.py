@@ -295,6 +295,7 @@ class Command(BaseCommand):
                 f"Video posts: {' and '.join(missing)} not found. Phones must send duration_s and a poster photo."
             ))
         else:
+            length = f"up to {settings.VIDEO_MAX_SECONDS} s" if settings.VIDEO_MAX_SECONDS else "any length"
             self.stdout.write(
-                f"Video posts: on, up to {settings.VIDEO_MAX_SECONDS} s and {settings.MAX_VIDEO_UPLOAD_MB} MB; ffprobe and ffmpeg found."
+                f"Video posts: on, {length}, up to {settings.MAX_VIDEO_UPLOAD_MB} MB; ffprobe and ffmpeg found."
             )

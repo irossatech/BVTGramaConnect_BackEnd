@@ -171,11 +171,13 @@ def test_the_banner_limits_are_their_own(api, world, media_root, ffmpeg, setting
     assert prepared.duration == 30.0 and prepared.poster is not None
 
 
-def test_post_videos_keep_their_sixty_seconds_whatever_the_banners_allow(ffmpeg, settings):
+def test_post_videos_follow_their_own_setting_whatever_the_banners_allow(ffmpeg, settings):
+    # Both are any length by default (2026-11-13); a post length limit, when set, is not the banners'.
     settings.ADS_VIDEO_MAX_SECONDS = 0
+    settings.VIDEO_MAX_SECONDS = 60
     ffmpeg["length"] = 61.0
     with pytest.raises(media_service.ApiError) as error:
-        media_service.prepare_video(mp4())  # no limits passed: the post ones (VIDEO_MAX_SECONDS 60)
+        media_service.prepare_video(mp4())  # no limits passed: the post ones
     assert error.value.error_code == "video_too_long"
 
 
