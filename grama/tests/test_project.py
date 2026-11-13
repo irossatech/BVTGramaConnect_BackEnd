@@ -250,8 +250,24 @@ def test_mysql_gets_utf8mb4_options():
     config = database_config("mysql://grama:pw@127.0.0.1:3306/grama")
     assert config["ENGINE"] == "django.db.backends.mysql"
     assert config["OPTIONS"]["charset"] == "utf8mb4"
-    assert "STRICT_TRANS_TABLES" in config["OPTIONS"]["init_command"]
     assert config["TEST"]["CHARSET"] == "utf8mb4"
+
+
+def test_mysql_strict_mode_adds_to_strictness_by_default():
+    """Audit BE-DB-010: TRADITIONAL (strict, no zero dates, division by zero refused, no engine
+    substitution) plus an exact GROUP BY, never STRICT_TRANS_TABLES alone."""
+    command = database_config("mysql://grama:pw@127.0.0.1:3306/grama")["OPTIONS"]["init_command"]
+    assert command == "SET sql_mode='TRADITIONAL,ONLY_FULL_GROUP_BY'"
+
+
+def test_mysql_strict_mode_follows_db_sql_mode(monkeypatch):
+    import grama.settings
+
+    monkeypatch.setattr(grama.settings, "DB_SQL_MODE", "STRICT_TRANS_TABLES")  # the old value, to roll back
+    command = database_config("mysql://grama:pw@127.0.0.1:3306/grama")["OPTIONS"]["init_command"]
+    assert command == "SET sql_mode='STRICT_TRANS_TABLES'"
+    monkeypatch.setattr(grama.settings, "DB_SQL_MODE", "")  # empty: the server's own default
+    assert "init_command" not in database_config("mysql://grama:pw@127.0.0.1:3306/grama")["OPTIONS"]
 
 
 @pytest.mark.parametrize(

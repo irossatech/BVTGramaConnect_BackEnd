@@ -106,6 +106,12 @@ emergency. On qa, `runserver` closes its database connection after every request
 (`DB_CONN_MAX_AGE=0`; `QA_DB_CONN_MAX_AGE` changes it), because its per-request threads never reuse
 one; production's Gunicorn keeps `DB_CONN_MAX_AGE` from `.env`.
 
+MariaDB on qa uses the strict `sql_mode` (`DB_SQL_MODE`, audit BE-DB-010), the same as production on
+MySQL or MariaDB. Check it after a deploy from the backend folder:
+`.venv/bin/python manage.py shell -c "from django.db import connection; c=connection.cursor(); c.execute('SELECT @@SESSION.sql_mode'); print(c.fetchone()[0])"`,
+and look for database errors 1055, 1292 or 1365 in `~/.bvt-grama/logs/web.log` and `worker.log`.
+To go back: `DB_SQL_MODE=STRICT_TRANS_TABLES` in qa's `.env`, then `bash BVT-stop.sh` and `bash BVT-start.sh`.
+
 ## Backups
 
 `bash BVT-backup.sh --install` runs one every night. The data dump holds password hashes and
