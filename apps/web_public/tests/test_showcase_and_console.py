@@ -164,6 +164,41 @@ def test_marking_handled_and_reopening_is_recorded(world, console):
     assert "రవి" not in rows[0].target_label and "9876543210" not in str(rows[0].data)
 
 
+def test_the_tables_rows_leave_out_the_mobile_and_message_only_when_asked(world, api):
+    """contact=0 (the console's table, audit WEB-DP-001): last 4 digits only, no message; the app's list keeps them."""
+    item = message(mobile="9816023452", text="మా గ్రామం")
+    client = api(world.users["super"])
+    rows = client.get(INBOX, {"contact": "0"}).json()["results"]
+    assert set(rows[0]) == {
+        "id", "name", "mobile_last4", "village_text", "language", "created_at", "handled", "handled_at", "handled_by",
+    }
+    assert rows[0]["id"] == item.id and rows[0]["mobile_last4"] == "3452"
+    assert "9816023452" not in str(rows) and "మా గ్రామం" not in str(rows)
+    full = client.get(INBOX).json()["results"][0]
+    assert full["mobile"] == "9816023452" and full["message"] == "మా గ్రామం" and "mobile_last4" not in full
+    # The search still finds the full number and the message text.
+    assert [r["id"] for r in client.get(INBOX, {"contact": "0", "q": "98160"}).json()["results"]] == [item.id]
+    assert [r["id"] for r in client.get(INBOX, {"contact": "0", "q": "గ్రామం"}).json()["results"]] == [item.id]
+
+
+def test_one_message_opens_in_full(world, api):
+    item = message(mobile="9816023452", text="లాగిన్ కావాలి", handled=True)
+    response = api(world.users["super"]).get(f"{INBOX}{item.id}/")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == item.id and body["mobile"] == "9816023452" and body["message"] == "లాగిన్ కావాలి"
+    assert body["handled"] is True and body["village_text"] == "కొలకలూరు"
+    missing = api(world.users["super"]).get(f"{INBOX}999999/")
+    assert missing.status_code == 404 and missing.json()["error"]["code"] == "not_found"
+
+
+@pytest.mark.parametrize("who", ["da_guntur", "ma_tenali", "va_kolakaluru", "pm_kolakaluru"])
+def test_only_super_admins_open_a_message(world, api, who):
+    item = message()
+    assert api(world.users[who]).get(f"{INBOX}{item.id}/").status_code == 403
+    assert api().get(f"{INBOX}{item.id}/").status_code == 401
+
+
 def test_patch_needs_handled_and_a_real_message(world, api):
     item = message()
     client = api(world.users["super"])
