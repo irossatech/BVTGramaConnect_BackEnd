@@ -355,7 +355,8 @@ def create_post(
 ) -> Post:
     """Checks, then posts.services.create_citizen_post with the photos and videos attached in its transaction.
 
-    Photos and videos may be mixed, any number of each (decision of 2026-10-27).
+    Up to MAX_PHOTOS_PER_POST (3) photos, or one video, never both, as for officials (lead's decision
+    of 2026-11-13). Media is optional.
     """
     if not settings.CITIZEN_POSTS_ENABLED:
         raise permission_denied(_("Citizen posts are switched off."))
@@ -366,12 +367,16 @@ def create_post(
     limit = posts_per_day()
     if limit:
         _within_daily_limit(posts_today(device, now), limit, now)
-    if settings.CITIZEN_MAX_PHOTOS and len(photos) > settings.CITIZEN_MAX_PHOTOS:
-        raise _validation("photos", _("At most %(n)d photos.") % {"n": settings.CITIZEN_MAX_PHOTOS})
+    if photos and videos:
+        raise media.media_conflict(_("A post has either photos or one video."))
+    if len(videos) > 1:
+        raise _validation("videos", _("A post can have one video."))
+    if len(photos) > settings.MAX_PHOTOS_PER_POST:
+        raise _validation("photos", _("At most %(n)d photos.") % {"n": settings.MAX_PHOTOS_PER_POST})
     if videos and not settings.VIDEO_POSTS_ENABLED:
         raise permission_denied(_("Video posts are switched off."))
     # Every file is checked (and photos re-encoded) before anything is written: 413/415 leave no post behind.
-    # Any number of files (lead's decision), but one time budget for all of them (BE-PERF-003).
+    # One time budget for all of them (BE-PERF-003).
     with media.media_budget("videos" if videos else "photos"):
         processed = [media.process_image(photo) for photo in photos]
         prepared = [media.prepare_video(video, lenient=True) for video in videos]

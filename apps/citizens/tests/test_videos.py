@@ -1,4 +1,4 @@
-"""Citizen posts with videos: any number, mixed with photos, no poster needed. Contract section 15."""
+"""Citizen posts with a video: one per post, never with photos, no poster needed. Contract section 15."""
 
 import io
 
@@ -54,28 +54,38 @@ def code(response):
     return response.json()["error"]["code"]
 
 
-def test_photos_and_videos_together_any_number(world, phone, media_root, ffmpeg):
-    response = send(phone(), photos=[photo(), photo((800, 600))], videos=[mp4(), mp4("b.mov"), mp4("c.mp4")])
+def test_one_video(world, phone, media_root, ffmpeg):
+    response = send(phone(), videos=[mp4("b.mov")])
     assert response.status_code == 201, response.json()
     data = response.json()
-    assert len(data["photos"]) == 2 and len(data["videos"]) == 3
+    assert data["photos"] == [] and len(data["videos"]) == 1
     video = data["videos"][0]
-    assert video["url"].endswith(".mp4") and video["poster_url"].endswith("-poster-1280.webp")
+    assert video["url"].endswith(".mov") and video["poster_url"].endswith("-poster-1280.webp")
     assert video["thumb_url"].endswith("-poster-320.webp") and video["duration_s"] == 42
-    assert data["videos"][1]["url"].endswith(".mov")
-    kinds = list(PostMedia.objects.order_by("order").values_list("kind", flat=True))
-    assert kinds == ["image", "image", "video", "video", "video"]  # photos first, then videos, in the order sent
-    assert all(m.medium for m in PostMedia.objects.all())
+    assert PostMedia.objects.get().medium
+
+
+@pytest.mark.parametrize("photos, videos", [(1, 1), (3, 1), (0, 2), (2, 2)])
+def test_photos_or_one_video_never_both(world, phone, media_root, ffmpeg, photos, videos):
+    """Lead's decision of 2026-11-13: up to 3 photos, or one video, the same as officials."""
+    response = send(phone(), photos=[photo() for _ in range(photos)], videos=[mp4(f"v{i}.mp4") for i in range(videos)])
+    if photos:
+        assert response.status_code == 409 and code(response) == "media_conflict"
+    else:
+        assert response.status_code == 400 and "videos" in response.json()["error"]["fields"]
+    assert not Post.objects.exists() and not PostMedia.objects.exists()
 
 
 def test_a_file_saved_to_a_temporary_file_is_accepted(world, phone, media_root, ffmpeg, settings):
     """Phone videos are over FILE_UPLOAD_MAX_MEMORY_SIZE (2.5 MB), so Django keeps them in a temporary
     file. Copying request.data deep-copied that open file and failed: "cannot pickle 'BufferedRandom'"."""
     settings.FILE_UPLOAD_MAX_MEMORY_SIZE = 0  # every upload becomes a TemporaryUploadedFile
-    response = send(phone(), photos=[photo()], videos=[mp4()])
+    response = send(phone(), videos=[mp4()])
     assert response.status_code == 201, response.content[:300]
-    data = response.json()
-    assert len(data["photos"]) == 1 and len(data["videos"]) == 1
+    assert len(response.json()["videos"]) == 1
+    response = send(phone(ip="10.5.5.5"), photos=[photo()])
+    assert response.status_code == 201, response.content[:300]
+    assert len(response.json()["photos"]) == 1
 
 
 def test_a_video_only_post(world, phone, media_root, ffmpeg):
@@ -95,35 +105,37 @@ def test_without_ffmpeg_a_video_still_goes_through(world, phone, media_root, no_
         assert poster.format == "WEBP" and poster.size == (1280, 720)  # the plain placeholder
 
 
-def test_reviewers_see_and_publish_the_videos(api, world, phone, media_root, ffmpeg):
-    post_id = send(phone(), photos=[photo()], videos=[mp4(), mp4()]).json()["id"]
+def test_reviewers_see_and_publish_the_video(api, world, phone, media_root, ffmpeg):
+    post_id = send(phone(), videos=[mp4()]).json()["id"]
     reviewer = api(world.users["va_kolakaluru"])
     media = reviewer.get(f"/api/v1/posts/{post_id}/").json()["media"]
-    assert [m["kind"] for m in media] == ["image", "video", "video"]
+    assert [m["kind"] for m in media] == ["video"]
     assert reviewer.post(f"/api/v1/posts/{post_id}/review/", {"action": "publish"}, format="json").status_code == 200
     detail = APIClient().get(f"/api/v1/feed/posts/{post_id}/").json()
-    assert [m["kind"] for m in detail["media"]] == ["image", "video", "video"]
+    assert [m["kind"] for m in detail["media"]] == ["video"]
     row = APIClient().get(f"/api/v1/feed/?village_id={world.areas['kolakaluru'].id}").json()["results"][0]
-    assert row["media_count"] == 3 and row["video"]["url"].endswith(".mp4")
-    assert row["image_url"].endswith("-1280.webp")  # the photo at full size, for the big card
+    assert row["media_count"] == 1 and row["video"]["url"].endswith(".mp4")
 
 
 def test_a_bad_video_leaves_no_post_behind(world, phone, media_root, ffmpeg):
     fake = SimpleUploadedFile("clip.mp4", b"RIFF....AVI LIST" + b"\x00" * 100, content_type="video/mp4")
-    response = send(phone(), photos=[photo()], videos=[mp4(), fake])
+    response = send(phone(), videos=[fake])
     assert response.status_code == 415 and code(response) == "unsupported_media"
     assert not Post.objects.exists() and not PostMedia.objects.exists()
 
 
-def test_each_video_keeps_the_size_and_length_limits(world, phone, media_root, ffmpeg, settings, monkeypatch):
+def test_the_video_size_limit_and_any_length(world, phone, media_root, ffmpeg, settings, monkeypatch):
     settings.MAX_VIDEO_UPLOAD_MB = 1
     big = send(phone(), videos=[mp4(size=1024 * 1024 + 1)])
     assert big.status_code == 413 and code(big) == "file_too_large"
-    settings.MAX_VIDEO_UPLOAD_MB = 50
-    monkeypatch.setattr(media_service, "probe_duration", lambda path: 75.0)
-    long = send(phone(ip="10.3.3.3"), videos=[mp4()])
-    assert long.status_code == 400 and code(long) == "video_too_long"
     assert not Post.objects.exists()
+    settings.MAX_VIDEO_UPLOAD_MB = 60
+    monkeypatch.setattr(media_service, "probe_duration", lambda path: 3 * 3600.0)  # any length (2026-11-13)
+    long = send(phone(ip="10.3.3.3"), videos=[mp4()])
+    assert long.status_code == 201, long.json()
+    settings.VIDEO_MAX_SECONDS = 60  # a length limit still works when one is set
+    limited = send(phone(ip="10.6.6.6"), videos=[mp4()])
+    assert limited.status_code == 400 and code(limited) == "video_too_long"
 
 
 def test_videos_follow_the_video_switch(world, phone, media_root, ffmpeg, settings):

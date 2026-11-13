@@ -131,17 +131,22 @@ def test_fields_are_checked(world, phone, fields, bad):
     assert not Post.objects.exists()
 
 
-def test_no_photo_limit_by_default(world, phone, media_root):
-    response = phone().post(photos=[photo((400, 300)) for _ in range(8)])
-    assert response.status_code == 201 and len(response.json()["photos"]) == 8
-    assert [m.order for m in PostMedia.objects.order_by("order")] == list(range(8))
+def test_up_to_three_photos(world, phone, media_root):
+    """Lead's decision of 2026-11-13: up to 3 photos per post, the same as officials."""
+    response = phone().post(photos=[photo((400, 300)) for _ in range(3)])
+    assert response.status_code == 201 and len(response.json()["photos"]) == 3
+    assert [m.order for m in PostMedia.objects.order_by("order")] == [0, 1, 2]
 
 
-def test_a_photo_limit_can_be_switched_on(world, phone, media_root, settings):
-    settings.CITIZEN_MAX_PHOTOS = 3
+def test_a_fourth_photo_is_refused_and_nothing_is_stored(world, phone, media_root):
     response = phone().post(photos=[photo((400, 300)) for _ in range(4)])
     assert response.status_code == 400 and "photos" in response.json()["error"]["fields"]
     assert not Post.objects.exists() and not PostMedia.objects.exists()
+
+
+def test_a_post_without_photos(world, phone, media_root):
+    response = phone().post()
+    assert response.status_code == 201 and response.json()["photos"] == []
 
 
 def test_a_bad_photo_leaves_no_post_behind(world, phone, media_root):

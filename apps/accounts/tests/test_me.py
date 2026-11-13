@@ -37,7 +37,7 @@ def test_me_describes_groups_assignments_permissions_and_rules(api, world):
     assert data["rules"] == {
         "admin_posts_auto_publish": True,
         "super_admin_can_post": True,  # owner decision of 2026-11-04
-        "max_photos_per_post": 0,  # 0 is no limit (lead's decision of 2026-11-11)
+        "max_photos_per_post": 3,  # up to 3 photos or one video (lead's decision of 2026-11-13)
         "video_enabled": True,  # video posts are in version 1 (owner decision Q8)
     }
 

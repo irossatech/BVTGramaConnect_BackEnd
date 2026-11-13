@@ -1,5 +1,5 @@
-"""A citizen post shares one time budget for all its photos and videos (audit BE-PERF-003).
-Any number of files stays allowed (lead's decision); only the time spent checking them is capped."""
+"""A citizen post shares one time budget for all its photos or its video (audit BE-PERF-003).
+Up to 3 photos or one video (lead's decision of 2026-11-13); the time spent checking them is capped too."""
 
 import pytest
 
@@ -28,10 +28,12 @@ def send(phone, photos=(), videos=()):
     return phone.client.post(POSTS, data, format="multipart")
 
 
-def test_many_files_within_the_budget_are_all_kept(world, phone, media_root, ffmpeg):
-    response = send(phone(), photos=[photo(), photo()], videos=[mp4(f"v{i}.mp4") for i in range(6)])
+def test_files_within_the_budget_are_all_kept(world, phone, media_root, ffmpeg):
+    response = send(phone(), photos=[photo(), photo(), photo()])
     assert response.status_code == 201, response.json()
-    assert PostMedia.objects.count() == 8
+    response = send(phone(), videos=[mp4("v.mp4")])
+    assert response.status_code == 201, response.json()
+    assert PostMedia.objects.count() == 4
 
 
 def test_a_post_over_the_budget_is_refused_and_nothing_is_stored(world, phone, media_root, ffmpeg, monkeypatch):
@@ -39,12 +41,12 @@ def test_a_post_over_the_budget_is_refused_and_nothing_is_stored(world, phone, m
     clock = {"now": 1000.0}
 
     def slow_probe(path):
-        clock["now"] += 40  # each video takes 40 s to check
+        clock["now"] += 100  # this video takes longer to check than the whole budget (90 s)
         return 42.0
 
     monkeypatch.setattr(media_service.time, "monotonic", lambda: clock["now"])
     monkeypatch.setattr(media_service, "probe_duration", slow_probe)
-    response = send(citizen, photos=[photo()], videos=[mp4(f"v{i}.mp4") for i in range(4)])
+    response = send(citizen, videos=[mp4("v.mp4")])
     assert response.status_code == 400
     error = response.json()["error"]
     assert error["code"] == "validation_error" and "videos" in error["fields"]
