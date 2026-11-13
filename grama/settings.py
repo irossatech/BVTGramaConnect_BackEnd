@@ -78,13 +78,24 @@ if DEBUG and not _RUNNING_TESTS and not env.bool("DEBUG_ON_PUBLIC_HOST", default
 # 2. DATABASE CONFIGURATION (DEV vs PROD)
 # ==============================================================================
  
+#: MySQL and MariaDB only: the strictness rules (sql_mode) every connection uses. TRADITIONAL refuses
+#: bad data (too-long text, zero dates, division by zero in a write) instead of quietly changing it, and
+#: never creates a table without transactions (NO_ENGINE_SUBSTITUTION); ONLY_FULL_GROUP_BY refuses an
+#: unclear GROUP BY, as PostgreSQL does (audit BE-DB-010; it used to be STRICT_TRANS_TABLES alone).
+#: To go back on a server, one .env line: DB_SQL_MODE=STRICT_TRANS_TABLES. Empty: the server's own default.
+DB_SQL_MODE = env.str("DB_SQL_MODE", default="TRADITIONAL,ONLY_FULL_GROUP_BY").strip()
+if not re.fullmatch(r"[A-Z_]*(,[A-Z_]+)*", DB_SQL_MODE):
+    raise ImproperlyConfigured("DB_SQL_MODE must be MySQL mode names in capitals, separated by commas.")
+
+
 def database_config(url: str) -> dict:
     """Turn a DATABASE_URL into Django's DATABASES['default']."""
     config = environ.Env.db_url_config(url)
     if config["ENGINE"] == "django.db.backends.mysql":
         options = config.setdefault("OPTIONS", {})
         options.setdefault("charset", "utf8mb4")
-        options.setdefault("init_command", "SET sql_mode='STRICT_TRANS_TABLES'")
+        if DB_SQL_MODE:
+            options.setdefault("init_command", f"SET sql_mode='{DB_SQL_MODE}'")
         config.setdefault("TEST", {}).update(
             {"CHARSET": "utf8mb4", "COLLATION": "utf8mb4_unicode_ci"}
         )
