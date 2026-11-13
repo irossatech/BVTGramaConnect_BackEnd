@@ -211,6 +211,17 @@ class ServiceRequestSerializer(CitizenServiceRequestSerializer):
         return rows
 
 
+#: The citizen's contact details: left out of the list with `contact=0` (audit WEB-DP-001).
+CONTACT_FIELDS = ("phone", "email", "address")
+
+
+class ServiceRequestWithoutContactSerializer(ServiceRequestSerializer):
+    """A list row without the citizen's phone, email and address; GET /service-requests/{id}/ has them."""
+
+    class Meta(ServiceRequestSerializer.Meta):
+        fields = [name for name in ServiceRequestSerializer.Meta.fields if name not in CONTACT_FIELDS]
+
+
 class ServiceRequestUpdateSerializer(serializers.Serializer):
     status = serializers.ChoiceField(choices=RequestStatus.choices, required=False)
     # A user id as in GET /users/ (a UUID string).

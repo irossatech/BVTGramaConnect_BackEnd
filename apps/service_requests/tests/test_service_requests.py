@@ -222,6 +222,24 @@ def test_the_officials_view_has_the_citizens_details_and_actions(api, world, req
     assert data["phone"] == "9876543210" and data["address"] == "4-12, Temple Street, Kolakaluru"
 
 
+def test_the_list_leaves_out_contact_details_only_when_asked(api, world, request_from):
+    """contact=0 (the console's table): no phone, email or address; the app's list and one request keep them."""
+    _citizen, request_id = request_from()
+    client = api(world.users["super"])
+    brief = client.get(LIST, {"contact": "0"}).json()["results"]
+    row = next(r for r in brief if r["id"] == request_id)
+    assert not {"phone", "email", "address"} & row.keys()
+    assert row["name"] == "Lakshmi Devi" and row["allowed_actions"] is not None
+    assert not any(value in str(brief) for value in ("9876543210", "lakshmi@", "Temple Street"))
+    full = next(r for r in client.get(LIST).json()["results"] if r["id"] == request_id)
+    assert full["phone"] == "9876543210" and full["address"] == "4-12, Temple Street, Kolakaluru"
+    assert next(r for r in client.get(LIST, {"contact": "1"}).json()["results"] if r["id"] == request_id)["phone"]
+    assert detail(api, world, "super", request_id).json()["phone"] == "9876543210"
+    # The search by phone still finds it; the row still leaves the number out.
+    found = client.get(LIST, {"contact": "0", "q": "98765"}).json()["results"]
+    assert [r["id"] for r in found] == [request_id] and "phone" not in found[0]
+
+
 def test_the_areas_admins_get_a_notification_and_the_assignee_hears_it_is_theirs(world, request_from):
     for name in ("va_kolakaluru", "ma_tenali", "da_guntur", "super"):
         Device.objects.create(fcm_token=f"tok-{name}", platform="android", user=world.users[name])
