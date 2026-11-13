@@ -4,6 +4,7 @@
 - GET  /public/showcase/           live posts for the home page's phone picture
 - POST /public/contact-messages/   the Contact page form
 - GET/PATCH /admin/contact-messages/  Super Admins read and close them in the console
+  (GET with contact=0: rows without the mobile and message; GET {id}/: one message in full)
 """
 
 from datetime import timedelta
@@ -14,7 +15,8 @@ from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.utils.translation import gettext as _
 from django.views.decorators.cache import cache_control
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import generics, serializers, status
 from rest_framework.exceptions import Throttled
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -213,6 +215,22 @@ class ContactMessageAdminSerializer(serializers.ModelSerializer):
         return {"id": str(obj.handled_by_id), "name": obj.handled_by.name}
 
 
+class ContactMessageRowSerializer(ContactMessageAdminSerializer):
+    """A list row for the console's table (`contact=0`, audit WEB-DP-001): no full mobile and no message,
+    only the mobile's last 4 digits. GET /admin/contact-messages/{id}/ has everything."""
+
+    mobile_last4 = serializers.SerializerMethodField()
+
+    class Meta(ContactMessageAdminSerializer.Meta):
+        fields = [
+            *(name for name in ContactMessageAdminSerializer.Meta.fields if name not in ("mobile", "message")),
+            "mobile_last4",
+        ]
+
+    def get_mobile_last4(self, obj) -> str:
+        return (obj.mobile or "")[-4:]
+
+
 class ContactHandledSerializer(serializers.Serializer):
     handled = serializers.BooleanField()
 
@@ -245,13 +263,31 @@ class ContactMessageListView(generics.ListAPIView):
             )
         return queryset
 
-    @extend_schema(summary="Website contact messages, newest first")
+    @extend_schema(
+        summary="Website contact messages, newest first",
+        parameters=[OpenApiParameter("contact", OpenApiTypes.STR, enum=["0"],
+                                     description="0: rows without the mobile and the message, with mobile_last4")],
+    )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
+
+    def get_serializer_class(self):
+        # The console's table shows a masked mobile and no message; its View panel reads one message.
+        # The app's list (no contact=0) is unchanged.
+        if self.request.query_params.get("contact") == "0":
+            return ContactMessageRowSerializer
+        return ContactMessageAdminSerializer
 
 
 class ContactMessageDetailView(APIView):
     permission_classes = [IsAuthenticated, MANAGE_CONTACT]
+
+    @extend_schema(summary="One contact message, with the full mobile and message", responses=ContactMessageAdminSerializer)
+    def get(self, request, pk):
+        message = ContactMessage.objects.select_related("handled_by").filter(pk=pk).first()
+        if message is None:
+            raise ApiError("not_found", _("No such message."), status=404)
+        return Response(ContactMessageAdminSerializer(message).data)
 
     @extend_schema(summary="Mark a contact message handled, or open it again", request=ContactHandledSerializer, responses=ContactMessageAdminSerializer)
     def patch(self, request, pk):
