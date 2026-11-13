@@ -54,6 +54,9 @@ MAX_PIXELS = 40_000_000
 VIDEO_EXTENSIONS = {".mp4": "mp4", ".m4v": "mp4", ".mov": "mov"}
 #: A little slack for players that round 60.2 s up.
 DURATION_SLACK_S = 0.5
+#: The largest PostMedia.duration_s a PositiveSmallIntegerField holds on SQLite, MySQL and PostgreSQL
+#: (about 9 hours). Videos of any length are allowed, so a longer length is stored as this.
+DURATION_MAX_S = 32767
 
 logger = logging.getLogger("grama.media")
 
@@ -488,7 +491,7 @@ def store_video(post: Post, prepared: PreparedVideo, order: int) -> PostMedia:
         width=width,
         height=height,
         bytes=upload.size,
-        duration_s=max(1, round(prepared.duration)) if prepared.duration is not None else None,
+        duration_s=min(max(1, round(prepared.duration)), DURATION_MAX_S) if prepared.duration is not None else None,
         order=order,
     )
     upload.seek(0)

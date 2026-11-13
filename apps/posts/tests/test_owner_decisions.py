@@ -279,6 +279,20 @@ def test_a_video_of_any_length(api, world, make_post, ffmpeg, length):
     assert response.json()["duration_s"] == round(length)
 
 
+@pytest.mark.parametrize("measured, sent, stored", [(40000.0, None, 32767), (None, "50000", 32767), (None, "32767", 32767)])
+def test_a_very_long_length_fits_the_column(api, world, make_post, ffmpeg, monkeypatch, measured, sent, stored):
+    """Any length is allowed, so a length past the column's top (about 9 hours) is kept as the top."""
+    if measured is None:  # the server cannot measure it: the phone's length is used
+        monkeypatch.setattr(media_service, "probe_duration", lambda path: None)
+    else:
+        ffmpeg["length"] = measured
+    post = make_post("pm_kolakaluru", "kolakaluru", submit=False)
+    extra = {"duration_s": sent} if sent else {}
+    response = send_video(api, world, post, **extra)
+    assert response.status_code == 201, response.json()
+    assert response.json()["duration_s"] == stored and PostMedia.objects.get().duration_s == stored
+
+
 def test_the_lead_s_numbers_are_the_defaults():
     from django.conf import settings as defaults
 
