@@ -172,9 +172,8 @@ def test_the_banner_limits_are_their_own(api, world, media_root, ffmpeg, setting
 
 
 def test_post_videos_follow_their_own_setting_whatever_the_banners_allow(ffmpeg, settings):
-    # Both are any length by default (2026-11-13); a post length limit, when set, is not the banners'.
-    settings.ADS_VIDEO_MAX_SECONDS = 0
-    settings.VIDEO_MAX_SECONDS = 60
+    # Banners are any length; posts are at most 60 s (lead's decision of 2026-11-14), the defaults.
+    assert settings.ADS_VIDEO_MAX_SECONDS == 0 and settings.VIDEO_MAX_SECONDS == 60
     ffmpeg["length"] = 61.0
     with pytest.raises(media_service.ApiError) as error:
         media_service.prepare_video(mp4())  # no limits passed: the post ones

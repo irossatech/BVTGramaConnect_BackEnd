@@ -26,12 +26,12 @@ For the QA engineer and the client's testers during user acceptance testing. Wor
 | C10 | Save, share, listen | Saved posts stay on the phone. Share opens WhatsApp and others and sends the post text plus the website link. Listen reads the post aloud. |
 | C11 | No login needed | At no point does the app ask a citizen to log in. |
 | C12 | News search | Searching a word from a title or description finds the post, in Telugu and in English, whatever the letter case. One letter asks for at least two. |
-| C13 | Video post | A video post shows its poster picture. It plays on tap and can be paused and moved forward or back. A video of any length up to 60 MB plays. |
+| C13 | Video post | A video post shows its poster picture. It plays on tap and can be paused and moved forward or back. A video of up to 60 seconds and 60 MB plays. |
 | C14 | "Don't miss" | Posts with an event date from today on show soonest first: at most 10. Events that ended yesterday are gone. |
 | C15 | Urgent banner | An urgent post from the last 7 days shows at the top. Its push alert arrives even when the phone is idle. |
 | C16 | Help lines | The help-line screen lists 112, 108, 1930, 181, 1098 and 1912 with Telugu names. Tapping one opens the dialler. |
 | C17 | Contacts tab | "For you" lists the numbers of your village, your mandal and your district, grouped by type (VRO, Mee Seva, Sachivalayam …) with the village's first; "Government helplines" lists the state's numbers. Nothing from a neighbouring village, mandal or district. Telugu and English both work. Tapping a number opens the dialler. A number an official removed is gone within 5 minutes. With no signal the last list still shows, and 112 and 108 always work. |
-| C18 | Post news | Without logging in, a citizen sends a post with up to 3 photos, or one video (up to 60 MB, any length), or neither; a fourth photo, or photos and a video together, are refused with a message. The post goes to review. After the day's limit set in the console (Settings, 5 by default) the app says when they can post again. |
+| C18 | Post news | Without logging in, a citizen sends a post with up to 3 photos, or one video (up to 60 MB and 60 seconds), or neither; a fourth photo, photos and a video together, or a video longer than 60 seconds are refused with a message. The post goes to review. After the day's limit set in the console (Settings, 5 by default) the app says when they can post again. |
 
 ## Panchayat Member (mobile app)
 
@@ -49,7 +49,7 @@ For the QA engineer and the client's testers during user acceptance testing. Wor
 | P7 | Discarded | The reason shows. The post cannot be edited. |
 | P8 | Other villages | The member can post only to their own village. |
 | P9 | No admin screens | No review queue, no user management. |
-| P10 | Event date and video | An optional event (deadline, camp, distribution, closure or meeting) with a start and optional end date can be added. One video of any length, up to 60 MB, can be attached instead of photos, never both. |
+| P10 | Event date and video | An optional event (deadline, camp, distribution, closure or meeting) with a start and optional end date can be added. One video of up to 60 seconds and 60 MB can be attached instead of photos, never both; a longer video is refused with a message. |
 | P11 | No "urgent" | A Panchayat member cannot mark a post as urgent; the option is not offered. |
 | P12 | Important numbers | The member adds, edits and removes numbers for their own village only, and citizens of the village see them. "Who sees it" offers only the village. Helplines can be read but not changed. |
 

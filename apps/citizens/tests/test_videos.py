@@ -124,18 +124,19 @@ def test_a_bad_video_leaves_no_post_behind(world, phone, media_root, ffmpeg):
     assert not Post.objects.exists() and not PostMedia.objects.exists()
 
 
-def test_the_video_size_limit_and_any_length(world, phone, media_root, ffmpeg, settings, monkeypatch):
+def test_the_video_size_and_length_limits(world, phone, media_root, ffmpeg, settings, monkeypatch):
     settings.MAX_VIDEO_UPLOAD_MB = 1
     big = send(phone(), videos=[mp4(size=1024 * 1024 + 1)])
     assert big.status_code == 413 and code(big) == "file_too_large"
     assert not Post.objects.exists()
     settings.MAX_VIDEO_UPLOAD_MB = 60
-    monkeypatch.setattr(media_service, "probe_duration", lambda path: 3 * 3600.0)  # any length (2026-11-13)
-    long = send(phone(ip="10.3.3.3"), videos=[mp4()])
-    assert long.status_code == 201, long.json()
-    settings.VIDEO_MAX_SECONDS = 60  # a length limit still works when one is set
-    limited = send(phone(ip="10.6.6.6"), videos=[mp4()])
-    assert limited.status_code == 400 and code(limited) == "video_too_long"
+    monkeypatch.setattr(media_service, "probe_duration", lambda path: 60.0)  # 60 s, like officials (2026-11-14)
+    ok = send(phone(ip="10.3.3.3"), videos=[mp4()])
+    assert ok.status_code == 201, ok.json()
+    monkeypatch.setattr(media_service, "probe_duration", lambda path: 61.0)
+    long = send(phone(ip="10.6.6.6"), videos=[mp4()])
+    assert long.status_code == 400 and code(long) == "video_too_long"
+    assert Post.objects.count() == 1  # the refused post left nothing behind
 
 
 def test_videos_follow_the_video_switch(world, phone, media_root, ffmpeg, settings):

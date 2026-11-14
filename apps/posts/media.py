@@ -8,7 +8,8 @@ and a POST_THUMB_PX (320) thumbnail.
 A post has up to MAX_PHOTOS_PER_POST (3) photos, or one video, never both, for
 everyone who posts: citizens, Panchayat members, admins and the Super Admin
 (lead's decision of 2026-11-13). Videos: MP4 or MOV up to MAX_VIDEO_UPLOAD_MB
-(60), of any length (VIDEO_MAX_SECONDS 0), like banner videos.
+(60) and VIDEO_MAX_SECONDS (60) long (lead's decision of 2026-11-14); banner videos
+pass their own limits (60 MB, any length).
 The app compresses videos first. With ffprobe and ffmpeg on PATH (the server installs
 them) the server measures the length, cuts a poster frame and stores a copy
 without metadata (strip_metadata, G7). Without them the app must send
@@ -55,7 +56,8 @@ VIDEO_EXTENSIONS = {".mp4": "mp4", ".m4v": "mp4", ".mov": "mov"}
 #: A little slack for players that round 60.2 s up.
 DURATION_SLACK_S = 0.5
 #: The largest PostMedia.duration_s a PositiveSmallIntegerField holds on SQLite, MySQL and PostgreSQL
-#: (about 9 hours). Videos of any length are allowed, so a longer length is stored as this.
+#: (about 9 hours). Post videos are at most VIDEO_MAX_SECONDS (60) long, but with the limit switched off
+#: (0) a longer length is stored as this.
 DURATION_MAX_S = 32767
 
 logger = logging.getLogger("grama.media")
@@ -423,7 +425,9 @@ def prepare_video(
     duration_s and a poster. Citizens (lenient=True, contract section 15): the
     length may stay unknown and a placeholder poster is used instead.
     max_mb and max_seconds default to the post limits (None); banner ads pass their own, and
-    max_seconds=0 means any length (owner decision of 2026-11-02 for banners).
+    max_seconds=0 means any length (banners: owner decision of 2026-11-02). Post videos are
+    at most VIDEO_MAX_SECONDS (60) long, for officials and citizens (lead's decision of 2026-11-14);
+    a citizen video the server cannot measure (no ffprobe) is let through, the app checks it too.
     Runs inside the request's media_budget, or a budget of its own when called alone.
     """
     with media_budget():
