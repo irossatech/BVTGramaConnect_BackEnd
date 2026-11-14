@@ -105,6 +105,8 @@ ADMIN_POSTS_AUTO_PUBLISH=True, REVIEW_FIRST_DECISION_WINS=True, REVIEW_ESCALATIO
 - 2026-11-11 · ~~**No limit on photos or videos per post.**~~ Replaced on 2026-11-13, see below.
 - 2026-11-11 · **Django admin is off on every server** (lead's decision), qa included: `/django-admin/` answers 404 there. It stays on developers' laptops. Officials, roles and settings are managed in the console. This replaces the 2026-10-21 office-IP rule.
 - 2026-11-13 · **Up to 3 photos or one video per post** (lead's decision), never both, for everyone who posts: citizens, Panchayat members, admins and the Super Admin. Photos are optional, at most 10 MB each; the video at most 60 MB, of any length, like banner videos. MAX_PHOTOS_PER_POST is 3. Citizen posts per day stay the Super Admin's setting in the console (Settings). Banner ads are unchanged.
+- 2026-11-14 · **Telugu name suggestions stay on Google** (lead's decision, web audit WEB-DP-002). Names typed in the app's and the console's forms (users, important numbers, places, services) keep going from this server to Google Input Tools for their Telugu spelling (`TRANSLITERATION_PROVIDER`). Names are not treated as sensitive like mobile numbers; mobile numbers, emails and addresses never go there.
+- 2026-11-14 · **Data is kept permanently** (lead's decision, web audit WEB-DP-003). Contact messages, service requests, citizen phone records, posts and the audit log are never deleted; screens show only recent ones (contact messages 90 days, finished service requests 180 days, audit log 90 to 180 days). Only expired sessions and tokens, failed background jobs, old failed-login records and read notifications are cleaned up.
 
 ## Working across repos
 
