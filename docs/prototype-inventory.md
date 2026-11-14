@@ -418,7 +418,7 @@ Only these changes are allowed. Anything else is a design change and needs sign-
 5. Demo-only controls are removed or pointed at the real target: the console's demo login, the website's demo toasts.
 6. Markup, inline styles, CSS files, fonts, images and animations stay as they are.
 7. Website speed work the owner approved on 2026-11-06: WebP images, woff2 fonts, the phone and wide layouts in CSS, and scripts started after the first paint.
-8. Web audit decisions the owner approved on 2026-11-14: search results in Telugu like the pages, the visitor's language remembered on their device, the news ticker pausing on a tap or keyboard focus, and the website's own 404 page (served by Nginx, `deploy/templates/nginx-locations.conf`). Every web audit finding's status is in the web repo's `.claude/audit-status.md`.
+8. Web audit decisions the owner approved on 2026-11-14: search results in Telugu like the pages, the visitor's language remembered on their device, the news ticker pausing on a tap or keyboard focus, the website's own 404 page (served by Nginx, `deploy/templates/nginx-locations.conf`), a "Skip to main content" link with focus moved to the new page's heading after a page change, and the console's category icons and logo as same-size WebP copies. Every web audit finding's status is in the web repo's `.claude/audit-status.md`.
 
 The console's documented additions (username and password login, change password, pagers, roles in the user panel, the contact-messages page and others) are listed in the web repo's `.claude/architecture.md`, section "Console".
 
