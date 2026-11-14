@@ -489,10 +489,12 @@ POST_MEDIUM_PX = env.int("POST_MEDIUM_PX", default=640)
 POST_THUMB_PX = 320
 POST_IMAGE_QUALITY = 80
  
-# A post's video: at most 60 MB, of any length, like a banner video (lead's decision of
-# 2026-11-13). VIDEO_MAX_SECONDS 0 is any length; a number above 0 brings back a length limit.
+# A post's video: at most 60 MB and 60 seconds, for officials and citizens alike (lead's decision
+# of 2026-11-14, replacing "any length" of 2026-11-13). VIDEO_MAX_SECONDS 0 would be any length.
+# Banner videos have their own settings (ADS_VIDEO_MAX_MB 60, ADS_VIDEO_MAX_SECONDS 0: any length).
+# The web console (CF_VIDEO_MAX_S) and the app (kPostVideoMaxSeconds) check the same 60 s.
 MAX_VIDEO_UPLOAD_MB = env.int("MAX_VIDEO_UPLOAD_MB", default=60)
-VIDEO_MAX_SECONDS = env.int("VIDEO_MAX_SECONDS", default=0)
+VIDEO_MAX_SECONDS = env.int("VIDEO_MAX_SECONDS", default=60)
 # How long the server may spend checking uploads (apps.posts.media, audit BE-PERF-003): each
 # ffprobe/ffmpeg step, and all photos and videos of one request together. A step that runs out of
 # time answers 415; a request over the budget answers 400. Keep the budget below Gunicorn's

@@ -523,7 +523,7 @@ What `POST /posts` does:
 - Allowed while the post is `DRAFT` or `RECHECK`. Because `POST /posts` submits by default, the app creates the post with `submit: false`, uploads media, then calls `/submit`.
 - **A post has up to 3 photos, or one video, never both** (lead's decision of 2026-11-13), for everyone who posts: Panchayat members, admins and the Super Admin here, citizens in section 15. Media is optional: a post may have none.
 - Images: JPEG, PNG, WebP or HEIC, at most `MAX_IMAGE_UPLOAD_MB` (default 10) each, at most `MAX_PHOTOS_PER_POST` (default 3) per post; a fourth answers `400 validation_error` on `file`. A photo for a post that has a video answers `409 media_conflict`. Stored as WebP at most 1280 px, with a 640 px copy and a 320 px thumbnail. Too large: `413 file_too_large`. Not a photo: `415 unsupported_media`.
-- **Video:** multipart `file` (MP4 or MOV), `kind=video`, optional `duration_s`, optional `poster` image. At most `MAX_VIDEO_UPLOAD_MB` (default 60; larger: `413 file_too_large`), of any length (`VIDEO_MAX_SECONDS` 0, the same as banner videos; a number above 0 brings back `400 video_too_long`). Other files: `415 unsupported_media`. One video per post, on a post with no photos: otherwise `409 media_conflict` ("A post has either photos or one video."). Remove the photos or the video first to switch.
+- **Video:** multipart `file` (MP4 or MOV), `kind=video`, optional `duration_s`, optional `poster` image. At most `MAX_VIDEO_UPLOAD_MB` (default 60; larger: `413 file_too_large`), and at most `VIDEO_MAX_SECONDS` (default 60) seconds long, for officials and citizens alike (lead's decision of 2026-11-14; banner videos stay any length). Longer: `400 video_too_long` ("Videos can be at most 60 seconds.", field `file`), half a second of slack. The server's own measure (ffprobe) wins over `duration_s`; without ffprobe `duration_s` is checked. Other files: `415 unsupported_media`. One video per post, on a post with no photos: otherwise `409 media_conflict` ("A post has either photos or one video."). Remove the photos or the video first to switch.
   - Duration: measured with `ffprobe` when it is installed (the server has it). Without `ffprobe` the client's `duration_s` is required.
   - Poster: made with `ffmpeg` from the first second when it is installed. Otherwise `poster` (a photo) is required and processed like photos.
   - The video is stored without its metadata (GPS place, phone, dates): `ffmpeg` copies the video and audio streams without re-encoding, so quality and size stay as uploaded. A file it cannot copy: `415 unsupported_media`. Without `ffmpeg` it is stored as uploaded. The app compresses it before upload. The same applies to citizen videos (section 15) and banner videos (section 17).
@@ -900,14 +900,14 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Review comment | 500 characters |
 | Photos and videos per post | Up to 3 photos (`MAX_PHOTOS_PER_POST`), or one video, never both; optional. Everyone who posts, citizens included (lead's decision of 2026-11-13). |
 | Image upload | `MAX_IMAGE_UPLOAD_MB`, default 10 |
-| Video | one per post, never with photos; `MAX_VIDEO_UPLOAD_MB` default 60, any length (`VIDEO_MAX_SECONDS` 0) |
+| Video | one per post, never with photos; `MAX_VIDEO_UPLOAD_MB` default 60, at most `VIDEO_MAX_SECONDS` 60 s (lead's decision of 2026-11-14) |
 | Checking uploads | per step `VIDEO_PROBE_TIMEOUT_S` 15, `VIDEO_POSTER_TIMEOUT_S` 20, `VIDEO_STRIP_TIMEOUT_S` 45 (over: `415`); per request `MEDIA_PROCESSING_BUDGET_S` 90 (over: `400 validation_error`, nothing stored) |
 | Page size | feed 20, admin lists 100 |
 | Important numbers | 200 active per area (`CONTACTS_MAX_PER_AREA`); name 150, custom type 40 characters; CSV import 2 MB and 5,000 rows |
 | Home banner ads | Image at most 5 MB and at least 800 px wide, stored at most 1600 px; title 80, link 500 characters; at most 10 per village's Home |
 | Service requests | 10 per phone in 24 hours (`SERVICE_REQUESTS_PER_DAY`, 0 is no limit); name 100, address 5–300, details 500 characters |
 | Services | name 2–60 characters (unique, any case); `icon` and `color` from the lists in section 16; logo JPEG, PNG or WebP, at most 2 MB, at least 64 px a side, stored at most 256 px |
-| Citizen posts | 5 posts per phone in 24 hours (the Super Admin changes it in Settings; 0 is no limit); up to 3 photos (`MAX_PHOTOS_PER_POST`) or one video per post, never both; each photo at most `MAX_IMAGE_UPLOAD_MB` (10), the video at most `MAX_VIDEO_UPLOAD_MB` (60), any length; no limit on new phones (switchable: `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY`) |
+| Citizen posts | 5 posts per phone in 24 hours (the Super Admin changes it in Settings; 0 is no limit); up to 3 photos (`MAX_PHOTOS_PER_POST`) or one video per post, never both; each photo at most `MAX_IMAGE_UPLOAD_MB` (10), the video at most `MAX_VIDEO_UPLOAD_MB` (60) and `VIDEO_MAX_SECONDS` (60 s); no limit on new phones (switchable: `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY`) |
 
 ---
 
@@ -1064,7 +1064,7 @@ Every citizen endpoint answers `401 citizen_token_invalid` without a valid token
 
 - **Target:** always the phone's village (`village_id` of the device), never a mandal, district or the state. `event` and `is_urgent` are not available to citizens.
 - **Fields:** `category` an active category key; `language` `te` or `en`; `title` 1 to 150 characters; `body` 1 to 5,000; photos as officials' photos (JPEG, PNG or WebP, at most `MAX_IMAGE_UPLOAD_MB`, re-encoded to WebP with EXIF and GPS removed).
-- **Video:** one MP4 or MOV per post, never with photos, at most `MAX_VIDEO_UPLOAD_MB` (60), of any length (`VIDEO_MAX_SECONDS` 0), the same as officials' (lead's decision of 2026-11-13). The app never sends a length or a poster: with ffmpeg the server measures the video and cuts a poster frame; without it the length stays `null` and a plain placeholder poster is used. (Officials upload one file per request to `POST /posts/{id}/media/`, and without ffmpeg the phone sends `duration_s` and a `poster` for the video.)
+- **Video:** one MP4 or MOV per post, never with photos, at most `MAX_VIDEO_UPLOAD_MB` (60) and `VIDEO_MAX_SECONDS` (60 s) long, the same as officials' (lead's decisions of 2026-11-13 and 2026-11-14). Longer: `400 video_too_long`, and nothing of the post is stored. The app checks the 60 s before sending. The app never sends a length or a poster: with ffmpeg the server measures the video and cuts a poster frame; without it the length stays `null`, the length is not checked on the server, and a plain placeholder poster is used. (Officials upload one file per request to `POST /posts/{id}/media/`, and without ffmpeg the phone sends `duration_s` and a `poster` for the video.)
 - **Feed:** a published citizen post shows like any post: `media_count` counts photos and videos, `video` is its first video, `image_url` its first photo, and `GET /feed/posts/{id}/` lists every photo and video in `media`.
 - **Review:** the post goes straight to `PENDING` and into the review queue of every official whose area contains the village: the Village Admin, the Mandal Admin, the District Admin and the Super Admin, at the same time (CP1). The Village, Mandal and District Admins are notified. The first decision wins; after `REVIEW_ESCALATION_HOURS` without a decision the next level up is alerted, exactly as for Panchayat members' posts (owner decision Q1).
 - **Separate queue:** `GET /review/queue/` and `GET /posts/` take `source=citizen` or `source=official`; without it they list both. The review queue also returns `"source_counts": {"official": 3, "citizen": 7}` (every other filter applied, `source` ignored) for the two tabs.
@@ -1340,7 +1340,7 @@ The app works out "Running", "Scheduled", "Paused" and "Ended" itself from the d
 | `ADS_MIN_WIDTH_PX` | 800 | Narrowest banner accepted |
 | `ADS_IMAGE_MAX_PX` | 1600 | Longest side of the stored WebP |
 | `ADS_VIDEO_MAX_MB` | 60 | Largest banner video. The app (`kAdVideoMaxMb`) and the console (`AD_VIDEO_MAX_MB`) have the same number, and Nginx allows 70 MB for `/api/v1/admin/ads/`: change them together |
-| `ADS_VIDEO_MAX_SECONDS` | 0 | Longest banner video in seconds; 0 = any length (owner decision of 2026-11-02). The apps no longer check the length |
+| `ADS_VIDEO_MAX_SECONDS` | 0 | Longest banner video in seconds; 0 = any length (owner decision of 2026-11-02, confirmed 2026-11-14: banners have only the 60 MB limit, unlike post videos' 60 s). The apps do not check the length |
 | `ADS_PUBLIC_LIMIT` | 10 | Ads one village's Home shows |
 | `ADS_PUBLIC_MAX_AGE` | 300 | Seconds phones may reuse `/ads/` |
 

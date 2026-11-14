@@ -262,16 +262,15 @@ def test_without_ffmpeg_the_phone_sends_length_and_poster(api, world, make_post,
 
 
 def test_measured_length_wins_over_the_phones(api, world, make_post, ffmpeg, settings):
-    settings.VIDEO_MAX_SECONDS = 60  # a length limit, when one is set again
     post = make_post("pm_kolakaluru", "kolakaluru", submit=False)
     ffmpeg["length"] = 75.0
     response = send_video(api, world, post, duration_s="20")
     assert response.status_code == 400 and code(response) == "video_too_long"
 
 
-@pytest.mark.parametrize("length", [61.0, 5 * 60.0, 3 * 3600.0])
-def test_a_video_of_any_length(api, world, make_post, ffmpeg, length):
-    """Lead's decision of 2026-11-13: post videos have no length limit, like banner videos."""
+@pytest.mark.parametrize("length", [1.0, 30.0, 59.9, 60.0, 60.5])
+def test_a_video_up_to_60_seconds(api, world, make_post, ffmpeg, length):
+    """Lead's decision of 2026-11-14: post videos are at most 60 seconds (half a second of slack)."""
     post = make_post("pm_kolakaluru", "kolakaluru", submit=False)
     ffmpeg["length"] = length
     response = send_video(api, world, post)
@@ -279,9 +278,28 @@ def test_a_video_of_any_length(api, world, make_post, ffmpeg, length):
     assert response.json()["duration_s"] == round(length)
 
 
+@pytest.mark.parametrize("length", [60.6, 61.0, 5 * 60.0, 3 * 3600.0])
+def test_a_video_over_60_seconds_is_refused(api, world, make_post, ffmpeg, length):
+    post = make_post("pm_kolakaluru", "kolakaluru", submit=False)
+    ffmpeg["length"] = length
+    response = send_video(api, world, post)
+    assert response.status_code == 400 and code(response) == "video_too_long"
+    assert response.json()["error"]["message"] == "Videos can be at most 60 seconds."
+    assert not PostMedia.objects.exists()
+
+
+def test_the_phones_length_counts_when_the_server_cannot_measure(api, world, make_post, monkeypatch):
+    monkeypatch.setattr(media_service, "probe_duration", lambda path: None)
+    post = make_post("pm_kolakaluru", "kolakaluru", submit=False)
+    response = send_video(api, world, post, duration_s="75")
+    assert response.status_code == 400 and code(response) == "video_too_long"
+
+
 @pytest.mark.parametrize("measured, sent, stored", [(40000.0, None, 32767), (None, "50000", 32767), (None, "32767", 32767)])
-def test_a_very_long_length_fits_the_column(api, world, make_post, ffmpeg, monkeypatch, measured, sent, stored):
-    """Any length is allowed, so a length past the column's top (about 9 hours) is kept as the top."""
+def test_a_very_long_length_fits_the_column(api, world, make_post, ffmpeg, monkeypatch, settings, measured, sent, stored):
+    """With the length limit switched off (VIDEO_MAX_SECONDS 0), a length past the column's top
+    (about 9 hours) is kept as the top."""
+    settings.VIDEO_MAX_SECONDS = 0
     if measured is None:  # the server cannot measure it: the phone's length is used
         monkeypatch.setattr(media_service, "probe_duration", lambda path: None)
     else:
@@ -296,7 +314,7 @@ def test_a_very_long_length_fits_the_column(api, world, make_post, ffmpeg, monke
 def test_the_lead_s_numbers_are_the_defaults():
     from django.conf import settings as defaults
 
-    assert defaults.MAX_VIDEO_UPLOAD_MB == 60 and defaults.VIDEO_MAX_SECONDS == 0
+    assert defaults.MAX_VIDEO_UPLOAD_MB == 60 and defaults.VIDEO_MAX_SECONDS == 60
     assert defaults.MAX_PHOTOS_PER_POST == 3 and defaults.MAX_IMAGE_UPLOAD_MB == 10
 
 
