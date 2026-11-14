@@ -112,6 +112,7 @@ Proves the backups work. Do it on a spare server, never on production.
 
 ## Security notes
 
+- **Website 404 page:** an address under `/` that names no file gets the website's own `404.html` (from the BVTGramaConnect build) with status 404, through `error_page 404 /404.html` in `templates/nginx-locations.conf`. If visitors see Nginx's plain "404 Not Found" page instead, check that `404.html` is in the web root's `public` folder and that `setup.sh` ran after this line was added (templates are installed by `setup.sh`, not `deploy.sh`). On the hosting panel, set its nginx's 404 page to `/404.html` too.
 - **Login rate limit in Nginx:** `templates/nginx-locations.conf` limits `/api/v1/auth/login/`, `/api/v1/auth/session/login/` and `/api/v1/auth/password/change/` to 10 requests a minute per IP (zone `gc_login`, burst 5), before Django's lockout per username and IP.
 - **Console sessions:** the session cookie is HttpOnly, Secure and SameSite=Lax, every write needs the CSRF token, and a session ends after `CONSOLE_SESSION_IDLE_MINUTES` (30) idle minutes. Blocking a user or resetting their password ends their sessions at once.
 - **No personal data in access logs:** the site logs with the `gc_noquery` format (`templates/nginx-site-*.conf`), which records the path without the query string. Searches such as `/api/v1/users/?q=<email or mobile>` or `/api/v1/audit/?q=…` therefore never reach `/var/log/nginx`. Keep this format if you change the logging.
