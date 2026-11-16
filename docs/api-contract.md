@@ -91,6 +91,7 @@ Objects that clients act on carry `allowed_actions`, computed on the server for 
 - Feed and public post endpoints send `ETag` and `Cache-Control: public, max-age=60`. Clients send `If-None-Match` and get `304 Not Modified` with an empty body when nothing changed.
 - Geography lists send `ETag` and `Cache-Control: public, max-age=600` (`GEO_PUBLIC_MAX_AGE`), on `GET` only, so a new village shows within minutes. Category lists send `max-age=3600`.
 - The app keeps the last feed page on the device and shows it at once on launch, per CLAUDE.md.
+- **Every other API answer is private:** `Cache-Control: no-store, private` (since 2026-11-16, web audit WEB-HDR-002), errors and CSV exports included, so a browser keeps no copy of `/me/`, users, contact messages, service requests or the audit log on disk. Only the answers above and the others marked `public` in this contract (contacts, contact types, services, bills, ads, app-config, share pages) may be cached. A new endpoint is private unless its view sets its own `Cache-Control`. Clients keep their own saved data (the app's feed) as before.
 
 ### Errors
 All errors share one shape:

@@ -271,6 +271,8 @@ INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 MIDDLEWARE = [
     # First: every answer, even an early error, carries X-Request-ID (grama/request_id.py).
     "grama.request_id.RequestIdMiddleware",
+    # API answers are "no-store" unless their view marks them public (grama/cache_headers.py, WEB-HDR-002).
+    "grama.cache_headers.PrivateApiAnswersMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.middleware.http.ConditionalGetMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
