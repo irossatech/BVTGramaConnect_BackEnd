@@ -196,6 +196,14 @@ write_production_env() {
   local env_file="$BACKEND_DIR/.env" secret names hosts origins first
   if [[ -f "$env_file" ]]; then
     echo "Keeping the existing $env_file."
+    # An older or hand-edited .env may lack the integrity line; then the check is on (the default
+    # with DEBUG=False) and every citizen with the website's APK gets 403 integrity_failed.
+    if ! grep -qE '^CITIZEN_INTEGRITY_REQUIRED=' "$env_file"; then
+      echo "WARNING: $env_file has no CITIZEN_INTEGRITY_REQUIRED line, so Play Integrity is ON and" >&2
+      echo "  citizens with the website's APK cannot post. Until the app is on Google Play (owner's" >&2
+      echo "  decision of 2026-11-04) add  CITIZEN_INTEGRITY_REQUIRED=False  and restart. Once it is" >&2
+      echo "  on Google Play, write  CITIZEN_INTEGRITY_REQUIRED=True  to silence this warning." >&2
+    fi
     return
   fi
   [[ -n "${DOMAIN:-}" ]] || fail "First production run: give the domain, e.g.  MODE=production DOMAIN=www.gramaconnect.com EXTRA_DOMAINS=gramaconnect.com PORT=9601 bash BVT-deploy.sh"

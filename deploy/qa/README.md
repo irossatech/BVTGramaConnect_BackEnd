@@ -278,9 +278,20 @@ Its own panel site and Unix user, its own MySQL database, its own port: nothing 
    address means the panel does not pass the real one: stop and fix that before launch.
 8. `bash BVT-backup.sh --install`.
 
-`.env` also carries the owner's decision of 2026-11-04, `CITIZEN_INTEGRITY_REQUIRED=False`:
-citizens may post from the website's APK until the app is on Google Play. Remove the line and
-restart on the day it is.
+9. **Citizen posting from the website's APK.** `.env` carries the owner's decision of 2026-11-04,
+   `CITIZEN_INTEGRITY_REQUIRED=False`: citizens may post from the website's APK until the app is on
+   Google Play. Only a newly written `.env` gets this line; an older or hand-edited one may lack it,
+   and then the check is on and every website install gets `403 integrity_failed`. Check it on
+   every release, not only the first (the deploy prints a warning when the line is missing):
+   ```
+   grep CITIZEN_INTEGRITY_REQUIRED .env
+   .venv/bin/python manage.py shell -c "from django.conf import settings; print(settings.CITIZEN_INTEGRITY_REQUIRED)"
+   ```
+   The second line must print `False`. If `.env` says `False` but it prints `True`, the process was
+   not restarted (`bash BVT-stop.sh` then `bash BVT-start.sh`) or runs from another folder.
+   On the day the app is on Google Play: set `CITIZEN_INTEGRITY_REQUIRED=True` (explicitly, which
+   also silences the warning), add Google Play's signing key to `ANDROID_CERT_SHA256`, and restart.
+   That refuses website installs again, so the owner decides first.
 
 ## Stopping for good
 
