@@ -279,9 +279,36 @@ def test_unconfigured_play_integrity_fails_closed(settings):
         integrity.PlayIntegrityVerifier().verify("token", "n-1")
 
 
-def test_prod_settings_turn_integrity_on():
-    """Production (DEBUG=False) needs its env to import, so read the file: integrity is on unless env turns it off."""
+def test_prod_settings_leave_integrity_off_until_google_play():
+    """Production (DEBUG=False) needs its env to import, so read the file. Off by default until the app is
+    on Google Play (owner 2026-11-04, lead 2026-11-18); .env turns it on with CITIZEN_INTEGRITY_REQUIRED=True."""
     from pathlib import Path
 
     text = (Path(__file__).resolve().parents[3] / "grama" / "settings.py").read_text(encoding="utf-8")
-    assert 'CITIZEN_INTEGRITY_REQUIRED = env.bool("CITIZEN_INTEGRITY_REQUIRED", default=True)' in text
+    prod = text.split("if not DEBUG:\n    SESSION_COOKIE_SECURE = True", 1)[1].split("else:  # DEV", 1)[0]
+    assert 'CITIZEN_INTEGRITY_REQUIRED = env.bool("CITIZEN_INTEGRITY_REQUIRED", default=False)' in prod
+
+
+def test_check_warns_while_integrity_is_off_on_a_server(settings):
+    from apps.citizens.checks import integrity_off_on_server
+
+    settings.DEBUG = False
+    settings.CITIZEN_INTEGRITY_REQUIRED = False
+    warnings = integrity_off_on_server(None)
+    assert [w.id for w in warnings] == ["citizens.W001"]
+
+    settings.CITIZEN_INTEGRITY_REQUIRED = True
+    assert integrity_off_on_server(None) == []
+    settings.DEBUG = True
+    settings.CITIZEN_INTEGRITY_REQUIRED = False
+    assert integrity_off_on_server(None) == []  # laptops: off is normal, no warning
+
+
+def test_integrity_warning_is_not_a_security_check():
+    """The deploy scripts run `check --deploy --tag security --fail-level WARNING`; this warning must not stop them."""
+    from django.core.checks import registry
+
+    from apps.citizens.checks import integrity_off_on_server
+
+    assert integrity_off_on_server in registry.registry.get_checks()  # a plain `manage.py check` runs it
+    assert "security" not in integrity_off_on_server.tags

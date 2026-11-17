@@ -168,7 +168,10 @@ if not DEBUG:
     SECURE_HSTS_PRELOAD = env.bool("SECURE_HSTS_PRELOAD", default=False)
     SILENCED_SYSTEM_CHECKS = ["security.W008", "security.W005", "security.W021"]
     SECURE_REFERRER_POLICY = "same-origin"
-    CITIZEN_INTEGRITY_REQUIRED = env.bool("CITIZEN_INTEGRITY_REQUIRED", default=True)
+    # Off by default until the app is on Google Play (owner's decision of 2026-11-04, lead's code change
+    # of 2026-11-18): a website-installed APK can never pass Play Integrity. On that day write
+    # CITIZEN_INTEGRITY_REQUIRED=True in .env; until then `manage.py check` warns (citizens.W001).
+    CITIZEN_INTEGRITY_REQUIRED = env.bool("CITIZEN_INTEGRITY_REQUIRED", default=False)
     API_DOCS_PUBLIC = env.bool("API_DOCS_PUBLIC", default=False)
 else:  # DEV
     SESSION_COOKIE_SECURE = env.bool("SESSION_COOKIE_SECURE", default=False)
