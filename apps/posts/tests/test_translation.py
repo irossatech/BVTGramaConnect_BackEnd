@@ -103,7 +103,7 @@ def test_an_edited_post_is_translated_again_when_it_is_published_again(world, pr
                                                                        django_capture_on_commit_callbacks):
     post = publish()
     with django_capture_on_commit_callbacks(execute=True):
-        review(world.users["ma_tenali"], post, "reverse", comment="Add the time", to_status=PostStatus.RECHECK)
+        review(world.users["super"], post, "reverse", comment="Add the time", to_status=PostStatus.RECHECK)
     post = update_post(world.users["va_kolakaluru"], Post.objects.get(pk=post.pk), {"body": "ఉదయం 10 గంటలకు."})
     official = APIClient()
     official.force_authenticate(world.users["va_kolakaluru"])

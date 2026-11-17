@@ -179,7 +179,8 @@ ROLE_GROUPS: dict[str, dict] = {
         "manage_permission": "accounts.manage_panchayat_member",
         "password_min_length": MEMBER_PASSWORD_MIN_LENGTH,
         # Their posts wait for review: they lack publish_post (posts/services.py).
-        "permissions": [*POSTING, "posts.view_stats", *CONTACTS, *SERVICE_REQUESTS_VIEW],
+        # takedown_post added 2026-11-17: Panchayat members may take down citizen posts and their own.
+        "permissions": [*POSTING, "posts.takedown_post", "posts.view_stats", *CONTACTS, *SERVICE_REQUESTS_VIEW],
     },
 }
 

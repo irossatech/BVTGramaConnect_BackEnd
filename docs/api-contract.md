@@ -483,7 +483,7 @@ A disabled category disappears from the compose form and from feed filters. Its 
 
 | Method and path | Who | Request | Response |
 |---|---|---|---|
-| `GET /posts` | officials | Query: `status` (comma list), `mine=1`, `author`, `category`, `district`, `level` + `area_id`, `target_level`, `escalated=1`, `q` (title and body), `page` | Page of `Post`, plus `"status_counts": {"ALL": 15, "PENDING": 5, …}` over the same filters except `status`. `ALL` excludes drafts. |
+| `GET /posts` | officials | Query: `status` (comma list), `mine=1`, `author`, `category`, `district`, `level` + `area_id`, `target_level`, `escalated=1`, `q` (title and body), `page` | Page of `Post`, plus `"status_counts": {"ALL": 15, "PENDING": 5, …}` over the same filters except `status`. `ALL` excludes drafts. For Panchayat members, this returns their own posts plus published citizen posts in their village (with `unpublish` in `allowed_actions`); `mine=1` returns only their own posts. |
 | `POST /posts` | posting roles | `{"category": "announce", "language": "te", "title", "body", "targets": [{"level", "id"}, …], "event"?: {"kind", "start_date", "end_date"?}, "is_urgent"?: false, "submit": true, "client_ref"?: "<uuid>"}`. Older clients send one `"target": {"level", "id"}` instead; `targets` wins when both come. | `201 Post`, with `targets`. `200 Post` for a repeat of this official's earlier `client_ref` (section 1, "Sending again after a lost answer"). |
 | `GET /posts/{id}` | officials | — | `Post` |
 | `PATCH /posts/{id}` | author | same fields as create, all optional; `targets` replaces every area | `Post`. Only in `DRAFT` or `RECHECK`. |
@@ -547,7 +547,13 @@ What `POST /posts` does:
 | `POST /posts/{id}/review` (reverse) | a strictly higher level than whoever decided | `{"action": "reverse", "to_status": "PUBLISHED"\|"PENDING"\|"RECHECK"\|"DISCARDED", "comment"}` | `Post` |
 
 - `comment` is required for `recheck`, `discard`, `unpublish` and `reverse`. It is shown to the author.
-- `reverse` is allowed only when the actor's role is strictly higher than the role that made the current decision (Super Admin highest). With `REVIEW_FIRST_DECISION_WINS=False`, any reviewer in the area may reverse.
+- **Take-down (`unpublish`) rank rules (owner decision of 2026-11-17):**
+  - **Super Admin:** any post platform-wide.
+  - **District / Mandal / Village Admin (in their area):** citizen posts, Panchayat members' posts, and their own posts. They cannot take down posts from other admins at or above their rank.
+  - **Panchayat member (their village):** published citizen posts in their village, and their own posts. They cannot take down other Panchayat members' posts or admin posts.
+  - **Own posts:** any official may take down their own published post anywhere (even if targeting areas outside their assigned area).
+  - When unauthorized, `unpublish` is omitted from `allowed_actions`, and `POST /review` returns `403 permission_denied`.
+- `reverse` is allowed only when the actor's role is strictly higher than the role that made the current decision (Super Admin highest). Reversing a published post (to Pending or Discarded) is also gated by the take-down rank rule above. With `REVIEW_FIRST_DECISION_WINS=False`, any reviewer in the area may reverse.
 - With `REVIEW_FIRST_DECISION_WINS=True`, the first decision takes the post out of every queue. A later reviewer gets `409 already_decided`: `{"error": {"code": "already_decided", "message", "decided_by": {"id", "name", "role"}, "action": "PUBLISH", "at": "…", "post": Post}}`. The check is one conditional UPDATE (`WHERE id = … AND status = 'PENDING'`), so it holds on SQLite, MySQL and PostgreSQL alike.
 - `publish` sends the push alert for the post's area (section 7).
 

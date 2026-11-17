@@ -220,9 +220,11 @@ class Command(BaseCommand):
         review(village_admin, discard, "discard", "ఇదే సమాచారం ఇప్పటికే ఉంది.")
         count += 1
 
-        # UNPUBLISHED: published, then taken down by a higher admin.
-        taken = post(village_admin, "announce", "విద్యుత్ కోత – తప్పు తేదీ",
+        # UNPUBLISHED: a Panchayat member's post, published, then taken down by a higher admin. (Admins
+        # may take down Panchayat members' posts, not other admins': owner's rule of 2026-11-17.)
+        taken = post(member, "announce", "విద్యుత్ కోత – తప్పు తేదీ",
                      "శనివారం విద్యుత్ కోత ఉంటుంది.", kolakaluru)
+        review(village_admin, taken, "publish")
         review(mandal_admin, taken, "unpublish", "తేదీ తప్పు. సరైన తేదీతో మళ్ళీ పోస్ట్ చేయండి.")
         count += 1
 

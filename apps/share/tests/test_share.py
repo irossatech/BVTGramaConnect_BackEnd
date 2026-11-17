@@ -96,7 +96,7 @@ def test_a_pending_post_has_no_code_until_it_is_published(world):
 def test_the_code_never_changes_after_take_down_and_reverse(world):
     post = publish(world)
     code = post.share_code
-    down = review(world.users["da_guntur"], post, "unpublish", "తప్పు సమాచారం")
+    down = review(world.users["ma_tenali"], post, "unpublish", "తప్పు సమాచారం")  # the author's own post
     assert down.share_code == code
     again = review(world.users["super"], down, "reverse", "సరిచేశాం", to_status=PostStatus.PUBLISHED)
     assert again.status == PostStatus.PUBLISHED and again.share_code == code
@@ -124,7 +124,7 @@ def test_share_url_is_null_unless_published(api, world):
     ))
     assert api(world.users["pm_kolakaluru"]).get(f"/api/v1/posts/{pending.id}/").json()["share_url"] is None
     post = publish(world)
-    down = review(world.users["da_guntur"], post, "unpublish", "తప్పు")
+    down = review(world.users["ma_tenali"], post, "unpublish", "తప్పు")  # the author's own post
     assert api(world.users["ma_tenali"]).get(f"/api/v1/posts/{down.id}/").json()["share_url"] is None
 
 
@@ -264,7 +264,7 @@ def test_the_translation_shows_below_the_post(world):
 @pytest.mark.parametrize("action, comment", [("unpublish", "తప్పు సమాచారం")])
 def test_a_taken_down_post_is_no_longer_available(world, action, comment):
     post = publish(world)
-    review(world.users["da_guntur"], post, action, comment)
+    review(world.users["ma_tenali"], post, action, comment)  # the author's own post
     response = page(post.share_code)
     assert response.status_code == 404
     assert "This post is no longer available" in html(response)
@@ -413,7 +413,7 @@ def test_feed_share_returns_the_post_like_feed_posts(world):
 
 def test_feed_share_answers_404_once_taken_down(world):
     post = publish(world)
-    review(world.users["da_guntur"], post, "unpublish", "తప్పు")
+    review(world.users["ma_tenali"], post, "unpublish", "తప్పు")  # the author's own post
     response = APIClient().get(f"/api/v1/feed/share/{post.share_code}/")
     assert response.status_code == 404 and response.json()["error"]["code"] == "not_found"
 
