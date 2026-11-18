@@ -107,6 +107,10 @@ class Post(models.Model):
     # The random part of the post's public link (/p/<code>/), set the first time it is published and
     # never changed (apps.posts.sharing). Random, so nobody can walk through the posts by number.
     share_code = models.CharField(max_length=10, unique=True, null=True, blank=True, editable=False)
+    # The app's random id for this create (MOB-ERR-004): the same id from the same author or phone is a
+    # repeat after a lost answer, and gets this post back instead of a second one. Empty for older apps
+    # and the console. Unique per author and per phone below; any number of empty ones are allowed.
+    client_ref = models.UUIDField(null=True, blank=True, editable=False)
 
     class Meta:
         ordering = ["-created_at"]
@@ -130,6 +134,10 @@ class Post(models.Model):
                 | models.Q(author__isnull=True, citizen__isnull=False),
                 name="post_author_or_citizen",
             ),
+            # No condition: MySQL has no partial indexes, and every database already lets rows with an
+            # empty column share a unique index (the console's posts, older apps, the other kind of post).
+            models.UniqueConstraint(fields=["author", "client_ref"], name="post_author_client_ref"),
+            models.UniqueConstraint(fields=["citizen", "client_ref"], name="post_citizen_client_ref"),
         ]
         # Checked per area by accounts.authz (docs/authorization.md).
         permissions = [

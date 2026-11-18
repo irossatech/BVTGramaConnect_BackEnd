@@ -249,7 +249,7 @@ class PostViewSet(viewsets.GenericViewSet):
         response.data["status_counts"] = status_counts
         return response
 
-    @extend_schema(summary="Write a post", request=PostWriteSerializer, responses={201: PostSerializer})
+    @extend_schema(summary="Write a post", request=PostWriteSerializer, responses={201: PostSerializer, 200: PostSerializer})
     def create(self, request):
         data = PostWriteSerializer(data=request.data)
         data.is_valid(raise_exception=True)
@@ -262,8 +262,10 @@ class PostViewSet(viewsets.GenericViewSet):
                 event=values.get("event"), is_urgent=values["is_urgent"],
             ),
             submit=values["submit"],
+            client_ref=values.get("client_ref"),
         )
-        return self._out(post, status.HTTP_201_CREATED)
+        # 200 for a repeat of an earlier create (same client_ref): the post as it is now.
+        return self._out(post, status.HTTP_200_OK if getattr(post, "repeated", False) else status.HTTP_201_CREATED)
 
     @extend_schema(summary="One post")
     def retrieve(self, request, pk=None):

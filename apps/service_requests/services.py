@@ -225,9 +225,38 @@ def _within_daily_limit(device, limit: int, now, *, written: bool = False) -> No
         )
 
 
+def _earlier_request(device, client_ref) -> ServiceRequest | None:
+    """The request this install already sent with this client_ref (a repeat after a lost answer), or None."""
+    if client_ref is None:
+        return None
+    earlier = ServiceRequest.objects.filter(device=device, client_ref=client_ref).first()
+    if earlier is not None:
+        earlier.repeated = True
+    return earlier
+
+
 def create_request(device, *, service: str, name: str, phone: str, address: str, email: str = "",
-                   details: str = "") -> ServiceRequest:
-    """A citizen's request for the phone's village, assigned to its Village Admin. Officials are told after commit."""
+                   details: str = "", client_ref=None) -> ServiceRequest:
+    """A citizen's request for the phone's village, assigned to its Village Admin. Officials are told after commit.
+
+    `client_ref`: the app's id for this request. Sent again by this install, it returns the first request
+    (`repeated`) before any check, with nothing created, counted or notified again (MOB-ERR-004).
+    """
+    earlier = _earlier_request(device, client_ref)
+    if earlier is not None:
+        return earlier
+    try:
+        return _create_request(device, service=service, name=name, phone=phone, address=address, email=email,
+                               details=details, client_ref=client_ref)
+    except IntegrityError:
+        # The same repeat arrived twice at the same moment: the first one's request is the answer.
+        earlier = _earlier_request(device, client_ref)
+        if earlier is None:
+            raise
+        return earlier
+
+
+def _create_request(device, *, service, name, phone, address, email, details, client_ref) -> ServiceRequest:
     now = timezone.now()
     block = citizens.active_block(device, now)
     if block is not None:
@@ -245,7 +274,7 @@ def create_request(device, *, service: str, name: str, phone: str, address: str,
         assignee = village_admin_of(device.village_id)
         request = ServiceRequest.objects.create(
             service=chosen, name=name, phone=phone, email=email, address=address, details=details,
-            village_id=device.village_id, device=device, assigned_to=assignee,
+            village_id=device.village_id, device=device, assigned_to=assignee, client_ref=client_ref,
         )
         if limit:
             # Again after the write, with the phone's installs locked: two requests sent at the same

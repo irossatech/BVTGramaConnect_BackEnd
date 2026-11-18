@@ -351,13 +351,21 @@ def posts_today(device: CitizenDevice, now=None):
 
 
 def create_post(
-    device: CitizenDevice, *, category, language: str, title: str, body: str, photos=(), videos=(), targets=None
+    device: CitizenDevice, *, category, language: str, title: str, body: str, photos=(), videos=(), targets=None,
+    client_ref=None,
 ) -> Post:
     """Checks, then posts.services.create_citizen_post with the photos and videos attached in its transaction.
 
     Up to MAX_PHOTOS_PER_POST (3) photos, or one video, never both, as for officials (lead's decision
     of 2026-11-13). Media is optional.
+
+    `client_ref`: the app's id for this post. Sent again by this install after a lost answer, it returns
+    the first post (`repeated`) before any check, so the repeat costs no daily post and its files are
+    not even opened (MOB-ERR-004).
     """
+    earlier = post_services.earlier_post(client_ref, citizen=device)
+    if earlier is not None:
+        return earlier
     if not settings.CITIZEN_POSTS_ENABLED:
         raise permission_denied(_("Citizen posts are switched off."))
     now = timezone.now()
@@ -397,8 +405,15 @@ def create_post(
         target=AreaRef(AreaLevel.VILLAGE, device.village_id), targets=targets,
     )
     # The files are written inside the post's transaction; if it fails, they are deleted again.
-    with media.files_removed_on_failure():
-        return post_services.create_citizen_post(device, data, attach=attach)
+    try:
+        with media.files_removed_on_failure():
+            return post_services.create_citizen_post(device, data, attach=attach, client_ref=client_ref)
+    except IntegrityError:
+        # The same repeat arrived twice at the same moment: the first one's post is the answer.
+        earlier = post_services.earlier_post(client_ref, citizen=device)
+        if earlier is None:
+            raise
+        return earlier
 
 
 # --- Super Admin: block, unblock, discard all ---------------------------------------------------

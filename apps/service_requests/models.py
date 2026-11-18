@@ -117,9 +117,14 @@ class ServiceRequest(models.Model):
     note = models.TextField(max_length=500, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    # The app's random id for this create (MOB-ERR-004): the same id from the same install is a repeat
+    # after a lost answer and gets this request back. Empty for older apps.
+    client_ref = models.UUIDField(null=True, blank=True, editable=False)
 
     class Meta:
         ordering = ["-updated_at", "-id"]
+        # No condition (MySQL has no partial indexes); rows with an empty client_ref never clash.
+        constraints = [models.UniqueConstraint(fields=["device", "client_ref"], name="svcreq_device_client_ref")]
         indexes = [
             models.Index(fields=["village", "status"]),
             models.Index(fields=["assigned_to", "status"]),

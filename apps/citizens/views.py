@@ -96,7 +96,7 @@ class PostsView(CitizenView):
         summary="Send a post for the village's officials to review",
         parameters=TOKEN_PARAM,
         request={"multipart/form-data": CitizenPostWriteSerializer},
-        responses={201: CitizenPostSerializer},
+        responses={201: CitizenPostSerializer, 200: CitizenPostSerializer},
     )
     def post(self, request):
         device = services.device_from_request(request)
@@ -118,6 +118,9 @@ class PostsView(CitizenView):
             photos=values["photos"],
             videos=values["videos"],
             targets=values.get("targets"),
+            client_ref=values.get("client_ref"),
         )
+        # 200 for a repeat of an earlier send (same client_ref): the post as it is now.
+        code = status.HTTP_200_OK if getattr(post, "repeated", False) else status.HTTP_201_CREATED
         post = my_posts(device).get(pk=post.pk)
-        return Response(CitizenPostSerializer(post).data, status=status.HTTP_201_CREATED)
+        return Response(CitizenPostSerializer(post).data, status=code)

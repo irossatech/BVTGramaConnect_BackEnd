@@ -84,15 +84,17 @@ class CitizenServiceRequestsView(CitizenView):
         summary="Ask the officials of your village for help with a service",
         parameters=TOKEN_PARAM,
         request=CitizenServiceRequestWriteSerializer,
-        responses={201: CitizenServiceRequestSerializer},
+        responses={201: CitizenServiceRequestSerializer, 200: CitizenServiceRequestSerializer},
     )
     def post(self, request):
         device = citizens.device_from_request(request)
         data = CitizenServiceRequestWriteSerializer(data=request.data)
         data.is_valid(raise_exception=True)
         created = services.create_request(device, **data.validated_data)
+        # 200 for a repeat of an earlier send (same client_ref): the request as it is now.
+        code = status.HTTP_200_OK if getattr(created, "repeated", False) else status.HTTP_201_CREATED
         created = with_related(ServiceRequest.objects.filter(pk=created.pk)).get()
-        return Response(CitizenServiceRequestSerializer(created).data, status=status.HTTP_201_CREATED)
+        return Response(CitizenServiceRequestSerializer(created).data, status=code)
 
 
 # --- Officials --------------------------------------------------------------------------------------

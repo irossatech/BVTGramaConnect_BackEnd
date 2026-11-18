@@ -34,7 +34,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.core.cache import cache
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Exists, OuterRef, Q, QuerySet
 from django.utils import timezone
 from django.utils.translation import gettext as _
@@ -448,17 +448,51 @@ def _check_urgent_allowed(assignment: Grant, wants_urgent: bool) -> None:
         raise permission_denied(_("Only admins can mark a post as urgent."))
 
 
-def create_post(user, data: PostInput, *, submit: bool = True) -> Post:
+def earlier_post(client_ref, **owner) -> Post | None:
+    """The post this author (`author=`) or phone (`citizen=`) already sent with this client_ref, or None.
+
+    A repeat after a lost answer (MOB-ERR-004): the caller returns it instead of creating a second
+    post, before any limit, block or media check. The post comes back with `repeated = True`.
+    """
+    if client_ref is None:
+        return None
+    post = Post.objects.filter(client_ref=client_ref, **owner).first()
+    if post is not None:
+        post.repeated = True
+    return post
+
+
+def create_post(user, data: PostInput, *, submit: bool = True, client_ref=None) -> Post:
     """An official's post for any areas. Admins' posts publish at once whatever the areas: that
-    depends on the poster's role, not on where the post goes (owner decision of 2026-10-28)."""
+    depends on the poster's role, not on where the post goes (owner decision of 2026-10-28).
+
+    `client_ref`: the app's id for this create. The same id again from the same author returns the
+    first post (`repeated`), with nothing created, audited or pushed again.
+    """
+    earlier = earlier_post(client_ref, author=user)
+    if earlier is not None:
+        return earlier
     _posting_or_raise(user)  # a role that cannot post hears that before any area check
     targets = clean_targets(data.areas())
     assignment = _posting_or_raise(user, targets)
     _check_urgent_allowed(assignment, data.is_urgent)
     sender = _posting_or_raise(user, targets, SUBMIT) if submit else None
+    try:
+        return _create_official_post(user, data, targets, assignment, sender, client_ref)
+    except IntegrityError:
+        # The same repeat arrived twice at the same moment: the first one's post is the answer.
+        earlier = earlier_post(client_ref, author=user)
+        if earlier is None:
+            raise
+        return earlier
+
+
+def _create_official_post(user, data: PostInput, targets, assignment: Grant, sender: Grant | None, client_ref) -> Post:
+    submit = sender is not None
     with transaction.atomic():
         post = Post.objects.create(
             author=user,
+            client_ref=client_ref,
             posted_as_role=assignment.key,
             posted_as_level=assignment.area.level,
             posted_as_area_id=assignment.area.id,
@@ -480,7 +514,7 @@ def create_post(user, data: PostInput, *, submit: bool = True) -> Post:
     return _reload(post)
 
 
-def create_citizen_post(device, data: PostInput, attach=None) -> Post:
+def create_citizen_post(device, data: PostInput, attach=None, client_ref=None) -> Post:
     """A citizen's post: straight to PENDING for every reviewer of its village (contract section 15).
 
     `device` is the citizens.CitizenDevice that wrote it; the caller has checked its token,
@@ -488,7 +522,8 @@ def create_citizen_post(device, data: PostInput, attach=None) -> Post:
     reviewers are alerted (post_submitted, after commit) only once the photos exist.
     The post is for the areas the citizen chose, else the phone's village; it is always
     posted from the phone's village. CITIZEN_MAX_TARGETS and CITIZEN_CAN_TARGET_STATE narrow
-    what a citizen may choose.
+    what a citizen may choose. `client_ref` is saved on the post; the caller (citizens.services)
+    looks for a repeat first.
     """
     home = AreaRef(AreaLevel.VILLAGE, device.village_id)
     targets = clean_targets(
@@ -500,6 +535,7 @@ def create_citizen_post(device, data: PostInput, attach=None) -> Post:
     with transaction.atomic():
         post = Post.objects.create(
             citizen=device,
+            client_ref=client_ref,
             posted_as_role=CITIZEN_ROLE,
             posted_as_level=home.level,
             posted_as_area_id=home.id,
