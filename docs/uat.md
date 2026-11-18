@@ -37,8 +37,8 @@ For the QA engineer and the client's testers during user acceptance testing. Wor
 
 | # | Check | Expected |
 |---|---|---|
-| P1 | New account | The Village Admin adds the member with a username and either types a temporary password or taps Generate. A generated password shows once, with Copy; it cannot be seen again. No email or SMS is sent. |
-| P2 | First login | The username, in any letter case, and the temporary password work, and the app goes straight to "Change password". Nothing else opens until a new password is set. A weak password such as 12345678 or a 7-letter one is refused with a reason. A password without a capital letter, a small letter, a number or a special character (for example `gram2026`) is refused, and the message names what is missing; `Gram@2026` is accepted. The email address does not work as a login name. |
+| P1 | New account | The Village Admin adds the member with a username, which may have spaces between words (`ravi kumar`), and either types a temporary password or taps Generate. A generated password shows once, with Copy; it cannot be seen again. No email or SMS is sent. |
+| P2 | First login | The username, in any letter case and with extra spaces before, after or between its words, and the temporary password work, and the app goes straight to "Change password". Nothing else opens until a new password is set. A weak password such as 12345678 or a 7-letter one is refused with a reason. A password without a capital letter, a small letter, a number or a special character (for example `gram2026`) is refused, and the message names what is missing; `Gram@2026` is accepted. The email address does not work as a login name. |
 | P3 | Wrong password | A wrong password and an unknown username give the same message. After 5 wrong tries from the same phone the account is locked for 15 minutes, even with the right password, and the message says how long. |
 | P3a | Unlock | While the member is locked out, the Village Admin sees "Unlock" for them and unlocking lets them log in at once. The audit log shows the lockout and the unlock. |
 | P3b | Forgot password | The Village Admin resets the password: typed or generated, shown once. The member is logged out everywhere at once, the old password stops working, any lockout is cleared, and the member must change the password again. |
@@ -105,6 +105,7 @@ For the QA engineer and the client's testers during user acceptance testing. Wor
 | S4 | Geography | Add, edit, deactivate and reactivate a district, mandal and village. A deactivated village disappears from the app's lists. |
 | S5 | CSV import | A dry run reports errors and changes without saving. A real import adds villages. Running it again changes nothing. Villages without coordinates are listed. |
 | S6 | Users | Create, block, unblock and reassign any official below Super Admin. |
+| S6a | Change a username | In the user panel, Edit details changes the official's username, also to one with spaces (`ravi kumar`). A name another official has, in any letter case, is refused with "This username is taken." The official stays logged in, and next time logs in with the new name only. The audit log shows the change with the old and new username. |
 | S7 | Posts | Filter by status, district and category. Publish, recheck, discard, take down and reverse work and show in the history. |
 | S8 | Already decided | If another admin decided first, the console shows "Already decided" and refreshes the post. |
 | S9 | Audit log | Every action above appears with who, when and where. Filters work. CSV export opens in Excel with Telugu intact. |

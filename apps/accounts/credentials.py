@@ -26,7 +26,7 @@ from grama.exceptions import ApiError
 from grama.http import client_ip
 
 from . import lockout
-from .models import RoleGroup, User, normalize_login
+from .models import RoleGroup, User, normalize_username
 
 #: No 0/O, 1/l/I: the password is read off a screen and typed on a phone.
 PASSWORD_ALPHABET = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789"
@@ -128,7 +128,7 @@ def authenticate_official(request, username: str, password: str, *, via: str, re
     may refuse the login (the console needs access_web_console); it runs after
     the password check, so it tells nothing to someone without the password.
     """
-    key = normalize_login(username)
+    key = normalize_username(username)
     ip = client_ip(request)
     # The IP-wide cap is checked before the password, so a blocked address learns nothing
     # and its tries are not counted (the block is not extended).

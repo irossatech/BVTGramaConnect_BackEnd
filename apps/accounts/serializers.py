@@ -10,7 +10,9 @@ from apps.geography.areas import AreaDescriber, AreaRef
 from apps.geography.models import AreaLevel
 
 from . import authz
-from .models import Language, RoleAssignment, RoleGroup, User, mobile_validator, normalize_login, username_validator
+from .models import (
+    Language, RoleAssignment, RoleGroup, User, mobile_validator, normalize_login, normalize_username, username_validator,
+)
 
 
 def normalize_mobile(value: str) -> str:
@@ -396,12 +398,7 @@ class UserCreateSerializer(serializers.Serializer):
         return value
 
     def validate_username(self, value):
-        value = normalize_login(value)
-        try:
-            username_validator(value)
-        except DjangoValidationError as exc:
-            raise serializers.ValidationError(list(exc.messages)) from None
-        return value
+        return clean_username(value)
 
     def validate_email(self, value):
         return normalize_login(value) or None
@@ -410,11 +407,28 @@ class UserCreateSerializer(serializers.Serializer):
         return value or None
 
 
+def clean_username(value) -> str:
+    """normalize_username, then the username rule (spaces between words allowed, 2026-11-17)."""
+    value = normalize_username(value)
+    try:
+        username_validator(value)
+    except DjangoValidationError as exc:
+        raise serializers.ValidationError(list(exc.messages)) from None
+    return value
+
+
 class UserUpdateSerializer(serializers.ModelSerializer):
+    # Declared here, not taken from the model, so the name is normalised before the view checks
+    # that nobody else has it (409 duplicate, as on create).
+    username = serializers.CharField(max_length=200, required=False, trim_whitespace=False)
+
     class Meta:
         model = User
-        fields = ["name", "name_te", "preferred_language", "email", "mobile"]
+        fields = ["username", "name", "name_te", "preferred_language", "email", "mobile"]
         extra_kwargs = {"email": {"required": False}, "mobile": {"required": False}}
+
+    def validate_username(self, value):
+        return clean_username(value)
 
     def validate_email(self, value):
         return normalize_login(value) or None

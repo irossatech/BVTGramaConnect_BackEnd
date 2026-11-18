@@ -13,7 +13,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from apps.accounts.credentials import generate_password
-from apps.accounts.models import RoleAssignment, RoleGroup, User, normalize_login, username_validator
+from apps.accounts.models import RoleAssignment, RoleGroup, User, normalize_username, username_validator
 from apps.audit.services import record
 from apps.geography.areas import AreaRef
 from apps.geography.models import State
@@ -28,7 +28,7 @@ class Command(BaseCommand):
         parser.add_argument("--state-id", type=int, default=None, help="Defaults to the only state.")
 
     def handle(self, *args, username, name, state_id, **options):
-        username = normalize_login(username)
+        username = normalize_username(username)
         try:
             username_validator(username)
         except Exception as exc:  # noqa: BLE001  (Django ValidationError)

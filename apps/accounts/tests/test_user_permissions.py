@@ -384,7 +384,7 @@ def test_creating_needs_a_login(api, world):
 @pytest.mark.parametrize(
     "field, value",
     [
-        ("name", "   "), ("email", "not-an-email"), ("mobile", "12345"), ("username", "a b"), ("username", ""),
+        ("name", "   "), ("email", "not-an-email"), ("mobile", "12345"), ("username", "a!b"), ("username", "ab"), ("username", ""),
         ("role", "KING"), ("area", {"level": "CITY", "id": 1}),
     ],
 )

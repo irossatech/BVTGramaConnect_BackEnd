@@ -19,7 +19,7 @@ Linux or macOS: the same with `python3 -m venv .venv` and `source .venv/bin/acti
 
 - No `.env` is needed locally; everything defaults to SQLite (`db.sqlite3`). Set `SQLITE_PATH` to use another file.
 - `seed_sample_data` creates 2 districts × 2 mandals × 3 villages, one official per role, and posts in every state. It prints each official's username and temporary password once; `--reset-passwords` prints new ones. Safe to run again. On a server (DEBUG off) it and `load_demo_area` refuse unless `--allow-server` is given: qa only, never production.
-- The first Super Admin on a real database: `python manage.py create_super_admin --username <name> --name "<full name>"` (a state must be loaded). It prints a temporary password once. Django admin needs a staff account from `createsuperuser`.
+- The first Super Admin on a real database: `python manage.py create_super_admin --username <name> --name "<full name>"` (a state must be loaded). It prints a temporary password once. A username with spaces goes in quotes: `--username "sita admin"`. Django admin needs a staff account from `createsuperuser`.
 - Build the web parts before opening `/` or `/console/`: `npm run build` in BVTGramaConnect, which builds both.
 - Android emulator reaches the server at `http://10.0.2.2:8000`. For a real phone, run `runserver 0.0.0.0:8000` and add the PC's LAN address to `ALLOWED_HOSTS`.
 

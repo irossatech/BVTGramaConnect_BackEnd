@@ -16,9 +16,11 @@ mobile_validator = RegexValidator(
     message=_("Enter a 10-digit mobile number starting with 6, 7, 8 or 9."),
 )
 
+# Single spaces between words are allowed, e.g. "ravi kumar" (owner's decision of 2026-11-17); never at
+# either end or two in a row. normalize_username() makes typed names fit: trims, lower-cases, collapses spaces.
 username_validator = RegexValidator(
-    regex=r"^[a-z0-9@._+-]{3,150}$",
-    message=_("Use 3 to 150 letters, digits or @ . _ + - characters."),
+    regex=r"^(?=.{3,150}$)[a-z0-9@._+-]+(?: [a-z0-9@._+-]+)*$",
+    message=_("Use 3 to 150 letters, digits, spaces or @ . _ + - characters."),
 )
 
 
@@ -28,18 +30,24 @@ class Language(models.TextChoices):
 
 
 def normalize_login(value) -> str:
-    """Usernames (and emails) are compared and stored in lower case, trimmed."""
+    """Emails are compared and stored in lower case, trimmed. Usernames: normalize_username."""
     return (value or "").strip().lower()
+
+
+def normalize_username(value) -> str:
+    """Usernames are compared and stored trimmed, in lower case, with runs of whitespace as one space:
+    "Ravi  Kumar " typed anywhere finds "ravi kumar"."""
+    return " ".join((value or "").split()).lower()
 
 
 class UserManager(BaseUserManager):
     use_in_migrations = True
 
     def get_by_natural_key(self, username):
-        return self.get(**{self.model.USERNAME_FIELD: normalize_login(username)})
+        return self.get(**{self.model.USERNAME_FIELD: normalize_username(username)})
 
     def _create_user(self, username, name, password, **extra_fields):
-        username = normalize_login(username)
+        username = normalize_username(username)
         if not username:
             raise ValueError("A username is required.")
         user = self.model(username=username, name=name, **extra_fields)
@@ -155,7 +163,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         return f"{self.name} ({self.username})"
 
     def save(self, *args, **kwargs):
-        self.username = normalize_login(self.username)
+        self.username = normalize_username(self.username)
         self.email = normalize_login(self.email) or None
         self.mobile = (self.mobile or "").strip() or None
         super().save(*args, **kwargs)
