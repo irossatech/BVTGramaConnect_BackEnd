@@ -18,7 +18,7 @@ from django.utils.translation import gettext_lazy
 from django.views.decorators.cache import cache_control
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
-from rest_framework import generics, status
+from rest_framework import generics, serializers, status
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -97,12 +97,32 @@ class CitizenServiceRequestsView(CitizenView):
         return Response(CitizenServiceRequestSerializer(created).data, status=code)
 
 
+class CancelReasonSerializer(serializers.Serializer):
+    reason = serializers.CharField(max_length=300, required=False, allow_blank=True, default="")
+
+
+class CitizenCancelServiceRequestView(CitizenView):
+    @extend_schema(
+        summary="Cancel one of this install's requests while it is New, Approved or In progress",
+        parameters=TOKEN_PARAM,
+        request=CancelReasonSerializer,
+        responses=CitizenServiceRequestSerializer,
+    )
+    def post(self, request, pk):
+        device = citizens.device_from_request(request)
+        data = CancelReasonSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        cancelled = services.cancel_request(device, pk, data.validated_data["reason"])
+        cancelled = with_related(ServiceRequest.objects.filter(pk=cancelled.pk)).get()
+        return Response(CitizenServiceRequestSerializer(cancelled).data)
+
+
 # --- Officials --------------------------------------------------------------------------------------
 
 VIEW_PERM = HasPerm(selectors.VIEW, message=gettext_lazy("Your role cannot see service requests."))
 
 #: Finished requests; listed only for SERVICE_REQUEST_CLOSED_VISIBLE_DAYS after their last change.
-CLOSED = (RequestStatus.COMPLETED, RequestStatus.REJECTED)
+CLOSED = (RequestStatus.COMPLETED, RequestStatus.REJECTED, RequestStatus.CANCELLED)
 
 
 def without_old_closed(queryset):

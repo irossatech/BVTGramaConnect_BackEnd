@@ -32,6 +32,7 @@ For the QA engineer and the client's testers during user acceptance testing. Wor
 | C16 | Help lines | The help-line screen lists 112, 108, 1930, 181, 1098 and 1912 with Telugu names. Tapping one opens the dialler. |
 | C17 | Contacts tab | "For you" lists the numbers of your village, your mandal and your district, grouped by type (VRO, Mee Seva, Sachivalayam …) with the village's first; "Government helplines" lists the state's numbers. Nothing from a neighbouring village, mandal or district. Telugu and English both work. Tapping a number opens the dialler. A number an official removed is gone within 5 minutes. With no signal the last list still shows, and 112 and 108 always work. |
 | C18 | Post news | Without logging in, a citizen sends a post with up to 3 photos, or one video (up to 60 MB and 60 seconds), or neither; a fourth photo, photos and a video together, or a video longer than 60 seconds are refused with a message. The post goes to review. After the day's limit set in the console (Settings, 5 by default) the app says when they can post again. |
+| C19 | Cancel a service request | In Profile → My service requests, a New, Approved or In progress request shows **Cancel request**. Cancelling asks for an optional reason, then the request shows as Cancelled and the button is gone. A Completed, Rejected or Cancelled request has no button. Another phone cannot cancel it. A cancelled request still counts towards the day's limit of requests. |
 
 ## Panchayat Member (mobile app)
 
@@ -119,6 +120,7 @@ For the QA engineer and the client's testers during user acceptance testing. Wor
 | S17 | Numbers CSV import | A dry run lists every bad row with its row number and field and saves nothing. One bad row means nothing is imported. A real import of a district's numbers works; importing it again changes nothing. A file saved from Excel with Telugu names imports correctly. |
 | S18 | Contact types | Add a type, rename it in Telugu and English, and switch it off; a switched-off type's numbers disappear from the app. A type in use cannot be deleted. |
 | S19 | More Super Admins | Users → Add user → role Super Admin asks for your own password; a wrong one shows "Your password is not correct." and creates nobody. The new Super Admin must change the password at first login and then sees the console. The other Super Admins get a notification. You can block, unblock and reset another Super Admin, never yourself. With 5 active Super Admins a sixth is refused with "The limit of Super Admins is reached." A District Admin never sees the Super Admin choice. |
+| S20 | Cancelled service requests | After a citizen cancels a request, the official it was assigned to gets a notification ("… cancelled their … request"). Service requests has a Cancelled tab with a count; the request's history shows "Cancelled by the citizen" and the reason. Nobody can change a cancelled request any more: no buttons, and the console says it was cancelled if tried. |
 
 ## Public website
 

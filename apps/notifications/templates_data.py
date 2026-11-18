@@ -117,6 +117,17 @@ DEFAULTS = [
         "editable": True,
     },
     {
+        "key": "service_request_cancelled",
+        "name_te": "రద్దు చేసిన సేవా అభ్యర్థన",
+        "name_en": "Service request cancelled",
+        "channel": "push",
+        "recipient": "assignee",
+        "text_te": "{name} తమ {service} అభ్యర్థనను రద్దు చేశారు",
+        "text_en": "{name} cancelled their {service} request",
+        "variables": ["area", "service", "name"],
+        "editable": True,
+    },
+    {
         "key": "super_admin_added",
         "name_te": "కొత్త సూపర్ అడ్మిన్",
         "name_en": "New Super Admin",

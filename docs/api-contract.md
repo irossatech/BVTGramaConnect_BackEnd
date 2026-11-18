@@ -868,7 +868,7 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Important numbers (every official) | `GET /admin/contacts` (`section=AREA\|HELPLINE`), `POST /admin/contacts`, `PATCH /admin/contacts/{id}`, `DELETE /admin/contacts/{id}`, `GET /admin/contacts/targets` |
 | Citizen Home: banner ads | `GET /ads?village_id=` |
 | Super Admin: More → Ads | `GET /admin/ads`, `POST /admin/ads` (multipart), `PATCH /admin/ads/{id}` (multipart with a new image or video, else JSON), `DELETE /admin/ads/{id}`; areas from `/geo/*` |
-| Citizen: Home → Services, Profile → My service requests | `GET /services/`, `POST /citizen/service-requests/`, `GET /citizen/service-requests/` |
+| Citizen: Home → Services, Profile → My service requests (with Cancel request) | `GET /services/`, `POST /citizen/service-requests/`, `GET /citizen/service-requests/`, `POST /citizen/service-requests/{id}/cancel/` |
 | Service requests (officials) | `GET /service-requests/` (status tabs from `status_counts`), `GET /service-requests/{id}/`, `PATCH /service-requests/{id}/`; assignees from `GET /users/` |
 | Super Admin: More → Services | `GET /admin/services/`, `POST /admin/services/`, `PATCH /admin/services/{key}/`, `POST /admin/services/order/` |
 | Citizen: Home → Bills & Recharges | `GET /bills/` |
@@ -1157,6 +1157,7 @@ Services are never deleted. The 8 services the app ships with are seeded with th
 |---|---|---|
 | `GET /services/` | public, no login | The **shown** services in Home order, a plain list of `Service`. `Cache-Control: max-age=300` (`SERVICES_PUBLIC_MAX_AGE`). |
 | `POST /citizen/service-requests/` | header `X-Citizen-Token`; JSON `{"service", "name", "phone", "email"?, "address", "details"?, "client_ref"?}` (`client_ref`: section 1, "Sending again after a lost answer") | `201 CitizenServiceRequest`, status `NEW`, for the phone's village. `200 CitizenServiceRequest` for a repeat of this install's earlier `client_ref`: the first request as it is now, not counted against the daily limit. `400 validation_error` with `fields`: `service` ("This service is not available.": unknown or hidden), `name`, `phone`, `email`, `address` ("Enter your address."), `details`. `401 citizen_token_invalid`; `403 citizen_blocked` with `reason` and `blocked_until` (as for posts); `429 throttled` with `retry_after_s` after `SERVICE_REQUESTS_PER_DAY` (10) requests from one phone, all its installs, in 24 hours. |
+| `POST /citizen/service-requests/{id}/cancel/` | header `X-Citizen-Token`; JSON `{"reason"?}`, at most 300 characters (spaces collapsed) | **The citizen cancels their own request** (owner's decision of 2026-11-18) while it is `NEW`, `APPROVED` or `IN_PROGRESS`: `200 CitizenServiceRequest` with `status` `CANCELLED` and `can_cancel` `false`. Only the install that sent it (as the list): another install's request or an unknown id answers `404 not_found`. Already `COMPLETED`, `REJECTED` or `CANCELLED`: `409 invalid_transition` with a message to show. `400 validation_error` on `reason` when too long; `401 citizen_token_invalid`. Cancelled is final: nobody changes it after, and a new request is the way back. The request is kept, never deleted; it still counts towards `SERVICE_REQUESTS_PER_DAY`. The app shows **Cancel request** while `can_cancel` is true and may ask for the reason in a short text box. |
 | `GET /citizen/service-requests/` | header `X-Citizen-Token` | `[CitizenServiceRequest]`, the requests made from **this install** (this token), newest first, at most 50. **Changed 2026-11-09** (decision on audit BE_01, BE-SEC-002): it used to include every install with the same `android_id`; a request holds the citizen's name, phone and address, and `android_id` is not verified. After a reinstall the app starts with an empty list; the officials still have every request. The daily limit and blocks still count all installs of the phone. |
 
 ```jsonc
@@ -1171,6 +1172,7 @@ Services are never deleted. The 8 services the app ships with are seeded with th
   "district": {"id": 7,    "name": "గుంటూరు"},
   "status": "IN_PROGRESS",
   "note": "Come to the Sachivalayam on Monday",  // the latest note; "" until one is written
+  "can_cancel": true,                             // NEW, APPROVED or IN_PROGRESS: the citizen may cancel it (2026-11-18)
   "created_at": "2026-10-28T10:00:00+05:30",
   "updated_at": "2026-10-28T12:30:00+05:30"
 }
@@ -1191,7 +1193,7 @@ A request belongs to the phone's village at the time it is sent; changing villag
 
 | Method and path | Who | Request | Response |
 |---|---|---|---|
-| `GET /service-requests/` | `service_requests.view_service_requests` | `status` (one of the five, or empty), `q` (the citizen's name, or digits of the phone), `assigned=me` (optional), `contact=0` (optional), `page`, `page_size` (at most 100) | Page of `ServiceRequest`, latest change first, plus `status_counts` for all five statuses with every filter applied except `status`, and `"closed_visible_days": 180`. **Which requests are listed (decision of 2026-11-11):** every open request (`NEW`, `APPROVED`, `IN_PROGRESS`) however old; a `COMPLETED` or `REJECTED` request only while its last change is at most `SERVICE_REQUEST_CLOSED_VISIBLE_DAYS` (180) days old. Older closed requests stay in the database, are not counted in `status_counts`, and still open with `GET /service-requests/{id}/`; a change to one (a note, a new status) shows it again. The citizen's own list (`GET /citizen/service-requests/`) is not affected. **`contact=0` (added 2026-11-13, audit WEB-DP-001):** each row leaves out `phone`, `email` and `address` (the keys are absent); everything else is the same, and `q` still searches the phone. The console's table sends it and reads them from `GET /service-requests/{id}/` when a request is opened. Without it (the app) the rows are unchanged. |
+| `GET /service-requests/` | `service_requests.view_service_requests` | `status` (one of the six, or empty), `q` (the citizen's name, or digits of the phone), `assigned=me` (optional), `contact=0` (optional), `page`, `page_size` (at most 100) | Page of `ServiceRequest`, latest change first, plus `status_counts` for all six statuses with every filter applied except `status`, and `"closed_visible_days": 180`. **Which requests are listed (decision of 2026-11-11):** every open request (`NEW`, `APPROVED`, `IN_PROGRESS`) however old; a `COMPLETED`, `REJECTED` or `CANCELLED` request only while its last change is at most `SERVICE_REQUEST_CLOSED_VISIBLE_DAYS` (180) days old. Older closed requests stay in the database, are not counted in `status_counts`, and still open with `GET /service-requests/{id}/`; a change to one (a note, a new status) shows it again. The citizen's own list (`GET /citizen/service-requests/`) is not affected. **`contact=0` (added 2026-11-13, audit WEB-DP-001):** each row leaves out `phone`, `email` and `address` (the keys are absent); everything else is the same, and `q` still searches the phone. The console's table sends it and reads them from `GET /service-requests/{id}/` when a request is opened. Without it (the app) the rows are unchanged. |
 | `GET /service-requests/{id}/` | same | — | `ServiceRequest`; `404` when it is outside reach |
 | `PATCH /service-requests/{id}/` | the assignee; the rules below | any of `{"status", "assigned_to", "note"}`; `assigned_to` is a user id as in `GET /users/` (a UUID string), or `null` to unassign | The updated `ServiceRequest`. One history event per call that changes something; a call that changes nothing writes nothing. After passing it on, the answer still comes back (with `allowed_actions: []`), even when the caller no longer sees the request. |
 
@@ -1209,7 +1211,7 @@ A request belongs to the phone's village at the time it is sent; changing villag
 }
 ```
 - User ids are UUID strings, as in `GET /users/`.
-- In `history`, `by` is `null` for the system (the automatic assignment). `status` appears only when the status changed, and `assigned_to` only when the assignment changed (`null`: unassigned). `note` is always there (`""` when none).
+- In `history`, `by` is `null` for the system (the automatic assignment) and for the citizen's cancel, which also has `"by_citizen": true`, `status` `CANCELLED` and the citizen's reason as `note` ("Cancelled by the citizen" without one). `status` appears only when the status changed, and `assigned_to` only when the assignment changed (`null`: unassigned). `note` is always there (`""` when none).
 
 ### Super Admin: the services list
 
@@ -1249,7 +1251,8 @@ Permission `service_requests.manage_services` (Super Admin only); everyone else 
 - **Nobody holds it** when it was never assigned (the village has no Village Admin), or its assignee was later blocked or lost their role over the village. A new official who has not yet changed their temporary password still holds it, and may be chosen as the assignee; they act on it after their first login.
 - Without the action: `403 permission_denied`. A `status` or a `note` needs `set_status`; `assigned_to` needs `assign`.
 - Permissions: `service_requests.view_service_requests` (the four admin groups and Panchayat members) and `service_requests.manage_service_requests` (the four admin groups), each over the request's village. `manage_service_requests` now only means "may assign a request nobody holds".
-- **Statuses:** `NEW` (default), `APPROVED`, `IN_PROGRESS`, `COMPLETED`, `REJECTED`. The assignee may set any of them; the app suggests NEW → APPROVED → IN_PROGRESS → COMPLETED.
+- **Statuses:** `NEW` (default), `APPROVED`, `IN_PROGRESS`, `COMPLETED`, `REJECTED`, and `CANCELLED` (2026-11-18). The assignee may set any of the first five; the app suggests NEW → APPROVED → IN_PROGRESS → COMPLETED. **Only the citizen cancels** (section above): an official sending `status` `CANCELLED` gets `400`, `fields.status`.
+- **A cancelled request is final:** `allowed_actions` is `[]` for everyone, and any `PATCH` (status, note or assignee) answers `409 invalid_transition` ("The citizen cancelled this request; it cannot be changed."), also when the cancel lands while the change is on its way.
 - **`REJECTED` and `COMPLETED` need a `note`**: the reason, or what the citizen should do next. Otherwise `400`, `fields.note`. A note sent with another status is saved too; the app does not ask for one.
 - **Assign to:** an active official whose area contains the request's village (any group holding the view permission there, including the caller themselves or a higher admin); otherwise `400`, `fields.assigned_to`, which is also the answer to an id that is not a user id. The app and the console pick from `GET /users/`. Whoever passes it on can no longer change it; the new assignee can hand it back.
 - **Notes:** `note` becomes the request's latest note, which the citizen sees, and is kept in the history.
@@ -1261,11 +1264,12 @@ Permission `service_requests.manage_services` (Super Admin only); everyone else 
   - The others get `service_request_new` ("కొలకలూరు: Lakshmi Devi నుండి కొత్త ఆధార్ సేవలు అభ్యర్థన").
   - The Super Admin is not pinged for each request (as for posts).
 - **Re-assignment:** the new assignee gets the same `service_request_assigned_you` inbox item and push, unless they assigned it to themselves.
+- **Cancelled by the citizen:** the official holding it (active) gets an inbox item and a push with the template `service_request_cancelled` ("Lakshmi Devi cancelled their Aadhaar Services request"), the same `kind`, `data` and privacy as above. An unassigned request tells nobody. The citizen gets no push: they did it.
 - **Status change:** the citizen's phone gets a push if it sent an `fcm_token` (section 15). It uses the template `service_request_updated` ("Your Aadhaar Services request: Rejected") with the note as the body, and `data` `{"type": "SERVICE_REQUEST_UPDATED", "request_id", "status"}`. A note or an assignment alone sends no push.
 - **Privacy:** the phone number, email and address never appear in a notification or the audit log. Notifications name the service and the citizen's name.
 - **Audit:**
   - `service.created`, `service.updated` (changed fields), `service.shown`, `service.hidden`, `service.reordered`.
-  - `service_request.created` (service and device id only), `service_request.status_changed` (from, to, note), `service_request.assigned` (the new assignee's id and name, and `auto`).
+  - `service_request.created` (service and device id only), `service_request.status_changed` (from, to, note), `service_request.assigned` (the new assignee's id and name, and `auto`), `service_request.cancelled` (`from` status, the device id and `reason_given`; never the reason itself, which is the citizen's own words).
 
 ### Settings
 

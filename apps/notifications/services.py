@@ -335,6 +335,14 @@ def tell_assignee(request) -> Notification | None:
     return _service_request_notes([(assignee, "service_request_assigned_you")], request)[0]
 
 
+def tell_assignee_cancelled(request) -> Notification | None:
+    """After the citizen cancels a request: tell the official holding it. Nobody when it was unassigned."""
+    assignee = User.objects.filter(pk=request.assigned_to_id, is_active=True).first()
+    if assignee is None:
+        return None
+    return _service_request_notes([(assignee, "service_request_cancelled")], request)[0]
+
+
 def tell_citizen_service_request(request) -> bool:
     """After a status change: push the new status (and the note) to the phone that sent the request."""
     from apps.service_requests.models import status_label

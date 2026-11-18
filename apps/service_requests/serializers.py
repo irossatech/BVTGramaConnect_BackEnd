@@ -9,7 +9,7 @@ from rest_framework import serializers
 from apps.accounts import authz
 
 from . import services
-from .models import COLORS, ICONS, RequestStatus, Service, ServiceRequest
+from .models import CANCELLABLE, COLORS, ICONS, RequestStatus, Service, ServiceRequest
 from .selectors import VIEW
 
 MOBILE = re.compile(r"^[6-9][0-9]{9}$")
@@ -134,16 +134,21 @@ class CitizenServiceRequestSerializer(serializers.ModelSerializer):
     village = serializers.SerializerMethodField()
     mandal = serializers.SerializerMethodField()
     district = serializers.SerializerMethodField()
+    #: The app shows "Cancel request" while true: New, Approved or In progress (2026-11-18).
+    can_cancel = serializers.SerializerMethodField()
 
     class Meta:
         model = ServiceRequest
         fields = [
             "id", "service", "service_name", "name", "phone", "email", "address", "details",
-            "village", "mandal", "district", "status", "note", "created_at", "updated_at",
+            "village", "mandal", "district", "status", "note", "can_cancel", "created_at", "updated_at",
         ]
 
     def get_service_name(self, obj) -> str:
         return obj.service.display_name(_language())
+
+    def get_can_cancel(self, obj) -> bool:
+        return obj.status in CANCELLABLE
 
     @extend_schema_field(AreaNameSerializer)
     def get_village(self, obj):
@@ -167,6 +172,8 @@ class OfficialSerializer(serializers.Serializer):
 class HistorySerializer(serializers.Serializer):
     at = serializers.DateTimeField()
     by = OfficialSerializer(allow_null=True)
+    #: True for the citizen's cancel (then `by` is null and `note` is their reason).
+    by_citizen = serializers.BooleanField(required=False)
     note = serializers.CharField()
     status = serializers.ChoiceField(choices=RequestStatus.choices, required=False)
     assigned_to = serializers.DictField(required=False, allow_null=True)
@@ -203,6 +210,8 @@ class ServiceRequestSerializer(CitizenServiceRequestSerializer):
                 "by": {"id": str(event.by.id), "name": event.by.name, "role": event.by_role} if event.by else None,
                 "note": event.note,
             }
+            if event.by_citizen:
+                row["by_citizen"] = True
             if event.status:
                 row["status"] = event.status
             if event.assigned_changed:

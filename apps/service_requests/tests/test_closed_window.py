@@ -46,7 +46,7 @@ def test_open_always_finished_only_while_recent(api, world, five, viewer):
     shown, data = listed(api(world.users[viewer]))
     assert shown == {five["old_open"], five["recent_done"], five["old_in_progress"]}
     assert data["count"] == 3
-    assert data["status_counts"] == {"NEW": 1, "APPROVED": 0, "IN_PROGRESS": 1, "COMPLETED": 1, "REJECTED": 0}
+    assert data["status_counts"] == {"NEW": 1, "APPROVED": 0, "IN_PROGRESS": 1, "COMPLETED": 1, "REJECTED": 0, "CANCELLED": 0}
     assert data["closed_visible_days"] == 180
 
 
