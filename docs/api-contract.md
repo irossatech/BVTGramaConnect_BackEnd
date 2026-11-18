@@ -323,7 +323,7 @@ Lean on purpose, for 2G.
 ```
 - `type` values: `posts`, `users`, `areas`, `logins`, `settings`, `system`.
 - `via` values: `app`, `console`, `system`.
-- `action` keys, localised by the client: `auth.login`, `post.submitted`, `post.resubmitted`, `post.published`, `post.auto_published`, `post.recheck`, `post.discarded`, `post.unpublished`, `post.reversed`, `post.escalated`, `post.created`, `post.updated`, `post.deleted`, `user.updated`, `user.created`, `user.blocked`, `user.unblocked`, `user.reassigned`, `user.assignment_added`, `user.assignment_removed`, `area.created`, `area.updated`, `area.deactivated`, `area.reactivated`, `category.created`, `category.updated`, `setting.changed`, `template.updated`, `report.exported`.
+- `action` keys, localised by the client: `auth.login`, `post.submitted`, `post.resubmitted`, `post.published`, `post.auto_published`, `post.recheck`, `post.discarded`, `post.unpublished`, `post.reversed`, `post.escalated`, `post.created`, `post.updated`, `post.deleted`, `user.updated`, `user.username_changed`, `user.created`, `user.blocked`, `user.unblocked`, `user.reassigned`, `user.assignment_added`, `user.assignment_removed`, `area.created`, `area.updated`, `area.deactivated`, `area.reactivated`, `category.created`, `category.updated`, `setting.changed`, `template.updated`, `report.exported`.
 
 ---
 
@@ -344,7 +344,8 @@ Lean on purpose, for 2G.
 | `PATCH /me/` | bearer or session | `{"name"?, "name_te"?, "preferred_language"?}` | `200 Me` |
 
 Login rules:
-- `username` matches the username only, ignoring case and surrounding spaces. Usernames are stored in lower case.
+- `username` matches the username only, ignoring case, surrounding spaces and extra spaces between words: `" Ravi  Kumar"` finds `ravi kumar`. Usernames are stored in lower case.
+- **Usernames** (owner's decision of 2026-11-17): 3 to 150 characters; letters, digits, `@ . _ + -` and single spaces between words, e.g. `ravi kumar`. The server trims, lower-cases and collapses spaces before checking, on create, on change and at login. Otherwise `400 validation_error` on `username` ("Use 3 to 150 letters, digits, spaces or @ . _ + - characters.").
 - A wrong password and an unknown username give the same `400 invalid_credentials`.
 - **Lockout** (django-axes): 5 failures for one username from one IP address lock that pair for 15 minutes. Every try then answers `429 locked_out` with `retry_after_s`, even with the right password. A success clears the count. An admin can unlock early (`POST /users/{id}/unlock/`). Nginx adds 10 requests a minute per IP.
 - **IP-wide cap:** 50 failed logins from one IP address, for any usernames, within 60 minutes block every login from that address with the same `429 locked_out` and `retry_after_s` (at most an hour). A success does not reset it and unlock does not lift it. Clients need no change: they already handle `locked_out`.
@@ -365,7 +366,7 @@ Passwords:
 | `GET /users/` | any `accounts.manage_*` | Query: `role`, `status=ACTIVE\|BLOCKED`, `level` + `area_id`, `district`, `q` (name, Telugu name, username, email, mobile), `page` | Page of `User` inside the actor's areas, plus `"counts": {"total", "active", "blocked", "by_role": {"VILLAGE_ADMIN": 5}}` over the same filters except `role` and `status` |
 | `POST /users/` | the group's manage permission over the area | `{"name", "name_te"?, "username", "mobile"?, "email"?, "preferred_language"?, "role", "area": {"level", "id"}, "password"?, "current_password"?}` | `201 {"user": User, "temporary_password"?}`. Without `password`, the server generates one and returns it once as `temporary_password`. `must_change_password` is set. A taken username, email or mobile gives `409 duplicate` with the field. With `role: SUPER_ADMIN`, `current_password` (the actor's own) is required: see "Super Admins" below. |
 | `GET /users/{id}/` | managing the user | — | `User` |
-| `PATCH /users/{id}/` | managing the user | `{"name"?, "name_te"?, "preferred_language"?, "email"?, "mobile"?}` | `User` |
+| `PATCH /users/{id}/` | managing the user | `{"username"?, "name"?, "name_te"?, "preferred_language"?, "email"?, "mobile"?}` | `User`. A new `username` (2026-11-17, the console's Edit details) follows the username rule above; taken by someone else, in any case: `409 duplicate` on `username`, as on create. Audited as `user.username_changed` with `{"from", "to"}`; the other fields as `user.updated`. Sessions and tokens stay valid; the person signs in with the new name next time (tell them in person). An active lockout under the old name does not carry over. A user cannot change their own username (`PATCH /me/` does not take it). |
 | `POST /users/{id}/reset-password/` | `accounts.reset_password` | `{"password"?}` | `200 {"user": User, "temporary_password"?}`. Generated when `password` is left out, shown once. Sets `must_change_password`, bumps `token_version`. Audited as `user.password_reset`. |
 | `POST /users/{id}/unlock/` | `accounts.unlock_user` | — | `200 User`. Clears the lockout for that username. Audited as `user.unlocked`. |
 | `POST /users/{id}/block/` | `accounts.block_user` | `{"reason"?}` | `User`. `is_active` false and `token_version` bumped: every session ends at once. |

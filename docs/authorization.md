@@ -24,7 +24,7 @@ Contents:
 
 ## 1. Login flow
 
-Officials log in with a **username and a password**. There is no OTP, no SMS and no email login. The username is unique, ignores case and surrounding spaces, and is stored in lower case. Email and mobile number are optional contact details only and never work as a login name.
+Officials log in with a **username and a password**. There is no OTP, no SMS and no email login. The username is unique, ignores case, surrounding spaces and extra spaces between words, and is stored in lower case; it may contain single spaces between words, such as `ravi kumar` (2026-11-17). An admin managing the user can change it (`PATCH /users/{id}/`, audited as `user.username_changed`). Email and mobile number are optional contact details only and never work as a login name.
 
 Both clients go through the same check (`apps/accounts/credentials.py`, `authenticate_official`): django-axes lockout first, then the password, then blocked accounts. Every success and failure is audited.
 

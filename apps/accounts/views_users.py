@@ -40,7 +40,7 @@ from . import authz, lockout, peers
 from .authentication import client_via
 from .authz import ANYWHERE, RoleInfo
 from .credentials import check_new_password, confirm_own_password, set_temporary_password
-from .models import RoleAssignment, User, normalize_login
+from .models import RoleAssignment, User, normalize_username
 from .permissions import ManagesUsers
 from .signals import super_admin_added
 from .serializers import (
@@ -116,7 +116,7 @@ def duplicates_as_conflict(view):
             return view(self, request, *args, **kwargs)
         except IntegrityError:
             data = request.data if hasattr(request.data, "get") else {}
-            username = normalize_login(data.get("username"))
+            username = normalize_username(data.get("username"))
             if username and User.objects.filter(username=username).exists():
                 raise duplicate(_("This username is taken."), "username") from None
             mobile = (data.get("mobile") or "").strip()
@@ -318,16 +318,28 @@ class UserViewSet(
             raise duplicate(_("This mobile number already belongs to an official."), "mobile") from None
         return self._respond(user, status_code=status.HTTP_201_CREATED, temporary_password=generated, wrap=True)
 
-    @extend_schema(summary="Change a user's name, language or contact details", request=UserUpdateSerializer, responses=UserSerializer)
+    @extend_schema(summary="Change a user's username, name, language or contact details", request=UserUpdateSerializer, responses=UserSerializer)
     @duplicates_as_conflict
     def partial_update(self, request, *args, **kwargs):
         user = self.get_object()
         data = UserUpdateSerializer(user, data=request.data, partial=True)
         data.is_valid(raise_exception=True)
+        new_username = data.validated_data.get("username")
+        if new_username and new_username != user.username:
+            if User.objects.filter(username=new_username).exclude(pk=user.pk).exists():
+                raise duplicate(_("This username is taken."), "username")
         before = {name: getattr(user, name) for name in data.validated_data}
         with transaction.atomic():
             data.save()
             changed = changes(before, user)
+            renamed = changed.pop("username", None)
+            if renamed:
+                # Usernames are not contact details: old and new are kept, so a login under the old name can be
+                # explained. Sessions and tokens stay valid; the person signs in with the new name next time.
+                record(
+                    "user.username_changed", actor=request.user, target=user, target_label=user.name,
+                    via=via(request), data=renamed,
+                )
             if changed:
                 # Only what changed, and email and mobile masked: the audit log never holds them in full.
                 record(

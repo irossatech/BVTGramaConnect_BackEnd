@@ -43,23 +43,23 @@ from django.utils import timezone
 from apps.audit.masking import mask_text
 from grama.http import client_ip
 
-from .models import User, normalize_login
+from .models import User, normalize_username
 
 #: Session key holding the user's token_version at login (authentication.py).
 SESSION_TOKEN_VERSION = "gc_tv"
 
 
 def typed_username(request, credentials) -> str:
-    """The username as login compares it (trimmed, lower case). For the audit log only, never axes."""
+    """The username as login compares it (normalize_username). For the audit log only, never axes."""
     value = (credentials or {}).get("username")
     if value is None and request is not None:
         value = request.POST.get("username")
-    return normalize_login(value)[:150]
+    return normalize_username(value)[:150]
 
 
 def login_key(username) -> str:
     """What axes stores for a username: a keyed hash, never the typed text. "" stays ""."""
-    value = normalize_login(username)[:150]
+    value = normalize_username(username)[:150]
     if not value:
         return ""
     return hmac.new(settings.SECRET_KEY.encode(), b"axes-username:" + value.encode(), hashlib.sha256).hexdigest()
