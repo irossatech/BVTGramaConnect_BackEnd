@@ -501,7 +501,7 @@ def test_status_counts_and_filters(api, world, request_from):
 
     data = admin.get(f"{LIST}?status=APPROVED").json()
     assert [row["id"] for row in data["results"]] == [second]
-    assert data["status_counts"] == {"NEW": 1, "APPROVED": 1, "IN_PROGRESS": 0, "COMPLETED": 0, "REJECTED": 1}
+    assert data["status_counts"] == {"NEW": 1, "APPROVED": 1, "IN_PROGRESS": 0, "COMPLETED": 0, "REJECTED": 1, "CANCELLED": 0}
     assert [row["id"] for row in admin.get(f"{LIST}?assigned=me").json()["results"]] == [second]
     assert [row["id"] for row in admin.get(f"{LIST}?q=ravi").json()["results"]] == [second]
     assert [row["id"] for row in admin.get(f"{LIST}?q=98765").json()["results"]] == [first]

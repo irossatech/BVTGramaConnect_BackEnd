@@ -18,6 +18,9 @@
   holds (no Village Admin, or the assignee was blocked or lost their role
   there) may only be assigned, by an official managing requests over it.
 - Rejecting and completing need a note for the citizen.
+- The citizen who sent a request may cancel it while it is New, Approved or In progress
+  (cancel_request, owner's decision of 2026-11-18). Cancelled is final: nobody changes it after.
+  The request is kept, like every request; the assignee is told.
 
 Every change writes one ServiceRequestEvent and the audit entries in the same
 transaction; notifications go out after commit. No name, phone, email or
@@ -45,7 +48,7 @@ from apps.geography.models import AreaLevel, Village
 from grama import logos
 from grama.exceptions import ApiError, permission_denied
 
-from .models import RequestStatus, Service, ServiceRequest, ServiceRequestEvent
+from .models import CANCELLABLE, RequestStatus, Service, ServiceRequest, ServiceRequestEvent
 from .selectors import MANAGE, VIEW, village_admin_of
 
 logger = logging.getLogger("grama.service_requests")
@@ -82,9 +85,10 @@ def _can_view(official, request: ServiceRequest) -> bool:
 
 
 def allowed_actions(user, request: ServiceRequest) -> list[str]:
-    """Only the assignee changes a request; the area's admins may only assign one nobody holds."""
+    """Only the assignee changes a request; the area's admins may only assign one nobody holds.
+    A request the citizen cancelled is final: nobody changes it."""
     area = area_of(request)
-    if not authz.can(user, VIEW, area):
+    if request.status == RequestStatus.CANCELLED or not authz.can(user, VIEW, area):
         return []
     if request.assigned_to_id == user.pk:  # an active user who can view it: they hold it
         return ["set_status", "assign"]
@@ -95,6 +99,10 @@ def allowed_actions(user, request: ServiceRequest) -> list[str]:
 
 def _validation(field: str, message) -> ApiError:
     return ApiError("validation_error", message, fields={field: [message]})
+
+
+def _cancelled() -> ApiError:
+    return ApiError("invalid_transition", _("The citizen cancelled this request; it cannot be changed."), status=409)
 
 
 def _after_commit(function, *args) -> None:
@@ -298,6 +306,47 @@ def _create_request(device, *, service, name, phone, address, email, details, cl
     return request
 
 
+def cancel_request(device, request_id, reason: str = "") -> ServiceRequest:
+    """The citizen cancels one of this install's requests while it is New, Approved or In progress.
+
+    404 for a request of another install (as the list shows only this install's). 409 invalid_transition
+    once it is Completed, Rejected or Cancelled. The status changes in one conditional UPDATE, so a
+    cancel and an official's change at the same moment cannot both win. The request is kept; the history
+    gets the cancel with the reason, the assignee is told. The reason stays out of the audit log: it is
+    the citizen's own words and may hold personal details. It counts towards the daily limit as before.
+    """
+    request = ServiceRequest.objects.filter(pk=request_id, device=device).select_related("service").first()
+    if request is None:
+        raise ApiError("not_found", _("No such request."), status=404)
+    reason = " ".join((reason or "").split())
+    with transaction.atomic():
+        # The row lock gives the audit the status it really had; the conditional UPDATE is the guard
+        # on every database (SQLite ignores the lock).
+        before = ServiceRequest.objects.select_for_update().values_list("status", flat=True).get(pk=request.pk)
+        changed = ServiceRequest.objects.filter(pk=request.pk, status__in=CANCELLABLE).update(
+            status=RequestStatus.CANCELLED, updated_at=timezone.now(),
+        )
+        if not changed:
+            request.refresh_from_db(fields=["status"])
+            raise ApiError(
+                "invalid_transition",
+                _("This request is already %(status)s and cannot be cancelled.") % {"status": request.get_status_display().lower()},
+                status=409,
+            )
+        request.refresh_from_db(fields=["status", "updated_at"])
+        ServiceRequestEvent.objects.create(
+            request=request, by=None, by_citizen=True, status=RequestStatus.CANCELLED,
+            note=reason or _("Cancelled by the citizen"),
+        )
+        record("service_request.cancelled", target=request, target_label=request.service.name_en,
+               area=area_of(request), via="citizen",
+               data={"from": before, "citizen": str(device.pk), "reason_given": bool(reason)})
+        from apps.notifications import services as notifications
+
+        _after_commit(notifications.tell_assignee_cancelled, request)
+    return request
+
+
 # --- Officials ------------------------------------------------------------------------------------
 
 
@@ -317,6 +366,10 @@ UNSET = object()
 def update_request(user, request: ServiceRequest, *, status=None, assigned_to=UNSET, note=None) -> ServiceRequest:
     """PATCH by an official: any of a new status, an assignee (a user id or None) and a note."""
     area = area_of(request)
+    if request.status == RequestStatus.CANCELLED:
+        raise _cancelled()
+    if status == RequestStatus.CANCELLED:
+        raise _validation("status", _("Only the citizen who sent the request can cancel it."))
     actions = allowed_actions(user, request)
     if not actions:
         raise permission_denied(_("Only the person this request is assigned to can change it."))
@@ -345,6 +398,8 @@ def update_request(user, request: ServiceRequest, *, status=None, assigned_to=UN
         # Another change to this request may have landed since it was read: wait for it and decide from
         # the saved values, so history and audit name the real "from" (audit finding BE-DB-022).
         locked = ServiceRequest.objects.select_for_update().only("status", "assigned_to", "note").get(pk=request.pk)
+        if locked.status == RequestStatus.CANCELLED:
+            raise _cancelled()  # the citizen cancelled it while this change was on its way
         request.status, request.assigned_to_id, request.note = locked.status, locked.assigned_to_id, locked.note
         before = request.status
         new_status = status if status is not None and status != before else None

@@ -77,7 +77,12 @@ class RequestStatus(models.TextChoices):
     IN_PROGRESS = "IN_PROGRESS", _("In progress")
     COMPLETED = "COMPLETED", _("Completed")
     REJECTED = "REJECTED", _("Rejected")
+    #: Set only by the citizen who sent it, while it is still open (owner's decision of 2026-11-18). Final.
+    CANCELLED = "CANCELLED", _("Cancelled")
 
+
+#: A citizen may cancel a request in these statuses; Completed, Rejected and Cancelled are final for them.
+CANCELLABLE = (RequestStatus.NEW, RequestStatus.APPROVED, RequestStatus.IN_PROGRESS)
 
 STATUS_TE = {
     RequestStatus.NEW: "కొత్తది",
@@ -85,6 +90,7 @@ STATUS_TE = {
     RequestStatus.IN_PROGRESS: "ప్రక్రియలో ఉంది",
     RequestStatus.COMPLETED: "పూర్తయింది",
     RequestStatus.REJECTED: "తిరస్కరించబడింది",
+    RequestStatus.CANCELLED: "రద్దు చేయబడింది",
 }
 
 
@@ -144,12 +150,14 @@ class ServiceRequest(models.Model):
 class ServiceRequestEvent(models.Model):
     """One change to a request: a new status, a new assignee, a note, or several at once.
 
-    `by` is empty for the system (the automatic assignment on create).
+    `by` is empty for the system (the automatic assignment on create) and for the citizen, who has no
+    user account: `by_citizen` tells the citizen's cancel apart (its `note` is their reason).
     """
 
     request = models.ForeignKey(ServiceRequest, on_delete=models.CASCADE, related_name="history")
     at = models.DateTimeField(auto_now_add=True)
     by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    by_citizen = models.BooleanField(default=False)
     #: The key of the group the official acted under, for display.
     by_role = models.CharField(max_length=20, blank=True)
     #: Empty when the status did not change.
