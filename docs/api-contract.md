@@ -1083,7 +1083,7 @@ Every citizen endpoint answers `401 citizen_token_invalid` without a valid token
 | Setting | Default | Meaning |
 |---|---|---|
 | `CITIZEN_POSTS_ENABLED` | on | `off` answers `403 permission_denied` on `POST /citizen/posts/` |
-| `CITIZEN_INTEGRITY_REQUIRED` | on with `DEBUG=False`, off in development and tests | Off: registration skips the Google check (for debug builds, the qa server, and the website's APK). Off on production too until the app is on Google Play (owner's decision of 2026-11-04); with it on, a website install gets `403 integrity_failed`. |
+| `CITIZEN_INTEGRITY_REQUIRED` | off everywhere until the app is on Google Play (owner's decision of 2026-11-04; the production default changed 2026-11-18) | Off: registration skips the Google check (debug builds, the qa server, the website's APK). On: only the genuine Play app registers; a website install gets `403 integrity_failed`. Turned on by writing `CITIZEN_INTEGRITY_REQUIRED=True` in the server's `.env`. |
 | `PLAY_INTEGRITY_PACKAGE` | — | The app's package name, e.g. `com.bvt.app` |
 | `PLAY_INTEGRITY_CREDENTIALS_FILE` | `FCM_CREDENTIALS_FILE` | Service account allowed to call the Play Integrity API |
 | `CITIZEN_POSTS_PER_DAY` | 5 | Posts per phone in 24 hours; 0 is no limit. The Super Admin changes it at runtime: `PATCH /admin/settings/` `{"citizen_posts_per_day"}` (0 to 1000), stored over this default. |

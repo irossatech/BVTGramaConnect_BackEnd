@@ -6,3 +6,6 @@ class CitizensConfig(AppConfig):
     name = "apps.citizens"
     label = "citizens"
     verbose_name = "Citizen posts"
+
+    def ready(self):
+        from apps.citizens import checks  # noqa: F401 - registers the system checks

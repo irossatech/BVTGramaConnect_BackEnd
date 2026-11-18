@@ -278,20 +278,17 @@ Its own panel site and Unix user, its own MySQL database, its own port: nothing 
    address means the panel does not pass the real one: stop and fix that before launch.
 8. `bash BVT-backup.sh --install`.
 
-9. **Citizen posting from the website's APK.** `.env` carries the owner's decision of 2026-11-04,
-   `CITIZEN_INTEGRITY_REQUIRED=False`: citizens may post from the website's APK until the app is on
-   Google Play. Only a newly written `.env` gets this line; an older or hand-edited one may lack it,
-   and then the check is on and every website install gets `403 integrity_failed`. Check it on
-   every release, not only the first (the deploy prints a warning when the line is missing):
+9. **Citizen posting from the website's APK.** Owner's decision of 2026-11-04: citizens may post
+   from the website's APK until the app is on Google Play, so Play Integrity is off
+   (`CITIZEN_INTEGRITY_REQUIRED`, off by default since 2026-11-18, with or without the line in
+   `.env`). Every deploy's `manage.py check` prints warning `citizens.W001` while it is off; that is
+   expected until then and never stops the deploy. To see the running value:
    ```
-   grep CITIZEN_INTEGRITY_REQUIRED .env
    .venv/bin/python manage.py shell -c "from django.conf import settings; print(settings.CITIZEN_INTEGRITY_REQUIRED)"
    ```
-   The second line must print `False`. If `.env` says `False` but it prints `True`, the process was
-   not restarted (`bash BVT-stop.sh` then `bash BVT-start.sh`) or runs from another folder.
-   On the day the app is on Google Play: set `CITIZEN_INTEGRITY_REQUIRED=True` (explicitly, which
-   also silences the warning), add Google Play's signing key to `ANDROID_CERT_SHA256`, and restart.
-   That refuses website installs again, so the owner decides first.
+   On the day the app is on Google Play (the owner decides first, because it refuses website
+   installs again): add Google Play's app-signing key to `ANDROID_CERT_SHA256`, write
+   `CITIZEN_INTEGRITY_REQUIRED=True` in `.env`, and restart (`bash BVT-stop.sh`, `bash BVT-start.sh`).
 
 ## Stopping for good
 
