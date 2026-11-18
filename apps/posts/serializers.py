@@ -302,6 +302,8 @@ class PostWriteSerializer(serializers.Serializer):
     event = EventSerializer(required=False, allow_null=True, default=None)
     is_urgent = serializers.BooleanField(default=False)
     submit = serializers.BooleanField(default=True)
+    #: The app's random UUID for this post, the same on a repeat after a lost answer (MOB-ERR-004).
+    client_ref = serializers.UUIDField(required=False)
 
     def validate(self, attrs):
         if not self.partial and not attrs.get("targets") and not attrs.get("target"):
@@ -323,6 +325,7 @@ class PostWriteSerializer(serializers.Serializer):
 
 class PostUpdateSerializer(PostWriteSerializer):
     submit = None
+    client_ref = None  # set once, on create
     event = EventSerializer(required=False, allow_null=True)
     is_urgent = serializers.BooleanField(required=False)
 

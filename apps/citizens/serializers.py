@@ -125,6 +125,8 @@ class CitizenPostWriteSerializer(serializers.Serializer):
     #: Who sees it, as a JSON string in the form: '[{"level": "DISTRICT", "id": 16}, …]'. Missing:
     #: the phone's village. Checked and cleaned in posts.services (owner decision of 2026-10-28).
     targets = serializers.JSONField(required=False)
+    #: The app's random UUID for this post, the same on a repeat after a lost answer (MOB-ERR-004).
+    client_ref = serializers.UUIDField(required=False)
 
     def validate_targets(self, value):
         if isinstance(value, str):

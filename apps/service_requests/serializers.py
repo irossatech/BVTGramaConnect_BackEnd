@@ -85,6 +85,8 @@ class CitizenServiceRequestWriteSerializer(serializers.Serializer):
     address = serializers.CharField(max_length=300, error_messages={"required": "Enter your address.",
                                                                     "blank": "Enter your address."})
     details = serializers.CharField(max_length=500, required=False, allow_blank=True, default="")
+    #: The app's random UUID for this request, the same on a repeat after a lost answer (MOB-ERR-004).
+    client_ref = serializers.UUIDField(required=False)
 
     def validate_name(self, value):
         value = " ".join(value.split())
