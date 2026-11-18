@@ -52,8 +52,9 @@ def test_sync_recreates_missing_groups(db):
     Group.objects.filter(name="Panchayat Member").delete()
     changes = sync_role_permissions()
     assert "PANCHAYAT_MEMBER: created group 'Panchayat Member'" in changes
-    # create, submit, view_stats, manage_contact (contacts decision C1) and view_service_requests
-    assert RoleGroup.objects.get(key="PANCHAYAT_MEMBER").group.permissions.count() == 5
+    # create, submit, view_stats, manage_contact (contacts decision C1), view_service_requests and
+    # takedown_post (owner's rule of 2026-11-17)
+    assert RoleGroup.objects.get(key="PANCHAYAT_MEMBER").group.permissions.count() == 6
 
 
 def test_command_reports_audits_once_and_checks(db):

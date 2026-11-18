@@ -156,9 +156,11 @@ def post_at(world, area_key: str, status: str, *, author: str = "pm_nidamanuru",
     )
 
 
-def citizen_post_at(world, village_key: str) -> Post:
-    """A pending citizen post (contract section 15) in that village, from a fresh phone."""
+def citizen_post_at(world, village_key: str, status: str = PostStatus.PENDING) -> Post:
+    """A citizen post (contract section 15) in that village, from a fresh phone; pending unless told."""
     village = world.ref(village_key)
+    now = timezone.now()
+    published = status == PostStatus.PUBLISHED
     phone = CitizenDevice.objects.create(
         token_hash=uuid.uuid4().hex, platform="android", village_id=village.id, nonce=uuid.uuid4().hex
     )
@@ -172,8 +174,10 @@ def citizen_post_at(world, village_key: str) -> Post:
         body="Probe text.",
         target_level=village.level,
         target_area_id=village.id,
-        status=PostStatus.PENDING,
-        submitted_at=timezone.now(),
+        status=status,
+        submitted_at=now,
+        published_at=now if published else None,
+        decided_at=now if published else None,
     )
 
 
@@ -230,7 +234,9 @@ def probe(world, client, actor: User, perm: str, area_key: str | None) -> bool:
     if perm == "posts.discard_post":
         return outcome(review(client, post_at(world, area_key, PostStatus.PENDING), "discard"))
     if perm == "posts.takedown_post":
-        return outcome(review(client, post_at(world, area_key, PostStatus.PUBLISHED), "unpublish"))
+        # A citizen post: every holder may take those down in its area (owner's rule of 2026-11-17), so
+        # this probes permission and area only. Whose posts each role may take down: posts/tests/test_transitions.py.
+        return outcome(review(client, citizen_post_at(world, area_key, PostStatus.PUBLISHED), "unpublish"))
     if perm == "posts.reverse_decision":
         decided = post_at(world, area_key, PostStatus.DISCARDED, decided_by_role="PANCHAYAT_MEMBER")
         return outcome(review(client, decided, "reverse", to_status="PUBLISHED"))

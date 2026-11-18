@@ -64,6 +64,9 @@ def expected_permissions(key: str, super_admin_can_post: bool = False) -> set[st
     perms |= {"service_requests.view_service_requests"}
     if key != "PANCHAYAT_MEMBER":
         perms |= REVIEW | USER_ACTIONS | {"service_requests.manage_service_requests"}
+    else:
+        # Owner's rule of 2026-11-17: Panchayat members take down citizen posts and their own; no other review.
+        perms |= {"posts.takedown_post"}
     if key != "SUPER_ADMIN" or super_admin_can_post:
         perms |= {"posts.create_post", "posts.submit_post"}
     if key == "SUPER_ADMIN":

@@ -63,16 +63,30 @@ def test_read_queue_and_publish(api, world, pending, case, actor):
 
 @pytest.mark.parametrize("actor", ACTORS)
 def test_take_down_matrix(api, world, make_post, actor):
+    # Post is by a Village Admin (rank 3). Rule of 2026-11-17:
+    #   Super Admin → any post.
+    #   Author → own post.
+    #   Dist/Mandal Admin in area → 403 (cannot take down a Village Admin post).
+    #   Panchayat member → 404 (admin post is not visible to them).
+    #   Anyone outside the area → 404.
     post = make_post("va_kolakaluru", "kolakaluru")  # auto-published
     response = api(world.users[actor]).post(
         f"/api/v1/posts/{post.id}/review/", {"action": "unpublish", "comment": "తప్పు"}, format="json"
     )
-    if reviews(actor, "kolakaluru"):
+    role, area = OFFICIALS[actor]
+    is_author = actor == "va_kolakaluru"
+    is_super = role == Role.SUPER_ADMIN
+    in_area = inside("kolakaluru", area) or is_super
+    is_panchayat = role == Role.PANCHAYAT_MEMBER
+
+    if is_super or is_author:
         assert response.status_code == 200
-    elif actor == "va_kolakaluru":
-        assert response.status_code == 200
-    elif OFFICIALS[actor][0] in REVIEWERS:
-        assert response.status_code == 404  # outside the area: not even visible
+    elif is_panchayat:
+        # Admin posts are not visible to Panchayat members.
+        assert response.status_code == 404
+    elif in_area:
+        # District/Mandal Admin in the area: can see the post but rank rule blocks the take-down.
+        assert response.status_code == 403
     else:
         assert response.status_code == 404
 

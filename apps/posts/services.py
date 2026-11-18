@@ -42,6 +42,7 @@ from rest_framework import status as http
 
 from apps.accounts import authz
 from apps.accounts.authz import Grant
+from apps.accounts.roles import Role
 from apps.audit.services import record
 from apps.geography.areas import DEPTH, AreaRef, ancestries, within_q
 from apps.geography.models import MODEL_BY_LEVEL, AreaLevel
@@ -200,8 +201,12 @@ def review_scope_q(user, perm: str = REVIEW) -> Exists:
 
 
 def visible_posts(user) -> QuerySet:
-    """Own posts, plus every non-draft post inside the areas where the user holds review_post."""
-    scope = Q(author=user) | (review_scope_q(user) & ~Q(status=PostStatus.DRAFT))
+    """Own posts, every non-draft post inside the areas where the user holds review_post, and published
+    citizen posts where they may take posts down (Panchayat members, owner 2026-11-17)."""
+    takedown = review_scope_q(user, DECISION_PERMISSION["unpublish"]) & Q(
+        citizen__isnull=False, status=PostStatus.PUBLISHED
+    )
+    scope = Q(author=user) | (review_scope_q(user) & ~Q(status=PostStatus.DRAFT)) | takedown
     return Post.objects.filter(scope)
 
 
@@ -223,12 +228,37 @@ def can_reverse(user, reviewer: Grant | None, post: Post) -> bool:
     """A decided post can be reversed by a group ranked strictly above the one that decided it."""
     if reviewer is None or post.status not in DECIDED:
         return False
+    # A published post is effectively a take-down by another route; apply the same rank rule.
+    if post.status == PostStatus.PUBLISHED and not may_take_down(user, reviewer, post):
+        return False
     if not settings.REVIEW_FIRST_DECISION_WINS:
         return True
     decided_rank = _rank(user, post.decided_by_role)
     if decided_rank is None:
         return reviewer.platform_wide
     return reviewer.rank < decided_rank
+
+
+def may_take_down(user, reviewer: Grant | None, post: Post) -> bool:
+    """Owner rule of 2026-11-17. Super Admin: any post. District/Mandal/Village Admin: citizen posts,
+    Panchayat members' posts and their own. Panchayat member: citizen posts and their own."""
+    if reviewer is None:
+        return False
+    if reviewer.platform_wide or post.citizen_id is not None or post.author_id == user.id:
+        return True
+    return reviewer.key != Role.PANCHAYAT_MEMBER and post.posted_as_role == Role.PANCHAYAT_MEMBER
+
+
+def takedown_grant(user, post: Post) -> Grant | None:
+    """The grant to use for a take-down decision.
+
+    For own posts posted outside the user's area, fall back to the best grant the user holds
+    anywhere, so a Panchayat member can still take down their own post even if it targets another
+    district (owner decision of 2026-11-17).
+    """
+    perm = DECISION_PERMISSION["unpublish"]
+    grant = reviewer_assignment(user, post, perm)
+    return grant if grant is not None or post.author_id != user.id else authz.best_grant(user, perm)
 
 
 def allowed_actions(user, post: Post, *, citizen_blocked: bool | None = None) -> list[str]:
@@ -247,7 +277,7 @@ def allowed_actions(user, post: Post, *, citizen_blocked: bool | None = None) ->
         # A citizen cannot edit a post, so it is never sent back for recheck (contract section 15).
         decisions = ("publish", "discard") if post.citizen_id else ("publish", "recheck", "discard")
         actions += [name for name in decisions if on_post(DECISION_PERMISSION[name])]
-    if post.status == PostStatus.PUBLISHED and on_post(DECISION_PERMISSION["unpublish"]):
+    if post.status == PostStatus.PUBLISHED and may_take_down(user, takedown_grant(user, post), post):
         actions.append("unpublish")
     if can_reverse(user, reviewer_assignment(user, post, DECISION_PERMISSION["reverse"]), post):
         actions.append("reverse")
@@ -645,7 +675,7 @@ VERBS = {"publish": "published", "recheck": "sent for recheck", "discard": "disc
 def review(user, post: Post, action: str, comment: str = "", to_status: str | None = None) -> Post:
     comment = (comment or "").strip()
     perm = DECISION_PERMISSION.get(action, REVIEW)
-    reviewer = reviewer_assignment(user, post, perm)
+    reviewer = takedown_grant(user, post) if action == "unpublish" else reviewer_assignment(user, post, perm)
     if reviewer is None:
         if authz.can(user, perm):
             raise out_of_area(_("This post is outside your area."))
@@ -663,6 +693,8 @@ def review(user, post: Post, action: str, comment: str = "", to_status: str | No
         raise comment_required()
     if from_status == PostStatus.PENDING and post.author_id == user.id:
         raise permission_denied(_("You cannot review your own post."))
+    if action == "unpublish" and not may_take_down(user, reviewer, post):
+        raise permission_denied(_("You cannot take down this post."))
 
     now = timezone.now()
     values = {

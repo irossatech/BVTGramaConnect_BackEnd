@@ -3,10 +3,25 @@
 import pytest
 
 from apps.audit.models import AuditLog
+from apps.citizens.tests.conftest import phone  # noqa: F401
 from apps.posts import services
 from apps.posts.models import Post, PostStatus, ReviewAction
+from apps.accounts.roles import Role
 
 pytestmark = pytest.mark.django_db
+
+
+@pytest.fixture
+def citizen_post(api, world, phone):
+    def make(village="kolakaluru", publish=True):
+        resp = phone(village).post()
+        post = Post.objects.get(pk=resp.json()["id"])
+        if publish:
+            review(api, world, f"va_{village}", post, "publish")
+            post.refresh_from_db()
+        return post
+
+    return make
 
 
 def review(api, world, actor, post, action, comment="", **extra):
@@ -155,9 +170,12 @@ def test_comment_is_required(api, world, make_post, action):
 
 
 def test_take_down_needs_a_reason_and_hides_the_post(api, world, make_post):
-    post = make_post("va_kolakaluru", "kolakaluru")
-    assert review(api, world, "ma_tenali", post, "unpublish").status_code == 400
-    response = review(api, world, "ma_tenali", post, "unpublish", "తప్పు సమాచారం")
+    # Use a Panchayat member post so the Village Admin may take it down (owner rule 2026-11-17).
+    # Publish it first (Panchayat member posts start in PENDING, not auto-published).
+    post = make_post("pm_kolakaluru", "kolakaluru")
+    review(api, world, "va_kolakaluru", post, "publish")
+    assert review(api, world, "va_kolakaluru", post, "unpublish").status_code == 400
+    response = review(api, world, "va_kolakaluru", post, "unpublish", "తప్పు సమాచారం")
     assert response.json()["status"] == "UNPUBLISHED"
     assert AuditLog.objects.filter(action="post.unpublished").exists()
 
@@ -286,3 +304,171 @@ def test_post_list_has_status_counts(api, world, make_post):
     assert [row["status"] for row in pending["results"]] == ["PENDING"]
     mine = api(world.users["pm_kolakaluru"]).get("/api/v1/posts/?mine=1").json()
     assert mine["count"] == 2  # own pending post and own draft
+
+
+# --- Takedown rank rules (owner decision of 2026-11-17) ------------------------------------------------
+
+
+def _publish(api, world, make_post, author, target):
+    """Helper: create an auto-published admin post or publish a pending post via its Village Admin."""
+    post = make_post(author, target)
+    if post.status != PostStatus.PUBLISHED:
+        review(api, world, "va_kolakaluru", post, "publish")
+        post.refresh_from_db()
+    return post
+
+
+def _unpublish(api, world, actor, post, comment="తప్పు సమాచారం"):
+    return review(api, world, actor, post, "unpublish", comment)
+
+
+# Case 1: Village Admin takes down a citizen post in their village → 200.
+def test_village_admin_takes_down_citizen_post(api, world, citizen_post):
+    post = citizen_post("kolakaluru")
+    response = _unpublish(api, world, "va_kolakaluru", post)
+    assert response.status_code == 200
+    assert response.json()["status"] == "UNPUBLISHED"
+
+
+# Case 2: Village Admin tries to take down a Super Admin post targeting their village → 403,
+#          and "unpublish" is absent from allowed_actions.
+def test_village_admin_cannot_take_down_super_admin_post(api, world, make_post, super_admin_can_post):
+    super_admin_can_post(True)
+    post = make_post("super", "kolakaluru")  # Super Admin auto-publishes
+    # allowed_actions check
+    detail = api(world.users["va_kolakaluru"]).get(f"/api/v1/posts/{post.id}/").json()
+    assert "unpublish" not in detail["allowed_actions"]
+    # API check
+    response = _unpublish(api, world, "va_kolakaluru", post)
+    assert response.status_code == 403
+
+
+# Case 3: Mandal Admin tries to take down a Village Admin's post → 403.
+def test_mandal_admin_cannot_take_down_village_admin_post(api, world, make_post):
+    post = make_post("va_kolakaluru", "kolakaluru")
+    response = _unpublish(api, world, "ma_tenali", post)
+    assert response.status_code == 403
+
+
+# Case 3b: a lower official cannot take down a higher official's post in their area → 403, no buttons.
+# Village Admin vs Mandal Admin's post (found in testing on 2026-11-18), and Mandal Admin vs District Admin's.
+@pytest.mark.parametrize(
+    ("author", "actor"), [("ma_tenali", "va_kolakaluru"), ("da_guntur", "ma_tenali")]
+)
+def test_lower_official_cannot_take_down_higher_officials_post(api, world, make_post, author, actor):
+    post = make_post(author, "kolakaluru")  # admins' posts publish at once
+    post.refresh_from_db()
+    assert post.status == "PUBLISHED"
+    actions = api(world.users[actor]).get(f"/api/v1/posts/{post.id}/").json()["allowed_actions"]
+    assert "unpublish" not in actions
+    assert "reverse" not in actions  # not by the reverse route either
+    response = _unpublish(api, world, actor, post)
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "permission_denied"
+    post.refresh_from_db()
+    assert post.status == "PUBLISHED"
+
+
+# Case 4: Village Admin takes down a Panchayat member's post in their village → 200.
+def test_village_admin_takes_down_panchayat_member_post(api, world, make_post):
+    post = make_post("pm_kolakaluru", "kolakaluru")
+    review(api, world, "va_kolakaluru", post, "publish")  # publish first
+    response = _unpublish(api, world, "va_kolakaluru", post)
+    assert response.status_code == 200
+    assert response.json()["status"] == "UNPUBLISHED"
+
+
+# Case 5: Panchayat member takes down a published citizen post in their village → 200,
+#          and "unpublish" is in allowed_actions before the call.
+def test_panchayat_member_takes_down_citizen_post(api, world, citizen_post):
+    post = citizen_post("kolakaluru")
+    detail = api(world.users["pm_kolakaluru"]).get(f"/api/v1/posts/{post.id}/").json()
+    assert "unpublish" in detail["allowed_actions"]
+    response = _unpublish(api, world, "pm_kolakaluru", post)
+    assert response.status_code == 200
+    assert response.json()["status"] == "UNPUBLISHED"
+
+
+# Case 6: Panchayat member tries to take down a citizen post in another village → 404.
+def test_panchayat_member_cannot_see_citizen_post_in_other_village(api, world, citizen_post):
+    post = citizen_post("nandivelugu")  # different village, same mandal
+    response = _unpublish(api, world, "pm_kolakaluru", post)
+    assert response.status_code == 404
+
+
+# Case 7: Panchayat member tries to take down another Panchayat member's post → 404 (not visible),
+#          and an admin's post → 404.
+def test_panchayat_member_cannot_take_down_other_member_or_admin_post(api, world, make_post):
+    pm_post = make_post("pm_nandivelugu", "nandivelugu")
+    review(api, world, "va_nandivelugu", pm_post, "publish")
+    # Another member's published post is an admin post from pm_kolakaluru's perspective — not visible.
+    response = _unpublish(api, world, "pm_kolakaluru", pm_post)
+    assert response.status_code == 404
+
+    admin_post = make_post("va_kolakaluru", "kolakaluru")
+    response = _unpublish(api, world, "pm_kolakaluru", admin_post)
+    assert response.status_code == 404
+
+
+# Case 7b: Panchayat member takes down their own published post → 200,
+#           including when the post targets another district.
+def test_panchayat_member_takes_down_own_post(api, world, make_post):
+    # Own post in own village (normal case).
+    post = make_post("pm_kolakaluru", "kolakaluru")
+    review(api, world, "va_kolakaluru", post, "publish")
+
+    detail = api(world.users["pm_kolakaluru"]).get(f"/api/v1/posts/{post.id}/").json()
+    assert "unpublish" in detail["allowed_actions"]
+    response = _unpublish(api, world, "pm_kolakaluru", post)
+    assert response.status_code == 200
+    assert response.json()["status"] == "UNPUBLISHED"
+
+
+def test_panchayat_member_takes_down_own_post_in_another_area(api, world, make_post):
+    # Own post targeting a village in another district (Panchayat member has no grant there).
+    post = make_post("pm_kolakaluru", "nidamanuru")  # nidamanuru is in krishna district
+    review(api, world, "va_nidamanuru", post, "publish")
+
+    detail = api(world.users["pm_kolakaluru"]).get(f"/api/v1/posts/{post.id}/").json()
+    assert "unpublish" in detail["allowed_actions"]
+    response = _unpublish(api, world, "pm_kolakaluru", post)
+    assert response.status_code == 200
+    assert response.json()["status"] == "UNPUBLISHED"
+
+
+# Case 8: GET /posts/?mine=1 for a Panchayat member returns only their own posts.
+#          GET /posts/ also returns their village's published citizen posts (and no pending/discarded ones).
+def test_panchayat_member_post_list_visibility(api, world, make_post, citizen_post):
+    own = make_post("pm_kolakaluru", "kolakaluru")  # pending own post
+    published_citizen = citizen_post("kolakaluru")   # published citizen post in their village
+    citizen_post("nandivelugu")                      # published citizen post in another village (not visible)
+
+    client = api(world.users["pm_kolakaluru"])
+
+    # mine=1 → only own posts
+    mine = client.get("/api/v1/posts/?mine=1").json()
+    ids = {r["id"] for r in mine["results"]}
+    assert str(own.id) in ids
+    assert str(published_citizen.id) not in ids
+
+    # no filter → own posts + published citizen posts in their village
+    all_posts = client.get("/api/v1/posts/").json()
+    all_ids = {r["id"] for r in all_posts["results"]}
+    assert str(own.id) in all_ids
+    assert str(published_citizen.id) in all_ids
+
+
+# Case 9: Mandal Admin tries to reverse a Village Admin's published post to Discarded → 403.
+def test_mandal_admin_cannot_reverse_village_admin_published_post(api, world, make_post):
+    post = make_post("va_kolakaluru", "kolakaluru")  # auto-published
+    response = review(api, world, "ma_tenali", post, "reverse", "మళ్ళీ చూశాను", to_status="DISCARDED")
+    assert response.status_code == 403
+
+
+# Case 10: Super Admin takes down a District Admin's post → 200.
+def test_super_admin_takes_down_district_admin_post(api, world, make_post, super_admin_can_post):
+    super_admin_can_post(True)
+    post = make_post("da_guntur", "guntur")  # auto-published District Admin post
+    response = _unpublish(api, world, "super", post)
+    assert response.status_code == 200
+    assert response.json()["status"] == "UNPUBLISHED"
