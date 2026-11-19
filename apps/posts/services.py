@@ -550,17 +550,13 @@ def create_citizen_post(device, data: PostInput, attach=None, client_ref=None) -
     `device` is the citizens.CitizenDevice that wrote it; the caller has checked its token,
     block and daily limit. `attach(post)` stores the photos inside the same transaction, so
     reviewers are alerted (post_submitted, after commit) only once the photos exist.
-    The post is for the areas the citizen chose, else the phone's village; it is always
-    posted from the phone's village. CITIZEN_MAX_TARGETS and CITIZEN_CAN_TARGET_STATE narrow
-    what a citizen may choose. `client_ref` is saved on the post; the caller (citizens.services)
-    looks for a repeat first.
+    The post is for the phone's village only, and is posted from it (owner's decision of
+    2026-11-19: citizens no longer choose areas, so they cannot post into other villages). Any areas
+    in `data` are ignored. `client_ref` is saved on the post; the caller (citizens.services) looks
+    for a repeat first.
     """
     home = AreaRef(AreaLevel.VILLAGE, device.village_id)
-    targets = clean_targets(
-        data.areas() or [home],
-        max_targets=settings.CITIZEN_MAX_TARGETS or None,
-        allow_state=settings.CITIZEN_CAN_TARGET_STATE,
-    )
+    targets = clean_targets([home])
     now = timezone.now()
     with transaction.atomic():
         post = Post.objects.create(

@@ -351,7 +351,7 @@ def posts_today(device: CitizenDevice, now=None):
 
 
 def create_post(
-    device: CitizenDevice, *, category, language: str, title: str, body: str, photos=(), videos=(), targets=None,
+    device: CitizenDevice, *, category, language: str, title: str, body: str, photos=(), videos=(),
     client_ref=None,
 ) -> Post:
     """Checks, then posts.services.create_citizen_post with the photos and videos attached in its transaction.
@@ -402,7 +402,7 @@ def create_post(
 
     data = post_services.PostInput(
         category=category, language=language, title=title, body=body,
-        target=AreaRef(AreaLevel.VILLAGE, device.village_id), targets=targets,
+        target=AreaRef(AreaLevel.VILLAGE, device.village_id),
     )
     # The files are written inside the post's transaction; if it fails, they are deleted again.
     try:
