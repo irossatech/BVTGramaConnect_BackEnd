@@ -82,25 +82,34 @@ def _moment(day: date, end: bool = False):
     return timezone.make_aware(datetime.combine(day, time.max if end else time.min))
 
 
-def audit_window(params) -> tuple[date, date | None]:
-    """The first and last day shown (the last is None: up to now). Contract section 8, "Which days are shown".
+def audit_window(params) -> tuple[date | None, date | None]:
+    """The first and last day shown (None: no limit that side). Contract section 8, "Which days are shown".
 
-    No dates: the last AUDIT_DEFAULT_DAYS. Dates: as asked, but never before the AUDIT_VISIBLE_DAYS limit;
-    older entries stay in the database and no screen shows them (owner decision of 2026-11-11).
+    Lead's decision of 2026-11-19 (replaces the 180-day limit of 2026-11-11): no dates, the last
+    AUDIT_DEFAULT_DAYS (180), in pages; with dates (a range or a month), exactly those days, however old,
+    fetched from the database. The audit log is never cleaned, so every entry stays reachable.
     """
-    today = timezone.localdate()
-    earliest = today - timedelta(days=settings.AUDIT_VISIBLE_DAYS)
     start = _date(params["from"], "from") if params.get("from") else None
     end = _date(params["to"], "to") if params.get("to") else None
     if start is None and end is None:
-        start = today - timedelta(days=settings.AUDIT_DEFAULT_DAYS)
-    return max(start or earliest, earliest), end
+        start = timezone.localdate() - timedelta(days=settings.AUDIT_DEFAULT_DAYS)
+    return start, end
+
+
+def window_shown(start: date | None, end: date | None) -> dict:
+    """The answer's "window": the days actually covered. Only `to` given: from the oldest entry."""
+    if start is None:
+        first = AuditLog.objects.order_by("created_at").values_list("created_at", flat=True).first()
+        start = timezone.localdate(first) if first else (end or timezone.localdate())
+    return {"from": start.isoformat(), "to": (end or timezone.localdate()).isoformat()}
 
 
 def filtered(request, *, with_type: bool = True):
     params = request.query_params
     start, end = audit_window(params)
-    queryset = AuditLog.objects.filter(created_at__gte=_moment(start))
+    queryset = AuditLog.objects.all()
+    if start is not None:
+        queryset = queryset.filter(created_at__gte=_moment(start))
     if end is not None:
         queryset = queryset.filter(created_at__lte=_moment(end, end=True))
     query = params.get("q", "").strip()
@@ -173,8 +182,7 @@ class AuditListView(generics.ListAPIView):
         by_type = {t.value: 0 for t in AuditType}
         by_type.update(found)
         response.data["counts_by_type"] = by_type
-        start, end = audit_window(request.query_params)
-        response.data["window"] = {"from": start.isoformat(), "to": (end or timezone.localdate()).isoformat()}
+        response.data["window"] = window_shown(*audit_window(request.query_params))
         return response
 
 

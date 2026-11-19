@@ -1,12 +1,13 @@
-"""Which days the audit screens show (owner decision of 2026-11-11; contract section 8).
+"""Which days the audit screens show (lead's decision of 2026-11-19; contract section 8).
 
-Without dates: the last 90 days. With dates: as asked, never further back than 180 days. The same for
-the list, its counts and the export. Older entries stay in the database. Exports over the row limit
-answer 400 instead of a cut file. Expected values are worked out here from those rules.
+Without dates: the last 180 days, in pages. With dates (a range, or a month as its first and last day):
+exactly those days, however old, from the database. The same for the list, its counts and the export.
+Exports over the row limit answer 400 instead of a cut file. Expected values are worked out here from
+those rules. (Before 2026-11-19: 90 days by default and never more than 180 days back.)
 """
 
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import pytest
 from django.utils import timezone
@@ -25,13 +26,13 @@ def entry_days_ago(world, days, label):
 
 @pytest.fixture
 def aged(world):
-    """One entry each: 10, 89, 91 and 200 days old."""
-    for days in (10, 89, 91, 200):
+    """One entry each: 10, 89, 170, 200 and 400 days old."""
+    for days in (10, 89, 170, 200, 400):
         entry_days_ago(world, days, f"d{days}")
 
 
 def labels(data):
-    return sorted(row["target_label"] for row in data["results"])
+    return sorted(row["target_label"] for row in data["results"] if row["target_label"].startswith("d"))
 
 
 def day(days_ago):
@@ -44,64 +45,69 @@ def get(api, world, query=""):
     return response.json()
 
 
-def test_without_dates_the_last_90_days(api, world, aged):
+def test_without_dates_the_last_180_days(api, world, aged):
     data = get(api, world)
-    assert labels(data) == ["d10", "d89"]
-    assert data["count"] == 2 and data["counts_by_type"]["users"] == 2
-    assert data["window"] == {"from": day(90), "to": day(0)}
+    assert labels(data) == ["d10", "d170", "d89"]
+    assert data["counts_by_type"]["users"] == 3
+    assert data["window"] == {"from": day(180), "to": day(0)}
 
 
 @pytest.mark.parametrize(
     "query, expected, window_from, window_to",
     [
-        (f"?from={day(100)}", ["d10", "d89", "d91"], 100, 0),
-        (f"?from={day(400)}", ["d10", "d89", "d91"], 180, 0),  # never before the 180-day limit
-        (f"?to={day(50)}", ["d89", "d91"], 180, 50),  # only `to`: from the limit
-        (f"?from={day(95)}&to={day(85)}", ["d89", "d91"], 95, 85),
-        (f"?from={day(300)}&to={day(190)}", [], 180, 190),  # wholly before the limit: nothing
+        (f"?from={day(100)}", ["d10", "d89"], 100, 0),
+        (f"?from={day(450)}", ["d10", "d170", "d200", "d400", "d89"], 450, 0),  # older than 180 days too
+        (f"?from={day(300)}&to={day(190)}", ["d200"], 300, 190),  # wholly older than 180 days
+        (f"?from={day(175)}&to={day(165)}", ["d170"], 175, 165),
+        (f"?to={day(150)}", ["d170", "d200", "d400"], 400, 150),  # only `to`: from the oldest entry
     ],
 )
-def test_chosen_dates_never_go_past_six_months(api, world, aged, query, expected, window_from, window_to):
+def test_chosen_dates_reach_any_old_entry(api, world, aged, query, expected, window_from, window_to):
     data = get(api, world, query)
     assert labels(data) == expected
-    assert data["count"] == len(expected)
     assert data["window"] == {"from": day(window_from), "to": day(window_to)}
 
 
-def test_older_entries_stay_in_the_database(api, world, aged):
-    get(api, world, f"?from={day(400)}")
-    assert AuditLog.objects.filter(target_label="d200").exists()
+def test_a_month_is_its_first_and_last_day(api, world):
+    """The console's month picker sends a month as from = the 1st, to = the last day."""
+    inside = record("user.blocked", actor=world.users["da_guntur"], target_label="d-march")
+    outside = record("user.blocked", actor=world.users["da_guntur"], target_label="d-april")
+    tz = timezone.get_current_timezone()
+    AuditLog.objects.filter(pk=inside.pk).update(created_at=timezone.make_aware(datetime(2025, 3, 31, 23, 30), tz))
+    AuditLog.objects.filter(pk=outside.pk).update(created_at=timezone.make_aware(datetime(2025, 4, 1, 0, 30), tz))
+    assert labels(get(api, world, "?from=2025-03-01&to=2025-03-31")) == ["d-march"]
+    assert labels(get(api, world, "?from=2025-04-01&to=2025-04-30")) == ["d-april"]
 
 
 def test_search_works_inside_the_window(api, world, aged):
-    assert labels(get(api, world, "?q=d9")) == []  # d91 is older than 90 days
-    assert labels(get(api, world, f"?q=d9&from={day(120)}")) == ["d91"]
+    assert labels(get(api, world, "?q=d2")) == []  # d200 is older than the default 180 days
+    assert labels(get(api, world, f"?q=d2&from={day(250)}")) == ["d200"]
 
 
 def export_labels(response):
     """Targets of the user.blocked rows (an earlier export's own report.exported row is left out)."""
     rows = [line.split(",") for line in response.content.decode("utf-8").splitlines()[1:]]
-    return sorted(row[5] for row in rows if row[3] == "user.blocked")
+    return sorted(row[5] for row in rows if row[3] == "user.blocked" and row[5].startswith("d"))
 
 
 def test_export_follows_the_same_days(api, world, aged):
     client = api(world.users["super"])
-    assert export_labels(client.get("/api/v1/audit/export/?format=csv")) == ["d10", "d89"]
-    old = client.get(f"/api/v1/audit/export/?format=csv&from={day(400)}")
-    assert export_labels(old) == ["d10", "d89", "d91"]
+    assert export_labels(client.get("/api/v1/audit/export/?format=csv")) == ["d10", "d170", "d89"]
+    old = client.get(f"/api/v1/audit/export/?format=csv&from={day(450)}&to={day(190)}")
+    assert export_labels(old) == ["d200", "d400"]
 
 
 def test_too_big_an_export_is_refused_and_not_audited(api, world, aged, settings):
     settings.AUDIT_EXPORT_MAX_ROWS = 1
-    response = api(world.users["super"]).get("/api/v1/audit/export/?format=csv")
+    response = api(world.users["super"]).get(f"/api/v1/audit/export/?format=csv&from={day(450)}")
     assert response.status_code == 400
     error = json.loads(response.content)["error"]  # JSON text even when ?format=csv chose the CSV renderer
     assert error["code"] == "validation_error"
     assert "shorter date range" in error["message"] and set(error["fields"]) == {"from", "to"}
     assert not AuditLog.objects.filter(action="report.exported").exists()
 
-    settings.AUDIT_EXPORT_MAX_ROWS = 2  # exactly the two rows of the default 90 days
-    assert api(world.users["super"]).get("/api/v1/audit/export/?format=csv").status_code == 200
+    settings.AUDIT_EXPORT_MAX_ROWS = 50000
+    assert api(world.users["super"]).get(f"/api/v1/audit/export/?format=csv&from={day(450)}").status_code == 200
     assert AuditLog.objects.filter(action="report.exported").count() == 1
 
 
