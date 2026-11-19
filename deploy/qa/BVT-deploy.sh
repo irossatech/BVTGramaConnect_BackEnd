@@ -53,6 +53,7 @@ main() {
   build_web "$WEB_DIR"
 
   step "Backend repo: $BACKEND_DIR ($branch)"
+  backup_before_pull "$branch"
   update_repo "$BACKEND_DIR" "$branch"
 
   step "Python packages"
@@ -74,7 +75,7 @@ main() {
     "$PYTHON" manage.py check --deploy --tag security --fail-level WARNING \
       || fail "Django's security check failed (above). Fix .env, then deploy again."
   fi
-  backup_before_migrating
+  check_migrations_backed_up
   "$PYTHON" manage.py migrate --noinput
   "$PYTHON" manage.py ensure_schedules
   # Shared posts' category pictures, Django admin and API docs styles: the panel's nginx serves
@@ -252,25 +253,50 @@ check_database_setting() {
   fi
 }
 
-# A backup with BVT-backup.sh right before migrating, when there are migrations to apply (audit
-# finding BE-DB-013): on MySQL a migration that fails part-way stays half applied, and the nightly
-# backup can be a day old. Skipped on a new, empty database. The backups go to their own folder
-# (newest 3 kept), so they never push the nightly ones out. BACKUP_BEFORE_DEPLOY=0 skips it.
-backup_before_migrating() {
+# A backup with BVT-backup.sh before new migrations run (audit finding BE-DB-013): on MySQL a
+# migration that fails part-way stays half applied, and the nightly backup can be a day old.
+# It is taken BEFORE the new code is pulled: BVT-backup.sh dumps through Django, so it must run with
+# the code that matches the database. The new code expects columns its migrations have not added
+# yet, and its dump fails (seen on qa on 2026-11-19: "Unknown column 'posts_post.client_ref'").
+# Skipped when the update brings no migrations, and on a new, empty database. The backups go to
+# their own folder (newest 3 kept), so they never push the nightly ones out.
+# BACKUP_BEFORE_DEPLOY=0 skips it.
+BACKUP_TAKEN=0
+backup_before_pull() {
+  local branch="$1" incoming applied
   [[ "${BACKUP_BEFORE_DEPLOY:-1}" == "1" ]] || { echo "Backup before migrating: off (BACKUP_BEFORE_DEPLOY=0)."; return 0; }
-  if "$PYTHON" manage.py migrate --check >/dev/null 2>&1; then
-    echo "No migrations to apply: no backup needed."
+  git -C "$BACKEND_DIR" fetch --quiet origin
+  incoming="$(git -C "$BACKEND_DIR" diff --name-only HEAD "origin/$branch" -- 'apps/*/migrations/*.py' | wc -l)"
+  if [[ "$incoming" == "0" ]]; then
+    echo "The update brings no migrations: no backup needed."
     return 0
   fi
-  local applied
-  applied="$("$PYTHON" manage.py showmigrations --list 2>/dev/null | grep -c '\[X\]' || true)"
+  if [[ ! -x "$PYTHON" || ! -f "$BACKEND_DIR/.env" ]]; then
+    echo "First deploy (no virtual environment or .env yet): no backup needed."
+    return 0
+  fi
+  applied="$(cd "$BACKEND_DIR" && "$PYTHON" manage.py showmigrations --list 2>/dev/null | grep -c '\[X\]' || true)"
   if [[ "$applied" == "0" ]]; then
     echo "A new, empty database: no backup needed."
     return 0
   fi
-  echo "Backing up before migrating."
-  BACKUP_ROOT="${BACKUP_BEFORE_DEPLOY_DIR:-$HOME/bvt-backups-before-deploy}" KEEP=3 bash "$QA_DIR/BVT-backup.sh" \
-    || fail "The backup before migrating failed (above); nothing was migrated. Fix it, or set BACKUP_BEFORE_DEPLOY=0 to deploy without one."
+  echo "The update brings $incoming migration file(s): backing up with the code now on the server first."
+  (cd "$BACKEND_DIR" && BACKUP_ROOT="${BACKUP_BEFORE_DEPLOY_DIR:-$HOME/bvt-backups-before-deploy}" KEEP=3 bash "$QA_DIR/BVT-backup.sh") \
+    || fail "The backup before the update failed (above); nothing was changed in the backend. Fix it, or set BACKUP_BEFORE_DEPLOY=0 to deploy without one."
+  BACKUP_TAKEN=1
+}
+
+# Right before migrate: migrations waiting without that backup means the code was pulled by an
+# earlier deploy that stopped (the database is behind the code), so no matching backup can be made now.
+check_migrations_backed_up() {
+  [[ "${BACKUP_BEFORE_DEPLOY:-1}" == "1" ]] || return 0
+  (( BACKUP_TAKEN )) && return 0
+  "$PYTHON" manage.py migrate --check >/dev/null 2>&1 && return 0
+  local applied newest
+  applied="$("$PYTHON" manage.py showmigrations --list 2>/dev/null | grep -c '\[X\]' || true)"
+  [[ "$applied" == "0" ]] && return 0
+  newest="$(ls -1d "$HOME"/bvt-backups/2*/ 2>/dev/null | sort | tail -n 1)"
+  fail "Migrations are waiting, but the code on the server is already newer than the database (an earlier deploy stopped), so a backup cannot be made with it. The newest nightly backup is: ${newest:-none found}. If that is recent enough, deploy again with BACKUP_BEFORE_DEPLOY=0."
 }
 
 # All on one line: git pull may replace this file while it runs, and bash reads scripts as it goes.
