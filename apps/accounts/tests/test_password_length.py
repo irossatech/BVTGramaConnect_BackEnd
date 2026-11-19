@@ -1,5 +1,6 @@
-"""Security gap G12 (owner decision of 2026-11-03): admins need passwords of at least 12 characters,
-Panchayat members at least 8. Expected lengths come from that rule here, not from the code under test."""
+"""Password length: at least 12 characters for every official, Panchayat members included (decision of
+2026-11-19; before, security gap G12 of 2026-11-03 asked 12 of admins and 8 of Panchayat members).
+Expected lengths come from that rule here, not from the code under test."""
 
 import pytest
 from rest_framework.test import APIClient
@@ -14,17 +15,17 @@ pytestmark = pytest.mark.django_db
 
 LOGIN = "/api/v1/auth/login/"
 CHANGE = "/api/v1/auth/password/change/"
-#: The owner's rule, written out.
+#: The rule, written out: the same 12 for every role.
 EXPECTED = {
     Role.SUPER_ADMIN: 12,
     Role.DISTRICT_ADMIN: 12,
     Role.MANDAL_ADMIN: 12,
     Role.VILLAGE_ADMIN: 12,
-    Role.PANCHAYAT_MEMBER: 8,
+    Role.PANCHAYAT_MEMBER: 12,
 }
 ELEVEN = "Gram-Sabha1"     # 11 characters, passes every other rule
 TWELVE = "Gram-Sabha12"    # 12
-NINE = "Gram-Sab1"         # 9
+NINE = "Gram-Sab1"         # 9: enough for members before 2026-11-19, not now
 
 
 def code(response):
@@ -37,9 +38,9 @@ def create(api, world, actor, role, area, password, username="new.official"):
     return api(world.users[actor]).post("/api/v1/users/", body, format="json")
 
 
-def test_every_role_group_holds_the_owners_length(world):
+def test_every_role_group_holds_the_same_length(world):
     assert {row.key: row.password_min_length for row in RoleGroup.objects.all()} == EXPECTED
-    # Generated temporary passwords must satisfy the longest one.
+    # Generated temporary passwords must satisfy it.
     assert len(generate_password()) >= max(EXPECTED.values())
 
 
@@ -52,36 +53,38 @@ def test_every_role_group_holds_the_owners_length(world):
         ("super", Role.DISTRICT_ADMIN, "guntur"),
     ],
 )
-def test_a_new_accounts_chosen_password_follows_its_role(api, world, actor, role, area):
-    short = ELEVEN if EXPECTED[role] == 12 else "Gra-Sa1"  # 7: below even the members' 8
-    refused = create(api, world, actor, role, area, short)
+def test_a_new_accounts_chosen_password_needs_twelve(api, world, actor, role, area):
+    refused = create(api, world, actor, role, area, ELEVEN)
     assert refused.status_code == 400 and "password" in refused.json()["error"]["fields"]
     assert not User.objects.filter(username="new.official").exists()
-    assert create(api, world, actor, role, area, TWELVE if EXPECTED[role] == 12 else NINE).status_code == 201
+    assert create(api, world, actor, role, area, TWELVE).status_code == 201
 
 
-def test_a_member_may_keep_a_short_password_an_admin_may_not(api, world):
-    assert create(api, world, "va_kolakaluru", Role.PANCHAYAT_MEMBER, "kolakaluru", NINE).status_code == 201
-    response = create(api, world, "ma_tenali", Role.VILLAGE_ADMIN, "kolakaluru", ELEVEN, username="new.admin")
-    assert response.status_code == 400 and "12" in response.json()["error"]["message"]
+def test_a_panchayat_member_needs_twelve_too(api, world):
+    for short in (NINE, ELEVEN):
+        response = create(api, world, "va_kolakaluru", Role.PANCHAYAT_MEMBER, "kolakaluru", short)
+        assert response.status_code == 400 and "12" in response.json()["error"]["message"]
+        # The message is for everyone now, not only "Admin accounts".
+        assert "Admin" not in response.json()["error"]["message"]
 
 
 @pytest.mark.parametrize("target, actor", [("pm_kolakaluru", "va_kolakaluru"), ("va_kolakaluru", "ma_tenali")])
-def test_a_reset_follows_the_targets_role(api, world, target, actor):
+def test_a_reset_needs_twelve_for_every_role(api, world, target, actor):
     url = f"/api/v1/users/{world.users[target].id}/reset-password/"
-    response = api(world.users[actor]).post(url, {"password": NINE}, format="json")
-    expected_ok = EXPECTED[Role.PANCHAYAT_MEMBER if target.startswith("pm_") else Role.VILLAGE_ADMIN] <= len(NINE)
-    assert response.status_code == (200 if expected_ok else 400)
+    assert api(world.users[actor]).post(url, {"password": ELEVEN}, format="json").status_code == 400
+    assert api(world.users[actor]).post(url, {"password": TWELVE}, format="json").status_code == 200
 
 
 def test_a_generated_reset_always_fits(api, world):
-    url = f"/api/v1/users/{world.users['va_kolakaluru'].id}/reset-password/"
-    response = api(world.users["ma_tenali"]).post(url, {}, format="json")
+    url = f"/api/v1/users/{world.users['pm_kolakaluru'].id}/reset-password/"
+    response = api(world.users["va_kolakaluru"]).post(url, {}, format="json")
     assert response.status_code == 200 and len(response.json()["temporary_password"]) >= 12
 
 
 @pytest.mark.parametrize("name, new, expected", [
-    ("pm_kolakaluru", NINE, 200),
+    ("pm_kolakaluru", NINE, 400),
+    ("pm_kolakaluru", ELEVEN, 400),
+    ("pm_kolakaluru", TWELVE, 200),
     ("va_kolakaluru", ELEVEN, 400),
     ("va_kolakaluru", TWELVE, 200),
     ("super", ELEVEN, 400),
@@ -95,7 +98,7 @@ def test_changing_your_own_password(api, world, name, new, expected):
         assert code(response) == "validation_error" and "new_password" in response.json()["error"]["fields"]
 
 
-def test_someone_with_a_member_and_an_admin_role_needs_the_longer(api, world):
+def test_someone_with_a_member_and_an_admin_role_needs_twelve(api, world):
     assign(world, "pm_kolakaluru", Role.VILLAGE_ADMIN, "nandivelugu")
     response = api(world.users["pm_kolakaluru"]).post(
         CHANGE, {"current_password": TEST_PASSWORD, "new_password": ELEVEN}, format="json"
@@ -103,15 +106,18 @@ def test_someone_with_a_member_and_an_admin_role_needs_the_longer(api, world):
     assert response.status_code == 400
 
 
-# --- Passwords set before the rule, or a role given later ----------------------------------------
+# --- Passwords set before the rule ----------------------------------------------------------------
 
 
 def login(username, password):
     return APIClient().post(LOGIN, {"username": username, "password": password}, format="json")
 
 
-def test_an_admin_with_a_short_password_must_change_it_at_login(world):
-    user = world.users["va_kolakaluru"]
+@pytest.mark.parametrize("name", ["va_kolakaluru", "pm_kolakaluru"])
+def test_a_short_existing_password_must_be_changed_at_login(world, name):
+    """An admin or a Panchayat member with a password shorter than 12 (a member's 8 to 11 from before
+    2026-11-19) still logs in, then must choose a new one before anything else. Nobody is locked out."""
+    user = world.users[name]
     user.set_password(NINE)
     user.save()
     response = login(user.username, NINE)
@@ -122,21 +128,6 @@ def test_an_admin_with_a_short_password_must_change_it_at_login(world):
     assert entry.target_id == str(user.pk) and NINE not in str(entry.data)
 
 
-def test_a_member_with_the_same_password_is_not_asked(world):
-    user = world.users["pm_kolakaluru"]
-    user.set_password(NINE)
-    user.save()
-    assert login(user.username, NINE).json()["user"]["must_change_password"] is False
-    assert not AuditLog.objects.filter(action="auth.password_too_short").exists()
-
-
-def test_a_member_given_an_admin_role_is_asked_at_the_next_login(world):
-    user = world.users["pm_kolakaluru"]
-    user.set_password(NINE)
-    user.save()
-    assign(world, "pm_kolakaluru", Role.VILLAGE_ADMIN, "nandivelugu")
-    assert login(user.username, NINE).json()["user"]["must_change_password"] is True
-
-
 def test_a_long_enough_password_logs_in_as_before(world):
-    assert login("va_kolakaluru", TEST_PASSWORD).json()["user"]["must_change_password"] is False
+    for name in ("va_kolakaluru", "pm_kolakaluru"):
+        assert login(name, TEST_PASSWORD).json()["user"]["must_change_password"] is False

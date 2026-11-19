@@ -158,7 +158,7 @@ def test_validators_are_on():
         "NumericPasswordValidator",
         "PasswordCompositionValidator",
     ]
-    assert settings.AUTH_PASSWORD_VALIDATORS[1]["OPTIONS"] == {"min_length": 8}
+    assert settings.AUTH_PASSWORD_VALIDATORS[1]["OPTIONS"] == {"min_length": 12}  # every official, 2026-11-19
 
 
 # --- Lockout (django-axes) ---------------------------------------------------------------------
@@ -382,10 +382,12 @@ def test_password_change_validation(world, current, new, error_code):
         assert response.json()["error"]["fields"]["new_password"]
 
 
-def test_eight_characters_are_enough(world):
-    """For a Panchayat member; admins need 12 (G12, test_password_length.py)."""
+def test_twelve_characters_are_enough(world):
+    """For a Panchayat member as for admins: 12 for every official since 2026-11-19 (test_password_length.py)."""
     client = bearer(login("pm_kolakaluru").json()["access"])
-    response = client.post(CHANGE, {"current_password": TEST_PASSWORD, "new_password": "Pq7-wxyz"}, format="json")
+    eight = client.post(CHANGE, {"current_password": TEST_PASSWORD, "new_password": "Pq7-wxyz"}, format="json")
+    assert eight.status_code == 400  # enough for a member before 2026-11-19
+    response = client.post(CHANGE, {"current_password": TEST_PASSWORD, "new_password": "Pq7-wxyz2026"}, format="json")
     assert response.status_code == 200
 
 
@@ -410,9 +412,10 @@ def test_a_new_password_needs_every_kind_of_character(world, new, missing):
     assert all(part in message for part in missing), message
 
 
-@pytest.mark.parametrize("new", ["Pq7@wxyz", "Gram#2026x", "Abc 12345!", "తెలుగుAb1$"])
+@pytest.mark.parametrize("new", ["Pq7@wxyzabcd", "Gram#2026xyz", "Abc 12345!xy", "తెలుగుAb1$xyz"])
 def test_any_special_character_counts(world, new):
-    client = bearer(login("pm_kolakaluru").json()["access"])  # 8 characters suffice for a member
+    assert len(new) >= 12  # the length every official needs (2026-11-19)
+    client = bearer(login("pm_kolakaluru").json()["access"])
     response = client.post(CHANGE, {"current_password": TEST_PASSWORD, "new_password": new}, format="json")
     assert response.status_code == 200, response.json()
 

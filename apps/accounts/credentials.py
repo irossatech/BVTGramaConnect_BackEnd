@@ -48,7 +48,7 @@ def generate_password(length: int = 12) -> str:
 
 def required_length(user: User | None, group_ids=()) -> int:
     """The shortest password `user` may have: the longest RoleGroup.password_min_length of their
-    active roles, plus `group_ids` (a role being given to them now). G12: 12 for admins, 8 for Panchayat members."""
+    active roles, plus `group_ids` (a role being given to them now). 12 for every role since 2026-11-19."""
     groups = set(group_ids)
     if user is not None and user.pk:
         groups |= set(user.role_assignments.filter(is_active=True).values_list("group_id", flat=True))
@@ -65,7 +65,7 @@ def check_new_password(password: str, user: User | None = None, field: str = "pa
         raise ApiError("validation_error", exc.messages[0], fields={field: list(exc.messages)}) from None
     length = required_length(user, group_ids)
     if len(password) < length:
-        message = _("Admin accounts need a password of at least %(n)d characters.") % {"n": length}
+        message = _("The password needs at least %(n)d characters.") % {"n": length}
         raise ApiError("validation_error", message, fields={field: [message]})
 
 
