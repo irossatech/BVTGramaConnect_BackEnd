@@ -1,13 +1,11 @@
 """Shapes from docs/api-contract.md, section 15."""
 
-import json
 
 from django.core.files.storage import default_storage
 from django.utils.translation import gettext_lazy as _
 from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
 
-from apps.accounts.serializers import AreaInputSerializer
 from apps.feed.serializers import AreaSlimSerializer, AreaTargetSerializer
 from apps.geography.areas import AreaDescriber, AreaRef
 from apps.geography.models import AreaLevel
@@ -122,24 +120,11 @@ class CitizenPostWriteSerializer(serializers.Serializer):
     body = serializers.CharField(max_length=5000)
     photos = serializers.ListField(child=serializers.FileField(), required=False, default=list)
     videos = serializers.ListField(child=serializers.FileField(), required=False, default=list)
-    #: Who sees it, as a JSON string in the form: '[{"level": "DISTRICT", "id": 16}, …]'. Missing:
-    #: the phone's village. Checked and cleaned in posts.services (owner decision of 2026-10-28).
-    targets = serializers.JSONField(required=False)
+    # No `targets`: a citizen's post is for the phone's village only (owner's decision of 2026-11-19).
+    # A `targets` field from an older app is ignored, like any unknown field, so its posts still go
+    # through, to the phone's village.
     #: The app's random UUID for this post, the same on a repeat after a lost answer (MOB-ERR-004).
     client_ref = serializers.UUIDField(required=False)
-
-    def validate_targets(self, value):
-        if isinstance(value, str):
-            try:
-                value = json.loads(value)
-            except ValueError:
-                raise serializers.ValidationError(_("Send the areas as a JSON list.")) from None
-        if not isinstance(value, list) or not value or len(value) > 1000:
-            raise serializers.ValidationError(_("Choose who will see the post."))
-        areas = AreaInputSerializer(data=value, many=True)
-        if not areas.is_valid():
-            raise serializers.ValidationError(_('Each area is {"level": "STATE|DISTRICT|MANDAL|VILLAGE", "id": …}.'))
-        return areas.validated_data
 
     def validate_title(self, value):
         value = " ".join(value.split())

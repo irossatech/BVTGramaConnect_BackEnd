@@ -253,19 +253,25 @@ def test_a_single_village_post_escalates_as_before(api, world, django_capture_on
 # --- Citizens --------------------------------------------------------------------------------------
 
 
-def test_a_citizen_chooses_the_areas_in_the_form(world, phone, api):
+def test_a_citizen_post_is_for_the_phones_village_only(world, phone, api):
+    """Owner's decision of 2026-11-19: areas an older app still sends are ignored, not refused."""
     citizen = phone("kolakaluru")
-    targets = json.dumps([world.area_json("krishna"), world.area_json("kaza")])
+    targets = json.dumps([world.area_json("krishna"), world.area_json("kaza"), {"level": "STATE", "id": world.state.id}])
     response = citizen.post(targets=targets)
     assert response.status_code == 201, response.json()
     data = response.json()
     assert data["status"] == PostStatus.PENDING
-    assert [t["level"] for t in data["targets"]] == ["DISTRICT", "VILLAGE"]
-    assert data["area"]["id"] == world.areas["kolakaluru"].id  # where it was sent from
+    home = world.areas["kolakaluru"].id
+    assert [(t["level"], t["id"]) for t in data["targets"]] == [("VILLAGE", home)]
+    assert data["area"]["id"] == home
     post = Post.objects.get(pk=data["id"])
-    assert (post.posted_as_level, post.posted_as_area_id) == ("VILLAGE", world.areas["kolakaluru"].id)
-    queue = api(world.users["da_krishna"]).get("/api/v1/review/queue/").json()["results"]
-    assert str(post.id) in {row["id"] for row in queue}
+    assert (post.target_level, post.target_area_id) == ("VILLAGE", home)
+    assert list(PostTarget.objects.filter(post=post).values_list("area_level", "area_id")) == [("VILLAGE", home)]
+    # Reviewed over Kolakaluru (its Village, Mandal and District Admins), never in Krishna or Kaza.
+    for key, sees in (("va_kolakaluru", True), ("ma_tenali", True), ("da_guntur", True),
+                      ("da_krishna", False), ("va_kaza", False)):
+        queue = api(world.users[key]).get("/api/v1/review/queue/").json()["results"]
+        assert (str(post.id) in {row["id"] for row in queue}) is sees, key
 
 
 def test_without_targets_a_citizen_posts_to_their_village(world, phone):
@@ -274,21 +280,10 @@ def test_without_targets_a_citizen_posts_to_their_village(world, phone):
 
 
 @pytest.mark.parametrize("value", ["not json", "[]", '{"level": "VILLAGE"}', '[{"level": "TOWN", "id": 1}]'])
-def test_a_bad_targets_field_is_refused(world, phone, value):
-    response = phone().post(targets=value)
-    assert response.status_code == 400 and "targets" in response.json()["error"]["fields"]
-    assert not Post.objects.exists()
-
-
-def test_the_citizen_limits_are_settings(world, phone, settings):
-    citizen = phone()
-    settings.CITIZEN_CAN_TARGET_STATE = False
-    everyone = citizen.post(targets=json.dumps([{"level": "STATE", "id": world.state.id}]))
-    assert everyone.status_code == 400 and "everyone" in everyone.json()["error"]["fields"]["targets"][0]
-    settings.CITIZEN_MAX_TARGETS = 1
-    two = citizen.post(targets=json.dumps([world.area_json("kaza"), world.area_json("poranki")]))
-    assert two.status_code == 400
-    assert citizen.post(targets=json.dumps([world.area_json("kaza")])).status_code == 201
+def test_a_bad_targets_field_from_an_old_app_is_ignored(world, phone, value):
+    response = phone("kaza").post(targets=value)
+    assert response.status_code == 201, response.json()
+    assert [(t["level"], t["id"]) for t in response.json()["targets"]] == [("VILLAGE", world.areas["kaza"].id)]
 
 
 # --- Lists, reports and the migration ------------------------------------------------------------

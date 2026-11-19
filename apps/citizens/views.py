@@ -117,7 +117,6 @@ class PostsView(CitizenView):
             body=values["body"],
             photos=values["photos"],
             videos=values["videos"],
-            targets=values.get("targets"),
             client_ref=values.get("client_ref"),
         )
         # 200 for a repeat of an earlier send (same client_ref): the post as it is now.
