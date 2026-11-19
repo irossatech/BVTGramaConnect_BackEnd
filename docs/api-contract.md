@@ -226,6 +226,7 @@ Returned by `GET /me/`, inside the app login response and inside the console ses
 ```
 - `permissions` are the effective `app_label.codename` strings the user holds anywhere. `permissions_by_area` says where. Clients decide which screens and buttons to show from them; the server still checks every request.
 - `assignments` lists every assignment, active or not. `role_assignments` lists the active ones in the older shape.
+- In both, each `area` also carries **`parents`** (added 2026-11-19, optional for clients): the ids of the areas above it, by level. A mandal: `"parents": {"STATE": 1, "DISTRICT": 7}`; a village: `{"STATE": 1, "DISTRICT": 7, "MANDAL": 12}`; a district: `{"STATE": 1}`; the state: `{}`. The app opens "Who will see it" at the official's own district and mandal with them. Only in `GET /me/` (and the login responses that contain `Me`); `permissions_by_area` and every other endpoint keep the plain `Area`.
 - `capabilities` is **deprecated**. It is derived from `permissions` and kept so the current app keeps working.
 - `mobile` and `email` may be `null`. When `must_change_password` is true, clients go straight to the change-password screen.
 - `rules.max_photos_per_post`: photos per post, **3** (lead's decision of 2026-11-13). A post has up to that many photos, or one video (when `video_enabled`), never both (section 5).

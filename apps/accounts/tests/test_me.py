@@ -20,13 +20,16 @@ def test_me_describes_groups_assignments_permissions_and_rules(api, world):
     tenali = {"level": "MANDAL", "id": world.areas["tenali"].id, "name": "తెనాలి", "path": "తెనాలి · గుంటూరు"}
     [assignment] = data["assignments"]
     assert assignment["group"] == {"key": "MANDAL_ADMIN", "name": "Mandal Admin"}
-    assert assignment["area"] == tenali and assignment["is_active"] is True
+    # "parents" (2026-11-19): the ids above the area, for the app's "Who will see it" picker; /me only.
+    parents = {"STATE": world.state.id, "DISTRICT": world.areas["guntur"].id}
+    assert assignment["area"] == {**tenali, "parents": parents} and assignment["is_active"] is True
     assert "posts.publish_post" in data["permissions"] and "accounts.manage_village_admin" in data["permissions"]
     assert "accounts.manage_mandal_admin" not in data["permissions"]
     assert "web_admin.access_web_console" not in data["permissions"]
     assert data["permissions_by_area"] == [{"area": tenali, "permissions": data["permissions"]}]
     # Kept for older app builds; derived from the permissions.
     assert data["role_assignments"][0]["role"] == "MANDAL_ADMIN"
+    assert data["role_assignments"][0]["area"] == {**tenali, "parents": parents}
     assert data["capabilities"] == {
         "can_post": True,
         "can_review": True,
@@ -77,6 +80,33 @@ def test_inactive_assignments_are_shown_but_grant_nothing(api, world):
         (world.areas["kaza"].id, True),
     ]
     assert [row["area"]["id"] for row in data["permissions_by_area"]] == [world.areas["kaza"].id]
+
+
+@pytest.mark.parametrize(
+    ("user", "expected"),
+    [
+        ("pm_kolakaluru", {"STATE": "ap", "DISTRICT": "guntur", "MANDAL": "tenali"}),
+        ("va_kolakaluru", {"STATE": "ap", "DISTRICT": "guntur", "MANDAL": "tenali"}),
+        ("ma_tenali", {"STATE": "ap", "DISTRICT": "guntur"}),
+        ("da_guntur", {"STATE": "ap"}),
+        ("super", {}),
+    ],
+)
+def test_assignment_areas_carry_the_ids_above_them(api, world, user, expected):
+    """Every level: the app opens "Who will see it" at the official's own district and mandal."""
+    data = api(world.users[user]).get("/api/v1/me/").json()
+    want = {level: world.areas[key].id for level, key in expected.items()}
+    assert [row["area"]["parents"] for row in data["assignments"]] == [want]
+    assert [row["area"]["parents"] for row in data["role_assignments"]] == [want]
+
+
+def test_parents_only_in_me_not_in_other_lists(api, world):
+    """Additive and /me only: user lists, permissions_by_area and posts keep the Area shape as it was."""
+    me = api(world.users["ma_tenali"]).get("/api/v1/me/").json()
+    assert "parents" not in me["permissions_by_area"][0]["area"]
+    user = api(world.users["da_guntur"]).get(f"/api/v1/users/{world.users['ma_tenali'].id}/").json()
+    assert user["role_assignments"], "the user detail lists the assignments"
+    assert all("parents" not in row["area"] for row in user["role_assignments"])
 
 
 def test_area_names_follow_accept_language(api, world):
