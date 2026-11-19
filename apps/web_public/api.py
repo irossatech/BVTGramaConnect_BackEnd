@@ -240,12 +240,17 @@ class ContactMessageListView(generics.ListAPIView):
     serializer_class = ContactMessageAdminSerializer
 
     def get_queryset(self):
-        # Only the last CONTACT_MESSAGES_VISIBLE_DAYS are shown; older messages stay in the database
-        # (owner decision of 2026-11-11, as for the audit log).
-        since = timezone.now() - timedelta(days=settings.CONTACT_MESSAGES_VISIBLE_DAYS)
+        # Unhandled messages are always listed, however old, until someone marks them handled; a handled
+        # one is listed for CONTACT_MESSAGES_VISIBLE_DAYS after it was handled (2026-11-19, the rule service
+        # requests follow; before, every message dropped off 90 days after it arrived, handled or not).
+        # Nothing is deleted. A handled message without handled_at counts from its arrival.
+        cutoff = timezone.now() - timedelta(days=settings.CONTACT_MESSAGES_VISIBLE_DAYS)
+        handled_long_ago = Q(handled=True) & (
+            Q(handled_at__lt=cutoff) | Q(handled_at__isnull=True, created_at__lt=cutoff)
+        )
         queryset = (
             ContactMessage.objects.select_related("handled_by")
-            .filter(created_at__gte=since)
+            .exclude(handled_long_ago)
             .order_by("-created_at", "-id")
         )
         wanted = self.request.query_params.get("status", "").strip().lower()
