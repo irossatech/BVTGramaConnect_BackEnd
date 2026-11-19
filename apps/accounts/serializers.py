@@ -6,7 +6,7 @@ from django.utils.translation import gettext_lazy as _
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from apps.geography.areas import AreaDescriber, AreaRef
+from apps.geography.areas import AreaDescriber, AreaRef, ancestries
 from apps.geography.models import AreaLevel
 
 from . import authz
@@ -80,6 +80,22 @@ def describer_from(context) -> AreaDescriber:
     return describer
 
 
+#: Context key: {AreaRef: {level: id}} for the areas of the user's own assignments (GET /me only).
+AREA_PARENTS = "area_parents"
+
+
+def describe_area(context, ref: AreaRef) -> dict | None:
+    """The Area object; in GET /me also "parents", the ids of the areas above it, e.g. {"STATE": 1,
+    "DISTRICT": 7} for a mandal, so the app's "Who will see it" picker opens at the official's own
+    district and mandal (2026-11-19). Other endpoints leave it out: lists stay small on 2G."""
+    area = describer_from(context).describe(ref)
+    parents = context.get(AREA_PARENTS)
+    if area is None or parents is None or ref not in parents:
+        return area
+    above = {str(level): area_id for level, area_id in parents[ref].items() if level != ref.level}
+    return {**area, "parents": above}
+
+
 class GroupBriefSerializer(serializers.Serializer):
     key = serializers.CharField()
     name = serializers.CharField()
@@ -106,7 +122,7 @@ class RoleAssignmentSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(AreaOutputSerializer)
     def get_area(self, obj):
-        return describer_from(self.context).describe(obj.area)
+        return describe_area(self.context, obj.area)
 
 
 def prime_describer(context, users) -> None:
@@ -204,6 +220,9 @@ class MeSerializer(serializers.ModelSerializer):
             rows = list(obj.role_assignments.select_related("group__role_group").order_by("assigned_at"))
             obj._me_assignments = rows
             describer_from(self.context).prime([row.area for row in rows])
+            # The ids above each assignment's area (one query per level): "parents" in assignments and
+            # role_assignments. Not in permissions_by_area, which stays as it was.
+            self.context[AREA_PARENTS] = ancestries([row.area for row in rows])
         return rows
 
     @extend_schema_field(MeGroupSerializer(many=True))
@@ -220,7 +239,7 @@ class MeSerializer(serializers.ModelSerializer):
             {
                 "id": str(row.id),
                 "group": {"key": row.group.role_group.key, "name": row.group.name},
-                "area": describer.describe(row.area),
+                "area": describe_area(self.context, row.area),
                 "is_active": row.is_active,
             }
             for row in self._assignments(obj)
