@@ -4,6 +4,7 @@ State machine (CLAUDE.md, contract section 10):
     DRAFT -> PENDING | PUBLISHED (admin auto-publish)
     (new) -> PENDING for a citizen's phone (create_citizen_post; contract section 15)
     PENDING -> PUBLISHED | RECHECK | DISCARDED (never RECHECK for a citizen post)
+    PENDING -> BLOCKED for a citizen post, only when the Super Admin blocks its phone (citizens.services.block)
     RECHECK -> PENDING | PUBLISHED (admin auto-publish)
     PUBLISHED -> UNPUBLISHED
     any decided state -> REVERSE by a strictly higher level
@@ -67,6 +68,8 @@ DECISION_PERMISSION = {
     "discard": "posts.discard_post",
     "unpublish": "posts.takedown_post",
     "reverse": "posts.reverse_decision",
+    # Not a review button: only citizens.services.block moves a post here (ReviewSerializer has no "block").
+    "block": BLOCK_CITIZEN,
 }
 NEXT_LEVEL_UP = {
     AreaLevel.VILLAGE: AreaLevel.MANDAL,
@@ -75,7 +78,7 @@ NEXT_LEVEL_UP = {
     AreaLevel.STATE: None,
 }
 EDITABLE = (PostStatus.DRAFT, PostStatus.RECHECK)
-DECIDED = (PostStatus.PUBLISHED, PostStatus.RECHECK, PostStatus.DISCARDED, PostStatus.UNPUBLISHED)
+DECIDED = (PostStatus.PUBLISHED, PostStatus.RECHECK, PostStatus.DISCARDED, PostStatus.UNPUBLISHED, PostStatus.BLOCKED)
 REVERSE_TARGETS = (PostStatus.PUBLISHED, PostStatus.PENDING, PostStatus.RECHECK, PostStatus.DISCARDED)
 AUDIT_ACTIONS = {
     ReviewAction.Action.SUBMIT: "post.submitted",
@@ -86,6 +89,7 @@ AUDIT_ACTIONS = {
     ReviewAction.Action.DISCARD: "post.discarded",
     ReviewAction.Action.UNPUBLISH: "post.unpublished",
     ReviewAction.Action.REVERSE: "post.reversed",
+    ReviewAction.Action.BLOCK: "post.blocked",
 }
 
 
@@ -689,8 +693,12 @@ DECISIONS = {
     "recheck": (PostStatus.PENDING, PostStatus.RECHECK, ReviewAction.Action.RECHECK, True),
     "discard": (PostStatus.PENDING, PostStatus.DISCARDED, ReviewAction.Action.DISCARD, True),
     "unpublish": (PostStatus.PUBLISHED, PostStatus.UNPUBLISHED, ReviewAction.Action.UNPUBLISH, True),
+    "block": (PostStatus.PENDING, PostStatus.BLOCKED, ReviewAction.Action.BLOCK, True),
 }
-VERBS = {"publish": "published", "recheck": "sent for recheck", "discard": "discarded", "unpublish": "taken down"}
+VERBS = {
+    "publish": "published", "recheck": "sent for recheck", "discard": "discarded", "unpublish": "taken down",
+    "block": "blocked",
+}
 
 
 def review(user, post: Post, action: str, comment: str = "", to_status: str | None = None) -> Post:
@@ -710,6 +718,8 @@ def review(user, post: Post, action: str, comment: str = "", to_status: str | No
     from_status, new_status, logged_action, needs_comment = DECISIONS[action]
     if new_status == PostStatus.RECHECK and post.citizen_id:
         raise citizen_cannot_recheck(post)
+    if new_status == PostStatus.BLOCKED and not post.citizen_id:
+        raise ApiError("validation_error", _("This is not a citizen post."), fields={"post": [_("Not a citizen post.")]})
     if needs_comment and not comment:
         raise comment_required()
     if from_status == PostStatus.PENDING and post.author_id == user.id:

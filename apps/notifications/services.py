@@ -184,6 +184,8 @@ AUTHOR_MESSAGES = {
     "RECHECK": (NotificationKind.POST_RECHECK, "post_recheck"),
     "DISCARDED": (NotificationKind.POST_DISCARDED, "post_discarded"),
     "UNPUBLISHED": (NotificationKind.POST_UNPUBLISHED, "post_unpublished"),
+    # Only citizen posts are BLOCKED; the phone hears "discarded", as before 2026-11-20.
+    "BLOCKED": (NotificationKind.POST_DISCARDED, "post_discarded"),
 }
 
 

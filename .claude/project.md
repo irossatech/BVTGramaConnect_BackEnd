@@ -48,7 +48,7 @@ Only holders of the console permission, the Super Admin group, can use the web c
 
 ## Posts
 
-States: DRAFT > PENDING > PUBLISHED, RECHECK or DISCARDED; RECHECK > PENDING; PUBLISHED > UNPUBLISHED (shown as "Taken down").
+States: DRAFT > PENDING > PUBLISHED, RECHECK or DISCARDED; RECHECK > PENDING; PUBLISHED > UNPUBLISHED (shown as "Taken down"); a citizen's PENDING > BLOCKED when the Super Admin blocks the phone.
 - Who will see it: every official picks Everyone, or any mix of districts, mandals and villages anywhere, in one post (1 to POST_MAX_TARGETS, 200 areas). A citizen's post is always for the phone's village.
 - Panchayat and citizen posts go to PENDING. District, Mandal and Village Admins' posts publish at once while ADMIN_POSTS_AUTO_PUBLISH is on, wherever they go.
 - A pending post is reviewed by the admins of every area it is for (and the areas above), and by the Super Admin. A post to Everyone is reviewed by Super Admins only.
@@ -115,6 +115,7 @@ ADMIN_POSTS_AUTO_PUBLISH=True, REVIEW_FIRST_DECISION_WINS=True, REVIEW_ESCALATIO
 - 2026-11-19 · ~~**Audit log: the last 180 days by default, any older days by date**~~ (lead's decision). The audit screens show the last 180 days, in pages; an admin who picks dates or a month sees exactly those days, however old, read from the database. Exports still stop at 50,000 entries ("Choose a shorter date range"). This replaces the 2026-11-11 window (90 days by default, never more than 180 days back). Replaced on 2026-11-20, see below.
 - 2026-11-19 · ~~**Contact messages: unhandled ones stay until handled.**~~ The console lists every unhandled website contact message, however old, until someone marks it handled; a handled one is listed for 90 days after it was handled, then kept but not shown. The same rule service requests follow (open ones always). Before, every message dropped off 90 days after it arrived, even unanswered. Replaced on 2026-11-20, see below.
 - 2026-11-20 · **Nothing is hidden by age** (owner's decision). The audit log, website contact messages and service requests list every record, however old, page by page: the Super Admin sees all of them, and every other official sees all of their own area. Dates and filters only narrow a list. The audit export still stops at 50,000 entries ("Choose a shorter date range"). The website contact form has no limit per sender any more (it was 5 an hour). This replaces the windows of 2026-11-11 and 2026-11-19.
+- 2026-11-20 · **Blocked citizen posts have their own status** (owner's decision). When the Super Admin blocks a citizen from a post, every pending post of that phone becomes Blocked (BLOCKED), no longer Discarded, and the console and the Super Admin's app list them under a Blocked tab beside Rejected. Published posts of the phone stay published; "Discard all" still discards. The citizen's app still shows these posts as discarded, with the block comment as the reason.
 
 ## Working across repos
 

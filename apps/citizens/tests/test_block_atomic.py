@@ -78,4 +78,5 @@ def test_a_post_decided_first_is_still_skipped(world, phone_posts):
     services.block(world.users["super"], posts[0], "spam", 7)
     device.refresh_from_db()
     assert device.blocked_at is not None
-    assert set(Post.objects.values_list("status", flat=True)) == {PostStatus.DISCARDED, PostStatus.PUBLISHED}
+    # Since 2026-11-20 a block closes the pending posts as BLOCKED, not DISCARDED.
+    assert set(Post.objects.values_list("status", flat=True)) == {PostStatus.BLOCKED, PostStatus.PUBLISHED}

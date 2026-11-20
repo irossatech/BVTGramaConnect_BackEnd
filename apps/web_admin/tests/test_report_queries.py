@@ -71,6 +71,13 @@ def test_summary_counts_each_post_once(api, world, multi_area_posts):
     assert data == {"total": 4, "published": 2, "pending": 1, "rejected": 1, "days": 30}  # A, B, C, D
 
 
+def test_a_blocked_post_counts_as_rejected(api, world, multi_area_posts):
+    """BLOCKED (a citizen block, decision of 2026-11-20) is not live, like discarded and taken down."""
+    post_for(world, ["kolakaluru"], PostStatus.BLOCKED)
+    data = api(world.users["super"]).get("/api/v1/admin/reports/summary/").json()
+    assert data == {"total": 5, "published": 2, "pending": 1, "rejected": 2, "days": 30}
+
+
 def test_districts_without_posts_are_listed_with_zeros(api, world):
     District.objects.create(state=world.state, name_en="Prakasam", name_te="ప్రకాశం")
     data = api(world.users["super"]).get("/api/v1/admin/reports/posts-by-area/").json()
