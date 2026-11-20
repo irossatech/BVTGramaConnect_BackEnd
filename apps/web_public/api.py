@@ -9,7 +9,7 @@
 
 
 from django.conf import settings
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.utils.translation import gettext as _
@@ -227,16 +227,9 @@ class ContactMessageListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated, MANAGE_CONTACT]
     serializer_class = ContactMessageAdminSerializer
 
-    def get_queryset(self):
-        # Every message, however old, handled or not (decision of 2026-11-20: nothing is hidden by age).
+    def _searched(self):
+        """Every message, however old (decision of 2026-11-20: nothing is hidden by age), narrowed by `q` only."""
         queryset = ContactMessage.objects.select_related("handled_by").order_by("-created_at", "-id")
-        wanted = self.request.query_params.get("status", "").strip().lower()
-        if wanted == "new":
-            queryset = queryset.filter(handled=False)
-        elif wanted == "handled":
-            queryset = queryset.filter(handled=True)
-        elif wanted:
-            raise ApiError("validation_error", _("Status is new or handled."), fields={"status": ["new", "handled"]})
         query = self.request.query_params.get("q", "").strip()
         if query:
             queryset = queryset.filter(
@@ -245,13 +238,30 @@ class ContactMessageListView(generics.ListAPIView):
             )
         return queryset
 
+    def get_queryset(self):
+        queryset = self._searched()
+        wanted = self.request.query_params.get("status", "").strip().lower()
+        if wanted == "new":
+            queryset = queryset.filter(handled=False)
+        elif wanted == "handled":
+            queryset = queryset.filter(handled=True)
+        elif wanted:
+            raise ApiError("validation_error", _("Status is new or handled."), fields={"status": ["new", "handled"]})
+        return queryset
+
     @extend_schema(
         summary="Website contact messages, newest first",
         parameters=[OpenApiParameter("contact", OpenApiTypes.STR, enum=["0"],
                                      description="0: rows without the mobile and the message, with mobile_last4")],
     )
     def get(self, request, *args, **kwargs):
-        return super().get(request, *args, **kwargs)
+        response = super().get(request, *args, **kwargs)
+        # The pills' numbers (2026-11-20): every filter but `status`, as GET /posts/ does. One query.
+        counts = self._searched().order_by().aggregate(
+            all=Count("id"), new=Count("id", filter=Q(handled=False)), handled=Count("id", filter=Q(handled=True)),
+        )
+        response.data["status_counts"] = {"new": counts["new"], "handled": counts["handled"], "all": counts["all"]}
+        return response
 
     def get_serializer_class(self):
         # The console's table shows a masked mobile and no message; its View panel reads one message.
