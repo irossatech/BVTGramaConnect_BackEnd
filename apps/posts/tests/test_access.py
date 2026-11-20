@@ -67,7 +67,8 @@ def test_take_down_matrix(api, world, make_post, actor):
     #   Super Admin → any post.
     #   Author → own post.
     #   Dist/Mandal Admin in area → 403 (cannot take down a Village Admin post).
-    #   Panchayat member → 404 (admin post is not visible to them).
+    #   Panchayat member of the village → 403 (they see the published post since 2026-11-20, but may
+    #     not take down an admin's post); of another village → 404.
     #   Anyone outside the area → 404.
     post = make_post("va_kolakaluru", "kolakaluru")  # auto-published
     response = api(world.users[actor]).post(
@@ -82,8 +83,9 @@ def test_take_down_matrix(api, world, make_post, actor):
     if is_super or is_author:
         assert response.status_code == 200
     elif is_panchayat:
-        # Admin posts are not visible to Panchayat members.
-        assert response.status_code == 404
+        # The post is for their village, so they see it (published posts reaching their area, 2026-11-20);
+        # the take-down rule still refuses it. Members of other villages do not see it.
+        assert response.status_code == (403 if area == "kolakaluru" else 404)
     elif in_area:
         # District/Mandal Admin in the area: can see the post but rank rule blocks the take-down.
         assert response.status_code == 403

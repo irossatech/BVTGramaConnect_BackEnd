@@ -405,9 +405,11 @@ def test_panchayat_member_cannot_take_down_other_member_or_admin_post(api, world
     response = _unpublish(api, world, "pm_kolakaluru", pm_post)
     assert response.status_code == 404
 
+    # An admin's post for their own village: they see it (published posts reaching their area,
+    # 2026-11-20), but may not take it down.
     admin_post = make_post("va_kolakaluru", "kolakaluru")
     response = _unpublish(api, world, "pm_kolakaluru", admin_post)
-    assert response.status_code == 404
+    assert response.status_code == 403
 
 
 # Case 7b: Panchayat member takes down their own published post → 200,

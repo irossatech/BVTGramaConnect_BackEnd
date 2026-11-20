@@ -263,6 +263,7 @@ Rules on top of the table:
   | **District / Mandal / Village Admin** (in their area) | yes | yes | no | no | yes |
   | **Panchayat member** (their village) | yes | no (other members) | no | no | yes |
   Officials may also take down their own published post anywhere (even if targeting an area outside their assignment).
+- **Seeing published posts above your area (backend plan of 2026-11-20).** Every official, whatever their group, sees the published posts for any area that is or contains one of their assignments' areas (their village, mandal, district, Everyone), as the citizens there do (`apps.posts.services.covering_scope_q`). It is read only and needs no permission: every action on such a post keeps its own check above, so it adds no button. Only published posts; pending and decided ones above the area stay hidden.
 - **Reversing a decision** needs `posts.reverse_decision` and a group ranked strictly above the one that decided. Reversing a published post (moving it to Pending or Discarded) is also gated by the take-down rank rule.
 - **First decision wins.** A second reviewer gets `409 already_decided`.
 - **User actions** need the permission over the user's area and a group ranked strictly below the admin's own. This covers assigning, reassigning, removing, blocking, resetting and unlocking. An admin can never give a group at or above their own rank. The one exception: Super Admins act on other Super Admins and give the role, with the rules of section 4, "More Super Admins".
