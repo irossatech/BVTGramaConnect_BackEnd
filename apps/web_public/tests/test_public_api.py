@@ -1,9 +1,6 @@
 """Public website API: site config and contact messages."""
 
-from datetime import timedelta
-
 import pytest
-from django.utils import timezone
 
 from apps.web_public.models import ContactMessage
 
@@ -94,13 +91,9 @@ def test_honeypot_pretends_success_and_stores_nothing(api):
     assert ContactMessage.objects.count() == 0
 
 
-def test_five_messages_per_ip_per_hour(api):
-    for _ in range(5):
+def test_no_per_ip_limit_on_messages(api, settings):
+    # The 5 messages an hour per IP were removed on 2026-11-20 (lead's decision).
+    for _ in range(12):
         assert send(api).status_code == 201
-    blocked = send(api)
-    assert blocked.status_code == 429
-    assert blocked.json()["error"]["code"] == "throttled"
-    assert int(blocked["Retry-After"]) > 0
-    assert send(api, ip="10.9.9.10").status_code == 201
-    ContactMessage.objects.update(created_at=timezone.now() - timedelta(hours=2))
-    assert send(api).status_code == 201
+    assert ContactMessage.objects.count() == 12
+    assert not hasattr(settings, "CONTACT_MESSAGES_PER_IP_PER_HOUR")

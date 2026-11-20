@@ -18,7 +18,6 @@ from django.views.decorators.cache import cache_control
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import generics, serializers, status
-from rest_framework.exceptions import Throttled
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -119,18 +118,8 @@ class ContactMessageView(PublicView):
         data.is_valid(raise_exception=True)
         values = data.validated_data
         ip = client_ip(request)
-
-        limit = settings.CONTACT_MESSAGES_PER_IP_PER_HOUR
-        if ip:
-            hour_ago = timezone.now() - timedelta(hours=1)
-            recent = list(
-                ContactMessage.objects.filter(ip_address=ip, created_at__gt=hour_ago)
-                .order_by("-created_at")
-                .values_list("created_at", flat=True)[:limit]
-            )
-            if len(recent) >= limit:
-                wait = int((recent[-1] + timedelta(hours=1) - timezone.now()).total_seconds()) + 1
-                raise Throttled(wait=max(wait, 1))
+        # No per-IP limit: the 5 messages an hour per IP were removed on 2026-11-20 (lead's decision).
+        # The honeypot below still stops simple bots.
 
         if values["website"]:
             # Pretend success so bots learn nothing; store nothing.

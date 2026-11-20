@@ -271,7 +271,7 @@ Its own panel site and Unix user, its own MySQL database, its own port: nothing 
    `FCM_PROJECT_ID=bvt-grama-connect` and an empty `FCM_TOPIC_PREFIX` are written already.
 6. **Data:** geography, categories, numbers (`deploy/DATA_MOVE.md`), then the first Super Admin:
    `.venv/bin/python manage.py create_super_admin`.
-7. **Real visitor addresses.** Lockouts and limits count per address, so Django must see the
+7. **Real visitor addresses.** The login lockout counts per address, so Django must see the
    visitor's, not the proxy's or Cloudflare's. Try the console login once with a wrong password
    (failed logins are recorded with their address), then:
    ```

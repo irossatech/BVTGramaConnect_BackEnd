@@ -75,8 +75,7 @@ def test_expired_sessions_go_live_ones_stay():
     assert list(Session.objects.values_list("session_key", flat=True)) == [live.session_key]
 
 
-def test_login_failures_older_than_the_ip_window_go(settings):
-    settings.LOGIN_IP_WINDOW_MINUTES = 60
+def test_login_failures_older_than_an_hour_go():
     login_failure(minutes_ago=61)
     recent = login_failure(minutes_ago=30)
 
