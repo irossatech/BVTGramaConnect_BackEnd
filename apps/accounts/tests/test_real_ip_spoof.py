@@ -56,12 +56,13 @@ def test_the_login_throttle_counts_the_attackers_real_address(world, settings):
     assert code(login(ATTACKER, "203.0.113.9", username="nobody9")) == "throttled"
 
 
-def test_the_contact_form_limit_counts_the_attackers_real_address(settings):
-    settings.CONTACT_MESSAGES_PER_IP_PER_HOUR = 2
+def test_a_contact_message_records_the_attackers_real_address():
+    # The contact form has no limit since 2026-11-20, but each message still stores the sender's real
+    # address, not the fake X-Real-IP.
+    from apps.web_public.models import ContactMessage
+
     body = {"name": "రవి", "mobile": "9876543210", "village_text": "కొలకలూరు", "message": "పరీక్ష", "language": "te"}
-    answers = [
-        APIClient(REMOTE_ADDR=ATTACKER, HTTP_X_REAL_IP=f"203.0.113.{n}").post(CONTACT, body, format="json")
-        for n in range(1, 4)
-    ]
-    assert [a.status_code for a in answers[:2]] == [201, 201]
-    assert answers[2].status_code == 429 and code(answers[2]) == "throttled"
+    for n in range(1, 4):
+        response = APIClient(REMOTE_ADDR=ATTACKER, HTTP_X_REAL_IP=f"203.0.113.{n}").post(CONTACT, body, format="json")
+        assert response.status_code == 201
+    assert set(ContactMessage.objects.values_list("ip_address", flat=True)) == {ATTACKER}
