@@ -200,13 +200,38 @@ def review_scope_q(user, perm: str = REVIEW) -> Exists:
     return targets_match(authz.area_q(user, perm))
 
 
+def covering_scope_q(user) -> Exists | Q:
+    """Posts with a target that is one of the user's areas or contains one (their village, mandal,
+    district, the state: Everyone), over every active role assignment, whatever its permissions.
+
+    The same chain the citizen feed reads for a village (feed.views.targets_for_village), so an official
+    sees at least what the citizens of their area see. One query per level for the whole chain.
+    """
+    found = authz.grants(user)
+    if any(grant.platform_wide for grant in found):
+        return Q()
+    query = Q(pk__in=[])
+    for chain in ancestries({grant.area for grant in found}).values():
+        for level, area_id in chain.items():
+            query |= Q(area_level=level, area_id=area_id)
+    return targets_match(query)
+
+
 def visible_posts(user) -> QuerySet:
-    """Own posts, every non-draft post inside the areas where the user holds review_post, and published
-    citizen posts where they may take posts down (Panchayat members, owner 2026-11-17)."""
+    """What `GET /posts/` lists and what an official may open:
+
+    - their own posts;
+    - every non-draft post inside the areas where they hold review_post;
+    - published citizen posts where they may take posts down (Panchayat members, owner 2026-11-17);
+    - published posts for an area that is or contains one of their areas: their village, mandal,
+      district or Everyone (backend plan of 2026-11-20). Read only: every action keeps its own check
+      (reviewer_assignment, may_take_down, the author), so this adds no button.
+    """
     takedown = review_scope_q(user, DECISION_PERMISSION["unpublish"]) & Q(
         citizen__isnull=False, status=PostStatus.PUBLISHED
     )
-    scope = Q(author=user) | (review_scope_q(user) & ~Q(status=PostStatus.DRAFT)) | takedown
+    covering = covering_scope_q(user) & Q(status=PostStatus.PUBLISHED)
+    scope = Q(author=user) | (review_scope_q(user) & ~Q(status=PostStatus.DRAFT)) | takedown | covering
     return Post.objects.filter(scope)
 
 
