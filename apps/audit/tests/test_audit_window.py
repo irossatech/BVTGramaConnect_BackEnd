@@ -1,9 +1,9 @@
-"""Which days the audit screens show (lead's decision of 2026-11-19; contract section 8).
+"""Which days the audit screens show (decision of 2026-11-20; contract section 8).
 
-Without dates: the last 180 days, in pages. With dates (a range, or a month as its first and last day):
-exactly those days, however old, from the database. The same for the list, its counts and the export.
-Exports over the row limit answer 400 instead of a cut file. Expected values are worked out here from
-those rules. (Before 2026-11-19: 90 days by default and never more than 180 days back.)
+Without dates: every entry, however old, in pages. With dates (a range, or a month as its first and last
+day): exactly those days. The same for the list, its counts and the export. Exports over the row limit
+answer 400 instead of a cut file. Expected values are worked out here from those rules. (Before: the
+last 180 days by default since 2026-11-19, 90 days and never more than 180 days back before that.)
 """
 
 import json
@@ -45,11 +45,11 @@ def get(api, world, query=""):
     return response.json()
 
 
-def test_without_dates_the_last_180_days(api, world, aged):
+def test_without_dates_every_entry_however_old(api, world, aged):
     data = get(api, world)
-    assert labels(data) == ["d10", "d170", "d89"]
-    assert data["counts_by_type"]["users"] == 3
-    assert data["window"] == {"from": day(180), "to": day(0)}
+    assert labels(data) == ["d10", "d170", "d200", "d400", "d89"]
+    assert data["counts_by_type"]["users"] == 5
+    assert data["window"] == {"from": day(400), "to": day(0)}  # from the oldest entry
 
 
 @pytest.mark.parametrize(
@@ -79,9 +79,9 @@ def test_a_month_is_its_first_and_last_day(api, world):
     assert labels(get(api, world, "?from=2025-04-01&to=2025-04-30")) == ["d-april"]
 
 
-def test_search_works_inside_the_window(api, world, aged):
-    assert labels(get(api, world, "?q=d2")) == []  # d200 is older than the default 180 days
-    assert labels(get(api, world, f"?q=d2&from={day(250)}")) == ["d200"]
+def test_search_finds_old_entries_too(api, world, aged):
+    assert labels(get(api, world, "?q=d4")) == ["d400"]
+    assert labels(get(api, world, f"?q=d4&from={day(250)}")) == []  # dates still narrow the search
 
 
 def export_labels(response):
@@ -92,7 +92,7 @@ def export_labels(response):
 
 def test_export_follows_the_same_days(api, world, aged):
     client = api(world.users["super"])
-    assert export_labels(client.get("/api/v1/audit/export/?format=csv")) == ["d10", "d170", "d89"]
+    assert export_labels(client.get("/api/v1/audit/export/?format=csv")) == ["d10", "d170", "d200", "d400", "d89"]
     old = client.get(f"/api/v1/audit/export/?format=csv&from={day(450)}&to={day(190)}")
     assert export_labels(old) == ["d200", "d400"]
 
