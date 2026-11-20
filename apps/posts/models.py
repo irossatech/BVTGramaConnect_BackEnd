@@ -64,6 +64,9 @@ class PostStatus(models.TextChoices):
     RECHECK = "RECHECK", _("Recheck")
     DISCARDED = "DISCARDED", _("Discarded")
     UNPUBLISHED = "UNPUBLISHED", _("Taken down")
+    #: A citizen's pending post, closed because the Super Admin blocked the phone that wrote it
+    #: (decision of 2026-11-20). Final, like DISCARDED; the citizen's own API still says DISCARDED.
+    BLOCKED = "BLOCKED", _("Blocked")
 
 
 class Post(models.Model):
@@ -247,6 +250,7 @@ class ReviewAction(models.Model):
         UNPUBLISH = "UNPUBLISH"
         ESCALATE = "ESCALATE"
         REVERSE = "REVERSE"
+        BLOCK = "BLOCK"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="review_actions")

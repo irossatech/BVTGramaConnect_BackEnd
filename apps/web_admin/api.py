@@ -61,7 +61,8 @@ def area_admin_roles() -> list[str]:
 def level_of_roles() -> dict[str, str]:
     """Role key -> the area level it is assigned at, from the role table."""
     return {key: role.level for key, role in authz.roles().items()}
-REJECTED = [PostStatus.DISCARDED, PostStatus.UNPUBLISHED]
+#: Not live after a decision: discarded, taken down, or closed by a citizen block (2026-11-20).
+REJECTED = [PostStatus.DISCARDED, PostStatus.UNPUBLISHED, PostStatus.BLOCKED]
 
 
 def local_date(value):

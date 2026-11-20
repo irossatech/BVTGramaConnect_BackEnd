@@ -437,17 +437,20 @@ def _comment_or_raise(comment: str) -> str:
     return comment
 
 
-def _discard_pending(user, device: CitizenDevice, comment: str) -> int:
-    """Discard every pending post of this phone (all installs) inside the actor's area. Returns how many."""
+def _close_pending(user, device: CitizenDevice, comment: str, action: str = "discard") -> int:
+    """Close every pending post of this phone (all installs) inside the actor's area. Returns how many.
+
+    action "discard" (Discard all: DISCARDED) or "block" (a block: BLOCKED, decision of 2026-11-20).
+    """
     pending = (
         Post.objects.filter(citizen__in=same_phone(device), status=PostStatus.PENDING)
-        .filter(post_services.review_scope_q(user, post_services.DECISION_PERMISSION["discard"]))
+        .filter(post_services.review_scope_q(user, post_services.DECISION_PERMISSION[action]))
         .order_by("submitted_at")
     )
     count = 0
     for item in pending:
         try:
-            post_services.review(user, item, "discard", comment)
+            post_services.review(user, item, action, comment)
         except (post_services.AlreadyDecided, ApiError):
             continue  # another reviewer decided it first
         count += 1
@@ -455,7 +458,10 @@ def _discard_pending(user, device: CitizenDevice, comment: str) -> int:
 
 
 def block(user, post: Post, comment: str, days: int) -> CitizenDevice:
-    """Block the phone that wrote `post` (all its installs) for `days`, then discard its pending posts.
+    """Block the phone that wrote `post` (all its installs) for `days`; its pending posts become BLOCKED.
+
+    Since 2026-11-20 they are BLOCKED (the console's Blocked tab), no longer DISCARDED. Published posts
+    stay published.
 
     One transaction (audit finding BE-DB-023): the block and the discards are saved together or not at
     all. A post another reviewer decided first is skipped, as before.
@@ -473,7 +479,7 @@ def block(user, post: Post, comment: str, days: int) -> CitizenDevice:
             data={"post_id": str(post.pk), "comment": comment, "days": days,
                   "until": drf_serializers.DateTimeField().to_representation(until)},
         )
-        _discard_pending(user, device, comment)
+        _close_pending(user, device, comment, "block")
     device.refresh_from_db()
     return device
 
@@ -502,7 +508,7 @@ def discard_all(user, post: Post, comment: str) -> int:
     grant = _super_admin_or_raise(user, post)
     comment = _comment_or_raise(comment)
     with transaction.atomic():
-        count = _discard_pending(user, post.citizen, comment)
+        count = _close_pending(user, post.citizen, comment)
         record(
             "citizen.posts_discarded", actor=user, actor_role=grant.key, target=post.citizen,
             target_label=str(post.citizen), area=post.target,

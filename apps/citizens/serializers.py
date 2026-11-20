@@ -153,7 +153,8 @@ class CitizenVideoSerializer(serializers.Serializer):
 
 class CitizenPostSerializer(serializers.Serializer):
     id = serializers.UUIDField()
-    status = serializers.CharField()
+    #: BLOCKED (decision of 2026-11-20) is told to the phone as DISCARDED: the citizen app knows no BLOCKED.
+    status = serializers.SerializerMethodField()
     category = serializers.CharField(source="category.key")
     language = serializers.CharField()
     title = serializers.CharField()
@@ -166,6 +167,9 @@ class CitizenPostSerializer(serializers.Serializer):
     created_at = serializers.DateTimeField()
     decided_at = serializers.DateTimeField(allow_null=True)
     reason = serializers.SerializerMethodField()
+
+    def get_status(self, obj) -> str:
+        return PostStatus.DISCARDED if obj.status == PostStatus.BLOCKED else obj.status
 
     @extend_schema_field(TranslationSerializer(allow_null=True))
     def get_translation(self, obj):
@@ -203,9 +207,13 @@ class CitizenPostSerializer(serializers.Serializer):
 
     def get_reason(self, obj) -> str | None:
         """The reviewer's comment when the post was discarded or taken down."""
-        if obj.status not in (PostStatus.DISCARDED, PostStatus.UNPUBLISHED):
+        if obj.status not in (PostStatus.DISCARDED, PostStatus.UNPUBLISHED, PostStatus.BLOCKED):
             return None
-        wanted = {PostStatus.DISCARDED: ReviewAction.Action.DISCARD, PostStatus.UNPUBLISHED: ReviewAction.Action.UNPUBLISH}
+        wanted = {
+            PostStatus.DISCARDED: ReviewAction.Action.DISCARD,
+            PostStatus.UNPUBLISHED: ReviewAction.Action.UNPUBLISH,
+            PostStatus.BLOCKED: ReviewAction.Action.BLOCK,
+        }
         actions = [a for a in obj.review_actions.all() if a.to_status == obj.status and a.action in (wanted[obj.status], ReviewAction.Action.REVERSE)]
         latest = max(actions, key=lambda a: a.created_at, default=None)
         return latest.comment if latest and latest.comment else None

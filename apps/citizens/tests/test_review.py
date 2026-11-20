@@ -152,8 +152,9 @@ def test_the_super_admin_blocks_for_some_days_and_pending_posts_go(api, world, p
     assert summary["blocked"] is True and summary["blocked_until"].endswith("+05:30")
     assert "unblock_citizen" in response.json()["allowed_actions"]
     statuses = dict(Post.objects.filter(citizen_id=citizen.device_id).values_list("title", "status"))
-    assert statuses == {post.title: PostStatus.DISCARDED, "రెండవ": PostStatus.DISCARDED, "మూడవ": PostStatus.PUBLISHED}
-    assert second.review_actions.filter(action="DISCARD", comment="Spam posts").exists()
+    # Since 2026-11-20 the pending posts become BLOCKED (the console's Blocked tab); a published one stays.
+    assert statuses == {post.title: PostStatus.BLOCKED, "రెండవ": PostStatus.BLOCKED, "మూడవ": PostStatus.PUBLISHED}
+    assert second.review_actions.filter(action="BLOCK", comment="Spam posts").exists()
     device = CitizenDevice.objects.get(pk=citizen.device_id)
     assert device.blocked and device.blocked_by == world.users["super"] and device.block_reason == "Spam posts"
     assert timedelta(days=6, hours=23) < device.blocked_until - device.blocked_at <= timedelta(days=7)
