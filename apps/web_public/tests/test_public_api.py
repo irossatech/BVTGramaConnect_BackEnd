@@ -1,5 +1,6 @@
 """Public website API: site config and contact messages."""
 
+
 import pytest
 
 from apps.web_public.models import ContactMessage
@@ -91,9 +92,8 @@ def test_honeypot_pretends_success_and_stores_nothing(api):
     assert ContactMessage.objects.count() == 0
 
 
-def test_no_per_ip_limit_on_messages(api, settings):
-    # The 5 messages an hour per IP were removed on 2026-11-20 (lead's decision).
+def test_no_limit_on_messages_per_address(api):
+    """Decision of 2026-11-20: one address may send any number of messages; every one is stored."""
     for _ in range(12):
         assert send(api).status_code == 201
     assert ContactMessage.objects.count() == 12
-    assert not hasattr(settings, "CONTACT_MESSAGES_PER_IP_PER_HOUR")

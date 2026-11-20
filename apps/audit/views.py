@@ -2,7 +2,7 @@
 
 import io
 import json
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time
 from functools import partial
 
 from django.conf import settings
@@ -85,14 +85,11 @@ def _moment(day: date, end: bool = False):
 def audit_window(params) -> tuple[date | None, date | None]:
     """The first and last day shown (None: no limit that side). Contract section 8, "Which days are shown".
 
-    Lead's decision of 2026-11-19 (replaces the 180-day limit of 2026-11-11): no dates, the last
-    AUDIT_DEFAULT_DAYS (180), in pages; with dates (a range or a month), exactly those days, however old,
-    fetched from the database. The audit log is never cleaned, so every entry stays reachable.
+    Decision of 2026-11-20 (replaces the 180-day default of 2026-11-19): no dates, every entry, newest
+    first, in pages; with dates (a range or a month), exactly those days. Nothing is hidden by age.
     """
     start = _date(params["from"], "from") if params.get("from") else None
     end = _date(params["to"], "to") if params.get("to") else None
-    if start is None and end is None:
-        start = timezone.localdate() - timedelta(days=settings.AUDIT_DEFAULT_DAYS)
     return start, end
 
 

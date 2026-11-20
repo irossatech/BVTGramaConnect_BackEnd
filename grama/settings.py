@@ -520,9 +520,6 @@ if AUDIT_TEXT_MAX_CHARS < 10:
  
 PLAY_STORE_URL = env.str("PLAY_STORE_URL", default="")
 APP_STORE_URL = env.str("APP_STORE_URL", default="")
-# The console lists every unhandled contact message, and a handled one for this many days after it was
-# handled (2026-11-19); older handled ones are kept, not shown.
-CONTACT_MESSAGES_VISIBLE_DAYS = env.int("CONTACT_MESSAGES_VISIBLE_DAYS", default=90)
 SITE_WEBSITE_URL = env.str("SITE_WEBSITE_URL", default="https://example.in/")
  
 PUBLIC_BASE_URL = env.str("PUBLIC_BASE_URL", default="")
@@ -571,11 +568,6 @@ CITIZEN_POSTS_PER_DAY = env.int("CITIZEN_POSTS_PER_DAY", default=5)
 CITIZEN_REGISTRATIONS_PER_IP_PER_DAY = env.int("CITIZEN_REGISTRATIONS_PER_IP_PER_DAY", default=0)
  
 SERVICE_REQUESTS_PER_DAY = env.int("SERVICE_REQUESTS_PER_DAY", default=10)
-# Officials' lists (decision of 2026-11-11): a completed or rejected request is listed while its last
-# change is at most this many days old; open requests always. Nothing is deleted.
-SERVICE_REQUEST_CLOSED_VISIBLE_DAYS = env.int("SERVICE_REQUEST_CLOSED_VISIBLE_DAYS", default=180)
-if SERVICE_REQUEST_CLOSED_VISIBLE_DAYS < 1:
-    raise ImproperlyConfigured("SERVICE_REQUEST_CLOSED_VISIBLE_DAYS must be at least 1.")
 SERVICES_PUBLIC_MAX_AGE = env.int("SERVICES_PUBLIC_MAX_AGE", default=300)
 SERVICE_LOGO_MAX_UPLOAD_MB = env.int("SERVICE_LOGO_MAX_UPLOAD_MB", default=2)
 SERVICE_LOGO_MIN_PX = env.int("SERVICE_LOGO_MIN_PX", default=64)
@@ -632,14 +624,13 @@ TRANSLITERATION_TIMEOUT_S = env.float("TRANSLITERATION_TIMEOUT_S", default=4.0)
 TRANSLITERATION_CACHE_S = env.int("TRANSLITERATION_CACHE_S", default=60 * 60 * 24 * 30)
 DELIVERY_RETRY_ATTEMPTS = env.int("DELIVERY_RETRY_ATTEMPTS", default=3)
 
-# Audit log screens (lead's decision of 2026-11-19, replacing the 90/180-day window of 2026-11-11):
-# the last AUDIT_DEFAULT_DAYS by default, in pages; any older days when the admin picks dates or a
-# month. Exports stop at AUDIT_EXPORT_MAX_ROWS with a 400 asking for a shorter date range
-# (apps.audit.views). AUDIT_VISIBLE_DAYS is gone: a leftover line in a server's .env is ignored.
-AUDIT_DEFAULT_DAYS = env.int("AUDIT_DEFAULT_DAYS", default=180)
+# Nothing is hidden by age (decision of 2026-11-20): the audit log, contact messages and service
+# requests list every record, however old, in pages. CONTACT_MESSAGES_PER_IP_PER_HOUR,
+# CONTACT_MESSAGES_VISIBLE_DAYS, SERVICE_REQUEST_CLOSED_VISIBLE_DAYS, AUDIT_DEFAULT_DAYS and
+# AUDIT_VISIBLE_DAYS are gone: a leftover line in a server's .env is ignored.
+# An audit export matching more than AUDIT_EXPORT_MAX_ROWS entries answers 400 asking for a shorter
+# date range (apps.audit.views).
 AUDIT_EXPORT_MAX_ROWS = env.int("AUDIT_EXPORT_MAX_ROWS", default=50000)
-if AUDIT_DEFAULT_DAYS < 1:
-    raise ImproperlyConfigured("AUDIT_DEFAULT_DAYS must be at least 1.")
 if AUDIT_EXPORT_MAX_ROWS < 1:
     raise ImproperlyConfigured("AUDIT_EXPORT_MAX_ROWS must be at least 1.")
  

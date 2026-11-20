@@ -162,7 +162,7 @@ ufw allow 80/tcp >/dev/null
 ufw allow 443/tcp >/dev/null
 ufw --force enable >/dev/null
 
-log "fail2ban: sshd and nginx rate limits"
+log "fail2ban: sshd"
 render "$TEMPLATES/fail2ban.local" /etc/fail2ban/jail.d/gramaconnect.local
 systemctl enable --now fail2ban >/dev/null
 systemctl restart fail2ban

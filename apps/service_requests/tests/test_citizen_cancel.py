@@ -139,19 +139,18 @@ def test_officials_cannot_cancel(api, world, request_from):
     assert ServiceRequest.objects.get(pk=request_id).status == "NEW"
 
 
-def test_the_officials_list_has_a_cancelled_tab_and_hides_old_ones(api, world, request_from):
+def test_the_officials_list_has_a_cancelled_tab_and_keeps_old_ones(api, world, request_from):
     citizen, request_id = request_from()
     cancel(citizen, request_id)
     client = api(world.users["va_kolakaluru"])
     page = client.get(LIST, {"status": "CANCELLED"}).json()
     assert [row["id"] for row in page["results"]] == [request_id]
     assert page["status_counts"]["CANCELLED"] == 1
-    # Like Completed and Rejected: listed for 180 days after the last change, then kept but not listed.
+    # However old, it stays listed (decision of 2026-11-20: nothing is hidden by age).
     ServiceRequest.objects.filter(pk=request_id).update(updated_at=ServiceRequest.objects.get(pk=request_id).updated_at
-                                                        - timedelta(days=181))
+                                                        - timedelta(days=400))
     page = client.get(LIST).json()
-    assert request_id not in [row["id"] for row in page["results"]] and page["status_counts"]["CANCELLED"] == 0
-    assert ServiceRequest.objects.filter(pk=request_id).exists()
+    assert request_id in [row["id"] for row in page["results"]] and page["status_counts"]["CANCELLED"] == 1
 
 
 def test_a_cancelled_request_still_counts_towards_the_daily_limit(phone, settings):

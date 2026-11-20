@@ -1,8 +1,8 @@
-"""Which contact messages the console lists (2026-11-19, the rule service requests follow).
+"""Which contact messages the console lists (decision of 2026-11-20).
 
-Unhandled messages stay listed, however old, until someone marks them handled. A handled message is
-listed for CONTACT_MESSAGES_VISIBLE_DAYS (90) after it was handled, then kept but not listed. Nothing is
-deleted. (Before 2026-11-19 every message dropped off 90 days after it arrived, handled or not.)
+Every message, however old, handled or not; nothing is hidden by age and nothing is deleted. (Before:
+a handled message dropped off 90 days after it was handled, since 2026-11-19; every message 90 days
+after it arrived before that.)
 """
 
 from datetime import timedelta
@@ -41,37 +41,21 @@ def test_unhandled_messages_stay_however_old(world, api):
     assert listed(api, world, q="400")[1] == 1  # search finds an old unhandled one too
 
 
-def test_handled_messages_drop_off_90_days_after_handling(world, api):
-    handled_recently = aged(200, handled_days_ago=10)  # old message, handled 10 days ago: still listed
-    handled_long_ago = aged(200, handled_days_ago=95)
-    assert listed(api, world) == ({handled_recently}, 1)
-    assert listed(api, world, status="handled") == ({handled_recently}, 1)
-    assert ContactMessage.objects.filter(pk=handled_long_ago).exists()  # kept, not deleted
+def test_handled_messages_stay_however_long_ago(world, api):
+    handled_recently = aged(200, handled_days_ago=10)
+    handled_long_ago = aged(500, handled_days_ago=400)
+    without_date = aged(300)
+    ContactMessage.objects.filter(pk=without_date).update(handled=True, handled_at=None)
+    everything = {handled_recently, handled_long_ago, without_date}
+    assert listed(api, world) == (everything, 3)
+    assert listed(api, world, status="handled") == (everything, 3)
+    assert listed(api, world, q="500")[1] == 1
 
 
-def test_marking_an_old_message_handled_does_not_hide_it_at_once(world, api):
-    pk = aged(150)
-    response = api(world.users["super"]).patch(f"{INBOX}{pk}/", {"handled": True}, format="json")
-    assert response.status_code == 200
+def test_marking_and_reopening_keep_an_old_message_listed(world, api):
+    pk = aged(400)
+    client = api(world.users["super"])
+    assert client.patch(f"{INBOX}{pk}/", {"handled": True}, format="json").status_code == 200
     assert pk in listed(api, world, status="handled")[0]
-
-
-def test_reopening_brings_a_handled_message_back(world, api):
-    pk = aged(200, handled_days_ago=120)
-    assert pk not in listed(api, world)[0]
-    api(world.users["super"]).patch(f"{INBOX}{pk}/", {"handled": False}, format="json")
+    assert client.patch(f"{INBOX}{pk}/", {"handled": False}, format="json").status_code == 200
     assert pk in listed(api, world, status="new")[0]
-
-
-def test_a_handled_message_without_a_date_counts_from_its_arrival(world, api):
-    pk = aged(120)
-    ContactMessage.objects.filter(pk=pk).update(handled=True, handled_at=None)
-    assert pk not in listed(api, world)[0]
-
-
-def test_the_days_follow_the_setting(world, api, settings):
-    pk = aged(100, handled_days_ago=40)
-    settings.CONTACT_MESSAGES_VISIBLE_DAYS = 30
-    assert pk not in listed(api, world)[0]
-    settings.CONTACT_MESSAGES_VISIBLE_DAYS = 90
-    assert pk in listed(api, world)[0]
