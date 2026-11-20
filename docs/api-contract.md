@@ -143,7 +143,7 @@ All errors share one shape:
 | 409 | `media_conflict` | A post has up to 3 photos or one video, never both: a photo for a post with a video, a second video, or a video for a post with photos (sections 5 and 15) |
 | 413 | `file_too_large` | Upload over the limit |
 | 415 | `unsupported_media` | File type not allowed |
-| 429 | `locked_out` | 5 failed logins for this username from this IP address, or 50 failed logins from this IP address for any usernames within an hour; `retry_after_s` gives the seconds left |
+| 429 | `locked_out` | 5 failed logins for this username from this IP address; `retry_after_s` gives the seconds left |
 | 429 | `throttled` | Rate limit; `retry_after_s` gives the seconds to wait, and the `Retry-After` header is set |
 
 ### Enumerations
@@ -355,11 +355,10 @@ Login rules:
 - `username` matches the username only, ignoring case, surrounding spaces and extra spaces between words: `" Ravi  Kumar"` finds `ravi kumar`. Usernames are stored in lower case.
 - **Usernames** (owner's decision of 2026-11-17): 3 to 150 characters; letters, digits, `@ . _ + -` and single spaces between words, e.g. `ravi kumar`. The server trims, lower-cases and collapses spaces before checking, on create, on change and at login. Otherwise `400 validation_error` on `username` ("Use 3 to 150 letters, digits, spaces or @ . _ + - characters.").
 - A wrong password and an unknown username give the same `400 invalid_credentials`.
-- **Lockout** (django-axes): 5 failures for one username from one IP address lock that pair for 15 minutes. Every try then answers `429 locked_out` with `retry_after_s`, even with the right password. A success clears the count. An admin can unlock early (`POST /users/{id}/unlock/`). Nginx adds 10 requests a minute per IP.
-- **IP-wide cap:** 50 failed logins from one IP address, for any usernames, within 60 minutes block every login from that address with the same `429 locked_out` and `retry_after_s` (at most an hour). A success does not reset it and unlock does not lift it. Clients need no change: they already handle `locked_out`.
-- **Login throttle:** at most 30 login requests an hour from one IP address (`LOGIN_THROTTLE_RATE`), app and console together, successful or not. The next one answers `429 throttled` with `retry_after_s` and a `Retry-After` header, before the password is checked. **Clients: show "Too many logins from this network. Try again in N minutes." for `throttled` on the login screens.** Officials who share one network address (a mobile network, an office) share the 30.
+- **Lockout** (django-axes): 5 failures for one username from one IP address lock that pair for 15 minutes. Every try then answers `429 locked_out` with `retry_after_s`, even with the right password. A success clears the count. An admin can unlock early (`POST /users/{id}/unlock/`).
+- **No per-IP login limits** (lead's decision of 2026-11-20, not needed in this phase): the IP-wide cap (50 failures an hour) and the login throttle (30 logins an hour) were removed, so the login endpoints no longer answer `429 throttled`. Clients may keep their `throttled` message; it is simply not sent for logins any more.
 - After the password check: blocked → `403 account_blocked`; no active role → `403 permission_denied`; console login without `web_admin.access_web_console` → `403 not_console_user`, and no session.
-- A successful login updates `last_login_at` and writes `auth.login` with `via` (`app` or `console`). Failures write `auth.login_failed`, refusals `auth.login_refused`, lockouts `auth.locked_out`, IP blocks `auth.ip_locked_out`.
+- A successful login updates `last_login_at` and writes `auth.login` with `via` (`app` or `console`). Failures write `auth.login_failed`, refusals `auth.login_refused`, lockouts `auth.locked_out`. (`auth.ip_locked_out` entries written before 2026-11-20 stay in the audit log.)
 
 Passwords:
 - Hashed with Argon2. New passwords pass Django's validators: at least 12 characters for every official, Panchayat members included (since 2026-11-19; it was 8 for Panchayat members), not common, not all digits, not like the username, and at least one capital letter, one small letter, one number and one special character (anything not a letter, number or space, such as `@ # $ % & * ! ?`). Generated temporary passwords follow the same rules (12 characters). Existing passwords keep working until next changed, except that a login with a password shorter than the person's roles need answers with `must_change_password: true`, and the app or console shows the change-password screen as for a temporary password. A new password must differ from the current one. Errors come as `400 validation_error` with `fields.new_password` (or `fields.password` for admin-set passwords).
@@ -764,7 +763,7 @@ Built (web_admin app). `days` is 1 to 366, default 30, and counts posts created 
 | `POST /public/contact-messages/` | public | `{"name", "mobile", "village_text", "message", "language", "website"?}` | `201 {"id", "created_at"}`. `village_text` is required (since 2026-11-04): missing or blank answers `400` with `fields.village_text`. |
 
 - Built. Values come from settings, each overridable by env: `PLAY_STORE_URL` (empty by default), `SITE_WEBSITE_URL`, `PUBLIC_BASE_URL`; helplines from the important numbers (`SITE_HELPLINES` while none are loaded).
-- Contact form validation matches the website: name and message required after trimming, mobile 10 digits (`+91` and spaces are accepted and stripped). `website` is a honeypot: when filled, the server answers `201` with `id` 0 and stores nothing. **No limit** on how many messages one address sends (decision of 2026-11-20; before, 5 an hour per IP, then `429 throttled`). The general rate limit of the whole API in Nginx still applies.
+- Contact form validation matches the website: name and message required after trimming, mobile 10 digits (`+91` and spaces are accepted and stripped). `website` is a honeypot: when filled, the server answers `201` with `id` 0 and stores nothing. **No limit** on how many messages one address sends (decision of 2026-11-20; before, 5 an hour per IP, then `429 throttled`): the form never answers `429`.
 - `website_url` (`SITE_WEBSITE_URL`) is the link the app adds to shared posts and invites (owner decision Q17).
 - `helplines` (owner decision Q19): the state's helplines from the important numbers (section 14), in their `sort_order`. While none are loaded it falls back to `SITE_HELPLINES` (a JSON list in the env), by default 112 Emergency, 108 Ambulance, 1930 Cyber fraud, 181 Women helpline, 1098 Child helpline, 1912 Electricity, with the prototype's Telugu labels. `seed_helplines` loads that same list into the table, so the output does not change.
 - **Showcase (owner decision Q16):** `location` is the village in `SITE_SHOWCASE_VILLAGE_ID` and the posts come from its feed: `featured` is the newest post with a photo (or the newest post), `items` the next two. When the setting is empty or that feed has no posts, the newest published posts anywhere are used and `location` is the featured post's area.
@@ -908,9 +907,8 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 
 | Item | Limit |
 |---|---|
-| Failed logins | 5 per username and IP address, then locked for 15 minutes (django-axes; a success resets the count); Nginx 10 requests a minute per IP |
-| Contact form | 5 per hour per IP |
-| Public feed | 120 requests per minute per IP |
+| Failed logins | 5 per username and IP address, then locked for 15 minutes (django-axes; a success resets the count). No other per-IP limit since 2026-11-20 (lead's decision) |
+| Contact form | No per-IP limit since 2026-11-20 (lead's decision); the hidden honeypot field stays |
 | Post title | 150 characters |
 | Post body | 5,000 characters |
 | Review comment | 500 characters |

@@ -1,7 +1,6 @@
 """Passwords for officials: login checks, temporary passwords, validation.
 
-- Login (app and console) first checks the IP-wide cap (lockout.py), then goes
-  through Django's authenticate(): django-axes refuses locked-out username +
+- Login (app and console) goes through Django's authenticate(): django-axes refuses locked-out username +
   IP pairs, then OfficialBackend checks the password. Usernames are matched without case. Unknown usernames take as
   long as real ones (ModelBackend hashes a dummy password).
 - New accounts and resets get a temporary password, set by the admin or
@@ -104,10 +103,9 @@ def invalid_credentials() -> ApiError:
     return ApiError("invalid_credentials", _("Wrong username or password."))
 
 
-def locked_out(request, username: str, seconds: int | None = None) -> ApiError:
-    """429 locked_out. `seconds` is given for the IP-wide cap; else the username + IP lockout is measured."""
-    if seconds is None:
-        seconds = lockout.seconds_left(username, client_ip(request))
+def locked_out(request, username: str) -> ApiError:
+    """429 locked_out, with how long the username + IP lockout still lasts."""
+    seconds = lockout.seconds_left(username, client_ip(request))
     return ApiError(
         "locked_out",
         _("Too many failed logins. Try again in %(m)d minute(s).") % {"m": max(1, (seconds + 59) // 60)},
@@ -129,25 +127,10 @@ def authenticate_official(request, username: str, password: str, *, via: str, re
     the password check, so it tells nothing to someone without the password.
     """
     key = normalize_username(username)
-    ip = client_ip(request)
-    # The IP-wide cap is checked before the password, so a blocked address learns nothing
-    # and its tries are not counted (the block is not extended).
-    seconds = lockout.ip_seconds_left(ip)
-    if seconds:
-        raise locked_out(request, key, seconds)
     user = authenticate(request, username=key, password=password)
     if user is None:
         if getattr(request, "axes_locked_out", False):
             raise locked_out(request, key)
-        seconds = lockout.ip_seconds_left(ip)
-        if seconds:
-            # This failure reached the cap: audit it once (without the IP) and answer like a lockout.
-            record(
-                "auth.ip_locked_out",
-                via=via,
-                data={"failures": settings.LOGIN_IP_MAX_FAILURES, "minutes": settings.LOGIN_IP_WINDOW_MINUTES},
-            )
-            raise locked_out(request, key, seconds)
         raise invalid_credentials()
     if not user.is_active:
         raise refuse(user, "account_blocked", _("This account is blocked."), via)

@@ -6,8 +6,9 @@
   BlacklistedToken rows go with them), as `flushexpiredtokens` does.
 - Expired console sessions, as `clearsessions` does.
 - django-axes AccessFailureLog rows (one per failed login, with the IP) older
-  than the IP-wide cap's window (LOGIN_IP_WINDOW_MINUTES): nothing reads them
-  after that, and IP addresses are not kept longer than needed.
+  than LOGIN_FAILURE_LOG_KEEP_MINUTES (60): IP addresses are not kept longer
+  than needed. (60 minutes was the window of the IP-wide cap that read them,
+  removed on 2026-11-20; the cleanup stays as it was.)
 - Officials' read notifications older than NOTIFICATION_KEEP_DAYS (90; 0 keeps
   them all). Unread ones stay until read (owner decision, audit finding BE-DB-018).
 
@@ -30,6 +31,8 @@ HOUSEKEEPING_SCHEDULE = "daily-housekeeping"
 #: Rows removed per DELETE: each batch is a short statement of its own, never one long delete holding
 #: locks on a big table (audit finding BE-DB-019).
 DELETE_BATCH = 1000
+#: How long a failed login's AccessFailureLog row (with its IP) is kept.
+LOGIN_FAILURE_LOG_KEEP_MINUTES = 60
 
 
 def _delete_in_batches(queryset) -> int:
@@ -58,7 +61,7 @@ def run_housekeeping(now=None) -> dict:
     expired_tokens = _delete_in_batches(OutstandingToken.objects.filter(expires_at__lte=now))
     sessions = _delete_in_batches(Session.objects.filter(expire_date__lt=now))
     login_failures = _delete_in_batches(
-        AccessFailureLog.objects.filter(attempt_time__lte=now - timedelta(minutes=settings.LOGIN_IP_WINDOW_MINUTES))
+        AccessFailureLog.objects.filter(attempt_time__lte=now - timedelta(minutes=LOGIN_FAILURE_LOG_KEEP_MINUTES))
     )
     return {
         "failed_tasks": failed_tasks,

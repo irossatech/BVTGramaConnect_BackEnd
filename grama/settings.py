@@ -204,8 +204,9 @@ else:  # DEV
         "default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"},
         "throttle": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache", "LOCATION": "throttle"},
     }
- 
-LOGIN_THROTTLE_RATE = env.str("LOGIN_THROTTLE_RATE", default="30/hour")
+# "throttle" counts the Telugu name suggestions' rate (TRANSLITERATION_RATE). The per-IP login throttle,
+# the IP-wide failed-login cap and the contact form's per-IP limit were removed on 2026-11-20 (lead's
+# decision, not needed in this phase; docs/security-review.md).
  
  
 # ==============================================================================
@@ -343,8 +344,6 @@ AXES_DISABLE_ACCESS_LOG = True
 AXES_VERBOSE = False
 AXES_ENABLE_ACCESS_FAILURE_LOG = True
  
-LOGIN_IP_MAX_FAILURES = env.int("LOGIN_IP_MAX_FAILURES", default=50)
-LOGIN_IP_WINDOW_MINUTES = env.int("LOGIN_IP_WINDOW_MINUTES", default=60)
 PASSWORD_CHANGE_MAX_FAILURES = env.int("PASSWORD_CHANGE_MAX_FAILURES", default=5)
 PASSWORD_CHANGE_WINDOW_MINUTES = env.int("PASSWORD_CHANGE_WINDOW_MINUTES", default=15)
  

@@ -10,10 +10,4 @@ enabled  = true
 port     = @SSH_PORT@
 backend  = systemd
 
-# Clients that keep hitting the Nginx rate limits (login tries, API bursts).
-[nginx-limit-req]
-enabled  = true
-port     = http,https
-backend  = auto
-logpath  = /var/log/nginx/*error.log
-maxretry = 10
+# No Nginx jail: the Nginx rate limits it acted on were removed on 2026-11-20 (lead's decision).

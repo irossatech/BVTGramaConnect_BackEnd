@@ -1,5 +1,5 @@
 """Fixes from the security gap review of 2026-10-27 (docs/security-review.md): G4, G9, G11, G13, G14, G15.
-G1's login throttle is in apps/accounts/tests/test_login_throttle.py."""
+G1's login throttle was removed on 2026-11-20 (lead's decision; open item 8 there)."""
 
 import io
 import os

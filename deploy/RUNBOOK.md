@@ -40,8 +40,8 @@ gc showmigrations
 | Restart the app | `sudo systemctl restart gramaconnect-gunicorn gramaconnect-qcluster` |
 | Health | `curl -s https://<domain>/api/v1/health/` (`"worker": "late"` means the background jobs stopped: restart qcluster) |
 | Last backups | `systemctl list-timers gramaconnect-backup.timer` and `journalctl -u gramaconnect-backup -n 50` |
-| Banned IPs | `sudo fail2ban-client status sshd`, `sudo fail2ban-client status nginx-limit-req` |
-| Unban an IP | `sudo fail2ban-client set nginx-limit-req unbanip <ip>` |
+| Banned IPs (SSH) | `sudo fail2ban-client status sshd` |
+| Unban an IP | `sudo fail2ban-client set sshd unbanip <ip>` |
 | Firewall | `sudo ufw status verbose` |
 
 Common problems:
@@ -53,7 +53,7 @@ Common problems:
 - **404 on `/django-admin/`:** expected; Django admin is off on servers (`DJANGO_ADMIN_ENABLED`).
 
 - **Video uploads ask for `duration_s` or a `poster`:** ffmpeg is missing, so the server cannot measure the video or make its poster. `sudo apt-get install ffmpeg`, then restart Gunicorn.
-- **429 on login:** Nginx allows 10 login or password-change requests a minute per IP (zone `gc_login`). Django (django-axes) also locks a username for 15 minutes after 5 failed tries from one IP (`locked_out`). An admin above the person can unlock them early ("Unlock" in the console or the app), or from the shell: `gc shell -c "from apps.accounts.lockout import unlock; from apps.accounts.models import User; print(unlock(User.objects.get(username='<username>')))"` (axes stores a hash of the username, so `axes_reset_username` does not find it).
+- **429 on login:** Django (django-axes) locks a username for 15 minutes after 5 failed tries from one IP (`locked_out`). An admin above the person can unlock them early ("Unlock" in the console or the app), or from the shell: `gc shell -c "from apps.accounts.lockout import unlock; from apps.accounts.models import User; print(unlock(User.objects.get(username='<username>')))"` (axes stores a hash of the username, so `axes_reset_username` does not find it).
 - **Someone forgot their password:** an admin above them uses "Reset password" in the console or the app, which shows a new temporary password once (or lets the admin type one). The person must change it at first login; their other sessions end.
 - **Role permissions look wrong:** `gc sync_role_permissions --check` lists differences from `apps/accounts/role_matrix.py`; `gc sync_role_permissions` fixes them. `migrate` runs the same sync on every deploy.
 
@@ -114,7 +114,7 @@ Proves the backups work. Do it on a spare server, never on production.
 
 - **Page headers (`templates/nginx-security.conf`):** the website and console pages carry a Content-Security-Policy with no `data:` fonts or pictures, `Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()` and `Cross-Origin-Opener-Policy: same-origin` (since 2026-11-16, web audit WEB-SEC-003/WEB-HDR-001). After changing the template run `sudo bash deploy/setup.sh` (templates are installed by `setup.sh`, not `deploy.sh`). On the hosting panel, add the same three headers to its nginx for `/` and `/console/`. If a picture or font stops loading, the browser console says "Refused to load … Content Security Policy": tell the web developer rather than adding `data:` back.
 - **Website 404 page:** an address under `/` that names no file gets the website's own `404.html` (from the BVTGramaConnect build) with status 404, through `error_page 404 /404.html` in `templates/nginx-locations.conf`. If visitors see Nginx's plain "404 Not Found" page instead, check that `404.html` is in the web root's `public` folder and that `setup.sh` ran after this line was added (templates are installed by `setup.sh`, not `deploy.sh`). On the hosting panel, set its nginx's 404 page to `/404.html` too.
-- **Login rate limit in Nginx:** `templates/nginx-locations.conf` limits `/api/v1/auth/login/`, `/api/v1/auth/session/login/` and `/api/v1/auth/password/change/` to 10 requests a minute per IP (zone `gc_login`, burst 5), before Django's lockout per username and IP.
+- **No per-IP request limits in Nginx** (lead's decision of 2026-11-20, not needed in this phase): the template's `gc_login` (10 a minute on the login and password-change paths) and `gc_api` (20 a second on the API) zones were removed. Django's lockout per username and IP still applies. A server set up before then keeps the old limits until `sudo bash deploy/setup.sh` installs the new templates.
 - **Console sessions:** the session cookie is HttpOnly, Secure and SameSite=Lax, every write needs the CSRF token, and a session ends after `CONSOLE_SESSION_IDLE_MINUTES` (30) idle minutes. Blocking a user or resetting their password ends their sessions at once.
 - **No personal data in access logs:** the site logs with the `gc_noquery` format (`templates/nginx-site-*.conf`), which records the path without the query string. Searches such as `/api/v1/users/?q=<email or mobile>` or `/api/v1/audit/?q=…` therefore never reach `/var/log/nginx`. Keep this format if you change the logging.
 - **Temporary passwords** appear once, in the API answer that created or reset them (shown to the admin on screen). They are never emailed, logged or written to the audit log.
