@@ -202,7 +202,7 @@ class PostViewSet(viewsets.GenericViewSet):
         post = post_queryset(Post.objects.filter(pk=post.pk)).get()
         return Response(PostSerializer(post, context=context).data, status=code)
 
-    def _filters_except_status(self, queryset):
+    def _filters_except_status_and_source(self, queryset):
         params = self.request.query_params
         if params.get("mine") in ("1", "true", "True"):
             queryset = queryset.filter(author=self.request.user)
@@ -220,25 +220,47 @@ class PostViewSet(viewsets.GenericViewSet):
         query = params.get("q", "").strip()
         if query:
             queryset = queryset.filter(Q(title__icontains=query) | Q(body__icontains=query))
-        return source_filter(self.request, area_filter(self.request, queryset))
+        return area_filter(self.request, queryset)
+
+    def _by_status(self, queryset, wanted: list[str]):
+        if wanted:
+            return queryset.filter(status__in=wanted)
+        return queryset.exclude(Q(status=PostStatus.DRAFT) & ~Q(author=self.request.user))
 
     @extend_schema(summary="Posts you can see", parameters=POST_FILTERS)
     def list(self, request):
-        base = self._filters_except_status(self.get_queryset())
-        counts = {row["status"]: row["n"] for row in base.order_by().values("status").annotate(n=Count("id"))}
+        wanted = [s.strip().upper() for s in request.query_params.get("status", "").split(",") if s.strip()]
+        unknown = set(wanted) - set(PostStatus.values)
+        if unknown:
+            raise ApiError("validation_error", _("Unknown status."), fields={"status": sorted(unknown)})
+        unsourced = self._filters_except_status_and_source(self.get_queryset())
+        base = source_filter(request, unsourced)  # also refuses an unknown source
+        source = request.query_params.get("source", "").strip().lower()
+        # One grouped count by status and by source gives every number below (audit finding BE-DB-009: one
+        # COUNT per page view). visible_posts() holds no one else's drafts, so the list's draft exclude
+        # (_by_status) removes nothing from these counts.
+        is_citizen = Case(When(citizen__isnull=False, then=Value(True)), default=Value(False), output_field=BooleanField())
+        rows = [
+            (row["status"], "citizen" if row["is_citizen"] else "official", row["n"])
+            for row in unsourced.order_by().annotate(is_citizen=is_citizen)
+            .values("status", "is_citizen").annotate(n=Count("id"))
+        ]
+        counts: dict[str, int] = {}
+        for status_value, kind, n in rows:
+            if not source or kind == source:
+                counts[status_value] = counts.get(status_value, 0) + n
         status_counts = {"ALL": sum(n for s, n in counts.items() if s != PostStatus.DRAFT)}
         status_counts.update({value: counts.get(value, 0) for value in PostStatus.values})
-        queryset = base
-        wanted = [s.strip().upper() for s in request.query_params.get("status", "").split(",") if s.strip()]
+        # The All / Officials / Citizens numbers (2026-11-20): every filter but `source`, the status included, so
+        # they match the list under the chosen status tab.
+        by_source = {"official": 0, "citizen": 0}
+        for status_value, kind, n in rows:
+            if not wanted or status_value in wanted:
+                by_source[kind] += n
+        queryset = self._by_status(base, wanted)
         if wanted:
-            unknown = set(wanted) - set(PostStatus.values)
-            if unknown:
-                raise ApiError("validation_error", _("Unknown status."), fields={"status": sorted(unknown)})
-            queryset = queryset.filter(status__in=wanted)
             total = sum(counts.get(value, 0) for value in set(wanted))
         else:
-            queryset = queryset.exclude(Q(status=PostStatus.DRAFT) & ~Q(author=request.user))
-            # visible_posts() holds no one else's drafts, so the exclude removes nothing from the counts.
             total = sum(counts.values())
         # The page total comes from the status counts above: no second COUNT(*) (audit finding BE-DB-009).
         use_known_count(self.paginator, total)
@@ -247,6 +269,7 @@ class PostViewSet(viewsets.GenericViewSet):
         prime_posts(context, page)
         response = self.get_paginated_response(PostSerializer(page, many=True, context=context).data)
         response.data["status_counts"] = status_counts
+        response.data["source_counts"] = by_source
         return response
 
     @extend_schema(summary="Write a post", request=PostWriteSerializer, responses={201: PostSerializer, 200: PostSerializer})
