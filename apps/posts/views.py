@@ -25,7 +25,7 @@ from apps.citizens import services as citizen_services
 from apps.geography.areas import AreaRef, within_q
 from apps.geography.models import AreaLevel
 from grama.pagination import use_known_count
-from grama.exceptions import ApiError, out_of_area
+from grama.exceptions import ApiError, out_of_area, permission_denied
 from grama.params import UUID_REGEX, is_number, uuid_or_none
 
 from . import media as media_service
@@ -143,6 +143,7 @@ POST_FILTERS = [
         "source", OpenApiTypes.STR, enum=["official", "citizen"],
         description="official: posts by officials; citizen: citizen posts (contract section 15)",
     ),
+    OpenApiParameter("citizen", OpenApiTypes.UUID, description="Super Admin: every post of this citizen's phone"),
 ]
 
 
@@ -183,6 +184,21 @@ def area_filter(request, queryset):
     return queryset
 
 
+def citizen_filter(user, raw, queryset):
+    """?citizen=<id>: every post of that phone, all its installs (Super Admin only; owner, 2026-11-21).
+
+    Which posts one phone wrote is the Super Admin's to see (they block phones), so anyone else gets
+    403 permission_denied. Any install's id works; the blocked citizens list gives the first one.
+    """
+    if not authz.can(user, services.BLOCK_CITIZEN):
+        raise permission_denied(_("Only the Super Admin can list a citizen's posts."))
+    device_id = uuid_or_none(raw)
+    if device_id is None:
+        raise ApiError("validation_error", _("Give a citizen id."), fields={"citizen": [_("Not a citizen id.")]})
+    device = citizen_services.device_or_404(device_id)
+    return queryset.filter(citizen__in=citizen_services.same_phone(device))
+
+
 class PostViewSet(viewsets.GenericViewSet):
     permission_classes = [IsAuthenticated]
     serializer_class = PostSerializer
@@ -220,6 +236,8 @@ class PostViewSet(viewsets.GenericViewSet):
         query = params.get("q", "").strip()
         if query:
             queryset = queryset.filter(Q(title__icontains=query) | Q(body__icontains=query))
+        if params.get("citizen"):
+            queryset = citizen_filter(self.request.user, params["citizen"], queryset)
         return area_filter(self.request, queryset)
 
     def _by_status(self, queryset, wanted: list[str]):
