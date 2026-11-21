@@ -12,7 +12,10 @@
   day (a runtime setting the Super Admin changes; 0 is no limit).
 - Only the Super Admin (posts.block_citizen) blocks a phone, for a number of
   days chosen each time, and may discard all its pending posts at once. The
-  citizen sees the reason and the end of the block.
+  citizen sees the reason and the end of the block. A block stops new posts
+  and service requests only; it changes no post (owner's request of
+  2026-11-21). Every block is kept as a CitizenBlock row with how it ended,
+  for the Super Admin's blocked citizens list.
 """
 
 from __future__ import annotations
@@ -21,12 +24,13 @@ import hashlib
 import hmac
 import logging
 import secrets
+import uuid
 from dataclasses import dataclass
 from datetime import timedelta
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
-from django.db.models import Count, F, Q
+from django.db.models import Count, F, OuterRef, Q, QuerySet, Subquery
 from django.utils import timezone
 from django.utils.translation import gettext as _
 from rest_framework import serializers as drf_serializers
@@ -41,7 +45,7 @@ from apps.posts.models import Post, PostStatus
 from grama.exceptions import ApiError, out_of_area, permission_denied
 
 from . import integrity
-from .models import CitizenDevice
+from .models import CitizenBlock, CitizenDevice
 
 logger = logging.getLogger("grama.citizens")
 
@@ -164,6 +168,8 @@ class PhoneRecord:
     posts_total: int
     posts_discarded: int
     block: CitizenDevice | None
+    #: Posts a block closed between 2026-11-20 and 2026-11-21 (none after posts/0013 reopened them).
+    posts_blocked: int = 0
 
 
 def phone_records(devices, now=None) -> dict:
@@ -183,20 +189,25 @@ def phone_records(devices, now=None) -> dict:
         Post.objects.filter(citizen__in=key_of)
         .order_by()
         .values("citizen_id")
-        .annotate(total=Count("id"), discarded=Count("id", filter=Q(status=PostStatus.DISCARDED)))
+        .annotate(
+            total=Count("id"),
+            discarded=Count("id", filter=Q(status=PostStatus.DISCARDED)),
+            blocked=Count("id", filter=Q(status=PostStatus.BLOCKED)),
+        )
     )
     for row in counts:
-        entry = totals.setdefault(key_of[row["citizen_id"]], [0, 0])
+        entry = totals.setdefault(key_of[row["citizen_id"]], [0, 0, 0])
         entry[0] += row["total"]
         entry[1] += row["discarded"]
+        entry[2] += row["blocked"]
     blocks: dict[str, list[CitizenDevice]] = {}
     for install in installs:
         blocks.setdefault(key_of[install.pk], []).append(install)
     records = {}
     for pk, device in devices.items():
         key = phone_key(device)
-        total, discarded = totals.get(key, (0, 0))
-        records[pk] = PhoneRecord(total, discarded, _longest_running(blocks.get(key, []), now))
+        total, discarded, blocked = totals.get(key, (0, 0, 0))
+        records[pk] = PhoneRecord(total, discarded, _longest_running(blocks.get(key, []), now), blocked)
     return records
 
 
@@ -440,7 +451,7 @@ def _comment_or_raise(comment: str) -> str:
 def _close_pending(user, device: CitizenDevice, comment: str, action: str = "discard") -> int:
     """Close every pending post of this phone (all installs) inside the actor's area. Returns how many.
 
-    action "discard" (Discard all: DISCARDED) or "block" (a block: BLOCKED, decision of 2026-11-20).
+    Used by "Discard all" (DISCARDED). A block no longer closes posts (owner's request of 2026-11-21).
     """
     pending = (
         Post.objects.filter(citizen__in=same_phone(device), status=PostStatus.PENDING)
@@ -457,14 +468,22 @@ def _close_pending(user, device: CitizenDevice, comment: str, action: str = "dis
     return count
 
 
+def _end_open_blocks(device: CitizenDevice, now, user=None, role: str = "") -> int:
+    """Mark the phone's running CitizenBlock rows ended now, by `user` (None: the time was up)."""
+    return CitizenBlock.objects.filter(phone=phone_key(device), ended_at__isnull=True).update(
+        ended_at=now, ended_by=user, ended_by_role=role
+    )
+
+
 def block(user, post: Post, comment: str, days: int) -> CitizenDevice:
-    """Block the phone that wrote `post` (all its installs) for `days`; its pending posts become BLOCKED.
+    """Block the phone that wrote `post` (all its installs) for `days`. It changes no post.
 
-    Since 2026-11-20 they are BLOCKED (the console's Blocked tab), no longer DISCARDED. Published posts
-    stay published.
+    Owner's request of 2026-11-21: a block only stops the phone's new posts and service requests. Its
+    waiting posts stay PENDING and are reviewed as usual; "Discard all" stays a separate action. (From
+    2026-11-20 to 2026-11-21 a block moved them to BLOCKED; posts/0013 reopened those.)
 
-    One transaction (audit finding BE-DB-023): the block and the discards are saved together or not at
-    all. A post another reviewer decided first is skipped, as before.
+    A block made while another runs replaces it: the old CitizenBlock row ends now, by this Super Admin.
+    The phone's fields, the new row and the audit entry are saved together (BE-DB-023).
     """
     grant = _super_admin_or_raise(user, post)
     comment = _comment_or_raise(comment)
@@ -473,30 +492,148 @@ def block(user, post: Post, comment: str, days: int) -> CitizenDevice:
     until = now + timedelta(days=days)
     with transaction.atomic():
         same_phone(device).update(blocked_at=now, blocked_until=until, blocked_by=user, block_reason=comment[:500])
+        _end_open_blocks(device, now, user, grant.key)
+        CitizenBlock.objects.create(
+            phone=phone_key(device), device=device, village_id=device.village_id, blocked_at=now,
+            blocked_until=until, blocked_by=user, blocked_by_role=grant.key, reason=comment[:500],
+        )
         record(
             "citizen.blocked", actor=user, actor_role=grant.key, target=device, target_label=str(device),
             area=post.target,
             data={"post_id": str(post.pk), "comment": comment, "days": days,
                   "until": drf_serializers.DateTimeField().to_representation(until)},
         )
-        _close_pending(user, device, comment, "block")
+    device.refresh_from_db()
+    return device
+
+
+def _unblock(user, role: str, device: CitizenDevice, data: dict, via: str) -> CitizenDevice:
+    now = timezone.now()
+    with transaction.atomic():
+        lifted = same_phone(device).filter(blocked_at__isnull=False).update(
+            blocked_at=None, blocked_until=None, blocked_by=None, block_reason=""
+        )
+        ended = _end_open_blocks(device, now, user, role)
+        if lifted or ended:
+            record(
+                "citizen.unblocked", actor=user, actor_role=role, target=device, target_label=str(device),
+                area=AreaRef(AreaLevel.VILLAGE, device.village_id), via=via, data=data,
+            )
     device.refresh_from_db()
     return device
 
 
 def unblock(user, post: Post) -> CitizenDevice:
+    """Lift the block on the phone that wrote `post` at once (POST /posts/{id}/unblock-citizen/)."""
     grant = _super_admin_or_raise(user, post)
-    device = post.citizen
-    with transaction.atomic():
-        lifted = same_phone(device).filter(blocked_at__isnull=False).update(
-            blocked_at=None, blocked_until=None, blocked_by=None, block_reason=""
-        )
-        if lifted:
+    return _unblock(user, grant.key, post.citizen, {"post_id": str(post.pk)}, via="app")
+
+
+def unblock_phone(user, device: CitizenDevice) -> CitizenDevice:
+    """The same, from the blocked citizens list, without a post (POST /admin/citizens/{id}/unblock/)."""
+    grant = authz.best_grant(user, post_services.BLOCK_CITIZEN, AreaRef(AreaLevel.VILLAGE, device.village_id))
+    if grant is None:
+        raise permission_denied(_("Only the Super Admin can block citizens or discard all their posts."))
+    return _unblock(user, grant.key, device, {}, via="console")
+
+
+def end_finished_blocks(now=None) -> int:
+    """Mark ended every block whose time is up, once, and audit `citizen.block_ended` (actor System).
+
+    Run by the citizens.tasks schedule. Each row is ended with a conditional UPDATE, so two workers
+    running at once end and announce it only once. Returns how many ended.
+    """
+    now = now or timezone.now()
+    finished = list(
+        CitizenBlock.objects.filter(ended_at__isnull=True, blocked_until__isnull=False, blocked_until__lte=now)
+        .select_related("device")
+        .order_by("blocked_until")[:1000]
+    )
+    count = 0
+    for row in finished:
+        with transaction.atomic():
+            if not CitizenBlock.objects.filter(pk=row.pk, ended_at__isnull=True).update(ended_at=row.blocked_until):
+                continue
             record(
-                "citizen.unblocked", actor=user, actor_role=grant.key, target=device, target_label=str(device),
-                area=post.target, data={"post_id": str(post.pk)},
+                "citizen.block_ended", target=row.device, target_label=str(row.device),
+                area=AreaRef(AreaLevel.VILLAGE, row.village_id), via="system",
+                data={"until": drf_serializers.DateTimeField().to_representation(row.blocked_until)},
             )
-    device.refresh_from_db()
+        count += 1
+    return count
+
+
+# --- Super Admin: the blocked citizens list (owner's request of 2026-11-21) -------------------------
+
+
+def latest_blocks() -> QuerySet:
+    """Each phone's latest CitizenBlock: one row per phone, every install included."""
+    newest = CitizenBlock.objects.filter(phone=OuterRef("phone")).order_by("-blocked_at", "-pk").values("pk")[:1]
+    return CitizenBlock.objects.filter(pk=Subquery(newest))
+
+
+def running_q(now) -> Q:
+    """A block that has not ended: no one ended it and its time is not up (or it has no end)."""
+    return Q(ended_at__isnull=True) & (Q(blocked_until__isnull=True) | Q(blocked_until__gt=now))
+
+
+def phone_anchors(phones) -> dict:
+    """{phone key: the phone's first install}: the stable id the blocked citizens list shows for a phone."""
+    phones = set(phones)
+    if not phones:
+        return {}
+    installs = CitizenDevice.objects.filter(Q(android_id_hash__in=phones) | Q(pk__in=_uuids(phones)))
+    anchors: dict = {}
+    for install in installs.order_by("created_at", "pk"):
+        anchors.setdefault(phone_key(install), install)
+    return anchors
+
+
+def _uuids(values) -> list:
+    out = []
+    for value in values:
+        try:
+            out.append(uuid.UUID(str(value)))
+        except ValueError:
+            continue
+    return out
+
+
+def latest_posts(installs) -> dict:
+    """{phone key: id of the phone's newest post} with one query."""
+    installs = list(installs)
+    if not installs:
+        return {}
+    keys = {install.pk: phone_key(install) for install in installs}
+    newest = Post.objects.filter(citizen=OuterRef("pk")).order_by("-created_at", "-pk")
+    rows = (
+        CitizenDevice.objects.filter(pk__in=keys)
+        .annotate(post_id=Subquery(newest.values("pk")[:1]), post_at=Subquery(newest.values("created_at")[:1]))
+        .values("pk", "post_id", "post_at")
+    )
+    best: dict = {}
+    for row in rows:
+        if row["post_id"] is None:
+            continue
+        key = keys[row["pk"]]
+        if key not in best or row["post_at"] > best[key][1]:
+            best[key] = (row["post_id"], row["post_at"])
+    return {key: value[0] for key, value in best.items()}
+
+
+def phone_installs(phones) -> list[CitizenDevice]:
+    """Every install of these phones."""
+    phones = set(phones)
+    if not phones:
+        return []
+    return list(CitizenDevice.objects.filter(Q(android_id_hash__in=phones) | Q(pk__in=_uuids(phones))))
+
+
+def device_or_404(device_id) -> CitizenDevice:
+    """Any install of a phone, by its id; 404 not_found for anything else."""
+    device = CitizenDevice.objects.filter(pk=device_id).first() if device_id else None
+    if device is None:
+        raise ApiError("not_found", _("No such citizen."), status=http.HTTP_404_NOT_FOUND)
     return device
 
 

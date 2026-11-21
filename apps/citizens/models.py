@@ -52,3 +52,39 @@ class CitizenDevice(models.Model):
     def blocked(self) -> bool:
         """This row's own block is running. Use services.active_block() to include the same phone's other installs."""
         return self.blocked_at is not None and (self.blocked_until is None or self.blocked_until > timezone.now())
+
+
+class CitizenBlock(models.Model):
+    """One block of one phone, kept for the record (owner's request of 2026-11-21).
+
+    CitizenDevice's blocked_* fields say whether the phone is blocked now; an unblock clears them. This row
+    keeps every block with how it ended: `ended_at` empty while it runs; set with `ended_by` when a Super
+    Admin unblocked it or blocked it again; set without `ended_by` when its time was up (the
+    citizens.tasks job). Written only by citizens.services.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    #: services.phone_key(): the hashed Android ID, or the install's id when it has none. Groups a phone's installs.
+    phone = models.CharField(max_length=64, db_index=True)
+    #: The install whose post the block was made from.
+    device = models.ForeignKey(CitizenDevice, on_delete=models.PROTECT, related_name="blocks")
+    village_id = models.PositiveIntegerField()
+    blocked_at = models.DateTimeField(db_index=True)
+    blocked_until = models.DateTimeField(null=True, blank=True)
+    blocked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    blocked_by_role = models.CharField(max_length=20, blank=True)
+    reason = models.CharField(max_length=500, blank=True)
+    ended_at = models.DateTimeField(null=True, blank=True)
+    ended_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    ended_by_role = models.CharField(max_length=20, blank=True)
+
+    class Meta:
+        ordering = ["-blocked_at"]
+        indexes = [models.Index(fields=["phone", "blocked_at"]), models.Index(fields=["ended_at", "blocked_until"])]
+
+    def __str__(self):
+        return f"block of citizen phone {self.phone[:8]}"

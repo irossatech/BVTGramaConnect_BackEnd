@@ -1,7 +1,8 @@
-"""Blocking a phone and discarding its pending posts happen together or not at all (audit BE-DB-023).
+"""A block and "Discard all" are saved together or not at all (audit BE-DB-023).
 
-When a discard fails for an unexpected reason, the block and the discards already made are undone; a post
-another reviewer decided first is still skipped, as before.
+A block writes the phone's fields, its CitizenBlock row and the audit entry; if one fails, none stays.
+"Discard all" undoes the discards already made when one fails for an unexpected reason. Since 2026-11-21
+a block changes no post (owner's request).
 """
 
 import uuid
@@ -12,7 +13,7 @@ from django.utils import timezone
 
 from apps.audit.models import AuditLog
 from apps.citizens import services
-from apps.citizens.models import CitizenDevice
+from apps.citizens.models import CitizenBlock, CitizenDevice
 from apps.posts import services as post_services
 from apps.posts.models import Category, Post, PostStatus
 from conftest import make_bare_post
@@ -54,14 +55,14 @@ def pending_count():
     return Post.objects.filter(status=PostStatus.PENDING).count()
 
 
-def test_a_failed_discard_undoes_the_block_and_the_discards(world, phone_posts):
+def test_a_failed_block_leaves_nothing(world, phone_posts):
     device, posts = phone_posts
-    with failing_on_second_discard(), pytest.raises(RuntimeError):
+    with mock.patch.object(services, "record", side_effect=RuntimeError("the database went away")), pytest.raises(RuntimeError):
         services.block(world.users["super"], posts[0], "spam", 7)
     device.refresh_from_db()
     assert device.blocked_at is None
+    assert not CitizenBlock.objects.exists()
     assert pending_count() == 3
-    assert not AuditLog.objects.filter(action="citizen.blocked").exists()
 
 
 def test_a_failed_discard_all_undoes_the_discards_and_writes_no_summary(world, phone_posts):
@@ -72,11 +73,12 @@ def test_a_failed_discard_all_undoes_the_discards_and_writes_no_summary(world, p
     assert not AuditLog.objects.filter(action="citizen.posts_discarded").exists()
 
 
-def test_a_post_decided_first_is_still_skipped(world, phone_posts):
+def test_a_block_leaves_every_post_as_it_was(world, phone_posts):
     device, posts = phone_posts
     Post.objects.filter(pk=posts[1].pk).update(status=PostStatus.PUBLISHED)
     services.block(world.users["super"], posts[0], "spam", 7)
     device.refresh_from_db()
     assert device.blocked_at is not None
-    # Since 2026-11-20 a block closes the pending posts as BLOCKED, not DISCARDED.
-    assert set(Post.objects.values_list("status", flat=True)) == {PostStatus.BLOCKED, PostStatus.PUBLISHED}
+    assert sorted(Post.objects.values_list("status", flat=True)) == sorted(
+        [PostStatus.PENDING, PostStatus.PUBLISHED, PostStatus.PENDING]
+    )

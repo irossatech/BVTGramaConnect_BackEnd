@@ -18,6 +18,8 @@ DECISION_ACTIONS = {
     ReviewAction.Action.DISCARD,
     ReviewAction.Action.UNPUBLISH,
     ReviewAction.Action.REVERSE,
+    # A post a block closed (2026-11-20 to 2026-11-21): last_review carries the block's reason.
+    ReviewAction.Action.BLOCK,
 }
 
 
