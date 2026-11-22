@@ -264,7 +264,7 @@ Rules on top of the table:
   | **Panchayat member** (their village) | yes | no (other members) | no | no | yes |
   Officials may also take down their own published post anywhere (even if targeting an area outside their assignment).
 - **Seeing published posts above your area (backend plan of 2026-11-20).** Every official, whatever their group, sees the published posts for any area that is or contains one of their assignments' areas (their village, mandal, district, Everyone), as the citizens there do (`apps.posts.services.covering_scope_q`). It is read only and needs no permission: every action on such a post keeps its own check above, so it adds no button. Only published posts; pending and decided ones above the area stay hidden.
-- **Reversing a decision** needs `posts.reverse_decision` and a group ranked strictly above the one that decided. Reversing a published post (moving it to Pending or Discarded) is also gated by the take-down rank rule. A Super Admin may reverse any decision, another Super Admin's and their own included (owner's decision of 2026-11-21).
+- **Reversing a decision** needs `posts.reverse_decision` and a group ranked strictly above the one that decided. A Super Admin may reverse any decision, another Super Admin's and their own included (owner's decision of 2026-11-21). Reversing a published post (moving it to Pending or Discarded) is also gated by the take-down rank rule.
 - **First decision wins.** A second reviewer gets `409 already_decided`.
 - **User actions** need the permission over the user's area and a group ranked strictly below the admin's own. This covers assigning, reassigning, removing, blocking, resetting and unlocking. An admin can never give a group at or above their own rank. The one exception: Super Admins act on other Super Admins and give the role, with the rules of section 4, "More Super Admins".
 - **Console screens** follow the same permissions: Geography needs `geography.manage_master_data`, the Audit Log needs `audit.view_audit_log`, and so on. The console hides what the user lacks; the server still refuses it.
@@ -386,8 +386,8 @@ python manage.py sync_role_permissions
 | `contact_type.created`, `contact_type.updated` | Contact types managed by the Super Admin |
 | `contacts.imported` | A CSV import of important numbers committed; counts only |
 | `citizen.registered` | A citizen's phone got its posting token; platform, whether Play Integrity was checked and whether it is a reinstall; never the IP, the Android ID or the token |
-| `citizen.blocked`, `citizen.unblocked` | The Super Admin blocked (reason, days, end) or unblocked the phone behind a citizen post, or unblocked it from the blocked citizens list (`via` `console`, no post) |
-| `citizen.block_ended` | A phone's block reached its end date (actor System, `data.until`); written once per block by the scheduled job |
+| `citizen.blocked`, `citizen.unblocked` | The Super Admin blocked (reason, days, end) or unblocked the phone behind a citizen post, or a phone from the blocked citizens list |
+| `citizen.block_ended` | A phone's block reached its end date (actor System; the scheduled job, 2026-11-21) |
 | `citizen.posts_discarded` | The Super Admin discarded all pending posts of one phone; the reason and how many |
 | `service.created`, `service.updated` | The Super Admin added a service (its key and whether it has a logo) or changed one (the changed field names, `logo` for a new or removed logo) |
 | `service.shown`, `service.hidden` | The Super Admin showed or hid a service on the citizens' Home |

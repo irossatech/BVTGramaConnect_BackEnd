@@ -152,8 +152,8 @@ All errors share one shape:
 |---|---|
 | `role` | A group's key: `SUPER_ADMIN`, `DISTRICT_ADMIN`, `MANDAL_ADMIN`, `VILLAGE_ADMIN`, `PANCHAYAT_MEMBER` (`docs/authorization.md`, section 6). Citizens have no account. `CITIZEN` appears only as the role a citizen post was written under (`posted_as.role`, `source_role`; section 15). `SYSTEM` appears only as an actor in history and audit. |
 | `level` | `STATE`, `DISTRICT`, `MANDAL`, `VILLAGE` |
-| `post.status` | `DRAFT`, `PENDING`, `PUBLISHED`, `RECHECK`, `DISCARDED`, `UNPUBLISHED`, `BLOCKED`. The prototypes call `UNPUBLISHED` "Taken down". `BLOCKED` is a citizen post a block closed **between 2026-11-20 and 2026-11-21 only**: since 2026-11-21 a block changes no post (section 15), and the posts it had closed were reopened. The status stays readable for those posts' history; the citizen API shows it as `DISCARDED`. |
-| `review_action.action` | `SUBMIT`, `RESUBMIT`, `PUBLISH`, `AUTO_PUBLISH`, `RECHECK`, `DISCARD`, `UNPUBLISH`, `ESCALATE`, `REVERSE`, `BLOCK`. `BLOCK` appears only in the history of posts closed by a block from 2026-11-20 to 2026-11-21 (section 10); no new one is written. |
+| `post.status` | `DRAFT`, `PENDING`, `PUBLISHED`, `RECHECK`, `DISCARDED`, `UNPUBLISHED`, `BLOCKED`. The prototypes call `UNPUBLISHED` "Taken down". `BLOCKED` (added 2026-11-20) is a citizen post closed because the Super Admin blocked its phone (section 15); the citizen API shows it as `DISCARDED`. **Since 2026-11-21** a block changes no post, so no post becomes `BLOCKED` any more; migrations `posts.0013` and `posts.0014` moved the ones there were, and the posts a block discarded before 2026-11-20, back to `PENDING`. Clients keep the value for safety. |
+| `review_action.action` | `SUBMIT`, `RESUBMIT`, `PUBLISH`, `AUTO_PUBLISH`, `RECHECK`, `DISCARD`, `UNPUBLISH`, `ESCALATE`, `REVERSE`, `BLOCK` (a block closed the post, 2026-11-20 to 2026-11-21 only; `last_review` shows it with the block's comment) |
 | `user.status` | `ACTIVE`, `BLOCKED`. Read-only, derived from `is_active`; kept for older clients. |
 | `category.key` | `announce`, `schemes`, `news`, `updates`. The design-system CSS variables `--cat-<key>` depend on these keys. |
 | `event.kind` | `deadline`, `camp`, `distribution`, `closure`, `meeting` (owner decision Q7) |
@@ -331,7 +331,7 @@ Lean on purpose, for 2G.
 ```
 - `type` values: `posts`, `users`, `areas`, `logins`, `settings`, `system`.
 - `via` values: `app`, `console`, `system`.
-- `action` keys, localised by the client: `auth.login`, `post.submitted`, `post.resubmitted`, `post.published`, `post.auto_published`, `post.recheck`, `post.discarded`, `post.unpublished`, `post.reversed`, `post.escalated`, `post.created`, `post.updated`, `post.deleted`, `user.updated`, `user.username_changed`, `user.created`, `user.blocked`, `user.unblocked`, `user.reassigned`, `user.assignment_added`, `user.assignment_removed`, `area.created`, `area.updated`, `area.deactivated`, `area.reactivated`, `category.created`, `category.updated`, `setting.changed`, `template.updated`, `report.exported`.
+- `action` keys, localised by the client: `auth.login`, `post.submitted`, `post.resubmitted`, `post.published`, `post.auto_published`, `post.recheck`, `post.discarded`, `post.unpublished`, `post.reversed`, `post.escalated`, `post.created`, `post.updated`, `post.deleted`, `user.updated`, `user.username_changed`, `user.created`, `user.blocked`, `user.unblocked`, `user.reassigned`, `user.assignment_added`, `user.assignment_removed`, `area.created`, `area.updated`, `area.deactivated`, `area.reactivated`, `category.created`, `category.updated`, `setting.changed`, `template.updated`, `report.exported`, `post.blocked`, `citizen.blocked`, `citizen.unblocked`, `citizen.block_ended` (actor System: the block's time was up; added 2026-11-21), `citizen.posts_discarded`.
 
 ---
 
@@ -483,7 +483,7 @@ A disabled category disappears from the compose form and from feed filters. Its 
 
 | Method and path | Who | Request | Response |
 |---|---|---|---|
-| `GET /posts` | officials | Query: `status` (comma list), `mine=1`, `author`, `category`, `district`, `level` + `area_id`, `target_level`, `escalated=1`, `source` (`official` or `citizen`), `q` (title and body), `citizen` (Super Admin only, added 2026-11-21: the `id` of any install of a citizen's phone, from section 15's blocked citizens list; lists every post of that phone, all its installs, any status; anyone else gets `403 permission_denied`, an id that is not a UUID `400 validation_error` on `citizen`, an unknown one `404 not_found`), `page` | Page of `Post`, plus `"status_counts": {"ALL": 15, "PENDING": 5, …}` over the same filters except `status`. `ALL` excludes drafts. **Added 2026-11-20:** `"source_counts": {"official": 9, "citizen": 6}` over the same filters except `source` (the status included), so it matches the list under the chosen status tab; for the app's All / Officials / Citizens switch (All is the sum). Query `source=official|citizen` narrows the list and `status_counts`, never `source_counts`. For Panchayat members, this returns their own posts plus published citizen posts in their village (with `unpublish` in `allowed_actions`); `mine=1` returns only their own posts. **Since 2026-11-20:** every official also sees the published posts for any area that is or contains their own (their village, mandal, district, the state: Everyone), as the citizens of their area see them, read only: such a post carries no new `allowed_actions`, and an action on it answers `403` (`out_of_area` or `permission_denied`) instead of `404`. Pending, recheck, discarded, taken-down and blocked posts above their area stay hidden from them; the review queue is unchanged. |
+| `GET /posts` | officials | Query: `status` (comma list), `mine=1`, `author`, `category`, `district`, `level` + `area_id`, `target_level`, `escalated=1`, `source` (`official` or `citizen`), `q` (title and body), `citizen` (Super Admin only, added 2026-11-21: the id of any install of a phone, as the blocked citizens list gives it; every post of that phone, all its installs; anyone else `403 permission_denied`, an unknown id `404 not_found`), `page` | Page of `Post`, plus `"status_counts": {"ALL": 15, "PENDING": 5, …}` over the same filters except `status`. `ALL` excludes drafts. **Added 2026-11-20:** `"source_counts": {"official": 9, "citizen": 6}` over the same filters except `source` (the status included), so it matches the list under the chosen status tab; for the app's All / Officials / Citizens switch (All is the sum). Query `source=official|citizen` narrows the list and `status_counts`, never `source_counts`. For Panchayat members, this returns their own posts plus published citizen posts in their village (with `unpublish` in `allowed_actions`); `mine=1` returns only their own posts. **Since 2026-11-20:** every official also sees the published posts for any area that is or contains their own (their village, mandal, district, the state: Everyone), as the citizens of their area see them, read only: such a post carries no new `allowed_actions`, and an action on it answers `403` (`out_of_area` or `permission_denied`) instead of `404`. Pending, recheck, discarded, taken-down and blocked posts above their area stay hidden from them; the review queue is unchanged. |
 | `POST /posts` | posting roles | `{"category": "announce", "language": "te", "title", "body", "targets": [{"level", "id"}, …], "event"?: {"kind", "start_date", "end_date"?}, "is_urgent"?: false, "submit": true, "client_ref"?: "<uuid>"}`. Older clients send one `"target": {"level", "id"}` instead; `targets` wins when both come. | `201 Post`, with `targets`. `200 Post` for a repeat of this official's earlier `client_ref` (section 1, "Sending again after a lost answer"). |
 | `GET /posts/{id}` | officials | — | `Post` |
 | `PATCH /posts/{id}` | author | same fields as create, all optional; `targets` replaces every area | `Post`. Only in `DRAFT` or `RECHECK`. |
@@ -544,7 +544,7 @@ What `POST /posts` does:
 |---|---|---|---|
 | `GET /review/queue` | reviewers | Query: `level` + `area_id`, `category`, `escalated=1`, `page` | Page of `PENDING` `Post` inside the actor's areas, oldest first, excluding the actor's own posts |
 | `POST /posts/{id}/review` | reviewers | `{"action": "publish"\|"recheck"\|"discard"\|"unpublish", "comment": "…"}` | `Post` |
-| `POST /posts/{id}/review` (reverse) | a strictly higher level than whoever decided, or any Super Admin (since 2026-11-21) | `{"action": "reverse", "to_status": "PUBLISHED"\|"PENDING"\|"RECHECK"\|"DISCARDED", "comment"}` | `Post` |
+| `POST /posts/{id}/review` (reverse) | a strictly higher level than whoever decided, or a Super Admin (any decision, since 2026-11-21) | `{"action": "reverse", "to_status": "PUBLISHED"\|"PENDING"\|"RECHECK"\|"DISCARDED", "comment"}` | `Post` |
 
 - `comment` is required for `recheck`, `discard`, `unpublish` and `reverse`. It is shown to the author.
 - **Take-down (`unpublish`) rank rules (owner decision of 2026-11-17):**
@@ -553,8 +553,7 @@ What `POST /posts` does:
   - **Panchayat member (their village):** published citizen posts in their village, and their own posts. They cannot take down other Panchayat members' posts or admin posts.
   - **Own posts:** any official may take down their own published post anywhere (even if targeting areas outside their assigned area).
   - When unauthorized, `unpublish` is omitted from `allowed_actions`, and `POST /review` returns `403 permission_denied`.
-- `reverse` is allowed only when the actor's role is strictly higher than the role that made the current decision (Super Admin highest). Reversing a published post (to Pending or Discarded) is also gated by the take-down rank rule above. With `REVIEW_FIRST_DECISION_WINS=False`, any reviewer in the area may reverse.
-- **A Super Admin may reverse any decision (owner's decision of 2026-11-21):** every decided status (`PUBLISHED`, `RECHECK`, `DISCARDED`, `UNPUBLISHED`, `BLOCKED`), whoever decided, another Super Admin and themselves included, and also while the citizen's phone is blocked. Before, nothing ranked above the Super Admin, so a Super Admin's decision was final. Everyone else keeps the rank rule exactly as above. A comment is still required, `RECHECK` is still refused for a citizen post, and each reverse writes a `ReviewAction` `REVERSE` and a `post.reversed` audit entry. Publishing a citizen post this way sends the `post_approved` push, as any publish does. `allowed_actions` carries `reverse` on such posts for Super Admins only.
+- `reverse` is allowed only when the actor's role is strictly higher than the role that made the current decision (Super Admin highest). **A Super Admin may reverse any decision** (owner's decision of 2026-11-21), another Super Admin's and their own included, and a `BLOCKED` post (to `PENDING`, `PUBLISHED` or `DISCARDED`; never `RECHECK` for a citizen post: `409 invalid_transition`). `allowed_actions` then holds `reverse` for the Super Admin on every decided post. Reversing a published post (to Pending or Discarded) is also gated by the take-down rank rule above. With `REVIEW_FIRST_DECISION_WINS=False`, any reviewer in the area may reverse.
 - With `REVIEW_FIRST_DECISION_WINS=True`, the first decision takes the post out of every queue. A later reviewer gets `409 already_decided`: `{"error": {"code": "already_decided", "message", "decided_by": {"id", "name", "role"}, "action": "PUBLISH", "at": "…", "post": Post}}`. The check is one conditional UPDATE (`WHERE id = … AND status = 'PENDING'`), so it holds on SQLite, MySQL and PostgreSQL alike.
 - `publish` sends the push alert for the post's area (section 7).
 
@@ -783,15 +782,15 @@ Built (web_admin app). `days` is 1 to 366, default 30, and counts posts created 
 | `PENDING` | `PUBLISHED` | `PUBLISH` | reviewer whose area contains the target, not the author | optional |
 | `PENDING` | `RECHECK` | `RECHECK` | same; never for a citizen post | required |
 | `PENDING` | `DISCARDED` | `DISCARD` | same | required |
-| `PENDING` | `BLOCKED` | `BLOCK` | **No longer written.** From 2026-11-20 to 2026-11-21 a block (`POST /posts/{id}/block-citizen/`) moved the phone's pending posts here. Since 2026-11-21 a block changes no post (section 15), and the posts it had closed went back to `PENDING` (a `REVERSE` by the system). | required (the block comment) |
+| `PENDING` | `BLOCKED` | `BLOCK` | none since 2026-11-21: a block changes no post (section 15). From 2026-11-20 to 2026-11-21 `POST /posts/{id}/block-citizen/` made it; never `POST /posts/{id}/review` | required (the block comment) |
 | `RECHECK` | `PENDING` | `RESUBMIT` | author | — |
 | `PUBLISHED` | `UNPUBLISHED` | `UNPUBLISH` | reviewer whose area contains the target, including the author's superiors (Pending Q18) | required |
 | `PENDING` | `PENDING` | `ESCALATE` | System, after `REVIEW_ESCALATION_HOURS` with no decision; flags the post and alerts the next level up | — |
-| `PUBLISHED`, `RECHECK`, `DISCARDED`, `UNPUBLISHED`, `BLOCKED` | `PUBLISHED`, `PENDING`, `RECHECK`, `DISCARDED` | `REVERSE` | a reviewer whose role is strictly higher than the one who decided, or any Super Admin, whoever decided (owner's decision of 2026-11-21); never `RECHECK` for a citizen post | required |
+| `PUBLISHED`, `RECHECK`, `DISCARDED`, `UNPUBLISHED`, `BLOCKED` | `PUBLISHED`, `PENDING`, `RECHECK`, `DISCARDED` | `REVERSE` | a reviewer whose role is strictly higher than the one who decided; a Super Admin for any decision (2026-11-21) | required |
 
-Any other move returns `409 invalid_transition`.
+Any other move returns `409 invalid_transition`. Each row writes one `ReviewAction` and one `AuditLog` entry in the same database transaction as the status change.
 
-Two one-time data steps of 2026-11-21 (option A of the plan) wrote `REVERSE` entries with no actor (System): every `BLOCKED` post went back to `PENDING` ("Reopened: a block no longer closes posts (2026-11-21)."), and so did every post a block had discarded before 2026-11-20 ("Reopened: closed by a block before 2026-11-20; a block no longer closes posts (2026-11-21)."). Their review time starts again from that day. Posts discarded by "Discard all" or by a reviewer were not touched. Each row writes one `ReviewAction` and one `AuditLog` entry in the same database transaction as the status change.
+Two one-time data steps of 2026-11-21 wrote `REVERSE` entries with no actor (System), each with its own comment (section 15, Blocking): `posts.0013` moved every `BLOCKED` post back to `PENDING`, and `posts.0014` did the same for the posts a block had discarded before 2026-11-20. Their review time starts again from that day.
 
 Escalation runs as a django-q2 scheduled job every `ESCALATION_CHECK_MINUTES` (15); `manage.py ensure_schedules` registers it. It does not hide the post from lower reviewers. It marks `escalated`, writes `ESCALATE`, and notifies the admins one level above the target area. There is one escalation time for every level, `REVIEW_ESCALATION_HOURS` (24 by default); the console's per-level limits are not used (owner decision Q1).
 
@@ -805,11 +804,11 @@ Roles are Django groups and actions are Django permissions. The full group × pe
 |---|---|---|---|---|---|---|---|
 | Read feed, categories, geography | public | yes | yes | yes | yes | yes | yes |
 | Create and submit a post | `posts.create_post`, `posts.submit_post` | only if `SUPER_ADMIN_CAN_POST`; the only group that may target the state | district, a mandal or a village inside it | mandal, or a village inside it | own village | own village, goes to review | the phone's village, with a posting token, always goes to review (section 15) |
-| Block or unblock a citizen's phone, discard all its pending posts, list blocked citizens and one phone's posts (section 15) | `posts.block_citizen` | any | no | no | no | no | no |
+| Block or unblock a citizen's phone, discard all its pending posts | `posts.block_citizen` | any | no | no | no | no | no |
 | Review queue | `posts.view_review_queue`, `posts.review_post` | any post | posts targeted inside the district | inside the mandal | inside the village | no | no |
 | Publish, recheck, discard | `posts.publish_post`, `posts.recheck_post`, `posts.discard_post` | any | inside the district | inside the mandal | inside the village | no | no |
 | Take down a published post | `posts.takedown_post` | any | inside the district | inside the mandal | inside the village | no | no |
-| Reverse a decision | `posts.reverse_decision` | any decision, another Super Admin's and their own included (2026-11-21) | when the decider ranked lower | same | same | no | no |
+| Reverse a decision | `posts.reverse_decision` | any decision, also another Super Admin's and their own (2026-11-21) | when the decider ranked lower | same | same | no | no |
 | Mark as urgent | `posts.mark_urgent` | any | inside the district | inside the mandal | inside the village | no | no |
 | Area stats | `posts.view_stats` | any area | inside the district | inside the mandal | the village | the village | no |
 | Create users, add roles | `accounts.manage_<group>` | other Super Admins (`accounts.manage_super_admin`, with their own password), District, Mandal, Village Admins, Panchayat members | Mandal, Village Admins, Panchayat members inside the district | Village Admins, Panchayat members inside the mandal | Panchayat members in the village | no | no |
@@ -868,8 +867,7 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Contacts tab (citizens) | `GET /contacts?village_id=`; `GET /contact-types` for chips and icons |
 | Citizen: first post (once per install) | `POST /citizen/challenge/`, Play Integrity on the phone, `POST /citizen/register/` |
 | Citizen: write a post, my posts | `POST /citizen/posts/`, `GET /citizen/posts/`, `GET /citizen/me/`; `PATCH /citizen/me/` after a village change |
-| Review a citizen post | as Review; tabs from `GET /review/queue/?source=official\|citizen` and `source_counts`. Super Admin also: `POST /posts/{id}/block-citizen/`, `/unblock-citizen/`, `/discard-citizen-posts/` |
-| Super Admin: Posts → Blocked tab (blocked citizens) | `GET /admin/citizens/blocked/` (`active=1\|0`, tab number from `counts`), `GET /admin/citizens/{id}/blocks/`, `GET /posts/?citizen={id}`, `POST /admin/citizens/{id}/unblock/` |
+| Review a citizen post | as Review; tabs from `GET /review/queue/?source=official\|citizen` and `source_counts`. Super Admin also: `POST /posts/{id}/block-citizen/`, `/unblock-citizen/`, `/discard-citizen-posts/`; the Blocked tab from `GET /admin/citizens/blocked/`, a citizen's posts from `GET /posts/?citizen={id}` |
 | Important numbers (every official) | `GET /admin/contacts` (`section=AREA\|HELPLINE`), `POST /admin/contacts`, `PATCH /admin/contacts/{id}`, `DELETE /admin/contacts/{id}`, `GET /admin/contacts/targets` |
 | Citizen Home: banner ads | `GET /ads?village_id=` |
 | Super Admin: More → Ads | `GET /admin/ads`, `POST /admin/ads` (multipart), `PATCH /admin/ads/{id}` (multipart with a new image or video, else JSON), `DELETE /admin/ads/{id}`; areas from `/geo/*` |
@@ -889,7 +887,6 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Geography | `GET /geo/tree`, geography writes |
 | Users | `GET /users`, `GET /users/{id}`, `GET /posts?author={id}&page_size=5`, `POST /users`, block, unblock, reset password, unlock, role assignments |
 | Posts and moderation | `GET /posts` with `status_counts`, `GET /posts/{id}`, `GET /posts/{id}/history`, `POST /posts/{id}/review`, `GET /categories` for the filter |
-| Posts → Blocked tab (blocked citizens) | `GET /admin/citizens/blocked/` (`active=1\|0`, `district`, tab number from `counts`), `GET /admin/citizens/{id}/blocks/`, `GET /posts/?citizen={id}`, `POST /admin/citizens/{id}/unblock/` |
 | Reports | `GET /admin/reports/*` and their exports |
 | Audit log | `GET /audit`, `GET /audit/export` |
 | Settings | `/admin/settings`, `/admin/categories`, `/admin/notification-templates` |
@@ -1077,7 +1074,7 @@ Every citizen endpoint answers `401 citizen_token_invalid` without a valid token
  "videos": [{"url": "/media/….mp4", "poster_url": "/media/…-poster-1280.webp",
              "thumb_url": "/media/…-poster-320.webp", "duration_s": 42}],   // duration_s null when unknown
  "created_at": "…", "decided_at": null,
- "reason": null}        // the reviewer's comment when DISCARDED or UNPUBLISHED (the block comment for a post closed by a block from 2026-11-20 to 2026-11-21), else null
+ "reason": null}        // the reviewer's comment when DISCARDED or UNPUBLISHED (the block comment for a blocked post), else null
 ```
 
 ### Rules
@@ -1088,53 +1085,23 @@ Every citizen endpoint answers `401 citizen_token_invalid` without a valid token
 - **Feed:** a published citizen post shows like any post: `media_count` counts photos and videos, `video` is its first video, `image_url` its first photo, and `GET /feed/posts/{id}/` lists every photo and video in `media`.
 - **Review:** the post goes straight to `PENDING` and into the review queue of every official whose area contains the village: the Village Admin, the Mandal Admin, the District Admin and the Super Admin, at the same time (CP1). The Village, Mandal and District Admins are notified. The first decision wins; after `REVIEW_ESCALATION_HOURS` without a decision the next level up is alerted, exactly as for Panchayat members' posts (owner decision Q1).
 - **Separate queue:** `GET /review/queue/` and `GET /posts/` take `source=citizen` or `source=official`; without it they list both. The review queue also returns `"source_counts": {"official": 3, "citizen": 7}` (every other filter applied, `source` ignored) for the two tabs.
-- **The citizen hears the decision (CP4):** when a citizen post is published, discarded or taken down, the phone gets a push (the `post_approved`, `post_discarded` or `post_unpublished` text in the phone's `language`, with the reviewer's comment), with `data.type` `POST_PUBLISHED`, `POST_DISCARDED` or `POST_UNPUBLISHED` and `data.post_id`. Only if the phone sent an `fcm_token`. "My posts" shows the same result. A block sends no push and changes no post (since 2026-11-21). An old post closed by a block (`BLOCKED`, 2026-11-20 to 2026-11-21) shows as `status` `DISCARDED` in "My posts" with the block comment as `reason`.
-- **Decisions:** `publish` or `discard` (reason required). `recheck` is not offered, because a citizen cannot edit a post. Take-down and reversal work as for any post, except that a reversal cannot move a citizen post to `RECHECK`. A Super Admin may reverse any decision on a citizen post (section 5, Review), also while the phone is blocked.
+- **The citizen hears the decision (CP4):** when a citizen post is published, discarded or taken down, the phone gets a push (the `post_approved`, `post_discarded` or `post_unpublished` text in the phone's `language`, with the reviewer's comment), with `data.type` `POST_PUBLISHED`, `POST_DISCARDED` or `POST_UNPUBLISHED` and `data.post_id`. Only if the phone sent an `fcm_token`. "My posts" shows the same result. A post closed by a block (`BLOCKED`, 2026-11-20 to 2026-11-21 only) shows as `DISCARDED` in "My posts" with the block comment as `reason`. Since 2026-11-21 a block sends no push about posts: it changes none.
+- **Decisions:** `publish` or `discard` (reason required). `recheck` is not offered, because a citizen cannot edit a post. Take-down and reversal work as for any post, except that a reversal cannot move a citizen post to `RECHECK`.
 - **Public view:** a published citizen post shows `source_role: "CITIZEN"` in the feed. No name, phone or device is ever shown.
 - **Officials' view (`Post`):** `author` is `{"id": null, "name": "", "role": "CITIZEN"}` and `posted_as.role` is `CITIZEN`; a new field `citizen` holds `{"device_id", "blocked", "blocked_until", "posts_total", "posts_discarded"}` (null on officials' posts; the counts cover every install of the phone). For the Super Admin, `allowed_actions` also holds `block_citizen` or `unblock_citizen`, and `discard_citizen_posts`.
-- **Blocking (Super Admin only, `posts.block_citizen`):** `POST /posts/{id}/block-citizen/` `{"comment", "days"}`, both required, `days` 1 to 365. Blocks the phone that wrote the post, every install of it (same `android_id`), until now + `days`; the block then ends by itself. **A block only stops new posts; it changes no post (owner's request of 2026-11-21).** The phone's `PENDING` posts stay `PENDING`, in the review queue, and are decided as usual; published, discarded and taken-down posts stay as they are; the phone gets no push. The blocked phone gets `403 citizen_blocked` on `POST /citizen/posts/` until the block ends, and sees the comment and the end there and in `GET /citizen/me/`. Blocking again while a block runs replaces it: the reason and the end are the new ones, and the old block is recorded as ended by this Super Admin. `POST /posts/{id}/unblock-citizen/`, or `POST /admin/citizens/{id}/unblock/` without a post, lifts it at once; no post changes. Other officials get `403 permission_denied`. Audited as `citizen.blocked` (with `days` and `until`), `citizen.unblocked`, and `citizen.block_ended` (actor System) when the time is up.
-  - **History of this rule:** until 2026-11-20 a block also discarded the phone's pending posts; from 2026-11-20 to 2026-11-21 it moved them to `BLOCKED` instead. On 2026-11-21 both kinds were reopened to `PENDING` by a one-time data step (section 10). `GET /posts/?status=BLOCKED` and `status_counts.BLOCKED` stay, and are empty from then on.
-- **Discard all (Super Admin only):** `POST /posts/{id}/discard-citizen-posts/` `{"comment"}` (required) discards every `PENDING` post of that phone (every install) in one action and answers `{"discarded": 3}`. It does not block the phone, and a block does not discard: the two are separate actions. Audited as `citizen.posts_discarded`.
+- **Blocking (Super Admin only, `posts.block_citizen`):** `POST /posts/{id}/block-citizen/` `{"comment", "days"}`, both required, `days` 1 to 365. Blocks the phone that wrote the post, every install of it (same `android_id`), until now + `days`; the block then ends by itself. **A block only stops new posts and service requests; it changes no post** (owner's request of 2026-11-21): the phone's `PENDING` posts stay in review for the reviewers to publish or discard as usual, and published ones stay published. (From 2026-11-20 to 2026-11-21 a block moved them to `BLOCKED`; migration `posts.0013` moved those back to `PENDING`, with a `REVERSE` by the system, comment "Reopened: a block no longer closes posts (2026-11-21)." Before 2026-11-20 a block discarded them; migration `posts.0014` moved those back to `PENDING` too, comment "Reopened: closed by a block before 2026-11-20; a block no longer closes posts (2026-11-21)." It finds them by the block's `citizen.blocked` audit entry: same Super Admin, same comment, same phone, within 60 seconds after it, and still the post's latest action. Posts discarded by "Discard all" or by a reviewer stay `DISCARDED`.) The citizen sees the comment and the end in `403 citizen_blocked` and in `GET /citizen/me/`. Blocking again while a block runs replaces it (the earlier one ends, by that Super Admin). `POST /posts/{id}/unblock-citizen/` lifts it at once. Other officials get `403 permission_denied`. Audited as `citizen.blocked` (with `days` and `until`), `citizen.unblocked`, and `citizen.block_ended` (actor System) when the time is up.
+- **Blocked citizens (Super Admin only, `posts.block_citizen`; added 2026-11-21):** every block is kept with how it ended. Anyone else gets `403 permission_denied`; an unknown id `404 not_found`. No phone number, IP address or Android ID in any answer.
+
+  | Method and path | Answer |
+  |---|---|
+  | `GET /admin/citizens/blocked/` | Query `active=1` (blocked now, the default) or `active=0` (block ended), `district` (id), `page`, `page_size` (at most 100). A page of one row per **phone** (every install), from its latest block, newest first: `{"id", "village": {"level", "id", "name"}, "blocked", "blocked_at", "blocked_until", "blocked_by": {"id", "name", "role"}, "reason", "ended_at", "ended_by", "posts_total", "posts_discarded", "posts_blocked", "latest_post_id"}`, plus `"counts": {"active": 4, "ended": 9}` over the same filters except `active`. `id` is the phone's first install: use it below and in `GET /posts/?citizen=`. `ended_at` null: still running. `ended_by` null with `ended_at` set: the time was up; else the Super Admin who unblocked or blocked again. An ended block keeps its reason. |
+  | `GET /admin/citizens/{id}/blocks/` | Every block of that phone, newest first: `[{"blocked", "blocked_at", "blocked_until", "blocked_by", "reason", "ended_at", "ended_by"}]`. |
+  | `POST /admin/citizens/{id}/unblock/` | Lifts the phone's block at once, without a post, like `/posts/{id}/unblock-citizen/`; answers the `CitizenDevice`. Audited as `citizen.unblocked`. |
+
+  Blocks lifted early before 2026-11-21 left no record on the phone, so they are not in these lists (the audit log has them). A scheduled job (`ensure_schedules`, every `ESCALATION_CHECK_MINUTES`) marks a block ended once its time is up.
+- **Discard all (Super Admin only):** `POST /posts/{id}/discard-citizen-posts/` `{"comment"}` (required) discards every `PENDING` post of that phone (every install) in one action and answers `{"discarded": 3}`. It does not block the phone. Audited as `citizen.posts_discarded`.
 - **Audit:** `citizen.registered` (platform, whether Play Integrity was checked, whether it is a reinstall; no IP address, Android ID or token), `post.created` and `post.submitted` with the device id in `data` and no actor.
 - **Privacy:** the server stores no IP address or Android ID in the clear, only keyed hashes. The posting token is stored only as a SHA-256 hash.
-
-### Super Admin: blocked citizens (added 2026-11-21)
-
-Blocking is about a **phone**, not a post, and a block closes no post, so the Posts page's **Blocked** tab lists phones from here, not from `GET /posts/?status=BLOCKED`. Every block is kept for the record with how it ended. Only `posts.block_citizen` (the Super Admin) may call these; anyone else gets `403 permission_denied`, and no login `401`.
-
-| Method and path | Request | Response |
-|---|---|---|
-| `GET /admin/citizens/blocked/` | Query: `active` `1` (blocked now, the default) or `0` (block ended), `district` (id, the phone's village's district), `page`, `page_size` (at most 100) | Page of `BlockedCitizen`, newest block first, plus `"counts": {"active": 4, "ended": 9}` over the same filters except `active`, for the tab's number. `400 validation_error` on `active` or `district` for other values. |
-| `GET /admin/citizens/{id}/blocks/` | — | `[CitizenBlock]`, every block of that phone (every install), newest first. Not paged. |
-| `POST /admin/citizens/{id}/unblock/` | — | `CitizenDevice`. Lifts the phone's block at once, like `POST /posts/{id}/unblock-citizen/` but without a post, so a citizen with no waiting post can be unblocked from the list. Audited as `citizen.unblocked`. A phone that is not blocked answers the same, with nothing changed and nothing audited. |
-| `GET /posts/?citizen={id}` | Any other `GET /posts` filter | Every post of that phone, any status (section 5). |
-
-`{id}` is **any install's id** of the phone; the list gives the phone's first install, which stays the same. An unknown id answers `404 not_found`.
-
-```jsonc
-// BlockedCitizen: the phone's latest block and its posts; one row per phone, every install together
-{"id": "3b7e…",                                    // the phone's first install: use it in the paths above
- "village": {"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు"},
- "blocked": true,                                  // false in the ended list
- "blocked_at": "2026-11-21T10:15:00+05:30",
- "blocked_until": "2026-12-01T10:15:00+05:30",
- "blocked_by": {"id": "…", "name": "Eswar", "role": "SUPER_ADMIN"},
- "reason": "తప్పుడు సమాచారం",
- "ended_at": null,                                 // when it ended: unblocked, replaced, or its time was up
- "ended_by": null,                                 // who unblocked it; null with ended_at set: the time was up
- "posts_total": 7, "posts_discarded": 3, "posts_blocked": 0,   // every install's posts; posts_blocked: old BLOCKED posts
- "latest_post_id": "…"}                            // the phone's newest post, null when none
-
-// CitizenBlock: one block of one phone
-{"blocked": false, "blocked_at": "…", "blocked_until": "…",
- "blocked_by": {"id": "…", "name": "…", "role": "SUPER_ADMIN"}, "reason": "…",
- "ended_at": "…", "ended_by": {"id": "…", "name": "…", "role": "SUPER_ADMIN"}}
-```
-
-- A block whose time is up counts as ended at once, with `ended_at` its `blocked_until`. A job every `ESCALATION_CHECK_MINUTES` (registered by `manage.py ensure_schedules`) then records it and audits `citizen.block_ended` (actor System), once per block.
-- Blocking again while a block runs ends the old one (`ended_by` that Super Admin) and starts a new one; the list shows the newest.
-- Blocks that existed on 2026-11-21 were copied in once (one per phone). Blocks lifted early before then left nothing on the phone and are only in the audit log.
-- No phone number, IP address or Android ID in any answer.
 
 ### Settings
 
@@ -1156,7 +1123,7 @@ Blocking is about a **phone**, not a post, and a block closes no post, so the Po
 | CP2 | Photos only, or video too? | **Decided 2026-10-27:** photos and videos, any number of each, together in one post. **Changed 2026-11-13 (lead):** up to 3 photos, or one video, never both, the same as officials |
 | CP3 | iPhones: Play Integrity is Android only. Apple App Attest is needed for iOS. | iOS registration works only while `CITIZEN_INTEGRITY_REQUIRED` is off |
 | CP4 | Is the citizen told when the post is published or discarded? | **Decided 2026-10-27:** yes, a push to the phone (see Rules), and "My posts" |
-| CP5 | Limits and blocking | **Decided 2026-10-27:** 5 posts per phone a day (Super Admin changes it); blocks are temporary, set and lifted only by the Super Admin, shown to the citizen with the reason, and survive a reinstall; the Super Admin may discard all of a phone's pending posts. **Changed 2026-11-21 (owner):** a block only stops new posts and changes no post; the Super Admin lists blocked phones and every past block |
+| CP5 | Limits and blocking | **Decided 2026-10-27:** 5 posts per phone a day (Super Admin changes it); blocks are temporary, set and lifted only by the Super Admin, shown to the citizen with the reason, and survive a reinstall; the Super Admin may discard all of a phone's pending posts |
 
 ---
 
