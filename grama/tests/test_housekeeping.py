@@ -113,4 +113,4 @@ def test_ensure_schedules_registers_the_daily_job():
     assert schedule.schedule_type == Schedule.DAILY
     assert schedule.repeats == -1
     assert import_string(schedule.func) is run_housekeeping
-    assert Schedule.objects.count() == 2  # escalation and housekeeping, no duplicates
+    assert Schedule.objects.count() == 3  # escalation, citizen block endings and housekeeping, no duplicates

@@ -4,10 +4,10 @@ State machine (CLAUDE.md, contract section 10):
     DRAFT -> PENDING | PUBLISHED (admin auto-publish)
     (new) -> PENDING for a citizen's phone (create_citizen_post; contract section 15)
     PENDING -> PUBLISHED | RECHECK | DISCARDED (never RECHECK for a citizen post)
-    PENDING -> BLOCKED for a citizen post, only when the Super Admin blocks its phone (citizens.services.block)
+    BLOCKED: citizen posts a block closed from 2026-11-20 to 2026-11-21 only; a block changes no post since
     RECHECK -> PENDING | PUBLISHED (admin auto-publish)
     PUBLISHED -> UNPUBLISHED
-    any decided state -> REVERSE by a strictly higher level
+    any decided state -> REVERSE by a strictly higher level, or by a Super Admin (owner, 2026-11-21)
 
 Concurrency: each move is one conditional UPDATE, for example
     Post.objects.filter(id=..., status="PENDING").update(status="PUBLISHED", ...)
@@ -25,7 +25,8 @@ districts, mandals and villages). Anyone who may post may post to any area; a
 reviewer acts when any of the post's areas lies inside their own, and the first
 decision counts for the whole post (owner decision of 2026-10-28). Posts record
 the key of the group they were written or decided under (posted_as_role,
-decided_by_role); a reversal needs a group ranked strictly higher.
+decided_by_role); a reversal needs a group ranked strictly higher, except that a
+Super Admin may change any decision (owner's decision of 2026-11-21).
 """
 
 from __future__ import annotations
@@ -254,12 +255,16 @@ def _rank(user, key: str) -> int | None:
 
 
 def can_reverse(user, reviewer: Grant | None, post: Post) -> bool:
-    """A decided post can be reversed by a group ranked strictly above the one that decided it."""
+    """A decided post can be reversed by a group ranked strictly above the one that decided it, or by a Super Admin."""
     if reviewer is None or post.status not in DECIDED:
         return False
     # A published post is effectively a take-down by another route; apply the same rank rule.
     if post.status == PostStatus.PUBLISHED and not may_take_down(user, reviewer, post):
         return False
+    if reviewer.platform_wide:
+        # Owner's decision of 2026-11-21: a Super Admin may change any decision, another Super Admin's and
+        # their own included, and bring back a post a block closed. A comment is still required.
+        return True
     if not settings.REVIEW_FIRST_DECISION_WINS:
         return True
     decided_rank = _rank(user, post.decided_by_role)

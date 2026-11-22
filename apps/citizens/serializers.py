@@ -10,9 +10,9 @@ from apps.feed.serializers import AreaSlimSerializer, AreaTargetSerializer
 from apps.geography.areas import AreaDescriber, AreaRef
 from apps.geography.models import AreaLevel
 from apps.posts.models import Category, MediaKind, PostStatus, ReviewAction
-from apps.posts.serializers import TranslationSerializer, describe_targets, translation_of
+from apps.posts.serializers import PersonSerializer, TranslationSerializer, describe_targets, translation_of
 
-from .models import CitizenDevice
+from .models import CitizenBlock, CitizenDevice
 
 
 def _village(describer: AreaDescriber, village_id: int) -> dict:
@@ -106,6 +106,92 @@ class CitizenDeviceSerializer(serializers.ModelSerializer):
         from .services import posts_per_day
 
         return posts_per_day() or None
+
+
+def _official(user, role: str) -> dict | None:
+    """{"id", "name", "role"} of the official, or None when no one did it (a block whose time was up)."""
+    if user is None and not role:
+        return None
+    return {"id": str(user.id) if user else None, "name": user.name if user else "", "role": role}
+
+
+class CitizenBlockSerializer(serializers.ModelSerializer):
+    """One block of one phone (owner's request of 2026-11-21). ended_at null: still running, unless its time is up."""
+
+    blocked = serializers.SerializerMethodField()
+    blocked_by = serializers.SerializerMethodField()
+    ended_by = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CitizenBlock
+        fields = ["blocked", "blocked_at", "blocked_until", "blocked_by", "reason", "ended_at", "ended_by"]
+
+    def get_blocked(self, obj) -> bool:
+        now = self.context.get("now")
+        return obj.ended_at is None and (obj.blocked_until is None or (now is not None and obj.blocked_until > now))
+
+    @extend_schema_field(PersonSerializer(allow_null=True))
+    def get_blocked_by(self, obj):
+        return _official(obj.blocked_by, obj.blocked_by_role)
+
+    @extend_schema_field(PersonSerializer(allow_null=True))
+    def get_ended_by(self, obj):
+        """null with ended_at set: the time was up."""
+        return _official(obj.ended_by, obj.ended_by_role)
+
+    def to_representation(self, obj):
+        data = super().to_representation(obj)
+        if obj.ended_at is None and obj.blocked_until is not None and not data["blocked"]:
+            # The time is up but the job has not marked it yet: it ended at its end date.
+            data["ended_at"] = serializers.DateTimeField().to_representation(obj.blocked_until)
+        return data
+
+
+class BlockedCitizenSerializer(CitizenBlockSerializer):
+    """A row of GET /admin/citizens/blocked/: the phone's latest block and its post counts. No personal data."""
+
+    id = serializers.SerializerMethodField()
+    village = serializers.SerializerMethodField()
+    posts_total = serializers.SerializerMethodField()
+    posts_discarded = serializers.SerializerMethodField()
+    posts_blocked = serializers.SerializerMethodField()
+    latest_post_id = serializers.SerializerMethodField()
+
+    class Meta(CitizenBlockSerializer.Meta):
+        fields = [
+            "id", "village", *CitizenBlockSerializer.Meta.fields,
+            "posts_total", "posts_discarded", "posts_blocked", "latest_post_id",
+        ]
+
+    def _record(self, obj):
+        return self.context.get("records", {}).get(obj.phone)
+
+    @extend_schema_field(serializers.UUIDField())
+    def get_id(self, obj):
+        """The phone's first install: use it for /admin/citizens/{id}/… and GET /posts/?citizen=."""
+        anchor = self.context.get("anchors", {}).get(obj.phone)
+        return str(anchor.pk if anchor else obj.device_id)
+
+    @extend_schema_field(AreaSlimSerializer)
+    def get_village(self, obj):
+        return _village(_describer(self.context), obj.village_id)
+
+    def get_posts_total(self, obj) -> int:
+        record = self._record(obj)
+        return record.posts_total if record else 0
+
+    def get_posts_discarded(self, obj) -> int:
+        record = self._record(obj)
+        return record.posts_discarded if record else 0
+
+    def get_posts_blocked(self, obj) -> int:
+        record = self._record(obj)
+        return record.posts_blocked if record else 0
+
+    @extend_schema_field(serializers.UUIDField(allow_null=True))
+    def get_latest_post_id(self, obj):
+        post_id = self.context.get("latest_posts", {}).get(obj.phone)
+        return str(post_id) if post_id else None
 
 
 class RegisteredSerializer(serializers.Serializer):

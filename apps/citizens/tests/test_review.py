@@ -140,7 +140,7 @@ def block(api, world, post, name="super", comment="Spam posts", days=7):
     return api(world.users[name]).post(f"/api/v1/posts/{post.id}/block-citizen/", body, format="json")
 
 
-def test_the_super_admin_blocks_for_some_days_and_pending_posts_go(api, world, phone, citizen_post):
+def test_the_super_admin_blocks_for_some_days_and_posts_stay(api, world, phone, citizen_post):
     citizen, post = citizen_post
     second = Post.objects.get(pk=citizen.post(title="రెండవ").json()["id"])
     published = Post.objects.get(pk=citizen.post(title="మూడవ").json()["id"])
@@ -152,9 +152,9 @@ def test_the_super_admin_blocks_for_some_days_and_pending_posts_go(api, world, p
     assert summary["blocked"] is True and summary["blocked_until"].endswith("+05:30")
     assert "unblock_citizen" in response.json()["allowed_actions"]
     statuses = dict(Post.objects.filter(citizen_id=citizen.device_id).values_list("title", "status"))
-    # Since 2026-11-20 the pending posts become BLOCKED (the console's Blocked tab); a published one stays.
-    assert statuses == {post.title: PostStatus.BLOCKED, "రెండవ": PostStatus.BLOCKED, "మూడవ": PostStatus.PUBLISHED}
-    assert second.review_actions.filter(action="BLOCK", comment="Spam posts").exists()
+    # Since 2026-11-21 a block changes no post (owner's request): the pending ones wait for review.
+    assert statuses == {post.title: PostStatus.PENDING, "రెండవ": PostStatus.PENDING, "మూడవ": PostStatus.PUBLISHED}
+    assert not second.review_actions.filter(action="BLOCK").exists()
     device = CitizenDevice.objects.get(pk=citizen.device_id)
     assert device.blocked and device.blocked_by == world.users["super"] and device.block_reason == "Spam posts"
     assert timedelta(days=6, hours=23) < device.blocked_until - device.blocked_at <= timedelta(days=7)
