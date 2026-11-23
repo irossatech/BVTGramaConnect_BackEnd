@@ -111,7 +111,7 @@ django-axes counts failed logins per **username and IP address together**:
 - A lockout is audited as `auth.locked_out`, and each failure as `auth.login_failed`.
 - axes' tables store a keyed hash of the username (`lockout.login_key`, HMAC-SHA256 with `SECRET_KEY`), never what was typed: a password typed into the username box must not stay there for 30 days. So axes' own `axes_reset_username` command needs the hash; use the shell command below. Changing `SECRET_KEY` only clears current lockouts.
 
-**No per-IP login limits in this phase** (lead's decision of 2026-11-20): the IP-wide cap (50 failed logins an hour from one IP, any usernames) and the login throttle of security gap G1 (30 logins an hour per IP) were removed. The lockout above is the only login limit. `docs/security-review.md` records it as an accepted risk.
+**No per-IP login limits in this phase** (lead's decision of 2026-11-20): the IP-wide cap (50 failed logins an hour from one IP, any usernames) and the login throttle of security gap G1 (30 logins an hour per IP) were removed. The lockout above is the only login limit. `docs/security-review.md` records it as deferred, not accepted: the limits are to be put back before going live (open item 8).
 
 **Unlocking early:** an admin with `accounts.unlock_user` over the user's area, ranked above them, calls `POST /api/v1/users/{id}/unlock/`. This clears every lockout for that username and is audited as `user.unlocked`. A password reset (section 4) clears it too. User objects carry `"locked_out": true` and `unlock` in `allowed_actions` while a lockout is active. In the console the button is in the user panel.
 
