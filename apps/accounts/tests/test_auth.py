@@ -589,13 +589,61 @@ def test_console_logout_ends_the_session(world):
 
 def test_console_session_expires_after_idle_time(world, settings):
     assert settings.SESSION_COOKIE_AGE == settings.CONSOLE_SESSION_IDLE_MINUTES * 60 == 30 * 60
-    assert settings.SESSION_SAVE_EVERY_REQUEST is True
     client, _ = console_session("super")
     from django.contrib.sessions.models import Session
 
     Session.objects.update(expire_date=timezone.now() - timedelta(seconds=1))
     response = client.get(ME)
     assert response.status_code == 401 and code(response) == "not_authenticated"
+
+
+# --- Idle time: background checks do not count (BVTGC-72) ----------------------------------------
+
+
+def _session_end():
+    from django.contrib.sessions.models import Session
+
+    return Session.objects.get().expire_date
+
+
+def _age_session(minutes_left):
+    from django.contrib.sessions.models import Session
+
+    Session.objects.update(expire_date=timezone.now() + timedelta(minutes=minutes_left))
+    return _session_end()
+
+
+def test_a_request_the_person_makes_renews_the_session(world):
+    client, _ = console_session("super")
+    before = _age_session(5)
+    response = client.get("/api/v1/notifications/")
+    assert response.status_code == 200
+    assert _session_end() > before + timedelta(minutes=20)  # back to about 30 minutes from now
+    assert "sessionid" in response.cookies
+
+
+def test_a_background_check_does_not_renew_the_session(world):
+    client, _ = console_session("super")
+    before = _age_session(5)
+    for path in ("/api/v1/notifications/", "/api/v1/service-requests/"):
+        response = client.get(path, HTTP_X_BACKGROUND_REQUEST="1")
+        assert response.status_code == 200  # it still works while the session lasts
+        assert "sessionid" not in response.cookies
+    assert _session_end() == before
+
+
+def test_background_checks_alone_let_the_session_end(world):
+    from django.contrib.sessions.models import Session
+
+    client, _ = console_session("super")
+    Session.objects.update(expire_date=timezone.now() - timedelta(seconds=1))
+    response = client.get("/api/v1/notifications/", HTTP_X_BACKGROUND_REQUEST="1")
+    assert response.status_code == 401 and code(response) == "not_authenticated"
+
+
+def test_me_tells_the_console_its_idle_minutes(world, settings):
+    client, _ = console_session("super")
+    assert client.get(ME).json()["rules"]["console_idle_minutes"] == settings.CONSOLE_SESSION_IDLE_MINUTES == 30
 
 
 def test_new_super_admin_logs_in_to_the_console_and_must_change_first(world):

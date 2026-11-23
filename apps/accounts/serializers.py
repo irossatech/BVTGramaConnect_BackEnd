@@ -147,6 +147,7 @@ class RulesSerializer(serializers.Serializer):
     super_admin_can_post = serializers.BooleanField()
     max_photos_per_post = serializers.IntegerField()
     video_enabled = serializers.BooleanField()
+    console_idle_minutes = serializers.IntegerField()
 
 
 class MeGroupSerializer(serializers.Serializer):
@@ -273,6 +274,8 @@ class MeSerializer(serializers.ModelSerializer):
             "super_admin_can_post": settings.SUPER_ADMIN_CAN_POST,
             "max_photos_per_post": settings.MAX_PHOTOS_PER_POST,
             "video_enabled": settings.VIDEO_POSTS_ENABLED,
+            # The console signs out after this many idle minutes, the same as the server (BVTGC-72).
+            "console_idle_minutes": settings.CONSOLE_SESSION_IDLE_MINUTES,
         }
 
 
