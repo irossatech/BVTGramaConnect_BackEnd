@@ -35,6 +35,7 @@ Contents:
 ### Identifiers
 - Users, role assignments, posts, media, review actions, notifications, devices, audit entries: UUID strings.
 - States, districts, mandals, villages, categories: integers. Villages may also carry the government `lgd_code` used for master-data import.
+- Ads, service requests, website contact messages and contact types: integers too. Important numbers (`Contact`) are UUIDs. Services and bills are addressed by their `key` (a string that never changes).
 - An area is always addressed as a pair: `level` plus `id`.
 
 ### Time
@@ -111,7 +112,7 @@ Objects that clients act on carry `allowed_actions`, computed on the server for 
   {"count": 134, "next": "https://…?page=2", "previous": null, "results": []}
   ```
   Some lists add sibling keys next to `results`, such as `status_counts`. Each endpoint says so.
-- **Cursors** for the citizen feed and the notification inbox, so new posts do not shift pages on a slow connection: `?cursor=<opaque>&page_size=10`, maximum 20. Response: `{"next": "<url>|null", "previous": "<url>|null", "results": []}`.
+- **Cursors** for the citizen feed and the notification inbox, so new posts do not shift pages on a slow connection: `?cursor=<opaque>`. The page size is fixed by the server, 20 (`FEED_PAGE_SIZE` for the feed); `page_size` is ignored. Response: `{"next": "<url>|null", "previous": "<url>|null", "results": []}`.
 
 ### Caching
 - Feed and public post endpoints send `ETag` and `Cache-Control: public, max-age=60`. Clients send `If-None-Match` and get `304 Not Modified` with an empty body when nothing changed.
@@ -367,13 +368,13 @@ Lean on purpose, for 2G.
 
 | Method and path | Auth | Request | Response |
 |---|---|---|---|
-| `POST /auth/login/` | public | `{"username", "password", "client": "app"}` | `200 {"access", "refresh", "user": Me}`. Mobile app. |
+| `POST /auth/login/` | public | `{"username", "password"}` (any other key, such as an older app's `"client"`, is ignored) | `200 {"access", "refresh", "user": Me}`. Mobile app. |
 | `POST /auth/refresh/` | refresh token | `{"refresh": "…"}` | `200 {"access", "refresh"}` |
 | `POST /auth/logout/` | bearer | `{"refresh": "…", "all_devices"?: true}` | `204`. Blacklists the refresh token. `all_devices` also bumps `token_version`. |
 | `GET /auth/csrf/` | public | — | `200 {"detail": "ok"}` and the `csrftoken` cookie. Console. |
 | `POST /auth/session/login/` | public, `X-CSRFToken` | `{"username", "password"}` | `200 {"user": Me}` and the `sessionid` cookie. Console; needs `web_admin.access_web_console`. |
 | `POST /auth/session/logout/` | session, `X-CSRFToken` | — | `204`. The session is flushed. |
-| `POST /auth/password/change/` | bearer or session | `{"current_password", "new_password"}` | App: `200 {"access", "refresh"}`. Console: `200 {"user": Me}`, and the current session stays. Every other session and token ends. A wrong `current_password`: `400 invalid_credentials`. The `PASSWORD_CHANGE_MAX_FAILURES`-th (5) wrong one within `PASSWORD_CHANGE_WINDOW_MINUTES` (15) ends **every** session of the user, this one too: `401 session_revoked`, and the next try needs a real login, where the lockout applies. Each wrong try is audited (`auth.password_change_failed`, then `auth.password_change_locked`), never the password. |
+| `POST /auth/password/change/` | bearer or session | `{"current_password", "new_password"}` | App: `200 {"access", "refresh"}`. Console: `200 {"user": Me}`, and the current session stays (Swagger shows both as `PasswordChangeResult`). Every other session and token ends. A wrong `current_password`: `400 invalid_credentials`. The `PASSWORD_CHANGE_MAX_FAILURES`-th (5) wrong one within `PASSWORD_CHANGE_WINDOW_MINUTES` (15) ends **every** session of the user, this one too: `401 session_revoked`, and the next try needs a real login, where the lockout applies. Each wrong try is audited (`auth.password_change_failed`, then `auth.password_change_locked`), never the password. |
 | `GET /me/` | bearer or session | — | `200 Me` |
 | `PATCH /me/` | bearer or session | `{"name"?, "name_te"?, "preferred_language"?}` | `200 Me` |
 
@@ -783,7 +784,7 @@ Built (web_admin app). `days` is 1 to 366, default 30, and counts posts created 
 |---|---|---|---|
 | `GET /public/site-config/` | public | — | `{"play_store_url", "website_url", "invite_url", "helplines": [{"number": "112", "label_te": "అత్యవసరం", "label_en": "Emergency"}, …]}`. `invite_url` is `https://<domain>/app/` for "Invite your neighbours" (section 20), `null` while the server has no `PUBLIC_BASE_URL`; new on 2026-11-04. An empty `play_store_url` keeps the website's "coming soon" toast. Removed on 2026-11-07: `office_address_te`, `office_address_en`, `phone`, `email`, `hours_te`, `hours_en` and `app_store_url`; the website keeps its own contact details and download links. Cacheable for 5 minutes. |
 | `GET /public/showcase/` | public | — | `{"location": Area\|null, "featured": FeedItem\|null, "items": [FeedItem, FeedItem]}` for the home page's phone picture. Cacheable for 60 s. |
-| `GET /admin/contact-messages/` | Super Admin | Query: `status=new\|handled`, `q` (name, mobile, village, message), `page` | Page of `{"id", "name", "mobile", "village_text", "message", "language", "created_at", "handled", "handled_at", "handled_by": {"id", "name"}\|null}`, newest first, plus `"status_counts": {"new": 3, "handled": 2, "all": 5}` (added 2026-11-20, the console's pill numbers): worked out with every filter except `status`, so `q` narrows them and the chosen pill does not. **Which ones (changed 2026-11-20):** every message, however old, handled or not; nothing is hidden by age. Before: a handled message dropped off 90 days after it was handled (since 2026-11-19), and every message 90 days after it arrived before that. **`contact=0` (added 2026-11-13, audit WEB-DP-001):** each row leaves out `mobile` and `message` and carries `"mobile_last4"` (the last 4 digits) instead; `q` still searches both. The console's table sends it; without it (the app) the rows are unchanged. |
+| `GET /admin/contact-messages/` | Super Admin | Query: `status=new\|handled`, `q` (name, mobile, village, message), `page` | Page of `{"id", "name", "mobile", "village_text", "message", "language", "created_at", "handled", "handled_at", "handled_by": {"id", "name"}\|null}`, newest first, plus `"status_counts": {"new": 3, "handled": 2, "all": 5}` (added 2026-11-20, the console's pill numbers): worked out with every filter except `status`, so `q` narrows them and the chosen pill does not. **Which ones (changed 2026-11-20):** every message, however old, handled or not; nothing is hidden by age. Before: a handled message dropped off 90 days after it was handled (since 2026-11-19), and every message 90 days after it arrived before that. **`contact=0` (added 2026-11-13, audit WEB-DP-001):** each row leaves out `mobile` and `message` and carries `"mobile_last4"` (the last 4 digits) instead; `q` still searches both. Without it the rows are unchanged. No client sends it now: the console stopped on 2026-11-17 (owner's decision to show the mobile and message in the table), and the app never did. The masking question is BVTGC-75. |
 | `GET /admin/contact-messages/{id}/` | Super Admin | — | The message in full (the shape above, with `mobile` and `message`); `404 not_found` for an unknown id. Added 2026-11-13: the console's View panel. Not audited, like opening a user or a service request. |
 | `PATCH /admin/contact-messages/{id}/` | Super Admin | `{"handled": true\|false}` | The message. Sets or clears `handled_at` and `handled_by`; audited as `contact.handled` or `contact.reopened`. |
 | `POST /public/contact-messages/` | public | `{"name", "mobile", "village_text", "message", "language", "website"?}` | `201 {"id", "created_at"}`. `village_text` is required (since 2026-11-04): missing or blank answers `400` with `fields.village_text`. |
@@ -879,8 +880,8 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Profile | `GET /me`, `PATCH /me`, `POST /auth/logout` |
 | Panchayat "My posts" | `GET /posts?mine=1` |
 | Compose, edit and resubmit | `POST /posts`, `POST /posts/{id}/media`, `DELETE …/media/{id}`, `PATCH /posts/{id}`, `POST /posts/{id}/submit` |
-| Admin dashboard | `GET /stats`, `GET /review/queue?page_size=3` |
-| Review queue | `GET /review/queue` |
+| Admin dashboard | `GET /stats`, `GET /posts/?status=PENDING` |
+| Review queue | `GET /posts/?status=PENDING` (`GET /review/queue/` exists but the app does not call it) |
 | Review | `GET /posts/{id}`, `GET /posts/{id}/history`, `POST /posts/{id}/review` |
 | Published posts | `GET /posts?status=PUBLISHED` |
 | Manage users, add user | `GET /users`, `POST /users`, `POST /users/{id}/block`, `POST /users/{id}/unblock` |
@@ -893,8 +894,9 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Contacts tab (citizens) | `GET /contacts?village_id=`; `GET /contact-types` for chips and icons |
 | Citizen: first post (once per install) | `POST /citizen/challenge/`, Play Integrity on the phone, `POST /citizen/register/` |
 | Citizen: write a post, my posts | `POST /citizen/posts/`, `GET /citizen/posts/`, `GET /citizen/me/`; `PATCH /citizen/me/` after a village change |
-| Review a citizen post | as Review; tabs from `GET /review/queue/?source=official\|citizen` and `source_counts`. Super Admin also: `POST /posts/{id}/block-citizen/`, `/unblock-citizen/`, `/discard-citizen-posts/`; the Blocked tab from `GET /admin/citizens/blocked/`, a citizen's posts from `GET /posts/?citizen={id}` |
-| Important numbers (every official) | `GET /admin/contacts` (`section=AREA\|HELPLINE`), `POST /admin/contacts`, `PATCH /admin/contacts/{id}`, `DELETE /admin/contacts/{id}`, `GET /admin/contacts/targets` |
+| Review a citizen post | as Review; tabs from `GET /posts/?status=PENDING&source=official\|citizen`. Super Admin also: `POST /posts/{id}/block-citizen/`, `/unblock-citizen/`, `/discard-citizen-posts/`; the Blocked tab from `GET /admin/citizens/blocked/`, a citizen's posts from `GET /posts/?citizen={id}` |
+| Important numbers (every official) | `GET /admin/contacts` (`section=AREA\|HELPLINE`), `POST /admin/contacts`, `PATCH /admin/contacts/{id}`, `DELETE /admin/contacts/{id}`, `POST /admin/contacts/import/` (Super Admin) |
+| Telugu name suggestions (every official's forms) | `GET /admin/transliterate/` |
 | Citizen Home: banner ads | `GET /ads?village_id=` |
 | Super Admin: More → Ads | `GET /admin/ads`, `POST /admin/ads` (multipart), `PATCH /admin/ads/{id}` (multipart with a new image or video, else JSON), `DELETE /admin/ads/{id}`; areas from `/geo/*` |
 | Citizen: Home → Services, Profile → My service requests (with Cancel request) | `GET /services/`, `POST /citizen/service-requests/`, `GET /citizen/service-requests/`, `POST /citizen/service-requests/{id}/cancel/` |
@@ -916,17 +918,21 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Reports | `GET /admin/reports/*` and their exports |
 | Audit log | `GET /audit`, `GET /audit/export` |
 | Settings | `/admin/settings`, `/admin/categories`, `/admin/notification-templates` |
-| Contact messages | `GET /admin/contact-messages` (`contact=0`), `GET /admin/contact-messages/{id}` (View), `PATCH /admin/contact-messages/{id}` |
-| Important numbers | `GET /admin/contacts` (area and helpline tabs), `POST /admin/contacts`, `PATCH /admin/contacts/{id}`, `DELETE /admin/contacts/{id}`, `GET /admin/contacts/targets`, `POST /admin/contacts/import`; types: `/admin/contact-types` |
+| Contact messages | `GET /admin/contact-messages` (full rows: the owner's decision of 2026-11-17 to show the mobile and message in the table; `contact=0` from WEB-DP-001 is no longer sent), `GET /admin/contact-messages/{id}` (View), `PATCH /admin/contact-messages/{id}` |
+| Important numbers | `GET /admin/contacts` (area and helpline tabs), `POST /admin/contacts`, `PATCH /admin/contacts/{id}`, `DELETE /admin/contacts/{id}`, `POST /admin/contacts/import`; types: `/admin/contact-types` |
 | Service requests | `GET /service-requests/`, `GET /service-requests/{id}/`, `PATCH /service-requests/{id}/`; assignees from `GET /users/` (shown to holders of `service_requests.view_service_requests`) |
 | Services | `GET /admin/services/`, `POST /admin/services/`, `PATCH /admin/services/{key}/`, `POST /admin/services/order/` |
-| Bills & Recharges (to build: a copy of Services) | `GET /admin/bills/`, `POST /admin/bills/`, `PATCH /admin/bills/{key}/`, `POST /admin/bills/order/` |
+| Bills & Recharges | `GET /admin/bills/`, `POST /admin/bills/`, `PATCH /admin/bills/{key}/`, `POST /admin/bills/order/` |
+| Notifications (bell) | `GET /notifications/`, `POST /notifications/{id}/read/`, `POST /notifications/read-all/`; opens the post or service request |
+| Ads | `GET /admin/ads/`, `POST /admin/ads/` (multipart), `PATCH /admin/ads/{id}/`, `DELETE /admin/ads/{id}/` |
+| Blocked citizens (Posts → Blocked) | `GET /admin/citizens/blocked/`, `GET /admin/citizens/{id}/blocks/`, `POST /admin/citizens/{id}/unblock/`; from a post: `POST /posts/{id}/block-citizen/`, `/unblock-citizen/`, `/discard-citizen-posts/` |
+| Telugu name suggestions (forms) | `GET /admin/transliterate/` |
 
 ### Public website
 
 | Page | Endpoints |
 |---|---|
-| All pages | `GET /public/site-config` once |
+| All pages | `GET /app-config/` (the languages switched on). `GET /public/site-config/` is no longer called (since 2026-11-07); the app still uses it |
 | Home phone mockup | `GET /public/showcase` |
 | Contact | `POST /public/contact-messages` |
 
@@ -1005,7 +1011,7 @@ All need `contacts.manage_contact`, which every official holds in their own area
 | `GET /admin/contacts/{id}/` | `manage_contact` over its area; any official for a helpline | — | `AdminContact`, otherwise `404` |
 | `PATCH /admin/contacts/{id}/` | over the old **and** the new area | any POST field, plus `"verified": true` to stamp `verified_at` | `AdminContact`. `404` if the number is outside reach; `403 out_of_area` if the new area is. |
 | `DELETE /admin/contacts/{id}/` | over its area | — | `204`. Soft delete: hidden from citizens, kept for the audit trail. A second delete answers `404`. |
-| `GET /admin/contacts/targets/` | `manage_contact` anywhere | — | "Who sees it" choices, in the shape of `GET /posts/targets/` (`levels`, `areas`, `pick_via: "geo"`), never `STATE` |
+| `GET /admin/contacts/targets/` | `manage_contact` anywhere | — | "Who sees it" choices, in the shape of `GET /posts/targets/` (`levels`, `areas`, `pick_via: "geo"`), never `STATE`. No client calls it yet (both pick areas through `/geo/*`); kept until BVTGC-77 decides. |
 | `POST /admin/contacts/import/` | Super Admin (`manage_contact` over the platform) | multipart `file` (UTF-8 CSV, BOM allowed, at most `CONTACTS_IMPORT_MAX_BYTES` 2 MB and `CONTACTS_IMPORT_MAX_ROWS` 5,000 rows); `?dry_run=1` checks only | `200 {"dry_run", "created", "updated", "skipped", "errors": []}`. Any bad row: `400 validation_error` with `report` holding the same object and `errors: [{"row", "field", "message"}]`, and nothing is written. Too large: `413 file_too_large`. |
 | `GET /admin/contact-types/` | Super Admin (`contacts.manage_contact_types`) | — | `[{"id", "key", "section", "name_en", "name_te", "is_other", "sort_order", "is_active", "contact_count"}]`; `contact_count` counts active numbers. Deleted types are left out. |
 | `POST /admin/contact-types/` | same | `{"key", "section", "name_en", "name_te", "is_other"?, "sort_order"?, "is_active"?}` | `201`; a used key: `409 duplicate`. The key of a deleted type stays taken: `409 duplicate`, "This key was used by a deleted type". |
@@ -1115,14 +1121,14 @@ Every citizen endpoint answers `401 citizen_token_invalid` without a valid token
 - **Decisions:** `publish` or `discard` (reason required). `recheck` is not offered, because a citizen cannot edit a post. Take-down and reversal work as for any post, except that a reversal cannot move a citizen post to `RECHECK`.
 - **Public view:** a published citizen post shows `source_role: "CITIZEN"` in the feed. No name, phone or device is ever shown.
 - **Officials' view (`Post`):** `author` is `{"id": null, "name": "", "role": "CITIZEN"}` and `posted_as.role` is `CITIZEN`; a new field `citizen` holds `{"device_id", "blocked", "blocked_until", "posts_total", "posts_discarded"}` (null on officials' posts; the counts cover every install of the phone). For the Super Admin, `allowed_actions` also holds `block_citizen` or `unblock_citizen`, and `discard_citizen_posts`.
-- **Blocking (Super Admin only, `posts.block_citizen`):** `POST /posts/{id}/block-citizen/` `{"comment", "days"}`, both required, `days` 1 to 365. Blocks the phone that wrote the post, every install of it (same `android_id`), until now + `days`; the block then ends by itself. **A block only stops new posts and service requests; it changes no post** (owner's request of 2026-11-21): the phone's `PENDING` posts stay in review for the reviewers to publish or discard as usual, and published ones stay published. (From 2026-11-20 to 2026-11-21 a block moved them to `BLOCKED`; migration `posts.0013` moved those back to `PENDING`, with a `REVERSE` by the system, comment "Reopened: a block no longer closes posts (2026-11-21)." Before 2026-11-20 a block discarded them; migration `posts.0014` moved those back to `PENDING` too, comment "Reopened: closed by a block before 2026-11-20; a block no longer closes posts (2026-11-21)." It finds them by the block's `citizen.blocked` audit entry: same Super Admin, same comment, same phone, within 60 seconds after it, and still the post's latest action. Posts discarded by "Discard all" or by a reviewer stay `DISCARDED`.) The citizen sees the comment and the end in `403 citizen_blocked` and in `GET /citizen/me/`. Blocking again while a block runs replaces it (the earlier one ends, by that Super Admin). `POST /posts/{id}/unblock-citizen/` lifts it at once. Other officials get `403 permission_denied`. Audited as `citizen.blocked` (with `days` and `until`), `citizen.unblocked`, and `citizen.block_ended` (actor System) when the time is up.
+- **Blocking (Super Admin only, `posts.block_citizen`):** `POST /posts/{id}/block-citizen/` `{"comment", "days"}`, both required, `days` 1 to 365. Blocks the phone that wrote the post, every install of it (same `android_id`), until now + `days`; the block then ends by itself. **A block only stops new posts and service requests; it changes no post** (owner's request of 2026-11-21): the phone's `PENDING` posts stay in review for the reviewers to publish or discard as usual, and published ones stay published. (From 2026-11-20 to 2026-11-21 a block moved them to `BLOCKED`; migration `posts.0013` moved those back to `PENDING`, with a `REVERSE` by the system, comment "Reopened: a block no longer closes posts (2026-11-21)." Before 2026-11-20 a block discarded them; migration `posts.0014` moved those back to `PENDING` too, comment "Reopened: closed by a block before 2026-11-20; a block no longer closes posts (2026-11-21)." It finds them by the block's `citizen.blocked` audit entry: same Super Admin, same comment, same phone, within 60 seconds after it, and still the post's latest action. Posts discarded by "Discard all" or by a reviewer stay `DISCARDED`.) The citizen sees the comment and the end in `403 citizen_blocked` and in `GET /citizen/me/`. Blocking again while a block runs replaces it (the earlier one ends, by that Super Admin). `POST /posts/{id}/unblock-citizen/` lifts it at once; it takes no body (a `comment` sent is ignored and not saved). Other officials get `403 permission_denied`. Audited as `citizen.blocked` (with `days` and `until`), `citizen.unblocked`, and `citizen.block_ended` (actor System) when the time is up.
 - **Blocked citizens (Super Admin only, `posts.block_citizen`; added 2026-11-21):** every block is kept with how it ended. Anyone else gets `403 permission_denied`; an unknown id `404 not_found`. No phone number, IP address or Android ID in any answer.
 
   | Method and path | Answer |
   |---|---|
   | `GET /admin/citizens/blocked/` | Query `active=1` (blocked now, the default) or `active=0` (block ended), `district` (id), `page`, `page_size` (at most 100). A page of one row per **phone** (every install), from its latest block, newest first: `{"id", "village": {"level", "id", "name"}, "blocked", "blocked_at", "blocked_until", "blocked_by": {"id", "name", "role"}, "reason", "ended_at", "ended_by", "posts_total", "posts_discarded", "posts_blocked", "latest_post_id"}`, plus `"counts": {"active": 4, "ended": 9}` over the same filters except `active`. `id` is the phone's first install: use it below and in `GET /posts/?citizen=`. `ended_at` null: still running. `ended_by` null with `ended_at` set: the time was up; else the Super Admin who unblocked or blocked again. An ended block keeps its reason. |
   | `GET /admin/citizens/{id}/blocks/` | Every block of that phone, newest first: `[{"blocked", "blocked_at", "blocked_until", "blocked_by", "reason", "ended_at", "ended_by"}]`. |
-  | `POST /admin/citizens/{id}/unblock/` | Lifts the phone's block at once, without a post, like `/posts/{id}/unblock-citizen/`; answers the `CitizenDevice`. Audited as `citizen.unblocked`. |
+  | `POST /admin/citizens/{id}/unblock/` | Lifts the phone's block at once, without a post, like `/posts/{id}/unblock-citizen/`; no body (a `comment` sent is ignored); answers the `CitizenDevice`. Audited as `citizen.unblocked`. |
 
   Blocks lifted early before 2026-11-21 left no record on the phone, so they are not in these lists (the audit log has them). A scheduled job (`ensure_schedules`, every `ESCALATION_CHECK_MINUTES`) marks a block ended once its time is up.
 - **Discard all (Super Admin only):** `POST /posts/{id}/discard-citizen-posts/` `{"comment"}` (required) discards every `PENDING` post of that phone (every install) in one action and answers `{"discarded": 3}`. It does not block the phone. Audited as `citizen.posts_discarded`.
@@ -1231,7 +1237,7 @@ A request belongs to the phone's village at the time it is sent; changing villag
 | Method and path | Who | Request | Response |
 |---|---|---|---|
 | `GET /service-requests/` | `service_requests.view_service_requests` | `status` (one of the six, or empty), `q` (the citizen's name, or digits of the phone), `assigned=me` (optional), `contact=0` (optional), `page`, `page_size` (at most 100) | Page of `ServiceRequest`, latest change first, plus `status_counts` for all six statuses with every filter applied except `status`. **Which requests are listed (changed 2026-11-20):** every request of the official's areas, open or finished, however old; nothing is hidden by age. `closed_visible_days` is gone from the answer (no client read it). Before: a `COMPLETED`, `REJECTED` or `CANCELLED` request dropped off 180 days after its last change. The citizen's own list (`GET /citizen/service-requests/`) is not affected. **`contact=0` (added 2026-11-13, audit WEB-DP-001):** each row leaves out `phone`, `email` and `address` (the keys are absent); everything else is the same, and `q` still searches the phone. The console's table sends it and reads them from `GET /service-requests/{id}/` when a request is opened. Without it (the app) the rows are unchanged. |
-| `GET /service-requests/{id}/` | same | — | `ServiceRequest`; `404` when it is outside reach |
+| `GET /service-requests/{id}/` | same | — | `ServiceRequest`, always with `phone`, `email` and `address` (`contact=0` works on the list only and is ignored here); `404` when it is outside reach |
 | `PATCH /service-requests/{id}/` | the assignee; the rules below | any of `{"status", "assigned_to", "note"}`; `assigned_to` is a user id as in `GET /users/` (a UUID string), or `null` to unassign | The updated `ServiceRequest`. One history event per call that changes something; a call that changes nothing writes nothing. After passing it on, the answer still comes back (with `allowed_actions: []`), even when the caller no longer sees the request. |
 
 ```jsonc
