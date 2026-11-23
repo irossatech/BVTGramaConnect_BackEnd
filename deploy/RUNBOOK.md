@@ -63,7 +63,17 @@ Common problems:
 sudo bash /srv/gramaconnect/backend/deploy/deploy.sh
 ```
 
-It pulls `GIT_BRANCH` of the backend repo and the web repo (BVTGramaConnect, setting `REPO_WEB`), installs packages, migrates, collects static files, uses the web repo's committed `dist/` (or builds it with `npm ci && npm run build` when `dist/` is not committed), copies `dist/` (without `console/`) to `/srv/gramaconnect/www/public` and `dist/console/` to `/srv/gramaconnect/www/console`, restarts the services, and checks the API. Before it changes anything, it takes a backup with `backup.sh` (only when started as root, as above; `BACKUP_BEFORE_DEPLOY=0` in `/etc/gramaconnect/deploy.env` skips it for an emergency), so a failed migration can be undone with `restore.sh` from minutes before, not from last night. To roll back, check out the previous commit in the affected repo and run `deploy.sh` again with `GIT_BRANCH` pointing at a branch or tag that holds it. Migrations are not reversed automatically: restore a backup if a migration has to be undone.
+It pulls `GIT_BRANCH` of the backend repo and the web repo (BVTGramaConnect, setting `REPO_WEB`), installs packages, migrates, collects static files, uses the web repo's committed `dist/` (or builds it with `npm ci && npm run build` when `dist/` is not committed), copies `dist/` (without `console/`) to `/srv/gramaconnect/www/public` and `dist/console/` to `/srv/gramaconnect/www/console`, restarts the services, and checks the API. Before it changes anything, it takes a backup with `backup.sh` (only when started as root, as above; `BACKUP_BEFORE_DEPLOY=0` in `/etc/gramaconnect/deploy.env` skips it for an emergency), so a failed migration can be undone with `restore.sh` from minutes before, not from last night. Each deploy that passes the health check adds one line to `/srv/gramaconnect/deploy-history.log`: `deployed`, the time (UTC), the backend commit and the web commit that went live together.
+
+### Rolling back a release
+
+```
+sudo bash /srv/gramaconnect/backend/deploy/deploy.sh --rollback
+```
+
+It puts back the previous recorded **pair** (backend and web together, so the console always matches its API): the backend code and its Python packages, the static files, the website and console build; then restarts the services and checks the API, and records a `rolled-back` line. After a deploy that failed its health check (not recorded), "previous" is the last good deploy; run it again to go one more step back. To choose the versions yourself: `deploy.sh --rollback <backend commit> <web commit>` (from the history log or `git log`).
+
+Migrations are never reversed. Before changing anything, the rollback compares the migrations applied to the database with the ones the older backend has; if the database is ahead, it lists them and stops. Then restore the backup taken before that deploy (`restore.sh`, below) and run `deploy.sh --rollback` again. The next normal `deploy.sh` brings the branch's latest code back, so fix or revert the bad commit on the branch first.
 
 ### Servers set up before the web repos were merged
 
