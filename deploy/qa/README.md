@@ -115,6 +115,28 @@ MySQL or MariaDB. Check it after a deploy from the backend folder:
 and look for database errors 1055, 1292 or 1365 in `~/.bvt-grama/logs/web.log` and `worker.log`.
 To go back: `DB_SQL_MODE=STRICT_TRANS_TABLES` in qa's `.env`, then `bash BVT-stop.sh` and `bash BVT-start.sh`.
 
+Each release that starts and answers adds one line to `~/.bvt-grama/deploy-history.log`: `deployed`,
+the time (UTC), the backend commit and the web commit that went live together.
+
+## Rolling back a release
+
+```
+bash BVT-deploy.sh --rollback
+```
+It puts both repos back to the previous recorded **pair** (backend and web together, so the website and
+console always match their API), builds the web part if that commit has no committed `dist/`,
+reinstalls the Python packages, collects the static files and restarts, then adds a `rolled-back` line
+to the history. After a release that failed to start (not recorded), "previous" is the last good one;
+run it again to go one more step back. To choose the versions yourself:
+`bash BVT-deploy.sh --rollback <backend commit> <web commit>` (from the history or `git log`). It stops,
+with nothing changed, if someone edited tracked files on the server.
+
+Migrations are never reversed. Before changing anything it compares the migrations applied to the
+database with the ones the older backend has; if the database is ahead, it lists them and stops. Then
+restore the backup taken before that release (`~/bvt-backups-before-deploy/`, "Restoring a backup"
+below) and run `bash BVT-deploy.sh --rollback` again. The next `bash BVT-deploy.sh` brings the branch's
+latest code back, so fix or revert the bad commit on the branch first.
+
 ## Backups
 
 `bash BVT-backup.sh --install` runs one every night. The data dump holds password hashes and

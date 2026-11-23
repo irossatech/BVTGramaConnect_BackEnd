@@ -3,6 +3,12 @@
 #
 #   SERVER_IP=147.93.102.247 PORT=9501 bash BVT-deploy.sh    the first time
 #   bash BVT-deploy.sh                                       every later release
+#   bash BVT-deploy.sh --rollback                            back to the previous recorded release
+#   bash BVT-deploy.sh --rollback <backend> <web>            back to these two commits
+#
+# Each release that starts and answers is recorded in ~/.bvt-grama/deploy-history.log (backend and
+# web commit). A rollback puts both repos back to a recorded pair, reinstalls the packages and
+# restarts; it never undoes migrations (deploy/qa/README.md, "Rolling back a release").
 #
 # Production on a hosting account of the same kind (deploy/qa/README.md, "Production on a
 # hosting panel"), the first time, as that site's own user:
@@ -27,8 +33,16 @@
 set -euo pipefail
 # shellcheck source=qa-lib.sh
 source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/qa-lib.sh"
+# shellcheck source=../history-lib.sh
+source "$QA_DIR/../history-lib.sh"
+DEPLOY_HISTORY="$STATE_DIR/deploy-history.log"
 
 main() {
+  case "${1:-}" in
+    "") ;;
+    --rollback) rollback "${2:-}" "${3:-}"; return ;;
+    *) fail "Unknown option '$1'. Use: bash BVT-deploy.sh, or bash BVT-deploy.sh --rollback [<backend commit> <web commit>]" ;;
+  esac
   local branch python_bin production=0
   if is_production || [[ "${MODE:-}" == "production" ]]; then
     production=1
@@ -97,6 +111,61 @@ main() {
 
   step "Starting"
   bash "$QA_DIR/BVT-start.sh"
+  mkdir -p "$STATE_DIR"
+  history_record "$DEPLOY_HISTORY" deployed "$BACKEND_DIR" "$WEB_DIR"
+  echo "Recorded in $DEPLOY_HISTORY: backend $(git -C "$BACKEND_DIR" rev-parse --short=12 HEAD), web $(git -C "$WEB_DIR" rev-parse --short=12 HEAD)."
+}
+
+# Back to a recorded backend + web pair (or the two commits given), so the website and console
+# match their API. Stops before changing anything when the database has migrations the older
+# backend does not know: restore the backup taken before that release first (README).
+rollback() {
+  local backend="$1" web="$2" current_backend current_web target unknown production=0
+  is_production && production=1
+  [[ -n "$backend" && -z "$web" ]] && fail "Give both commits: bash BVT-deploy.sh --rollback <backend commit> <web commit>, or neither."
+  [[ -x "$PYTHON" && -f "$BACKEND_DIR/.env" ]] || fail "Nothing deployed here yet: nothing to roll back."
+  local dir
+  for dir in "$BACKEND_DIR" "$WEB_DIR"; do
+    if [[ -n "$(git -C "$dir" status --porcelain --untracked-files=no)" ]]; then
+      git -C "$dir" status --short --untracked-files=no >&2
+      fail "$dir has local changes (above). Commit or undo them, then roll back again."
+    fi
+  done
+  current_backend="$(git -C "$BACKEND_DIR" rev-parse HEAD)"
+  current_web="$(git -C "$WEB_DIR" rev-parse HEAD)"
+  if [[ -z "$backend" ]]; then
+    target="$(history_target "$DEPLOY_HISTORY" "$current_backend" "$current_web")" \n      || fail "No earlier release is recorded in $DEPLOY_HISTORY. Give the commits: bash BVT-deploy.sh --rollback <backend commit> <web commit>"
+    read -r backend web <<<"$target"
+  fi
+  git -C "$BACKEND_DIR" fetch --quiet origin || echo "WARNING: could not fetch the backend repo; using the commits on disk." >&2
+  git -C "$WEB_DIR" fetch --quiet origin || echo "WARNING: could not fetch the web repo; using the commits on disk." >&2
+  backend="$(resolve_commit "$BACKEND_DIR" "$backend")" || fail "Backend commit not found: $1"
+  web="$(resolve_commit "$WEB_DIR" "$web")" || fail "Web commit not found: $2"
+
+  step "Checking the database against backend ${backend:0:12}"
+  unknown="$(migrations_unknown_to "$PYTHON" "$BACKEND_DIR" "$backend")" \n    || fail "Could not read the applied migrations (above); nothing was changed."
+  if [[ -n "$unknown" ]]; then
+    printf '%s
+' "$unknown" >&2
+    fail "The database has the migrations above, which backend ${backend:0:12} does not have; nothing was changed. Restore the backup taken before that release (deploy/qa/README.md), then roll back again."
+  fi
+
+  step "Rolling back: backend ${current_backend:0:12} -> ${backend:0:12}, web ${current_web:0:12} -> ${web:0:12}"
+  git -C "$WEB_DIR" reset --quiet --hard "$web"
+  build_web "$WEB_DIR"
+  git -C "$BACKEND_DIR" reset --quiet --hard "$backend"
+  "$PYTHON" -m pip install --quiet -r "$BACKEND_DIR/requirements.txt"
+  (cd "$BACKEND_DIR" && "$PYTHON" manage.py collectstatic --noinput >/dev/null)
+  if (( production )); then
+    (cd "$BACKEND_DIR" && "$PYTHON" manage.py write_assetlinks "$(dirname "$BACKEND_DIR")/.well-known/assetlinks.json")
+  fi
+
+  step "Starting"
+  bash "$QA_DIR/BVT-start.sh"
+  mkdir -p "$STATE_DIR"
+  history_record "$DEPLOY_HISTORY" rolled-back "$BACKEND_DIR" "$WEB_DIR"
+  echo "Rolled back to backend ${backend:0:12} and web ${web:0:12} (recorded in $DEPLOY_HISTORY)."
+  echo "The next bash BVT-deploy.sh brings the branch's latest code back: fix or revert the bad commit first."
 }
 
 # Fast-forward a repo to origin/<branch>. Stops if someone changed tracked files on the server.
