@@ -269,6 +269,8 @@ Returned by `GET /me/`, inside the app login response and inside the console ses
   "name": "Suresh Babu",
   "name_te": "సురేష్ బాబు",
   "mobile": null,
+  "mobile_last4": "",
+  "email_masked": "",
   "is_active": true,
   "status": "ACTIVE",
   "preferred_language": "te",
@@ -399,7 +401,7 @@ Passwords:
 
 | Method and path | Needs | Request | Response |
 |---|---|---|---|
-| `GET /users/` | any `accounts.manage_*` | Query: `role`, `status=ACTIVE\|BLOCKED`, `level` + `area_id`, `district`, `q` (name, Telugu name, username, email, mobile), `page` | Page of `User` inside the actor's areas, plus `"counts": {"total", "active", "blocked", "by_role": {"VILLAGE_ADMIN": 5}}` over the same filters except `role` and `status` |
+| `GET /users/` | any `accounts.manage_*` | Query: `role`, `status=ACTIVE\|BLOCKED`, `level` + `area_id`, `district`, `q` (name, Telugu name, username, email, mobile), `contact=0` (optional), `page` | Page of `User` inside the actor's areas, plus `"counts": {"total", "active", "blocked", "by_role": {"VILLAGE_ADMIN": 5}}` over the same filters except `role` and `status`. **`contact=0` (BVTGC-75, 2026-11-23):** each row leaves out `mobile` and `email` (the keys are absent) and keeps `mobile_last4` (the last 4 digits, `""` without a mobile) and `email_masked` (`"r***@example.org"`, `""` without an email); `q` still searches both. The console and the app send it for their lists and read the full values from `GET /users/{id}/`. Without it the rows still carry `mobile` and `email` for older clients; that default is to be dropped once both clients send `contact=0`. |
 | `POST /users/` | the group's manage permission over the area | `{"name", "name_te"?, "username", "mobile"?, "email"?, "preferred_language"?, "role", "area": {"level", "id"}, "password"?, "current_password"?}` | `201 {"user": User, "temporary_password"?}`. Without `password`, the server generates one and returns it once as `temporary_password`. `must_change_password` is set. A taken username, email or mobile gives `409 duplicate` with the field. With `role: SUPER_ADMIN`, `current_password` (the actor's own) is required: see "Super Admins" below. |
 | `GET /users/{id}/` | managing the user | — | `User` |
 | `PATCH /users/{id}/` | managing the user | `{"username"?, "name"?, "name_te"?, "preferred_language"?, "email"?, "mobile"?}` | `User`. A new `username` (2026-11-17, the console's Edit details) follows the username rule above; taken by someone else, in any case: `409 duplicate` on `username`, as on create. Audited as `user.username_changed` with `{"from", "to"}`; the other fields as `user.updated`. Sessions and tokens stay valid; the person signs in with the new name next time (tell them in person). An active lockout under the old name does not carry over. A user cannot change their own username (`PATCH /me/` does not take it). |

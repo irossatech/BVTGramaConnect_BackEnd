@@ -44,6 +44,7 @@ from .models import RoleAssignment, User, normalize_username
 from .permissions import ManagesUsers
 from .signals import super_admin_added
 from .serializers import (
+    HIDE_CONTACT,
     BlockSerializer,
     PasswordResetSerializer,
     RoleAssignmentCreateSerializer,
@@ -139,6 +140,10 @@ LIST_PARAMETERS = [
     OpenApiParameter("area_id", OpenApiTypes.INT),
     OpenApiParameter("district", OpenApiTypes.INT, description="Short for level=DISTRICT&area_id=…"),
     OpenApiParameter("q", OpenApiTypes.STR, description="Name, Telugu name, username, email or mobile."),
+    OpenApiParameter(
+        "contact", OpenApiTypes.STR, enum=["0"],
+        description="0: rows without the full mobile and email (mobile_last4 and email_masked only)",
+    ),
 ]
 
 CREATED_RESPONSE = inline_serializer(
@@ -166,9 +171,10 @@ class UserViewSet(
             .order_by("name", "id")
         )
 
-    def _data(self, users, *, many=False):
+    def _data(self, users, *, many=False, hide_contact=False):
         rows = list(users) if many else [users]
         context = self.get_serializer_context()
+        context[HIDE_CONTACT] = hide_contact
         prime_describer(context, rows)
         authz.prime(self.request.user, [ra.area for user in rows for ra in user.role_assignments.all()])
         context["locked_usernames"] = lockout.locked_usernames([user.username for user in rows])
@@ -256,7 +262,9 @@ class UserViewSet(
         base = self._area_and_text_filters(self.get_queryset())
         counts = self._counts(base.order_by())
         page = self.paginate_queryset(self._role_and_status_filters(base))
-        response = self.get_paginated_response(self._data(page, many=True))
+        # contact=0 (BVTGC-75): rows without the full mobile and email; GET /users/{id}/ has them.
+        hide_contact = request.query_params.get("contact") == "0"
+        response = self.get_paginated_response(self._data(page, many=True, hide_contact=hide_contact))
         response.data["counts"] = counts
         return response
 

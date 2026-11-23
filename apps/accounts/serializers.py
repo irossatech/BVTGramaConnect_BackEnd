@@ -6,6 +6,7 @@ from django.utils.translation import gettext_lazy as _
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from apps.audit.masking import mask_email
 from apps.geography.areas import AreaDescriber, AreaRef, ancestries
 from apps.geography.models import AreaLevel
 
@@ -351,6 +352,10 @@ def user_actions(actor, user, *, locked: bool, can_add_roles: bool) -> list[str]
     return actions
 
 
+#: Context key: list rows without the full mobile and email (GET /users/?contact=0, BVTGC-75).
+HIDE_CONTACT = "hide_contact"
+
+
 class UserSerializer(serializers.ModelSerializer):
     role_assignments = RoleAssignmentSerializer(many=True, read_only=True)
     last_login_at = serializers.DateTimeField(source="last_login", read_only=True)
@@ -358,6 +363,9 @@ class UserSerializer(serializers.ModelSerializer):
     status = serializers.CharField(read_only=True)
     locked_out = serializers.SerializerMethodField()
     allowed_actions = serializers.SerializerMethodField()
+    #: For lists: enough to recognise the number and address without sending them (audit CROSS-PII-002).
+    mobile_last4 = serializers.SerializerMethodField()
+    email_masked = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -368,6 +376,8 @@ class UserSerializer(serializers.ModelSerializer):
             "name",
             "name_te",
             "mobile",
+            "mobile_last4",
+            "email_masked",
             "is_active",
             "status",
             "preferred_language",
@@ -379,6 +389,20 @@ class UserSerializer(serializers.ModelSerializer):
             "locked_out",
             "allowed_actions",
         ]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if self.context.get(HIDE_CONTACT):
+            # The keys are left out, not emptied, so a client cannot mistake them for "no mobile".
+            data.pop("mobile", None)
+            data.pop("email", None)
+        return data
+
+    def get_mobile_last4(self, obj) -> str:
+        return (obj.mobile or "")[-4:]
+
+    def get_email_masked(self, obj) -> str:
+        return mask_email(obj.email) if obj.email else ""
 
     def get_locked_out(self, obj) -> bool:
         return obj.username in self.context.get("locked_usernames", set())
