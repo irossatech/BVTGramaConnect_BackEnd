@@ -19,7 +19,7 @@ from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.utils.translation import gettext as _
 from django.views.decorators.csrf import ensure_csrf_cookie
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import PolymorphicProxySerializer, extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -171,7 +171,12 @@ class PasswordChangeView(APIView):
     @extend_schema(
         summary="Choose a new password; every other session ends",
         request=PasswordChangeSerializer,
-        responses=TokenPairSerializer,
+        # The app (bearer token) gets new tokens; the console (session) gets {"user": Me} and keeps its session.
+        responses=PolymorphicProxySerializer(
+            component_name="PasswordChangeResult",
+            serializers=[TokenPairSerializer, inline_serializer("SessionPasswordChange", {"user": MeSerializer()})],
+            resource_type_field_name=None,
+        ),
     )
     def post(self, request):
         data = PasswordChangeSerializer(data=request.data)
