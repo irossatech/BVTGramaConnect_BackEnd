@@ -279,7 +279,7 @@ MIDDLEWARE = [
     "grama.cache_headers.PrivateApiAnswersMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.middleware.http.ConditionalGetMiddleware",
-    "django.contrib.sessions.middleware.SessionMiddleware",
+    "grama.sessions.SessionMiddleware",  # renews on every request except the console's background checks
     "django.middleware.locale.LocaleMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -349,7 +349,9 @@ PASSWORD_CHANGE_WINDOW_MINUTES = env.int("PASSWORD_CHANGE_WINDOW_MINUTES", defau
  
 CONSOLE_SESSION_IDLE_MINUTES = env.int("CONSOLE_SESSION_IDLE_MINUTES", default=30)
 SESSION_COOKIE_AGE = CONSOLE_SESSION_IDLE_MINUTES * 60
-SESSION_SAVE_EVERY_REQUEST = True
+# Not Django's SESSION_SAVE_EVERY_REQUEST: grama.sessions.SessionMiddleware renews the session on every
+# request except the console's background checks (X-Background-Request: 1), BVTGC-72.
+SESSION_SAVE_EVERY_REQUEST = False
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"
 CSRF_COOKIE_HTTPONLY = False

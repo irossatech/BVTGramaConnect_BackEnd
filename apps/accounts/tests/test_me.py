@@ -42,6 +42,7 @@ def test_me_describes_groups_assignments_permissions_and_rules(api, world):
         "super_admin_can_post": True,  # owner decision of 2026-11-04
         "max_photos_per_post": 3,  # up to 3 photos or one video (lead's decision of 2026-11-13)
         "video_enabled": True,  # video posts are in version 1 (owner decision Q8)
+        "console_idle_minutes": 30,  # the console's idle sign-out, the same as the server's (BVTGC-72)
     }
 
 

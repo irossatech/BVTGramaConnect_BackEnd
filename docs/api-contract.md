@@ -90,7 +90,7 @@ Officials log in with a **username and a password**. There is no OTP, no SMS and
 **Web console: Django session** with CSRF.
 - `GET /auth/csrf/` sets the readable `csrftoken` cookie. `POST /auth/session/login/` creates the session; the cookie `sessionid` is HttpOnly, SameSite=Lax and Secure on the server.
 - The console sends same-origin cookies and the header `X-CSRFToken` on every POST, PATCH, PUT and DELETE. No `Authorization` header, no tokens.
-- The session ends after `CONSOLE_SESSION_IDLE_MINUTES` (30) without a request: `401 not_authenticated`.
+- The session ends after `CONSOLE_SESSION_IDLE_MINUTES` (30) without a request: `401 not_authenticated`. Every request renews it, **except** one sent with the header `X-Background-Request: 1`: the console sends it on its automatic checks (new notifications and service requests every 60 seconds), so an unattended console ends on the server too (BVTGC-72). Such a request still works while the session lasts.
 - Only users holding `web_admin.access_web_console` get a session.
 
 **Immediate revocation.** Each user has an integer `token_version`. Every token carries it as claim `tv`, and every console session stores it at login. The server loads the user on every request and refuses a token or session whose version differs, or whose user is blocked: `401 session_revoked`. Blocking, a password change, an admin reset and "log out everywhere" bump `token_version` and blacklist the refresh tokens in one transaction. This meets the CLAUDE.md rule that blocking revokes all sessions at once.
@@ -247,7 +247,8 @@ Returned by `GET /me/`, inside the app login response and inside the console ses
     "admin_posts_auto_publish": true,
     "super_admin_can_post": true,
     "max_photos_per_post": 3,
-    "video_enabled": true
+    "video_enabled": true,
+    "console_idle_minutes": 30
   }
 }
 ```
@@ -256,6 +257,7 @@ Returned by `GET /me/`, inside the app login response and inside the console ses
 - In both, each `area` also carries **`parents`** (added 2026-11-19, optional for clients): the ids of the areas above it, by level. A mandal: `"parents": {"STATE": 1, "DISTRICT": 7}`; a village: `{"STATE": 1, "DISTRICT": 7, "MANDAL": 12}`; a district: `{"STATE": 1}`; the state: `{}`. The app opens "Who will see it" at the official's own district and mandal with them. Only in `GET /me/` (and the login responses that contain `Me`); `permissions_by_area` and every other endpoint keep the plain `Area`.
 - `capabilities` is **deprecated**. It is derived from `permissions` and kept so the current app keeps working.
 - `mobile` and `email` may be `null`. When `must_change_password` is true, clients go straight to the change-password screen.
+- `rules.console_idle_minutes`: the console signs out after this many minutes without input, the same time the server ends the session (`CONSOLE_SESSION_IDLE_MINUTES`, 30; BVTGC-72). The console reads it instead of keeping its own number.
 - `rules.max_photos_per_post`: photos per post, **3** (lead's decision of 2026-11-13). A post has up to that many photos, or one video (when `video_enabled`), never both (section 5).
 
 ### User (admin view)
