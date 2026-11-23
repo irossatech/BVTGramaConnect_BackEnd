@@ -159,7 +159,7 @@ All errors share one shape:
 | 403 | `permission_denied` | No group of the actor grants the permission; also a console request without a valid `X-CSRFToken` |
 | 403 | `password_confirmation_required` | Giving the Super Admin role with a wrong `current_password` (section 3); counted with wrong tries on "Change password", so too many give `401 session_revoked` |
 | 403 | `out_of_area` | Target is outside the actor's area, on writes |
-| 404 | `not_found` | Missing, or outside the actor's area on reads |
+| 404 | `not_found` | Missing, or outside the actor's area on reads. A citizen's village that does not exist or is switched off (`/feed/`, `/feed/upcoming/`, `/feed/urgent/`, `/contacts/`, `/ads/` with `village_id`) also carries `"reason": "village_not_found"` (BVTGC-70, 2026-11-23): forget the saved village **only** on that reason, never on another 404 such as an unknown address during a deploy |
 | 409 | `invalid_transition` | Post state does not allow the action |
 | 409 | `already_decided` | Another reviewer acted first (`REVIEW_FIRST_DECISION_WINS`); `post` included |
 | 409 | `duplicate` | Username, email, mobile or name already used; `fields` says which |
@@ -621,7 +621,7 @@ No login. These views ignore any `Authorization` header, so a stale token on a c
 
 | Method and path | Request | Response |
 |---|---|---|
-| `GET /feed/?village_id=` | `village_id` (required), `category` (comma list of keys, e.g. `news,updates`), `q` (search, 2+ characters, title and body, any case), `has_video=1`, `cursor` | Cursor page of `FeedItem`, newest first, 20 per page: `{"next": "<url>\|null", "previous": "<url>\|null", "results": [FeedItem]}`. `400` without `village_id` or with a 1-character `q`; `404` for an unknown or inactive village. |
+| `GET /feed/?village_id=` | `village_id` (required), `category` (comma list of keys, e.g. `news,updates`), `q` (search, 2+ characters, title and body, any case), `has_video=1`, `cursor` | Cursor page of `FeedItem`, newest first, 20 per page: `{"next": "<url>\|null", "previous": "<url>\|null", "results": [FeedItem]}`. `400` without `village_id` or with a 1-character `q`; `404 not_found` with `"reason": "village_not_found"` for an unknown or inactive village (also `/feed/upcoming/` and `/feed/urgent/`). |
 | `GET /feed/upcoming/?village_id=` | `village_id` | `[FeedItem]`, at most 10 published posts from the same feed whose event starts today or later, soonest first. For "Don't miss". |
 | `GET /feed/urgent/?village_id=` | `village_id` | `[FeedItem]`, at most 5 published urgent posts from the same feed, published in the last 7 days, newest first. For the red alert at the top of Home and News. |
 | `GET /feed/posts/{id}/` | — | `FeedPost`; `404 not_found` unless `PUBLISHED` |
@@ -970,7 +970,7 @@ Built (`apps.contacts`). The app's Contacts tab: phone numbers officials publish
 
 | Method and path | Request | Response |
 |---|---|---|
-| `GET /contacts/?village_id=` | `village_id` (required) | `CitizenContacts` (below). `400` without `village_id`; `404` for an unknown or inactive village. `ETag` and `Cache-Control: public, max-age=300` (`CONTACTS_PUBLIC_MAX_AGE`); `If-None-Match` gets `304`. Ignores any `Authorization` header, like the feed. Rate-limited by Nginx like the rest of the API. |
+| `GET /contacts/?village_id=` | `village_id` (required) | `CitizenContacts` (below). `400` without `village_id`; `404 not_found` with `"reason": "village_not_found"` for an unknown or inactive village. `ETag` and `Cache-Control: public, max-age=300` (`CONTACTS_PUBLIC_MAX_AGE`); `If-None-Match` gets `304`. Ignores any `Authorization` header, like the feed. Rate-limited by Nginx like the rest of the API. |
 | `GET /contact-types/` | — | `[{"key", "section", "name", "is_other", "sort_order"}]`, active types only (never deleted ones). `Cache-Control: public, max-age=300` (`CONTACTS_PUBLIC_MAX_AGE`), so a new, renamed, switched-off or deleted type shows within 5 minutes. |
 
 ```jsonc
@@ -1334,7 +1334,7 @@ Built (`apps.ads`). The Super Admin makes banner ads in the app (**More → Ads*
 
 | Method and path | Request | Response |
 |---|---|---|
-| `GET /ads/?village_id=` | `village_id` (required) | `[PublicAd]`, newest first, at most `ADS_PUBLIC_LIMIT` (10). `400 validation_error` without a numeric `village_id`; `404` for an unknown or inactive village (as `/contacts/`). `Cache-Control: public, max-age=300` (`ADS_PUBLIC_MAX_AGE`). Ignores any `Authorization` header. |
+| `GET /ads/?village_id=` | `village_id` (required) | `[PublicAd]`, newest first, at most `ADS_PUBLIC_LIMIT` (10). `400 validation_error` without a numeric `village_id`; `404 not_found` with `"reason": "village_not_found"` for an unknown or inactive village (as `/contacts/`). `Cache-Control: public, max-age=300` (`ADS_PUBLIC_MAX_AGE`). Ignores any `Authorization` header. |
 
 ```jsonc
 // PublicAd: only what the banner needs

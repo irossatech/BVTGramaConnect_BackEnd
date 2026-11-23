@@ -30,7 +30,7 @@ from rest_framework.views import APIView
 
 from apps.geography.areas import AreaDescriber, AreaRef, ancestry
 from apps.geography.models import AreaLevel, Village
-from grama.exceptions import ApiError
+from grama.exceptions import ApiError, village_not_found
 from grama.params import is_number
 from apps.posts.models import MediaKind, Post, PostMedia, PostStatus
 from apps.posts.services import targets_match
@@ -86,7 +86,7 @@ def village_from(request) -> int:
         )
     village_id = int(raw)
     if not Village.objects.active().filter(id=village_id).exists():
-        raise ApiError("not_found", _("No such village."), status=404)
+        raise village_not_found()
     return village_id
 
 

@@ -16,7 +16,7 @@ from rest_framework.views import APIView
 
 from apps.geography.areas import AreaDescriber, AreaRef
 from apps.geography.models import AreaLevel, Village
-from grama.exceptions import ApiError
+from grama.exceptions import ApiError, village_not_found
 from grama.params import is_number
 
 from .models import ContactSection, ContactType
@@ -37,7 +37,7 @@ def village_from(request) -> int:
         raise ApiError("validation_error", _("Give a village id."), fields={"village_id": [_("Give a village id.")]})
     village_id = int(raw)
     if not Village.objects.active().filter(id=village_id).exists():
-        raise ApiError("not_found", _("No such village."), status=404)
+        raise village_not_found()
     return village_id
 
 
