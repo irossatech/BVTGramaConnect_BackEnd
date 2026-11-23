@@ -30,6 +30,8 @@ def test_a_citizen_post_goes_to_review_for_the_phones_village(world, phone, medi
     assert data["area"] == {"level": "VILLAGE", "id": world.areas["kolakaluru"].id, "name": "కొలకలూరు"}
     assert len(data["photos"]) == 2 and data["photos"][0]["url"].endswith("-1280.webp")
     assert data["photos"][0]["thumb_url"].endswith("-320.webp")
+    # Full links, like every endpoint (contract section 1, BVTGC-68).
+    assert all(link.startswith("http://testserver/media/") for link in data["photos"][0].values())
     assert data["reason"] is None and data["decided_at"] is None
 
     post = Post.objects.get()

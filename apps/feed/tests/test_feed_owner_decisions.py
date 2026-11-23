@@ -70,11 +70,11 @@ def test_video_posts_only(world, make_post):
     rows = get(world, "", query="&has_video=1").json()["results"]
     assert titles(rows) == ["video"]
     assert rows[0]["video"] == {
-        "url": f"/media/posts/2026/10/{video.pk}.mp4",
-        "poster_url": f"/media/posts/2026/10/{video.pk}-poster-1280.webp",
+        "url": f"http://testserver/media/posts/2026/10/{video.pk}.mp4",
+        "poster_url": f"http://testserver/media/posts/2026/10/{video.pk}-poster-1280.webp",
         "duration_s": 42,
     }
-    assert rows[0]["thumbnail_url"] == f"/media/posts/2026/10/{video.pk}-poster-320.webp"
+    assert rows[0]["thumbnail_url"] == f"http://testserver/media/posts/2026/10/{video.pk}-poster-320.webp"
     assert rows[0]["image_url"] is None                                  # the poster is in video.poster_url
     assert len(get(world, "").json()["results"]) == 3
 
@@ -157,7 +157,7 @@ def test_urgent_is_at_most_five(world, make_post):
 def test_every_list_carries_the_large_photo(world, make_post):
     post = urgent(make_post("kolakaluru", media=2))
     with_event(post, timezone.localdate() + timedelta(days=1))
-    large = f"/media/posts/2026/10/{post.pk}-0.webp"
+    large = f"http://testserver/media/posts/2026/10/{post.pk}-0.webp"
     assert get(world, "upcoming/").json()[0]["image_url"] == large
     assert get(world, "urgent/").json()[0]["image_url"] == large
     assert APIClient().get(f"/api/v1/feed/posts/?ids={post.pk}").json()[0]["image_url"] == large

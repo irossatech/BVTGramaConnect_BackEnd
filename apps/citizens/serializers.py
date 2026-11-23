@@ -1,12 +1,11 @@
 """Shapes from docs/api-contract.md, section 15."""
 
 
-from django.core.files.storage import default_storage
 from django.utils.translation import gettext_lazy as _
 from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
 
-from apps.feed.serializers import AreaSlimSerializer, AreaTargetSerializer
+from apps.feed.serializers import AreaSlimSerializer, AreaTargetSerializer, media_url
 from apps.geography.areas import AreaDescriber, AreaRef
 from apps.geography.models import AreaLevel
 from apps.posts.models import Category, MediaKind, PostStatus, ReviewAction
@@ -273,7 +272,7 @@ class CitizenPostSerializer(serializers.Serializer):
     @extend_schema_field(CitizenPhotoSerializer(many=True))
     def get_photos(self, obj):
         return [
-            {"url": default_storage.url(item.image.name), "thumb_url": default_storage.url(item.thumbnail.name)}
+            {"url": media_url(self.context, item.image.name), "thumb_url": media_url(self.context, item.thumbnail.name)}
             for item in obj.media.all()
             if item.kind == MediaKind.IMAGE
         ]
@@ -282,9 +281,9 @@ class CitizenPostSerializer(serializers.Serializer):
     def get_videos(self, obj):
         return [
             {
-                "url": default_storage.url(item.video.name),
-                "poster_url": default_storage.url(item.image.name),
-                "thumb_url": default_storage.url(item.thumbnail.name),
+                "url": media_url(self.context, item.video.name),
+                "poster_url": media_url(self.context, item.image.name),
+                "thumb_url": media_url(self.context, item.thumbnail.name),
                 "duration_s": item.duration_s,
             }
             for item in obj.media.all()

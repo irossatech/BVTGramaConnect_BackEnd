@@ -14,6 +14,14 @@ from apps.posts.serializers import EventSerializer, TranslationSerializer, descr
 from apps.posts.sharing import share_url
 
 
+def media_url(context, name: str) -> str:
+    """The full link to an uploaded file ("https://<site>/media/..."), as every endpoint sends it
+    (contract section 1, BVTGC-68). Only without a request (a test or a script) is it the path."""
+    url = default_storage.url(name)
+    request = context.get("request")
+    return request.build_absolute_uri(url) if request is not None else url
+
+
 class AreaSlimSerializer(serializers.Serializer):
     level = serializers.CharField()
     id = serializers.IntegerField()
@@ -41,13 +49,13 @@ class FeedMediaSerializer(serializers.Serializer):
     duration_s = serializers.IntegerField(allow_null=True)
 
     def get_url(self, obj) -> str:
-        return obj.video.url if obj.kind == MediaKind.VIDEO else obj.image.url
+        return media_url(self.context, obj.video.name if obj.kind == MediaKind.VIDEO else obj.image.name)
 
     def get_thumb_url(self, obj) -> str:
-        return obj.thumbnail.url
+        return media_url(self.context, obj.thumbnail.name)
 
     def get_poster_url(self, obj) -> str | None:
-        return obj.image.url if obj.kind == MediaKind.VIDEO else None
+        return media_url(self.context, obj.image.name) if obj.kind == MediaKind.VIDEO else None
 
 
 class FeedItemSerializer(serializers.Serializer):
@@ -105,12 +113,12 @@ class FeedItemSerializer(serializers.Serializer):
 
     def get_thumbnail_url(self, obj) -> str | None:
         name = getattr(obj, "thumbnail_name", None)
-        return default_storage.url(name) if name else None
+        return media_url(self.context, name) if name else None
 
     def get_image_url(self, obj) -> str | None:
         """First photo at full size (POST_IMAGE_MAX_PX, 1280 px); null without a photo or for a video post."""
         name = getattr(obj, "image_name", None)
-        return default_storage.url(name) if name else None
+        return media_url(self.context, name) if name else None
 
     def get_media_count(self, obj) -> int:
         count = getattr(obj, "media_count", None)
@@ -126,8 +134,8 @@ class FeedItemSerializer(serializers.Serializer):
         if not name:
             return None
         return {
-            "url": default_storage.url(name),
-            "poster_url": default_storage.url(obj.video_poster_name),
+            "url": media_url(self.context, name),
+            "poster_url": media_url(self.context, obj.video_poster_name),
             "duration_s": obj.video_duration,
         }
 

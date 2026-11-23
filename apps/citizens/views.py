@@ -90,7 +90,8 @@ class PostsView(CitizenView):
     @extend_schema(summary="This phone's posts, newest first", parameters=TOKEN_PARAM, responses=CitizenPostSerializer(many=True))
     def get(self, request):
         device = services.device_from_request(request)
-        return Response(CitizenPostSerializer(my_posts(device)[:MY_POSTS_LIMIT], many=True).data)
+        posts = my_posts(device)[:MY_POSTS_LIMIT]
+        return Response(CitizenPostSerializer(posts, many=True, context={"request": request}).data)
 
     @extend_schema(
         summary="Send a post for the village's officials to review",
@@ -122,4 +123,4 @@ class PostsView(CitizenView):
         # 200 for a repeat of an earlier send (same client_ref): the post as it is now.
         code = status.HTTP_200_OK if getattr(post, "repeated", False) else status.HTTP_201_CREATED
         post = my_posts(device).get(pk=post.pk)
-        return Response(CitizenPostSerializer(post).data, status=code)
+        return Response(CitizenPostSerializer(post, context={"request": request}).data, status=code)
