@@ -30,12 +30,13 @@ DEFAULTS = [
     },
     {
         "key": "post_recheck",
-        "name_te": "సవరణ అవసరం",
+        # Status words from the glossary (docs/api-contract.md section 1, BVTGC-67): the app's "recheck".
+        "name_te": "మళ్ళీ తనిఖీ",
         "name_en": "Recheck needed",
         "channel": "push",
         "recipient": "author",
-        "text_te": "మీ పోస్ట్‌ను సరిచేయాలి: {comment}",
-        "text_en": "Your post needs changes: {comment}",
+        "text_te": "మీ పోస్ట్ మళ్ళీ తనిఖీకి వచ్చింది: {comment}",
+        "text_en": "Your post needs a recheck: {comment}",
         "variables": ["title", "comment"],
         "editable": True,
     },
