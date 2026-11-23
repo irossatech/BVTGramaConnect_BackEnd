@@ -10,7 +10,7 @@ consent. All rows or none.
 
 from pathlib import Path
 
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import BaseCommand, CommandError, no_translations
 
 from apps.contacts.services import import_contacts
 
@@ -22,6 +22,8 @@ class Command(BaseCommand):
         parser.add_argument("file")
         parser.add_argument("--dry-run", action="store_true", help="Check every row and save nothing.")
 
+    # English output on the server, whatever LANGUAGE_CODE says (Telugu is for app users).
+    @no_translations
     def handle(self, *args, file, dry_run, **options):
         try:
             text = Path(file).read_text(encoding="utf-8-sig")

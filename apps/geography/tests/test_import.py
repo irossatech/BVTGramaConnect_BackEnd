@@ -123,7 +123,7 @@ def test_header_aliases_and_byte_order_mark(tmp_path):
         ),
     ],
 )
-def test_errors_stop_the_whole_import(rows, message):
+def test_errors_stop_the_whole_import(english, rows, message):
     report = run(GOOD + rows)
     assert not report.ok
     assert any(message in error for error in report.errors), report.errors
@@ -144,7 +144,7 @@ def test_one_lgd_code_for_two_villages_is_an_error():
     assert any("594122" in error for error in report.errors)
 
 
-def test_lgd_code_under_another_parent_is_refused():
+def test_lgd_code_under_another_parent_is_refused(english):
     lgd = HEADER.strip() + ",village_lgd_code\n"
     run(lgd + "Andhra Pradesh,,Guntur,,Tenali,,Kolakaluru,,,,,594122\n")
     report = run(lgd + "Andhra Pradesh,,Guntur,,Mangalagiri,,Kolakaluru,,,,,594122\n")
@@ -152,7 +152,7 @@ def test_lgd_code_under_another_parent_is_refused():
     assert Village.objects.get().mandal.name_en == "Tenali"
 
 
-def test_a_rename_onto_a_sibling_names_its_line_and_writes_nothing():
+def test_a_rename_onto_a_sibling_names_its_line_and_writes_nothing(english):
     lgd = HEADER.strip() + ",village_lgd_code\n"
     run(lgd + "Andhra Pradesh,,Guntur,,Tenali,,Kolakaluru,,,,,594122\nAndhra Pradesh,,Guntur,,Tenali,,Pedaravuru,,,,,\n")
     report = run(lgd + "Andhra Pradesh,,Guntur,,Tenali,,Nandivelugu,,,,522306,\n"
@@ -161,7 +161,7 @@ def test_a_rename_onto_a_sibling_names_its_line_and_writes_nothing():
     assert sorted(Village.objects.values_list("name_en", flat=True)) == ["Kolakaluru", "Pedaravuru"]
 
 
-def test_a_lost_race_undoes_the_whole_file(monkeypatch):
+def test_a_lost_race_undoes_the_whole_file(english, monkeypatch):
     def clash(*args, **kwargs):
         raise IntegrityError("UNIQUE constraint failed")
 
@@ -200,7 +200,7 @@ def test_the_number_of_queries_does_not_grow_with_the_villages(pin):
     assert queries(5) == queries(50)  # one batch: SQLite's 999 values a statement hold about 80 villages
 
 
-def test_swapped_coordinates_are_flagged():
+def test_swapped_coordinates_are_flagged(english):
     report = run(HEADER + "Andhra Pradesh,,Guntur,,Tenali,,Kolakaluru,,80.5924,16.2381,\n")
     assert report.ok
     assert any("look swapped" in warning for warning in report.warnings)

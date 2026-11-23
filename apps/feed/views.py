@@ -18,6 +18,7 @@ from django.db.models import Count, Exists, IntegerField, OuterRef, Q, Subquery
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 from django.utils.decorators import method_decorator
+from django.utils.translation import gettext as _
 from django.views.decorators.cache import cache_control
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
@@ -80,12 +81,12 @@ def village_from(request) -> int:
     if not is_number(raw):
         raise ApiError(
             "validation_error",
-            "The 'village_id' query parameter is required.",
-            fields={"village_id": ["Give a village id."]},
+            _("The 'village_id' query parameter is required."),
+            fields={"village_id": [_("Give a village id.")]},
         )
     village_id = int(raw)
     if not Village.objects.active().filter(id=village_id).exists():
-        raise ApiError("not_found", "No such village.", status=404)
+        raise ApiError("not_found", _("No such village."), status=404)
     return village_id
 
 
@@ -140,8 +141,8 @@ class FeedView(PublicView, generics.ListAPIView):
             if len(query) < settings.FEED_SEARCH_MIN_CHARS:
                 raise ApiError(
                     "validation_error",
-                    f"Search with at least {settings.FEED_SEARCH_MIN_CHARS} characters.",
-                    fields={"q": [f"At least {settings.FEED_SEARCH_MIN_CHARS} characters."]},
+                    _("Search with at least %(n)d characters.") % {"n": settings.FEED_SEARCH_MIN_CHARS},
+                    fields={"q": [_("At least %(n)d characters.") % {"n": settings.FEED_SEARCH_MIN_CHARS}]},
                 )
             queryset = queryset.filter(Q(title__icontains=query) | Q(body__icontains=query))
         if params.get("has_video") in ("1", "true", "True"):
@@ -162,7 +163,7 @@ class FeedPostDetailView(PublicView, APIView):
     def get(self, request, pk):
         post = published_posts().prefetch_related("media").filter(pk=pk).first()
         if post is None:
-            raise ApiError("not_found", "This post is not available.", status=404)
+            raise ApiError("not_found", _("This post is not available."), status=404)
         return Response(FeedPostSerializer(post, context={"request": request, "describer": describer_with([post])}).data)
 
 
@@ -182,11 +183,10 @@ class FeedPostsByIdView(PublicView, APIView):
             try:
                 ids.append(uuid.UUID(raw))
             except ValueError:
-                raise ApiError("validation_error", "Ids must be post ids.", fields={"ids": [raw]}) from None
+                raise ApiError("validation_error", _("Ids must be post ids."), fields={"ids": [raw]}) from None
         if not ids or len(ids) > MAX_IDS:
-            raise ApiError(
-                "validation_error", f"Give 1 to {MAX_IDS} ids.", fields={"ids": [f"Give 1 to {MAX_IDS} ids."]}
-            )
+            message = _("Give 1 to %(n)d ids.") % {"n": MAX_IDS}
+            raise ApiError("validation_error", message, fields={"ids": [message]})
         posts = {post.pk: post for post in published_posts().filter(pk__in=ids)}
         ordered = [posts[pk] for pk in ids if pk in posts]
         context = {"request": request, "describer": describer_with(ordered)}
@@ -207,7 +207,7 @@ class FeedShareView(PublicView, APIView):
     def get(self, request, code):
         post = published_posts().prefetch_related("media").filter(share_code=code).first()
         if post is None:
-            raise ApiError("not_found", "This post is not available.", status=404)
+            raise ApiError("not_found", _("This post is not available."), status=404)
         return Response(FeedPostSerializer(post, context={"request": request, "describer": describer_with([post])}).data)
 
 

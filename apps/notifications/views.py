@@ -3,6 +3,8 @@
 from django.db import IntegrityError, transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.utils.translation import gettext as _
+from django.utils.translation import gettext_lazy
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import generics, status
@@ -71,7 +73,7 @@ class DeviceDetailView(APIView):
         device = get_object_or_404(Device, pk=pk)
         user = _user_or_none(request)
         if device.user_id and (user is None or user.pk != device.user_id):
-            raise ApiError("not_found", "No such device.", status=404)
+            raise ApiError("not_found", _("No such device."), status=404)
         return device
 
     @extend_schema(summary="Change village, language or token", request=DeviceUpdateSerializer, responses=DeviceSerializer)
@@ -85,10 +87,8 @@ class DeviceDetailView(APIView):
             # As on register (G8): an official's device is never removed by someone else. Only the
             # official, logged in, may move their phone's token to this row.
             if others.filter(user__isnull=False).exclude(user=_user_or_none(request)).exists():
-                raise ApiError(
-                    "duplicate", "This push token belongs to another device.", status=status.HTTP_409_CONFLICT,
-                    fields={"fcm_token": ["This push token belongs to another device."]},
-                )
+                message = _("This push token belongs to another device.")
+                raise ApiError("duplicate", message, status=status.HTTP_409_CONFLICT, fields={"fcm_token": [message]})
             others.delete()
         data.save()
         return Response(DeviceSerializer(device).data)
@@ -152,7 +152,7 @@ class NotificationReadAllView(APIView):
 # --- Notification texts (console Settings page) ----------------------------------------------
 
 
-CAN_EDIT_TEMPLATES = HasPerm("notifications.manage_templates", PLATFORM, "Only Super Admins can change notification texts.")
+CAN_EDIT_TEMPLATES = HasPerm("notifications.manage_templates", PLATFORM, gettext_lazy("Only Super Admins can change notification texts."))
 
 
 class NotificationTemplateListView(generics.ListAPIView):
@@ -173,7 +173,7 @@ class NotificationTemplateDetailView(APIView):
     def patch(self, request, key):
         template = get_object_or_404(NotificationTemplate, key=key)
         if not template.editable:
-            raise permission_denied("This text cannot be changed.")
+            raise permission_denied(_("This text cannot be changed."))
         data = NotificationTemplateUpdateSerializer(data=request.data, context={"template": template})
         data.is_valid(raise_exception=True)
         before = {"text_te": template.text_te, "text_en": template.text_en}

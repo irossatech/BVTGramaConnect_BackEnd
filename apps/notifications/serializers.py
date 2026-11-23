@@ -1,3 +1,4 @@
+from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
 from apps.geography.models import Village
@@ -18,7 +19,7 @@ class DeviceSerializer(serializers.ModelSerializer):
 
     def validate_village_id(self, value):
         if value is not None and not Village.objects.active().filter(id=value).exists():
-            raise serializers.ValidationError("No such active village.")
+            raise serializers.ValidationError(_("No such active village."))
         return value
 
 
@@ -84,18 +85,19 @@ class NotificationTemplateUpdateSerializer(serializers.Serializer):
             # Only plain {name} fields: a stray "{", an empty "{}", or a format such as
             # "{title:>999999999}" would break or blow up every push sent with this text.
             try:
-                fields = [(name, spec, conversion) for _, name, spec, conversion in string.Formatter().parse(attrs[field]) if name is not None]
+                fields = [(name, spec, conversion) for _text, name, spec, conversion in string.Formatter().parse(attrs[field]) if name is not None]
             except ValueError:
                 raise serializers.ValidationError(
-                    {field: ["Braces do not match. Write a variable as {name}, and a brace on its own as {{ or }}."]}
+                    {field: [_("Braces do not match. Write a variable as {name}, and a brace on its own as {{ or }}.")]}
                 ) from None
+            usable = ", ".join(template.variables)
             if any(not name or spec or conversion for name, spec, conversion in fields):
                 raise serializers.ValidationError(
-                    {field: [f"Write each variable as a plain {{name}}, without anything else inside the braces. Use: {', '.join(template.variables)}."]}
+                    {field: [_("Write each variable as a plain {name}, without anything else inside the braces. Use: %(names)s.") % {"names": usable}]}
                 )
-            unknown = {name for name, _, _ in fields} - allowed
+            unknown = {name for name, _spec, _conversion in fields} - allowed
             if unknown:
                 raise serializers.ValidationError(
-                    {field: [f"Unknown variable(s): {', '.join(sorted(unknown))}. Use: {', '.join(template.variables)}."]}
+                    {field: [_("Unknown variable(s): %(unknown)s. Use: %(names)s.") % {"unknown": ", ".join(sorted(unknown)), "names": usable}]}
                 )
         return attrs

@@ -32,6 +32,10 @@ psycopg[binary]==3.3.6
 pytest==9.2.0
 pytest-django==4.14.0
 
+# Telugu message catalogue: `manage.py translations` and its test read and build locale/te
+# without GNU gettext (grama/i18n.py). Not needed to serve: Django reads the committed .mo.
+polib==1.2.0
+
 # Load test (deploy/loadtest/locustfile.py)
 locust==2.47.0
 

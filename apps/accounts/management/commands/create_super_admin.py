@@ -9,7 +9,7 @@ give this role through the API (with their own password, apps/accounts/peers.py)
 so this command is how the first one is made. Audit-logged.
 """
 
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import BaseCommand, CommandError, no_translations
 from django.db import transaction
 
 from apps.accounts.credentials import generate_password
@@ -27,6 +27,8 @@ class Command(BaseCommand):
         parser.add_argument("--name", default="", help="Needed when the user does not exist yet.")
         parser.add_argument("--state-id", type=int, default=None, help="Defaults to the only state.")
 
+    # English output on the server, whatever LANGUAGE_CODE says (Telugu is for app users).
+    @no_translations
     def handle(self, *args, username, name, state_id, **options):
         username = normalize_username(username)
         try:

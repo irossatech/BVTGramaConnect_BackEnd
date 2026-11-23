@@ -87,14 +87,14 @@ def test_bad_fields_are_refused(world, phone, changes, field):
     assert not ServiceRequest.objects.exists()
 
 
-def test_the_address_is_required(world, phone):
+def test_the_address_is_required(english, world, phone):
     body = {"service": "aadhaar", "name": "Lakshmi Devi", "phone": "9876543210"}
     response = phone().client.post(MINE, body, format="json")
     assert response.status_code == 400
     assert response.json()["error"]["fields"]["address"] == ["Enter your address."]
 
 
-def test_a_hidden_service_cannot_be_asked_for(world, phone):
+def test_a_hidden_service_cannot_be_asked_for(english, world, phone):
     Service.objects.filter(key="pan").update(is_active=False)
     response = ask(phone(), service="pan")
     assert response.status_code == 400
@@ -154,7 +154,7 @@ def test_creation_is_audited_without_personal_data(world, phone):
 # --- Automatic assignment ---------------------------------------------------------------------------
 
 
-def test_a_new_request_is_assigned_to_the_village_admin(api, world, request_from):
+def test_a_new_request_is_assigned_to_the_village_admin(english, api, world, request_from):
     _citizen, request_id = request_from("kolakaluru")
     admin = world.users["va_kolakaluru"]
     data = detail(api, world, "ma_tenali", request_id).json()
@@ -345,7 +345,7 @@ def test_the_assignee_may_pass_it_up_to_a_higher_official(api, world, request_fr
     assert ServiceRequest.objects.get(pk=request_id).assigned_to == world.users["da_guntur"]
 
 
-def test_rejecting_needs_a_reason_the_citizen_then_sees(api, world, request_from):
+def test_rejecting_needs_a_reason_the_citizen_then_sees(english, api, world, request_from):
     citizen, request_id = request_from()
     refused = patch(api, world, "va_kolakaluru", request_id, status="REJECTED")
     assert refused.status_code == 400
@@ -358,7 +358,7 @@ def test_rejecting_needs_a_reason_the_citizen_then_sees(api, world, request_from
     assert (mine["status"], mine["note"]) == ("REJECTED", "Please apply at the Mee Seva centre")
 
 
-def test_completing_needs_a_note_the_citizen_then_sees(api, world, request_from):
+def test_completing_needs_a_note_the_citizen_then_sees(english, api, world, request_from):
     citizen, request_id = request_from()
     patch(api, world, "va_kolakaluru", request_id, status="IN_PROGRESS")
     refused = patch(api, world, "va_kolakaluru", request_id, status="COMPLETED")

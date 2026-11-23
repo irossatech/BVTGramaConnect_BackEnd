@@ -23,6 +23,7 @@ from django.db.models.functions import Coalesce
 from django.http import HttpResponse
 from django.utils import timezone
 from django.utils.translation import gettext as _
+from django.utils.translation import gettext_lazy
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
@@ -185,11 +186,11 @@ def counts_by_area(posts, area) -> dict[int, dict]:
 
 
 class SuperAdminView(APIView):
-    permission_classes = [IsAuthenticated, HasPerm("web_admin.view_reports", PLATFORM, "Only Super Admins can do this.")]
+    permission_classes = [IsAuthenticated, HasPerm("web_admin.view_reports", PLATFORM, gettext_lazy("Only Super Admins can do this."))]
 
 
 class DashboardView(SuperAdminView):
-    permission_classes = [IsAuthenticated, HasPerm("web_admin.view_dashboard", PLATFORM, "Only Super Admins can do this.")]
+    permission_classes = [IsAuthenticated, HasPerm("web_admin.view_dashboard", PLATFORM, gettext_lazy("Only Super Admins can do this."))]
 
     @extend_schema(summary="Super Admin dashboard", responses=OpenApiTypes.OBJECT)  # contract, section 11
     def get(self, request):

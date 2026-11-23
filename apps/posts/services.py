@@ -40,6 +40,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Exists, OuterRef, Q, QuerySet
 from django.utils import timezone
 from django.utils.translation import gettext as _
+from django.utils.translation import gettext_lazy
 from rest_framework import status as http
 
 from apps.accounts import authz
@@ -138,10 +139,28 @@ class AlreadyDecided(Exception):
         self.post = post
 
 
+#: One whole sentence per action, so each translates as a sentence (Telugu cannot be glued together
+#: from English verbs). The keys are the actions callers pass to invalid_transition.
+TRANSITION_MESSAGES = {
+    "changed": gettext_lazy("A %(status)s post cannot be changed."),
+    "edited": gettext_lazy("A %(status)s post cannot be edited."),
+    "submitted": gettext_lazy("A %(status)s post cannot be submitted."),
+    "deleted": gettext_lazy("A %(status)s post cannot be deleted."),
+    "reversed": gettext_lazy("A %(status)s post cannot be reversed."),
+    "marked urgent": gettext_lazy("A %(status)s post cannot be marked urgent."),
+    "published": gettext_lazy("A %(status)s post cannot be published."),
+    "sent for recheck": gettext_lazy("A %(status)s post cannot be sent for recheck."),
+    "discarded": gettext_lazy("A %(status)s post cannot be discarded."),
+    "taken down": gettext_lazy("A %(status)s post cannot be taken down."),
+    "blocked": gettext_lazy("A %(status)s post cannot be blocked."),
+}
+
+
 def invalid_transition(post: Post, action: str) -> ApiError:
+    message = TRANSITION_MESSAGES.get(action, TRANSITION_MESSAGES["changed"])
     return ApiError(
         "invalid_transition",
-        _("A %(status)s post cannot be %(action)s.") % {"status": post.status.lower(), "action": action},
+        message % {"status": str(PostStatus(post.status).label).lower()},
         status=http.HTTP_409_CONFLICT,
         current_status=post.status,
     )

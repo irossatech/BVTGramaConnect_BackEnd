@@ -1,5 +1,6 @@
 """Shapes from docs/api-contract.md, section 18: the same as the services' (section 16)."""
 
+from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
 from .models import COLORS, ICONS, Bill
@@ -42,7 +43,7 @@ class BillWriteSerializer(serializers.Serializer):
     def validate_name_en(self, value):
         value = " ".join(value.split())
         if len(value) < 2:
-            raise serializers.ValidationError("Write at least 2 letters.")
+            raise serializers.ValidationError(_("Write at least 2 letters."))
         return value
 
     def validate_name_te(self, value):

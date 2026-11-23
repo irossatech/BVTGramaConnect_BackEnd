@@ -109,14 +109,14 @@ def test_a_later_census_file_finds_the_cleaned_village_and_keeps_its_name(world)
 HEADER = "state,district,mandal,village,village_te\n"
 
 
-def test_the_import_refuses_one_telugu_name_twice_in_a_mandal(world):
+def test_the_import_refuses_one_telugu_name_twice_in_a_mandal(english, world):
     report = GeographyImporter().run_text(HEADER + "Andhra Pradesh,Guntur,Tenali,Mantripalem,మంత్రిపాలెం\n"
                                                    "Andhra Pradesh,Guntur,Tenali,Matripalem,మంత్రిపాలెం\n")
     assert not report.ok and "Line 3" in report.errors[0] and "Mantripalem" in report.errors[0]
     assert not Village.objects.filter(name_en__in=["Mantripalem", "Matripalem"]).exists()
 
 
-def test_the_import_refuses_a_telugu_name_the_mandal_has_already(world):
+def test_the_import_refuses_a_telugu_name_the_mandal_has_already(english, world):
     report = GeographyImporter().run_text(HEADER + "Andhra Pradesh,Guntur,Tenali,Kolakaluru2,కొలకలూరు\n")
     assert not report.ok and "already has" in report.errors[0]
     # Fine in another mandal, and fine when the file gives the other village a new Telugu name.

@@ -65,10 +65,11 @@ def via(request) -> str:
 def check_assignment_allowed(actor, role: RoleInfo, area: AreaRef) -> None:
     """Raise unless `actor` may give `role` in `area` to someone."""
     if role.level != area.level:
+        level = str(AreaLevel(role.level).label).lower()  # "village", or the Telugu word
         raise ApiError(
             "validation_error",
-            _("This role is assigned to a %(level)s.") % {"level": role.level.lower()},
-            fields={"area": [_("Must be a %(level)s.") % {"level": role.level.lower()}]},
+            _("This role is assigned to a %(level)s.") % {"level": level},
+            fields={"area": [_("Must be a %(level)s.") % {"level": level}]},
         )
     if not area_exists(area, active_only=True):
         raise ApiError(

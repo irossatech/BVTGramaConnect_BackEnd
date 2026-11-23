@@ -215,7 +215,7 @@ def test_media_paths_cannot_escape_the_media_folder(client, qa, tmp_path):
 
 
 @pytest.mark.django_db
-def test_an_unknown_api_address_is_the_plain_json_404(client, qa):
+def test_an_unknown_api_address_is_the_plain_json_404(english, client, qa):
     response = client.get("/api/v1/no-such-page/")
     assert response.status_code == 404
     assert response["Content-Type"] == "application/json"
@@ -224,7 +224,16 @@ def test_an_unknown_api_address_is_the_plain_json_404(client, qa):
 
 
 @pytest.mark.django_db
-def test_a_crash_shows_nothing_internal(qa):
+def test_the_json_404_is_telugu_by_default_and_raw_utf8(client, qa):
+    response = client.get("/api/v1/no-such-page/")
+    assert response.json() == {"error": {"code": "not_found", "message": "ఈ చిరునామా లేదు."}}
+    assert "ఈ చిరునామా లేదు.".encode() in response.content  # not \u escapes (UNICODE_JSON)
+    english = client.get("/api/v1/no-such-page/", HTTP_ACCEPT_LANGUAGE="en")
+    assert english.json()["error"]["message"] == "No such address."
+
+
+@pytest.mark.django_db
+def test_a_crash_shows_nothing_internal(english, qa):
     from django.test import Client
 
     client = Client(raise_request_exception=False)

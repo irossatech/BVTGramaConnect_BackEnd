@@ -58,7 +58,21 @@ NOTE_REQUIRED = {
     RequestStatus.REJECTED: gettext_lazy("Write the reason to reject the request."),
     RequestStatus.COMPLETED: gettext_lazy("Write a note for the citizen."),
 }
+#: History notes the system writes. Saved in English, whatever the language of the request that
+#: caused them, and translated when shown (system_note), so each reader sees their own language.
+AUTO_ASSIGNED_NOTE = "Assigned to the Village Admin automatically"
+CANCELLED_NOTE = "Cancelled by the citizen"
+#: The same texts again, as literals, so grama/i18n.py finds them for the Telugu catalogue.
+SYSTEM_NOTES = {
+    AUTO_ASSIGNED_NOTE: gettext_lazy("Assigned to the Village Admin automatically"),
+    CANCELLED_NOTE: gettext_lazy("Cancelled by the citizen"),
+}
 DAY = timedelta(hours=24)
+
+
+def system_note(note: str) -> str:
+    """A history note in the reader's language when the system wrote it; an official's or citizen's words as they are."""
+    return str(SYSTEM_NOTES[note]) if note in SYSTEM_NOTES else note
 #: Service fields the Super Admin may change.
 SERVICE_FIELDS = ("name_en", "name_te", "hint_en", "hint_te", "icon", "color", "is_active")
 
@@ -296,7 +310,7 @@ def _create_request(device, *, service, name, phone, address, email, details, cl
         if assignee is not None:
             ServiceRequestEvent.objects.create(
                 request=request, by=None, assigned_changed=True, assigned_to=assignee,
-                note=_("Assigned to the Village Admin automatically"),
+                note=AUTO_ASSIGNED_NOTE,
             )
             record("service_request.assigned", target=request, target_label=chosen.name_en, area=area,
                    via="system", data={"to": str(assignee.pk), "to_name": assignee.name, "auto": True})
@@ -336,7 +350,7 @@ def cancel_request(device, request_id, reason: str = "") -> ServiceRequest:
         request.refresh_from_db(fields=["status", "updated_at"])
         ServiceRequestEvent.objects.create(
             request=request, by=None, by_citizen=True, status=RequestStatus.CANCELLED,
-            note=reason or _("Cancelled by the citizen"),
+            note=reason or CANCELLED_NOTE,
         )
         record("service_request.cancelled", target=request, target_label=request.service.name_en,
                area=area_of(request), via="citizen",

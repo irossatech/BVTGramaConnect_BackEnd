@@ -152,7 +152,7 @@ def test_import_dry_run_then_real(api, world):
     assert AuditLog.objects.filter(action="area.imported").count() == 1
 
 
-def test_import_errors_change_nothing(api, world):
+def test_import_errors_change_nothing(english, api, world):
     client = api(world.users["super"])
     before = Village.objects.count()
     response = upload(client, CSV + "Andhra Pradesh,Guntur,Tenali,New,,95,80\n")

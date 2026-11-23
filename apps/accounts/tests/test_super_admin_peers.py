@@ -75,7 +75,7 @@ def test_a_missing_password_is_a_validation_error(api, world):
     assert not User.objects.filter(username="ravi.admin").exists()
 
 
-def test_a_wrong_password_is_refused_and_counted(api, world):
+def test_a_wrong_password_is_refused_and_counted(english, api, world):
     response = new_super_admin(api, world, current_password="Not-My-Password-1")
     assert response.status_code == 403
     assert code(response) == "password_confirmation_required"

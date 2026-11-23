@@ -12,6 +12,7 @@ from django.http import HttpResponse
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.utils.translation import gettext as _
+from django.utils.translation import gettext_lazy
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import generics, serializers
@@ -154,7 +155,7 @@ class KnownCountPaginator(Paginator):
 
 
 class AuditListView(generics.ListAPIView):
-    permission_classes = [IsAuthenticated, HasPerm(VIEW, message="Only Super Admins can read the audit log.")]
+    permission_classes = [IsAuthenticated, HasPerm(VIEW, message=gettext_lazy("Only Super Admins can read the audit log."))]
     serializer_class = AuditEntrySerializer
 
     def get_queryset(self):
@@ -221,7 +222,7 @@ def export_filters(params) -> dict:
 
 
 class AuditExportView(APIView):
-    permission_classes = [IsAuthenticated, HasPerm(EXPORT, message="Only Super Admins can download the audit log.")]
+    permission_classes = [IsAuthenticated, HasPerm(EXPORT, message=gettext_lazy("Only Super Admins can download the audit log."))]
     renderer_classes = [JSONRenderer, CSVRenderer]
 
     @extend_schema(summary="Audit log as CSV", parameters=[*FILTERS, OpenApiParameter("format", OpenApiTypes.STR, enum=["csv"])], responses={(200, "text/csv"): OpenApiTypes.BINARY})

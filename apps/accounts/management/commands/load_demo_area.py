@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import BaseCommand, CommandError, no_translations
 from django.db import transaction
 from django.utils import timezone
 from django.utils.text import slugify
@@ -56,6 +56,8 @@ class Command(BaseCommand):
         parser.add_argument("--std-code", default="08598", help="Landline prefix for the demo numbers (Kandukur 08598).")
         add_allow_server(parser)
 
+    # English output on the server, whatever LANGUAGE_CODE says (Telugu is for app users).
+    @no_translations
     def handle(self, *args, district, mandal, villages, village, std_code, allow_server=False, **options):
         refuse_on_server("load_demo_area", allow_server)
         out = getattr(self.stdout, "_out", None)

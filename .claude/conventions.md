@@ -13,7 +13,7 @@
 
 - Every Django app lives in `apps/`. To add one: `mkdir apps/<name>` then `python manage.py startapp <name> apps/<name>`; in its `apps.py` set `name = "apps.<name>"` and `label = "<name>"`; add `"apps.<name>"` to `LOCAL_APPS` in `grama/settings.py`.
 - Import apps as `apps.<name>` (`from apps.posts.services import review`). Dotted strings that name a module (django-q task paths, gateway settings, `include()`) also start with `apps.`. Model references keep the short label (`"accounts.User"`).
-- Keep the top level minimal: `apps/`, `grama/`, `deploy/`, `docs/`, and `.github/` for the CI workflows (tests and security scans) and Dependabot only. Do not add top-level folders without the team's agreement. Project-level tests go in `grama/tests/`.
+- Keep the top level minimal: `apps/`, `grama/`, `deploy/`, `docs/`, `locale/` (the Telugu message catalogue, where `LOCALE_PATHS` points), and `.github/` for the CI workflows (tests and security scans) and Dependabot only. Do not add top-level folders without the team's agreement. Project-level tests go in `grama/tests/`.
 - One `requirements.txt` for every environment. Add new packages there, pinned. Do not create other requirements files.
 
 ## Database
@@ -28,6 +28,10 @@
 - Store and return Telugu as UTF-8. DRF sends raw UTF-8 JSON (`UNICODE_JSON`), which halves the bytes on 2G.
 - Area and category names come in the language of `Accept-Language` (Telugu by default). CSV exports start with a UTF-8 BOM so Excel shows Telugu.
 - Test with Telugu strings, not only English.
+- Every message a user can see is written in English inside `_()` (`gettext`, or `gettext_lazy` at module or class level) and has its Telugu in `locale/te/LC_MESSAGES/django.po`. Use a literal with named placeholders, never an f-string: `_("At most %(n)d photos.") % {"n": n}`. Build no sentence from English words; give each case its own sentence. Text saved in the database stays English and is translated when shown.
+- After adding or changing a message: `python manage.py translations`, write the Telugu for the new entries (empty `msgstr ""`) in the `.po`, run it again, and commit the `.po` and the `.mo`. `grama/tests/test_i18n.py` fails while a message has no Telugu, loses a placeholder, or the `.mo` is stale.
+- Tests that check English wording take the `english` fixture (root `conftest.py`); without it, messages are Telugu, the default.
+- Management commands that print service messages use `@no_translations`, so the server terminal stays English.
 
 ## API responses
 

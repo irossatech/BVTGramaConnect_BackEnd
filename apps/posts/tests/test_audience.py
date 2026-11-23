@@ -142,7 +142,7 @@ def test_bad_areas_are_refused_and_nothing_is_saved(api, world, problem):
     assert not Post.objects.exists()
 
 
-def test_at_most_post_max_targets(api, world, settings):
+def test_at_most_post_max_targets(english, api, world, settings):
     settings.POST_MAX_TARGETS = 3
     response = post_for(api, world, "va_kolakaluru", "kolakaluru", "kaza", "nidamanuru", "poranki")
     assert response.status_code == 400 and "at most 3" in response.json()["error"]["fields"]["targets"][0]

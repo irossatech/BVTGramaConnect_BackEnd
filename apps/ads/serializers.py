@@ -3,6 +3,7 @@
 from collections.abc import Mapping
 
 from django.core.validators import URLValidator
+from django.utils.translation import gettext as _
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
@@ -46,7 +47,7 @@ class AdWriteSerializer(serializers.Serializer):
         if value:
             # Only https (decision of 2026-11-13, audit WEB-SEC-010): no plain http, and no javascript:,
             # intent:, file: or similar links in the app. Saved ads keep their link until it is changed.
-            URLValidator(schemes=["https"], message="Give an https:// link.")(value)
+            URLValidator(schemes=["https"], message=_("Give an https:// link."))(value)
         return value
 
 

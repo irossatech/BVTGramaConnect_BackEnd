@@ -51,7 +51,7 @@ def test_an_unused_type_is_deleted_and_hidden_everywhere(world, admin, api, libr
     assert entry.actor == world.users["super"] and entry.target_label == "libary"
 
 
-def test_a_type_with_active_numbers_is_409_and_unchanged(world, admin, number):
+def test_a_type_with_active_numbers_is_409_and_unchanged(english, world, admin, number):
     official = ContactType.objects.get(key="official")
     number("kolakaluru", "official", phone="08644222301")
     number("tenali", "official", phone="08644222302")
@@ -96,7 +96,7 @@ def test_the_other_type_is_protected(admin):
     assert other.deleted_at is None
 
 
-def test_a_deleted_type_cannot_be_used_or_its_key_reused(world, admin, library):
+def test_a_deleted_type_cannot_be_used_or_its_key_reused(english, world, admin, library):
     assert admin.delete(url(library)).status_code == 204
     new_number = admin.post(ADMIN_URL, area_body(world, "kolakaluru", type="libary"), format="json")
     assert new_number.status_code == 400 and "type" in new_number.json()["error"]["fields"]
@@ -140,7 +140,7 @@ def test_unknown_and_twice_deleted_types_are_404(admin, library):
 # other side in the middle of one write and check that the second guard still keeps every number on a live type.
 
 
-def test_a_delete_in_the_middle_of_adding_a_number_never_leaves_it_on_a_deleted_type(world, library):
+def test_a_delete_in_the_middle_of_adding_a_number_never_leaves_it_on_a_deleted_type(english, world, library):
     real_check = services.check_capacity
 
     def delete_meanwhile(*args, **kwargs):

@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import re
 
+from django.utils.translation import gettext as _
+
 from .models import PhoneKind
 
 SEPARATORS = re.compile(r"[\s\-()]")
@@ -31,20 +33,20 @@ def normalise_phone(raw: str, *, allow_short: bool = False) -> tuple[str, str]:
     """(digits, kind) for a phone number typed by an admin, or raise InvalidPhone."""
     value = SEPARATORS.sub("", raw or "")
     if not value:
-        raise InvalidPhone("Enter a phone number.")
+        raise InvalidPhone(_("Enter a phone number."))
     if value.startswith("+"):
         if not (value.startswith("+91") and len(value) == 13):
-            raise InvalidPhone("Only Indian numbers: +91 and 10 digits.")
+            raise InvalidPhone(_("Only Indian numbers: +91 and 10 digits."))
         value = value[3:]
     elif len(value) == 12 and value.startswith("91"):
         value = value[2:]
     if not value.isdigit():
-        raise InvalidPhone("Use digits only.")
+        raise InvalidPhone(_("Use digits only."))
     kind = phone_kind(value, allow_short=allow_short)
     if kind is None:
         if allow_short is False and SHORT_CODE.fullmatch(value):
-            raise InvalidPhone("Short codes such as 108 are for government helplines only.")
-        raise InvalidPhone("Enter a 10-digit mobile, a landline with its STD code, a 1800 number or a short code.")
+            raise InvalidPhone(_("Short codes such as 108 are for government helplines only."))
+        raise InvalidPhone(_("Enter a 10-digit mobile, a landline with its STD code, a 1800 number or a short code."))
     return value, kind
 
 

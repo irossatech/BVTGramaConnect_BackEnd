@@ -1,7 +1,7 @@
 import csv
 from pathlib import Path
 
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import BaseCommand, CommandError, no_translations
 
 from apps.geography.importer import LEVELS, OPTIONAL, REQUIRED, GeographyImporter
 
@@ -28,6 +28,8 @@ class Command(BaseCommand):
             help="Write every village that has no coordinates to this CSV file.",
         )
 
+    # English output on the server, whatever LANGUAGE_CODE says (Telugu is for app users).
+    @no_translations
     def handle(self, *args, csv_path, dry_run, missing_report, **options):
         # Telugu names in messages must not crash a console that is not UTF-8.
         out = getattr(self.stdout, "_out", None)

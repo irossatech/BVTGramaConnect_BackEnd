@@ -30,11 +30,12 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
 
 from django.db import transaction
+from django.utils.translation import gettext as _
 
 from grama.exceptions import ApiError
 
 from . import services
-from .models import District, Mandal, State, Village, clean_name, name_key
+from .models import AreaLevel, District, Mandal, State, Village, clean_name, name_key
 
 REQUIRED = ("state", "district", "mandal", "village")
 OPTIONAL = (
@@ -136,6 +137,16 @@ def _decimal(raw: str) -> Decimal:
     return value.quantize(SIX_PLACES, rounding=ROUND_HALF_UP)
 
 
+def _level(level: str) -> str:
+    """'village' in English, the Telugu word on a Telugu request: the report reads in one language."""
+    return str(AreaLevel(level.upper()).label).lower()
+
+
+def _about(node: Node, message) -> str:
+    """"village 'Kolakaluru': <the writer's message>"."""
+    return _("%(level)s '%(name)s': %(message)s") % {"level": _level(node.level), "name": node.label(), "message": message}
+
+
 class GeographyImporter:
     def __init__(self, *, dry_run: bool = False, actor=None, via: str = "system"):
         self.report = ImportReport(dry_run=dry_run)
@@ -162,25 +173,25 @@ class GeographyImporter:
         except csv.Error as exc:
             # Raised while reading, before anything is written: a field over the csv module's
             # limit (131,072 characters), for example.
-            self.report.errors.append(f"The file is not valid CSV: {exc}.")
+            self.report.errors.append(_("The file is not valid CSV: %s.") % exc)
             return self.report
 
     def _run(self, handle) -> ImportReport:
         reader = csv.DictReader(handle)
         if not reader.fieldnames:
-            self.report.errors.append("The file is empty.")
+            self.report.errors.append(_("The file is empty."))
             return self.report
         columns = {_header(name): name for name in reader.fieldnames if name}
         missing = [name for name in REQUIRED if name not in columns]
         if missing:
             self.report.errors.append(
-                "Missing required column(s): " + ", ".join(missing)
-                + ". Found: " + ", ".join(reader.fieldnames)
+                _("Missing required column(s): %(missing)s. Found: %(found)s")
+                % {"missing": ", ".join(missing), "found": ", ".join(reader.fieldnames)}
             )
             return self.report
         unknown = sorted(set(columns) - set(REQUIRED) - set(OPTIONAL))
         if unknown:
-            self.report.warnings.append("Ignored column(s): " + ", ".join(unknown))
+            self.report.warnings.append(_("Ignored column(s): %(columns)s") % {"columns": ", ".join(unknown)})
 
         for line, raw in enumerate(reader, start=2):
             row = {key: (raw.get(original) or "").strip() for key, original in columns.items()}
@@ -190,7 +201,7 @@ class GeographyImporter:
             self._read_row(line, row)
 
         if self.report.rows == 0:
-            self.report.errors.append("The file has a header but no data rows.")
+            self.report.errors.append(_("The file has a header but no data rows."))
         if self.report.ok:
             self._match_database()
         if self.report.ok:
@@ -198,10 +209,10 @@ class GeographyImporter:
         return self.report
 
     def _error(self, line: int, message: str) -> None:
-        self.report.errors.append(f"Line {line}: {message}")
+        self.report.errors.append(_("Line %(line)d: %(message)s") % {"line": line, "message": message})
 
     def _warn(self, line: int, message: str) -> None:
-        self.report.warnings.append(f"Line {line}: {message}")
+        self.report.warnings.append(_("Line %(line)d: %(message)s") % {"line": line, "message": message})
 
     def _node(self, store, level, line, name, parent, name_te="", lgd_code="") -> Node:
         node = Node(level=level, name_en=clean_name(name), parent=parent)
@@ -216,8 +227,10 @@ class GeographyImporter:
             if existing.name_te and existing.name_te != name_te:
                 self._error(
                     line,
-                    f"{level} '{existing.label()}' has Telugu name {name_te!r} here "
-                    f"but {existing.name_te!r} on line {existing.lines[0]}.",
+                    _("%(level)s '%(name)s' has Telugu name %(new)s here but %(old)s on line %(line)d.") % {
+                        "level": _level(level), "name": existing.label(), "new": repr(name_te),
+                        "old": repr(existing.name_te), "line": existing.lines[0],
+                    },
                 )
             else:
                 existing.name_te = name_te
@@ -227,16 +240,20 @@ class GeographyImporter:
             if existing.lgd_code and existing.lgd_code != lgd_code:
                 self._error(
                     line,
-                    f"{level} '{existing.label()}' has LGD code {lgd_code} here "
-                    f"but {existing.lgd_code} on line {existing.lines[0]}.",
+                    _("%(level)s '%(name)s' has LGD code %(new)s here but %(old)s on line %(line)d.") % {
+                        "level": _level(level), "name": existing.label(), "new": lgd_code,
+                        "old": existing.lgd_code, "line": existing.lines[0],
+                    },
                 )
             else:
                 owner = self.lgd_seen.get((level, lgd_code))
                 if owner is not None and owner is not existing:
                     self._error(
                         line,
-                        f"LGD code {lgd_code} is used for {level} '{existing.label()}' "
-                        f"and for '{owner.label()}' (line {owner.lines[0]}).",
+                        _("LGD code %(code)s is used for %(level)s '%(name)s' and for '%(other)s' (line %(line)d).") % {
+                            "code": lgd_code, "level": _level(level), "name": existing.label(),
+                            "other": owner.label(), "line": owner.lines[0],
+                        },
                     )
                 else:
                     self.lgd_seen[(level, lgd_code)] = existing
@@ -246,7 +263,7 @@ class GeographyImporter:
     def _read_row(self, line: int, row: dict[str, str]) -> None:
         blanks = [name for name in REQUIRED if not row.get(name)]
         if blanks:
-            self._error(line, "empty " + ", ".join(blanks) + ".")
+            self._error(line, _("empty %(columns)s.") % {"columns": ", ".join(blanks)})
             return
 
         state = self._node(self.states, "state", line, row["state"], None, row.get("state_te"))
@@ -262,7 +279,11 @@ class GeographyImporter:
         key = (*mandal.key, name_key(row["village"]))
         if key in self.villages:
             first = self.villages[key].lines[0]
-            self._error(line, f"village '{self.villages[key].label()}' is listed again (first on line {first}).")
+            self._error(
+                line,
+                _("%(level)s '%(name)s' is listed again (first on line %(line)d).")
+                % {"level": _level("village"), "name": self.villages[key].label(), "line": first},
+            )
             return
         village = self._node(
             self.villages, "village", line, row["village"], mandal,
@@ -272,21 +293,27 @@ class GeographyImporter:
         lat_raw, lng_raw = row.get("latitude", ""), row.get("longitude", "")
         if lat_raw or lng_raw:
             if not (lat_raw and lng_raw):
-                self._error(line, "give both latitude and longitude, or neither.")
+                self._error(line, _("give both latitude and longitude, or neither."))
             else:
                 try:
                     lat, lng = _decimal(lat_raw), _decimal(lng_raw)
                 except InvalidOperation:
-                    self._error(line, f"latitude {lat_raw!r} or longitude {lng_raw!r} is not a number.")
+                    self._error(
+                        line,
+                        _("latitude %(lat)s or longitude %(lng)s is not a number.")
+                        % {"lat": repr(lat_raw), "lng": repr(lng_raw)},
+                    )
                 else:
                     if not (-90 <= lat <= 90 and -180 <= lng <= 180):
-                        self._error(line, f"coordinates {lat}, {lng} are out of range.")
+                        self._error(line, _("coordinates %(lat)s, %(lng)s are out of range.") % {"lat": lat, "lng": lng})
                     else:
                         in_india = INDIA_LAT[0] <= lat <= INDIA_LAT[1] and INDIA_LNG[0] <= lng <= INDIA_LNG[1]
                         swapped = INDIA_LAT[0] <= lng <= INDIA_LAT[1] and INDIA_LNG[0] <= lat <= INDIA_LNG[1]
                         if not in_india:
-                            hint = " Latitude and longitude look swapped." if swapped else ""
-                            self._warn(line, f"coordinates {lat}, {lng} are outside India.{hint}")
+                            message = _("coordinates %(lat)s, %(lng)s are outside India.") % {"lat": lat, "lng": lng}
+                            if swapped:
+                                message += " " + _("Latitude and longitude look swapped.")
+                            self._warn(line, message)
                         village.latitude, village.longitude = lat, lng
 
         pin = row.get("pin_code", "")
@@ -294,7 +321,7 @@ class GeographyImporter:
             if re.fullmatch(r"\d{6}", pin):
                 village.pin_code = pin
             else:
-                self._error(line, f"PIN code {pin!r} must be 6 digits.")
+                self._error(line, _("PIN code %(pin)s must be 6 digits.") % {"pin": repr(pin)})
 
     # --- Matching against the database ----------------------------------------
 
@@ -327,8 +354,12 @@ class GeographyImporter:
             key = (node.parent.key, node.name_te)
             first = seen.setdefault(key, node)
             if first is not node:
-                self._error(node.lines[0], f"village '{node.label()}' has the Telugu name {node.name_te!r}, "
-                                           f"like '{first.name_en}' on line {first.lines[0]}, in the same mandal.")
+                self._error(
+                    node.lines[0],
+                    _("%(level)s '%(name)s' has the Telugu name %(te)s, like '%(other)s' on line %(line)d, in the same mandal.")
+                    % {"level": _level("village"), "name": node.label(), "te": repr(node.name_te),
+                       "other": first.name_en, "line": first.lines[0]},
+                )
         mandal_ids = {node.parent.obj.id for node in self.villages.values() if node.name_te and node.parent.obj}
         renamed = {node.obj.id: node.name_te for node in self.villages.values() if node.obj and node.name_te}
         in_db = {
@@ -345,8 +376,11 @@ class GeographyImporter:
                 continue
             if other[0] in renamed:
                 continue  # in this file too: renamed, or caught by the check above
-            self._error(node.lines[0], f"village '{node.label()}' has the Telugu name {node.name_te!r}, "
-                                       f"which '{other[1]}' in the same mandal already has.")
+            self._error(
+                node.lines[0],
+                _("%(level)s '%(name)s' has the Telugu name %(te)s, which '%(other)s' in the same mandal already has.")
+                % {"level": _level("village"), "name": node.label(), "te": repr(node.name_te), "other": other[1]},
+            )
 
     def _match_level(self, nodes, model, *, parent_field: str) -> None:
         nodes = list(nodes)
@@ -368,9 +402,9 @@ class GeographyImporter:
                 if parent is None or getattr(match, parent_field) != parent.id:
                     self._error(
                         node.lines[0],
-                        f"{node.level} '{node.label()}' has LGD code {node.lgd_code}, which belongs to "
-                        f"'{match.name_en}' under a different parent in the database. "
-                        "Moving areas is not supported by the import.",
+                        _("%(level)s '%(name)s' has LGD code %(code)s, which belongs to '%(other)s' under a different "
+                          "parent in the database. Moving areas is not supported by the import.")
+                        % {"level": _level(node.level), "name": node.label(), "code": node.lgd_code, "other": match.name_en},
                     )
                     continue
             elif parent is not None:
@@ -378,8 +412,8 @@ class GeographyImporter:
                 if match is not None and node.lgd_code and match.lgd_code and match.lgd_code != node.lgd_code:
                     self._error(
                         node.lines[0],
-                        f"{node.level} '{node.label()}' has LGD code {node.lgd_code} in the file "
-                        f"but {match.lgd_code} in the database.",
+                        _("%(level)s '%(name)s' has LGD code %(code)s in the file but %(other)s in the database.")
+                        % {"level": _level(node.level), "name": node.label(), "code": node.lgd_code, "other": match.lgd_code},
                     )
                     continue
             node.obj = match
@@ -438,11 +472,11 @@ class GeographyImporter:
         try:
             results = services.import_villages([(obj, node.parent.obj, values) for node, obj, values in planned])
         except ApiError as error:  # lost a race with another write: the whole file is undone
-            self.report.errors.append(f"Villages: {error.detail}")
+            self.report.errors.append(_("Villages: %(error)s") % {"error": error.detail})
             return
         for (node, existing, _written), result in zip(planned, results):
             if isinstance(result, ApiError):
-                self._error(node.lines[0], f"village '{node.label()}': {result.detail}")
+                self._error(node.lines[0], _about(node, result.detail))
                 continue
             node.obj = result.area
             if existing is None:
@@ -460,7 +494,7 @@ class GeographyImporter:
     def _report_warnings(self, node: Node, warnings: list) -> None:
         for warning in warnings:
             if warning["code"] != "name_te_missing":  # missing_telugu counts these
-                self._warn(node.lines[0], f"{node.level} '{node.label()}': {warning['message']}")
+                self._warn(node.lines[0], _about(node, warning["message"]))
 
     def _save(self, node: Node, model, parent: dict) -> None:
         counts = self.report.counts[node.level]
@@ -515,7 +549,7 @@ class GeographyImporter:
             else:
                 outcome = writer(self.actor, level, area_id, values, via=self.via, audit=False)
         except ApiError as error:
-            self._error(node.lines[0], f"{node.level} '{node.label()}': {error.detail}")
+            self._error(node.lines[0], _about(node, error.detail))
             return None
         self._report_warnings(node, outcome.warnings)
         return outcome

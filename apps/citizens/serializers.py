@@ -215,13 +215,13 @@ class CitizenPostWriteSerializer(serializers.Serializer):
     def validate_title(self, value):
         value = " ".join(value.split())
         if not value:
-            raise serializers.ValidationError("This field may not be blank.")
+            raise serializers.ValidationError(_("This field may not be blank."))
         return value
 
     def validate_body(self, value):
         value = value.strip()
         if not value:
-            raise serializers.ValidationError("This field may not be blank.")
+            raise serializers.ValidationError(_("This field may not be blank."))
         return value
 
 

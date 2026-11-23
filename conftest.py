@@ -199,6 +199,17 @@ def api():
 
 
 @pytest.fixture
+def english(settings):
+    """For a test that checks English wording: English is the default language for this test.
+
+    Messages follow Accept-Language and default to Telugu (LANGUAGE_CODE "te"), in requests and in
+    code run outside one. With this fixture, requests without the header and direct calls answer in
+    English. The Telugu itself is tested in grama/tests/test_i18n.py.
+    """
+    settings.LANGUAGE_CODE = "en"
+
+
+@pytest.fixture
 def super_admin_can_post(db, settings):
     """Switch SUPER_ADMIN_CAN_POST on and re-sync the groups, as a deploy would.
 

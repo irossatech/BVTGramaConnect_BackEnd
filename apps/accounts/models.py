@@ -298,7 +298,7 @@ class RoleAssignment(models.Model):
             raise ValidationError({"group": _("This group is not a role.")})
         if role_group and self.area_level and self.area_level != role_group.level:
             raise ValidationError(
-                {"area_level": _("This role is assigned at %(level)s level.") % {"level": role_group.level}}
+                {"area_level": _("This role is assigned at %(level)s level.") % {"level": str(AreaLevel(role_group.level).label).lower()}}
             )
         if self.area_level and self.area_id and not area_exists(self.area):
             raise ValidationError({"area_id": _("No such area.")})

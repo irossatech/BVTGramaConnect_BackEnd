@@ -10,6 +10,7 @@ which are never cached.
 from django.conf import settings
 from django.db.models import Exists, OuterRef
 from django.utils.decorators import method_decorator
+from django.utils.translation import gettext as _
 from django.views.decorators.cache import cache_control
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
@@ -50,10 +51,16 @@ def _int_param(request, name: str, *, required: bool) -> int | None:
     raw = request.query_params.get(name, "").strip()
     if not raw:
         if required:
-            raise ApiError("validation_error", f"The '{name}' query parameter is required.", fields={name: ["Required."]})
+            raise ApiError(
+                "validation_error",
+                _("The '%(name)s' query parameter is required.") % {"name": name},
+                fields={name: [_("Required.")]},
+            )
         return None
     if not is_number(raw):
-        raise ApiError("validation_error", f"'{name}' must be a number.", fields={name: ["Must be a number."]})
+        raise ApiError(
+            "validation_error", _("'%(name)s' must be a number.") % {"name": name}, fields={name: [_("Must be a number.")]}
+        )
     return int(raw)
 
 
@@ -108,8 +115,8 @@ class VillageListView(PublicGeoView, generics.ListAPIView):
         if mandal is None and len(query) < 2:
             raise ApiError(
                 "validation_error",
-                "Give a mandal, or a search of at least 2 characters.",
-                fields={"mandal": ["Required unless q has 2 or more characters."]},
+                _("Give a mandal, or a search of at least 2 characters."),
+                fields={"mandal": [_("Required unless q has 2 or more characters.")]},
             )
         queryset = Village.objects.active()
         if mandal is not None:
@@ -141,7 +148,8 @@ class NearestVillageView(PublicGeoView, APIView):
         if result is None:
             raise ApiError(
                 "not_found",
-                f"No village found within {settings.NEAREST_VILLAGE_MAX_KM} km. Pick your village from the list.",
+                _("No village found within %(km)s km. Pick your village from the list.")
+                % {"km": settings.NEAREST_VILLAGE_MAX_KM},
                 status=404,
             )
         village, distance = result

@@ -97,7 +97,7 @@ def test_export_follows_the_same_days(api, world, aged):
     assert export_labels(old) == ["d200", "d400"]
 
 
-def test_too_big_an_export_is_refused_and_not_audited(api, world, aged, settings):
+def test_too_big_an_export_is_refused_and_not_audited(english, api, world, aged, settings):
     settings.AUDIT_EXPORT_MAX_ROWS = 1
     response = api(world.users["super"]).get(f"/api/v1/audit/export/?format=csv&from={day(450)}")
     assert response.status_code == 400
