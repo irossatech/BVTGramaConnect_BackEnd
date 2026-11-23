@@ -9,6 +9,11 @@ Open work for the Backend team, most important first. Update this file as items 
 5. **Load test at the real size.** Run `deploy/loadtest/locustfile.py` against staging with Gunicorn once the owner gives [EXPECTED USERS].
 6. **Video on a real server.** Upload a real phone video of about 60 seconds (and one of 61 seconds, which must be refused with `video_too_long`) and a banner video of several minutes close to 60 MB on staging with ffmpeg installed. Check the poster, seeking over 3G (Nginx range requests on `/media/`), the 60 MB limit and the 70 MB Nginx limit on the upload addresses end to end. Without ffmpeg the phone must send `duration_s` and a poster.
 7. **Citizen posts on a real phone.** Set `PLAY_INTEGRITY_PACKAGE` and a service account with the Play Integrity API enabled (the Firebase one works once the API is switched on in its Google Cloud project), install the app from a Play testing track, and check that registration passes with `CITIZEN_INTEGRITY_REQUIRED=True`. Before that, add Play's app-signing key to `ANDROID_CERT_SHA256`: the verdict must show an app signed with one of those keys (the check comes with `fix/integrity-signing-key`). iPhones need Apple App Attest before integrity can be required for them (contract section 15, CP3).
-8. **Audit BE_01 follow-ups** (`audit-reports/BE_01_RESPONSE_*.md`): the items left open there, chiefly
-   the decisions for the lead and owner (citizen identity, registration limits, files per citizen post)
-   and the production team's checks of the hosting panel (nginx, backups).
+8. **Audit follow-ups** (`audit-reports/BE_0*_RESPONSE_*.md`, each ends with "What is still needed"): the
+   items left open there, chiefly the decisions for the lead and owner (citizen identity, registration
+   limits, files per citizen post) and the production team's checks of the hosting panel (nginx, backups).
+9. **Before going live: the caller's IP and the per-IP limits** (deferred by the lead's decision of
+   2026-11-20, not an accepted risk; `docs/security-review.md`, open item 8). Put back the BE-SEC-101 fix
+   (`6c2bcc4`, reverted by `8c351fd`: believe `X-Real-IP` only from the server's own network) and the
+   per-IP limits removed by `79aaca7` (login throttle, failed-login cap per address, contact form, Nginx
+   request limits), with their tests.
