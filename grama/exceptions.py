@@ -43,6 +43,15 @@ def permission_denied(message=None) -> ApiError:
     )
 
 
+def village_not_found() -> ApiError:
+    """A citizen's village that does not exist or is switched off (feed, numbers, ads).
+
+    Still 404 not_found, so apps that know nothing else keep working, plus "reason": the app forgets the
+    saved village only on this, never on any other 404 such as an unknown address (BVTGC-70).
+    """
+    return ApiError("not_found", _("No such village."), status=status.HTTP_404_NOT_FOUND, reason="village_not_found")
+
+
 def out_of_area(message=None) -> ApiError:
     return ApiError(
         "out_of_area",
