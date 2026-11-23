@@ -134,7 +134,8 @@ rollback() {
   current_backend="$(git -C "$BACKEND_DIR" rev-parse HEAD)"
   current_web="$(git -C "$WEB_DIR" rev-parse HEAD)"
   if [[ -z "$backend" ]]; then
-    target="$(history_target "$DEPLOY_HISTORY" "$current_backend" "$current_web")" \n      || fail "No earlier release is recorded in $DEPLOY_HISTORY. Give the commits: bash BVT-deploy.sh --rollback <backend commit> <web commit>"
+    target="$(history_target "$DEPLOY_HISTORY" "$current_backend" "$current_web")" \
+      || fail "No earlier release is recorded in $DEPLOY_HISTORY. Give the commits: bash BVT-deploy.sh --rollback <backend commit> <web commit>"
     read -r backend web <<<"$target"
   fi
   git -C "$BACKEND_DIR" fetch --quiet origin || echo "WARNING: could not fetch the backend repo; using the commits on disk." >&2
@@ -143,10 +144,10 @@ rollback() {
   web="$(resolve_commit "$WEB_DIR" "$web")" || fail "Web commit not found: $2"
 
   step "Checking the database against backend ${backend:0:12}"
-  unknown="$(migrations_unknown_to "$PYTHON" "$BACKEND_DIR" "$backend")" \n    || fail "Could not read the applied migrations (above); nothing was changed."
+  unknown="$(migrations_unknown_to "$PYTHON" "$BACKEND_DIR" "$backend")" \
+    || fail "Could not read the applied migrations (above); nothing was changed."
   if [[ -n "$unknown" ]]; then
-    printf '%s
-' "$unknown" >&2
+    printf '%s\n' "$unknown" >&2
     fail "The database has the migrations above, which backend ${backend:0:12} does not have; nothing was changed. Restore the backup taken before that release (deploy/qa/README.md), then roll back again."
   fi
 
