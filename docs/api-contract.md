@@ -45,6 +45,30 @@ Contents:
 - It picks the language of server-made text: category names, area names, error messages, notification text.
 - Error messages: `message` and every text in `fields` (also the generic field checks such as "This field is required.") come in that language, from the server's Telugu catalogue (`locale/te`, BVTGC-29, 2026-11-23). The `code` never changes with the language: clients decide on `code`, and show `message`.
 - Area and category objects return `name` in the requested language. Admin endpoints also return `name_te` and `name_en` so both can be edited.
+
+### Status words (glossary, BVTGC-67, 2026-11-23)
+One word per status, everywhere a status is named: the app, the console, push and inbox texts, and server messages. They are the app's words. The API itself always sends the status code; this is only what people read.
+
+| Code | Telugu | English |
+|---|---|---|
+| Post `DRAFT` | డ్రాఫ్ట్ | Draft |
+| Post `PENDING` | పెండింగ్ | Pending |
+| Post `PUBLISHED` | ప్రచురితం | Published |
+| Post `RECHECK` | మళ్ళీ తనిఖీ | Recheck |
+| Post `DISCARDED` | తిరస్కరించారు | Discarded |
+| Post `UNPUBLISHED` | తొలగించారు | Taken down |
+| Post `BLOCKED` (old posts only) | బ్లాక్ అయింది | Blocked |
+| Service request `NEW` | కొత్తది | New |
+| Service request `APPROVED` | ఆమోదించారు | Approved |
+| Service request `IN_PROGRESS` | జరుగుతోంది | In progress |
+| Service request `COMPLETED` | పూర్తయింది | Completed |
+| Service request `REJECTED` | తిరస్కరించారు | Rejected |
+| Service request `CANCELLED` | రద్దు చేయబడింది | Cancelled |
+
+- A list tab that groups statuses has its own name, but each row shows its status word. The posts tab "Rejected" (తిరస్కరించినవి) holds both Discarded and Taken down posts, and each shows which one it is.
+- Push and inbox sentences use the same words in sentence form, for example "మీ పోస్ట్ మళ్ళీ తనిఖీకి వచ్చింది" for RECHECK. A sentence may say "waiting for review" (సమీక్ష కోసం వేచి ఉంది); a status label says Pending (పెండింగ్).
+- Post DISCARDED and service request REJECTED share the Telugu తిరస్కరించారు. They never appear in the same list, so the app's word stays.
+- The server's own labels follow this table (`locale/te`); the Super Admin can still edit push texts in the console.
 - A post is written in one language, Telugu or English, stored in `language` (owner decision Q3). The server sets `language` from the text: the script most of the title's and body's letters are in (Telugu letters U+0C00–U+0C7F against Latin ones), and what the app sent only when there are no letters. So an English post that names one Telugu village stays `en`.
 - **Translation** (owner decision of 2026-10-28, changing Q3; works once `TRANSLATION_PROVIDER` and its key are set on the server): once a post is **published**, the server machine-translates its title and body into the other language in the background. `Post`, `FeedItem`, `FeedPost` and `CitizenPost` carry `translation`:
   ```jsonc

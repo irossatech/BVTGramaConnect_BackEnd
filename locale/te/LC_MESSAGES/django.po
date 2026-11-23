@@ -1176,7 +1176,7 @@ msgstr "మీ పోస్ట్ ప్రచురించబడింది"
 
 #: apps/notifications/models.py:44
 msgid "Your post needs changes"
-msgstr "మీ పోస్ట్‌లో మార్పులు అవసరం"
+msgstr "మీ పోస్ట్ మళ్ళీ తనిఖీకి వచ్చింది"
 
 #: apps/notifications/models.py:45
 msgid "Your post was discarded"
@@ -1584,11 +1584,11 @@ msgstr "కొత్తది"
 
 #: apps/service_requests/models.py:77
 msgid "Approved"
-msgstr "ఆమోదించబడింది"
+msgstr "ఆమోదించారు"
 
 #: apps/service_requests/models.py:78
 msgid "In progress"
-msgstr "ప్రక్రియలో ఉంది"
+msgstr "జరుగుతోంది"
 
 #: apps/service_requests/models.py:79
 msgid "Completed"
@@ -1596,7 +1596,7 @@ msgstr "పూర్తయింది"
 
 #: apps/service_requests/models.py:80
 msgid "Rejected"
-msgstr "తిరస్కరించబడింది"
+msgstr "తిరస్కరించారు"
 
 #: apps/service_requests/models.py:82
 msgid "Cancelled"

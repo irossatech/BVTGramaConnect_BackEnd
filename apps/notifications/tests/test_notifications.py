@@ -87,7 +87,7 @@ def test_publishing_pushes_to_the_village_topic_and_tells_the_author(world, devi
 @pytest.mark.parametrize(
     "action, kind, text",
     [
-        ("recheck", NotificationKind.POST_RECHECK, "మీ పోస్ట్‌ను సరిచేయాలి: ఫోటో జోడించండి"),
+        ("recheck", NotificationKind.POST_RECHECK, "మీ పోస్ట్ మళ్ళీ తనిఖీకి వచ్చింది: ఫోటో జోడించండి"),
         ("discard", NotificationKind.POST_DISCARDED, "మీ పోస్ట్ తిరస్కరించబడింది. కారణం: ఫోటో జోడించండి"),
     ],
 )

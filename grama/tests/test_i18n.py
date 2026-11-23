@@ -126,9 +126,11 @@ def test_telugu_goes_out_as_raw_utf8(api):
 def test_service_request_status_names_follow_the_push_language():
     from apps.service_requests.models import RequestStatus, status_label
 
-    assert status_label(RequestStatus.APPROVED, "te") == "ఆమోదించబడింది"
+    # The glossary's words (contract section 1, BVTGC-67), the same as the app's.
+    assert status_label(RequestStatus.APPROVED, "te") == "ఆమోదించారు"
     assert status_label(RequestStatus.APPROVED, "en") == "Approved"
-    assert status_label(RequestStatus.IN_PROGRESS, "") == "ప్రక్రియలో ఉంది"  # Telugu is the default
+    assert status_label(RequestStatus.IN_PROGRESS, "") == "జరుగుతోంది"  # Telugu is the default
+    assert status_label(RequestStatus.REJECTED, "te") == "తిరస్కరించారు"
     assert translation.get_language() == settings.LANGUAGE_CODE  # override() put the language back
 
 
