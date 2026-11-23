@@ -279,7 +279,7 @@ def test_a_video_up_to_60_seconds(api, world, make_post, ffmpeg, length):
 
 
 @pytest.mark.parametrize("length", [60.6, 61.0, 5 * 60.0, 3 * 3600.0])
-def test_a_video_over_60_seconds_is_refused(api, world, make_post, ffmpeg, length):
+def test_a_video_over_60_seconds_is_refused(english, api, world, make_post, ffmpeg, length):
     post = make_post("pm_kolakaluru", "kolakaluru", submit=False)
     ffmpeg["length"] = length
     response = send_video(api, world, post)

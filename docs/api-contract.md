@@ -43,6 +43,7 @@ Contents:
 ### Language
 - `Accept-Language: te` or `en`. Telugu is the default when the header is missing.
 - It picks the language of server-made text: category names, area names, error messages, notification text.
+- Error messages: `message` and every text in `fields` (also the generic field checks such as "This field is required.") come in that language, from the server's Telugu catalogue (`locale/te`, BVTGC-29, 2026-11-23). The `code` never changes with the language: clients decide on `code`, and show `message`.
 - Area and category objects return `name` in the requested language. Admin endpoints also return `name_te` and `name_en` so both can be edited.
 - A post is written in one language, Telugu or English, stored in `language` (owner decision Q3). The server sets `language` from the text: the script most of the title's and body's letters are in (Telugu letters U+0C00–U+0C7F against Latin ones), and what the app sent only when there are no letters. So an English post that names one Telugu village stays `en`.
 - **Translation** (owner decision of 2026-10-28, changing Q3; works once `TRANSLATION_PROVIDER` and its key are set on the server): once a post is **published**, the server machine-translates its title and body into the other language in the background. `Post`, `FeedItem`, `FeedPost` and `CitizenPost` carry `translation`:
@@ -107,7 +108,7 @@ All errors share one shape:
 {
   "error": {
     "code": "validation_error",
-    "message": "దయచేసి శీర్షిక నింపండి",
+    "message": "శీర్షిక ఇవ్వండి.",
     "fields": {"title": ["ఈ ఫీల్డ్ తప్పనిసరి."]}
   }
 }

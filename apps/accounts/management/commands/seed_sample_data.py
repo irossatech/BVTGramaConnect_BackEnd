@@ -27,7 +27,7 @@ from datetime import timedelta
 from pathlib import Path
 
 from django.conf import settings
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, no_translations
 from django.db import transaction
 from django.utils import timezone
 
@@ -95,6 +95,8 @@ class Command(BaseCommand):
         )
         add_allow_server(parser)
 
+    # English output on the server, whatever LANGUAGE_CODE says (Telugu is for app users).
+    @no_translations
     def handle(self, *args, reset_passwords=False, allow_server=False, **options):
         refuse_on_server("seed_sample_data", allow_server)
         out = getattr(self.stdout, "_out", None)

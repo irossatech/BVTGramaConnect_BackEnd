@@ -364,7 +364,7 @@ def test_twelve_characters_are_enough(world):
         ("pqrwxyzabc", ["capital letter", "number", "special character"]),  # all named in one message
     ],
 )
-def test_a_new_password_needs_every_kind_of_character(world, new, missing):
+def test_a_new_password_needs_every_kind_of_character(english, world, new, missing):
     client = bearer(login("va_kolakaluru").json()["access"])
     response = client.post(CHANGE, {"current_password": TEST_PASSWORD, "new_password": new}, format="json")
     assert response.status_code == 400 and code(response) == "validation_error"
@@ -380,7 +380,7 @@ def test_any_special_character_counts(world, new):
     assert response.status_code == 200, response.json()
 
 
-def test_admins_typed_temporary_passwords_follow_the_rule_too(api, world):
+def test_admins_typed_temporary_passwords_follow_the_rule_too(english, api, world):
     refused = reset(api, world, "va_kolakaluru", password="GramReset2026")  # no special character
     assert refused.status_code == 400 and "special character" in " ".join(refused.json()["error"]["fields"]["password"])
     body = {"name": "New Member", "username": "new.member", "role": "PANCHAYAT_MEMBER",

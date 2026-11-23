@@ -3,6 +3,7 @@
 import re
 
 from django.utils.translation import get_language
+from django.utils.translation import gettext_lazy as _
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
@@ -57,7 +58,7 @@ class ServiceWriteSerializer(serializers.Serializer):
     def validate_name_en(self, value):
         value = " ".join(value.split())
         if len(value) < 2:
-            raise serializers.ValidationError("Write at least 2 letters.")
+            raise serializers.ValidationError(_("Write at least 2 letters."))
         return value
 
     def validate_name_te(self, value):
@@ -82,8 +83,8 @@ class CitizenServiceRequestWriteSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=100)
     phone = serializers.CharField(max_length=20)
     email = serializers.EmailField(required=False, allow_blank=True, default="")
-    address = serializers.CharField(max_length=300, error_messages={"required": "Enter your address.",
-                                                                    "blank": "Enter your address."})
+    address = serializers.CharField(max_length=300, error_messages={"required": _("Enter your address."),
+                                                                    "blank": _("Enter your address.")})
     details = serializers.CharField(max_length=500, required=False, allow_blank=True, default="")
     #: The app's random UUID for this request, the same on a repeat after a lost answer (MOB-ERR-004).
     client_ref = serializers.UUIDField(required=False)
@@ -91,13 +92,13 @@ class CitizenServiceRequestWriteSerializer(serializers.Serializer):
     def validate_name(self, value):
         value = " ".join(value.split())
         if len(value) < 2:
-            raise serializers.ValidationError("Write at least 2 letters.")
+            raise serializers.ValidationError(_("Write at least 2 letters."))
         return value
 
     def validate_phone(self, value):
         value = "".join(value.split())
         if not MOBILE.match(value):
-            raise serializers.ValidationError("Give a 10-digit Indian mobile number starting with 6, 7, 8 or 9.")
+            raise serializers.ValidationError(_("Give a 10-digit Indian mobile number starting with 6, 7, 8 or 9."))
         return value
 
     def validate_email(self, value):
@@ -106,7 +107,7 @@ class CitizenServiceRequestWriteSerializer(serializers.Serializer):
     def validate_address(self, value):
         value = value.strip()
         if len(value) < 5:
-            raise serializers.ValidationError("Enter your address.")
+            raise serializers.ValidationError(_("Enter your address."))
         return value
 
     def validate_details(self, value):
@@ -208,7 +209,7 @@ class ServiceRequestSerializer(CitizenServiceRequestSerializer):
             row = {
                 "at": serializers.DateTimeField().to_representation(event.at),
                 "by": {"id": str(event.by.id), "name": event.by.name, "role": event.by_role} if event.by else None,
-                "note": event.note,
+                "note": services.system_note(event.note),
             }
             if event.by_citizen:
                 row["by_citizen"] = True

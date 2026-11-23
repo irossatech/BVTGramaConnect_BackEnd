@@ -3,6 +3,7 @@
 The rules beyond shape (parent exists, unique names, warnings) live in services.py.
 """
 
+from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
 NAME = {"max_length": 120}
@@ -16,7 +17,7 @@ class _AreaFields(serializers.Serializer):
     def validate_name_en(self, value):
         value = " ".join(value.split())
         if not value:
-            raise serializers.ValidationError("Enter a name.")
+            raise serializers.ValidationError(_("Enter a name."))
         return value
 
     def validate_lgd_code(self, value):

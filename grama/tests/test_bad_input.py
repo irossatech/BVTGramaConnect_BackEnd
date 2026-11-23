@@ -128,7 +128,7 @@ def upload(name, text):
 
 
 @pytest.mark.parametrize("coordinate", ["NaN", "Infinity", "-inf"])
-def test_a_geography_import_with_a_non_finite_coordinate_reports_the_line(sa, world, coordinate):
+def test_a_geography_import_with_a_non_finite_coordinate_reports_the_line(english, sa, world, coordinate):
     text = f"state,district,mandal,village,latitude,longitude\nAndhra Pradesh,Guntur,Tenali,Kolakaluru,{coordinate},80.5\n"
     response = sa.post("/api/v1/geo/villages/import/?dry_run=1", upload("g.csv", text), format="multipart")
     assert response.status_code == 400
@@ -136,14 +136,14 @@ def test_a_geography_import_with_a_non_finite_coordinate_reports_the_line(sa, wo
     assert any("Line 2" in error and "not a number" in error for error in errors)
 
 
-def test_a_geography_import_with_an_over_long_field_is_400(sa, world):
+def test_a_geography_import_with_an_over_long_field_is_400(english, sa, world):
     text = "state,district,mandal,village\nAndhra Pradesh,Guntur,Tenali," + "x" * 131073 + "\n"
     response = sa.post("/api/v1/geo/villages/import/?dry_run=1", upload("g.csv", text), format="multipart")
     assert response.status_code == 400
     assert "not valid CSV" in response.content.decode("utf-8")
 
 
-def test_a_contacts_import_with_an_over_long_field_is_400(sa, world):
+def test_a_contacts_import_with_an_over_long_field_is_400(english, sa, world):
     text = "type,name,phone\nother," + "x" * 131073 + ",9000000000\n"
     response = sa.post("/api/v1/admin/contacts/import/?dry_run=1", upload("c.csv", text), format="multipart")
     assert response.status_code == 400

@@ -13,6 +13,7 @@ from django.db.models import Count, Q
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.utils.translation import gettext as _
+from django.utils.translation import gettext_lazy
 from django.views.decorators.cache import cache_control
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
@@ -184,7 +185,7 @@ class ShowcaseView(PublicView):
 # --- Contact messages in the console (owner decision Q16) ------------------------------
 
 
-MANAGE_CONTACT = HasPerm("web_public.manage_contact_messages", PLATFORM, "Only Super Admins can do this.")
+MANAGE_CONTACT = HasPerm("web_public.manage_contact_messages", PLATFORM, gettext_lazy("Only Super Admins can do this."))
 
 
 class ContactMessageAdminSerializer(serializers.ModelSerializer):

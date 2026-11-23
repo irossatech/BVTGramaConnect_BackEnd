@@ -231,7 +231,7 @@ def upload(client, text):
                        {"file": SimpleUploadedFile("v.csv", text.encode("utf-8"), "text/csv")}, format="multipart")
 
 
-def test_import_writes_through_the_service_with_one_audit_entry_and_its_warnings(admin, world):
+def test_import_writes_through_the_service_with_one_audit_entry_and_its_warnings(english, admin, world):
     text = ("state,district,mandal,village,village_te,latitude,longitude,pin_code\n"
             "Andhra Pradesh,Guntur,Tenali,Chebrolu,చేబ్రోలు,16.196000,80.525000,110001\n")
     response = upload(admin, text)

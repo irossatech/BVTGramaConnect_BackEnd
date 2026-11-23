@@ -10,7 +10,7 @@ owner signs off a longer list (decision C3).
 
 from pathlib import Path
 
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import BaseCommand, CommandError, no_translations
 
 from apps.contacts.services import import_contacts
 
@@ -23,6 +23,8 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--file", default=str(DEFAULT_FILE))
 
+    # English output on the server, whatever LANGUAGE_CODE says (Telugu is for app users).
+    @no_translations
     def handle(self, *args, file, **options):
         report = import_contacts(None, Path(file).read_text(encoding="utf-8-sig"), via="system")
         if not report.ok:

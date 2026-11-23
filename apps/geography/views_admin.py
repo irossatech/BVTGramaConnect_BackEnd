@@ -11,6 +11,7 @@ from __future__ import annotations
 from django.conf import settings
 from django.db.models import Count
 from django.utils.translation import gettext as _
+from django.utils.translation import gettext_lazy
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import status
@@ -47,7 +48,7 @@ from .views import DISTRICT_PARAMS, STATE_PARAMS, VILLAGE_PARAMS, DistrictListVi
 MAX_MISSING_LISTED = 200
 
 #: Owner decision Q13: only the Super Admin maintains districts, mandals and villages.
-MANAGE_MASTER_DATA = HasPerm("geography.manage_master_data", PLATFORM, "Only Super Admins can do this.")
+MANAGE_MASTER_DATA = HasPerm("geography.manage_master_data", PLATFORM, gettext_lazy("Only Super Admins can do this."))
 WRITE_ERRORS = {400: ErrorSerializer, 401: ErrorSerializer, 403: ErrorSerializer, 409: ErrorSerializer}
 SAFE_METHODS = ("GET", "HEAD", "OPTIONS")
 

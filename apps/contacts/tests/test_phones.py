@@ -26,7 +26,7 @@ def test_area_numbers(raw, digits, kind):
 
 
 @pytest.mark.parametrize("raw, digits", [("108", "108"), ("112", "112"), ("1098", "1098"), ("155261", "155261")])
-def test_short_codes_only_for_helplines(raw, digits):
+def test_short_codes_only_for_helplines(english, raw, digits):
     assert normalise_phone(raw, allow_short=True) == (digits, "SHORT_CODE")
     with pytest.raises(InvalidPhone, match="helplines only"):
         normalise_phone(raw)

@@ -575,7 +575,10 @@ def import_contacts(actor, text: str, *, dry_run: bool = False, via: str = "cons
         try:
             check_capacity(area, extra=extra)
         except ApiError as error:
-            report.errors.append({"row": 0, "field": "area", "message": f"{area.level} {area.id}: {error.detail}"})
+            message = _("%(level)s %(id)s: %(message)s") % {
+                "level": AreaLevel(area.level).label, "id": area.id, "message": error.detail,
+            }
+            report.errors.append({"row": 0, "field": "area", "message": message})
     report.created = sum(1 for action, _c, _v in planned if action == "create")
     report.updated = sum(1 for action, _c, _v in planned if action == "update")
     if not report.ok or dry_run:

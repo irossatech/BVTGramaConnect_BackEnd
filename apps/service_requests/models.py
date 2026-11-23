@@ -13,6 +13,7 @@ starts at 0003.
 
 from django.conf import settings
 from django.db import models
+from django.utils import translation
 from django.utils.translation import gettext_lazy as _
 
 from apps.geography.models import AreaLevel
@@ -84,21 +85,10 @@ class RequestStatus(models.TextChoices):
 #: A citizen may cancel a request in these statuses; Completed, Rejected and Cancelled are final for them.
 CANCELLABLE = (RequestStatus.NEW, RequestStatus.APPROVED, RequestStatus.IN_PROGRESS)
 
-STATUS_TE = {
-    RequestStatus.NEW: "కొత్తది",
-    RequestStatus.APPROVED: "ఆమోదించబడింది",
-    RequestStatus.IN_PROGRESS: "ప్రక్రియలో ఉంది",
-    RequestStatus.COMPLETED: "పూర్తయింది",
-    RequestStatus.REJECTED: "తిరస్కరించబడింది",
-    RequestStatus.CANCELLED: "రద్దు చేయబడింది",
-}
-
-
 def status_label(status: str, language: str) -> str:
-    """The status's name in Telugu or English (for push texts)."""
-    if (language or "te").startswith("te") and status in STATUS_TE:
-        return STATUS_TE[status]
-    return str(RequestStatus(status).label)
+    """The status's name in the push recipient's language, Telugu or English (locale/te: the Telugu)."""
+    with translation.override(language or "te"):
+        return str(RequestStatus(status).label)
 
 
 class ServiceRequest(models.Model):

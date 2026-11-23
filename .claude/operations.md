@@ -29,6 +29,7 @@ Linux or macOS: the same with `python3 -m venv .venv` and `source .venv/bin/acti
 |---|---|
 | Tests | `python -m pytest -q -p no:logging` |
 | Missing migrations | `python manage.py makemigrations --check --dry-run` |
+| Telugu messages (after adding or changing a `_()` message) | `python manage.py translations` (updates `locale/te/LC_MESSAGES/django.po`, builds `django.mo`); `--check` only checks. No GNU gettext needed; commit both files |
 | Background worker | `python manage.py qcluster` |
 | Escalation and housekeeping schedules | `python manage.py ensure_schedules` (once per database; deploy runs it) |
 | Role groups and permissions | `python manage.py sync_role_permissions` (also runs after every `migrate`; safe to repeat) |

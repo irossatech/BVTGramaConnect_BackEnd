@@ -4,6 +4,7 @@ from django.conf import settings
 from django.db import connection
 from django.http import JsonResponse
 from django.utils import timezone
+from django.utils.translation import gettext as _
 from django.views import defaults
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
@@ -63,18 +64,23 @@ def _is_api(request) -> bool:
     return request.path.startswith("/api/")
 
 
+def _error_response(error: dict, status: int) -> JsonResponse:
+    # Raw UTF-8 like every other API answer (UNICODE_JSON): the message may be Telugu.
+    return JsonResponse({"error": error}, status=status, json_dumps_params={"ensure_ascii": False})
+
+
 def not_found(request, exception=None):
     if _is_api(request):
-        return JsonResponse({"error": {"code": "not_found", "message": "No such address."}}, status=404)
+        return _error_response({"code": "not_found", "message": _("No such address.")}, 404)
     return defaults.page_not_found(request, exception)
 
 
 def server_error(request):
     if _is_api(request):
         # request_id: the number to quote when reporting it; the server log has the details under it.
-        error = {"code": "server_error", "message": "Something went wrong on the server."}
+        error = {"code": "server_error", "message": _("Something went wrong on the server.")}
         request_id = getattr(request, "request_id", None)
         if request_id:
             error["request_id"] = request_id
-        return JsonResponse({"error": error}, status=500)
+        return _error_response(error, 500)
     return defaults.server_error(request)
