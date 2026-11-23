@@ -79,8 +79,8 @@ def test_slim_shape_with_thumbnail(world, make_post):
     assert first["id"] == str(post.id)
     assert first["category"] == "announce"
     assert first["area"] == {"level": "MANDAL", "id": world.areas["tenali"].id, "name": "తెనాలి"}
-    assert first["thumbnail_url"] == f"/media/posts/2026/10/{post.pk}-0-320.webp"
-    assert first["image_url"] == f"/media/posts/2026/10/{post.pk}-0.webp"
+    assert first["thumbnail_url"] == f"http://testserver/media/posts/2026/10/{post.pk}-0-320.webp"
+    assert first["image_url"] == f"http://testserver/media/posts/2026/10/{post.pk}-0.webp"
     assert first["media_count"] == 3
     assert first["source_role"] == "VILLAGE_ADMIN"
     assert first["source_area"] == {"level": "VILLAGE", "id": world.areas["kolakaluru"].id, "name": "కొలకలూరు"}
@@ -117,8 +117,8 @@ def test_image_url_is_the_full_size_photo_even_with_a_medium_file(world, make_po
     first = post.media.order_by("order").first()
     PostMedia.objects.filter(pk=first.pk).update(medium=f"posts/2026/10/{post.pk}-0-640.webp")
     row = feed(world).json()["results"][0]
-    assert row["image_url"] == f"/media/posts/2026/10/{post.pk}-0.webp"
-    assert row["thumbnail_url"] == f"/media/posts/2026/10/{post.pk}-0-320.webp"
+    assert row["image_url"] == f"http://testserver/media/posts/2026/10/{post.pk}-0.webp"
+    assert row["thumbnail_url"] == f"http://testserver/media/posts/2026/10/{post.pk}-0-320.webp"
 
 
 def test_area_names_follow_accept_language(world, make_post):
@@ -160,10 +160,10 @@ def test_post_detail_has_every_photo(world, make_post):
     post = make_post("kolakaluru", media=2)
     data = APIClient().get(f"/api/v1/feed/posts/{post.id}/").json()
     assert [m["thumb_url"] for m in data["media"]] == [
-        f"/media/posts/2026/10/{post.pk}-0-320.webp",
-        f"/media/posts/2026/10/{post.pk}-1-320.webp",
+        f"http://testserver/media/posts/2026/10/{post.pk}-0-320.webp",
+        f"http://testserver/media/posts/2026/10/{post.pk}-1-320.webp",
     ]
-    assert data["media"][0]["url"] == f"/media/posts/2026/10/{post.pk}-0.webp"
+    assert data["media"][0]["url"] == f"http://testserver/media/posts/2026/10/{post.pk}-0.webp"
     assert data["path"] == "కొలకలూరు · తెనాలి · గుంటూరు"
 
 
