@@ -234,7 +234,7 @@ FCM_PROJECT_ID=<project id>
 FCM_TOPIC_PREFIX=qa_
 ```
 `FCM_TOPIC_PREFIX=qa_` is required on qa: qa and production share the Firebase project, so
-without it a test post would reach real users. QA builds of the app follow the `qa_` topics.
+without it a test post would reach real users. The app follows the `qa_` topics because `GET /app-config/` tells it this server's prefix (`topic_prefix`, BVTGC-69).
 The worker sends the pushes, so `BVT-start.sh` must show it running; its log must not say
 "FCM disabled".
 

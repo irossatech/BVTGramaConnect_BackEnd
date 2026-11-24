@@ -86,8 +86,9 @@ class CategoryListView(generics.ListAPIView):
 
 @method_decorator(cache_control(public=True, max_age=300), name="dispatch")
 class AppConfigView(APIView):
-    """What the apps need before login: the languages the Super Admin left on, and the app update
-    rules min_version / latest_version from the server's settings (contract section 5, BVTGC-90).
+    """What the apps need before login: the languages the Super Admin left on, the app update rules
+    min_version / latest_version (BVTGC-90) and the push topic prefix (BVTGC-69), from the server's
+    settings (contract section 5).
 
     Only these: escalation hours and the citizens' daily limit stay Super Admin only. No login, and a
     stale token is ignored, like /categories/. max-age 300: a switch reaches phones within 5 minutes.
@@ -104,6 +105,7 @@ class AppConfigView(APIView):
                 "languages": serializers.DictField(child=serializers.BooleanField()),
                 "min_version": serializers.CharField(allow_null=True),
                 "latest_version": serializers.CharField(allow_null=True),
+                "topic_prefix": serializers.CharField(),
             },
         ),
     )
@@ -114,6 +116,10 @@ class AppConfigView(APIView):
                 # App updates (BVTGC-90): "1.0.0+24" or null; the app compares the build numbers only.
                 "min_version": settings.APP_MIN_VERSION or None,
                 "latest_version": settings.APP_LATEST_VERSION or None,
+                # Push topics (BVTGC-69): the prefix this server sends area topics with ("qa_" on qa,
+                # "" in production). The app subscribes to prefix + "village_12" and so on, so an app
+                # talking to qa hears qa's posts and never production's, and the other way round.
+                "topic_prefix": settings.FCM_TOPIC_PREFIX,
             }
         )
 
