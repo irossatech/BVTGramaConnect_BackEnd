@@ -203,15 +203,27 @@ def delete(user, ad: Ad) -> None:
 # --- Citizens ------------------------------------------------------------------------------------
 
 
+def banner_limit() -> int:
+    """The Super Admin's banners-per-Home setting (ads_banner_limit): 0 = no limit (BVTGC-92)."""
+    from apps.posts.services import runtime
+
+    return int(runtime("ADS_PUBLIC_LIMIT"))
+
+
 def for_village(village_id: int) -> QuerySet:
-    """Ads switched on, inside their dates today (India time), for the village or an area above it."""
+    """Ads switched on, inside their dates today (India time), for the village or an area above it.
+
+    Newest first; at most banner_limit() of them, or all when it is 0.
+    """
     today = timezone.localdate()
     chain = Q(pk__in=[])
     for level, area_id in ancestry(AreaRef(AreaLevel.VILLAGE, village_id)).items():
         chain |= Q(area_level=level, area_id=area_id)
-    return (
+    ads = (
         Ad.objects.filter(chain, is_active=True)
         .filter(Q(starts_on__isnull=True) | Q(starts_on__lte=today))
         .filter(Q(ends_on__isnull=True) | Q(ends_on__gte=today))
-        .order_by("-created_at", "-id")[: settings.ADS_PUBLIC_LIMIT]
+        .order_by("-created_at", "-id")
     )
+    limit = banner_limit()
+    return ads[:limit] if limit > 0 else ads

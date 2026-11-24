@@ -120,6 +120,7 @@
         "apps/accounts/tests/test_load_demo_area.py",
         "apps/accounts/tests/test_seed.py",
         "apps/ads/tests/test_ads.py",
+        "apps/ads/tests/test_banner_limit.py",
         "apps/ads/tests/test_video_ads.py",
         "apps/bills/tests/test_bills.py",
         "apps/contacts/tests/test_admin.py",

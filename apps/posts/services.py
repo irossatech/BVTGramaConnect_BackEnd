@@ -101,6 +101,8 @@ RUNTIME_SETTINGS = {
     "REVIEW_ESCALATION_HOURS": int,
     "LANGUAGE_EN_ENABLED": bool,
     "CITIZEN_POSTS_PER_DAY": int,
+    #: Banners on a citizen's Home: 0 = no limit, N = at most N (BVTGC-92).
+    "ADS_PUBLIC_LIMIT": int,
 }
 
 

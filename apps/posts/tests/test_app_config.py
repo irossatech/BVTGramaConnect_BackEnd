@@ -12,9 +12,10 @@ def test_without_a_login_both_languages_are_on_by_default(db):
     response = APIClient().get(URL)
     assert response.status_code == 200
     # min_version / latest_version (BVTGC-90): null until the server sets them, so no update prompt.
-    # topic_prefix (BVTGC-69): "" by default, as in production.
+    # topic_prefix (BVTGC-69): "" by default, as in production. ads_banner_limit (BVTGC-92): 0 = no limit.
     assert response.json() == {
         "languages": {"te": True, "en": True}, "min_version": None, "latest_version": None, "topic_prefix": "",
+        "ads_banner_limit": 0,
     }
     assert "public" in response["Cache-Control"] and "max-age=300" in response["Cache-Control"]
 
@@ -36,8 +37,8 @@ def test_a_stale_or_bad_token_never_breaks_it(db):
 def test_it_carries_only_what_the_apps_need(world, api):
     data = APIClient().get(URL).json()
     # Escalation hours and the daily limit stay Super Admin only; the update rules (BVTGC-90) and the
-    # topic prefix (BVTGC-69) are for every app.
-    assert set(data) == {"languages", "min_version", "latest_version", "topic_prefix"}
+    # topic prefix (BVTGC-69) and the banner limit (BVTGC-92) are for every app.
+    assert set(data) == {"languages", "min_version", "latest_version", "topic_prefix", "ads_banner_limit"}
 
 
 # --- Push topic prefix (BVTGC-69) ------------------------------------------------------------------

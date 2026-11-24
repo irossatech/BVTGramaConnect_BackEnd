@@ -106,6 +106,7 @@ class AppConfigView(APIView):
                 "min_version": serializers.CharField(allow_null=True),
                 "latest_version": serializers.CharField(allow_null=True),
                 "topic_prefix": serializers.CharField(),
+                "ads_banner_limit": serializers.IntegerField(),
             },
         ),
     )
@@ -120,6 +121,9 @@ class AppConfigView(APIView):
                 # "" in production). The app subscribes to prefix + "village_12" and so on, so an app
                 # talking to qa hears qa's posts and never production's, and the other way round.
                 "topic_prefix": settings.FCM_TOPIC_PREFIX,
+                # Banners on a citizen's Home (BVTGC-92): the Super Admin's number, 0 = no limit. Citizens
+                # cannot read /admin/settings/, and the app follows the limit itself too.
+                "ads_banner_limit": int(services.runtime("ADS_PUBLIC_LIMIT")),
             }
         )
 
@@ -563,6 +567,7 @@ def current_settings() -> dict:
         "review_escalation_hours": int(services.runtime("REVIEW_ESCALATION_HOURS")),
         "languages": {"te": True, "en": bool(services.runtime("LANGUAGE_EN_ENABLED"))},
         "citizen_posts_per_day": int(services.runtime("CITIZEN_POSTS_PER_DAY")),
+        "ads_banner_limit": int(services.runtime("ADS_PUBLIC_LIMIT")),  # 0 = no limit (BVTGC-92)
         "admin_posts_auto_publish": settings.ADMIN_POSTS_AUTO_PUBLISH,
         "review_first_decision_wins": settings.REVIEW_FIRST_DECISION_WINS,
         "super_admin_can_post": settings.SUPER_ADMIN_CAN_POST,
@@ -578,7 +583,7 @@ class AdminSettingsView(APIView):
         return Response(current_settings())
 
     @extend_schema(
-        summary="Change escalation hours, switch English, or set the citizen posts per day",
+        summary="Change escalation hours, switch English, set the citizen posts per day or the banners per Home",
         request=SettingsSerializer,
         responses=SettingsSerializer,
     )
@@ -591,6 +596,8 @@ class AdminSettingsView(APIView):
             changes["REVIEW_ESCALATION_HOURS"] = data.validated_data["review_escalation_hours"]
         if "citizen_posts_per_day" in data.validated_data:
             changes["CITIZEN_POSTS_PER_DAY"] = data.validated_data["citizen_posts_per_day"]
+        if "ads_banner_limit" in data.validated_data:
+            changes["ADS_PUBLIC_LIMIT"] = data.validated_data["ads_banner_limit"]
         languages = data.validated_data.get("languages")
         if languages is not None:
             if languages.get("te") is False:
