@@ -35,6 +35,7 @@ from django.contrib.auth.signals import user_logged_in, user_login_failed
 from django.dispatch import receiver
 from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
+from django.utils.translation import gettext as _
 
 from apps.audit.masking import mask_text
 from grama.http import client_ip
@@ -179,7 +180,15 @@ def lockout_response(request, original_response=None, credentials=None):
     if original_response is not None and getattr(original_response, "status_code", None) == 429:
         return original_response
     if (getattr(request, "path", "") or "").startswith("/api/"):
+        # The same answer as credentials.locked_out (BVTGC-79): the time left for this username and
+        # address, in the message (the request's language) and as retry_after_s for the countdown.
+        # Without a username to look up, the whole lockout time.
+        username = typed_username(request, credentials)
+        seconds = seconds_left(username, client_ip(request)) if username else int(_cool_off().total_seconds())
+        message = _("Too many failed logins. Try again in %(m)d minute(s).") % {"m": max(1, (seconds + 59) // 60)}
         return JsonResponse(
-            {"error": {"code": "locked_out", "message": "Too many failed logins. Try again later."}}, status=429
+            {"error": {"code": "locked_out", "message": message, "retry_after_s": seconds}},
+            status=429,
+            json_dumps_params={"ensure_ascii": False},
         )
     return HttpResponse("Too many failed logins. Try again in 15 minutes.", status=429, content_type="text/plain")
