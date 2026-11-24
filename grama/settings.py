@@ -415,6 +415,12 @@ SIMPLE_JWT = {
     "USER_ID_FIELD": "id",
     "USER_ID_CLAIM": "user_id",
 }
+# The longest an app login lasts, however often it is renewed (BVTGC-73): after this many days since
+# the official typed their password, renewal is refused and the app asks for the login again.
+# 0 = no limit. The console has its own idle limit (CONSOLE_SESSION_IDLE_MINUTES).
+JWT_ABSOLUTE_DAYS = env.int("JWT_ABSOLUTE_DAYS", default=90)
+if JWT_ABSOLUTE_DAYS < 0:
+    raise ImproperlyConfigured("JWT_ABSOLUTE_DAYS must be 0 (no limit) or more.")
  
 SPECTACULAR_SETTINGS = {
     "TITLE": "BVT Grama Connect API",

@@ -86,6 +86,7 @@ Officials log in with a **username and a password**. There is no OTP, no SMS and
 **Mobile app: JWT** from `djangorestframework-simplejwt`.
 - **Access token:** lifetime 15 minutes. Sent as `Authorization: Bearer <access>`.
 - **Refresh token:** lifetime 30 days, rotated on every use, old one blacklisted. Kept in secure storage (Android Keystore, iOS Keychain). The app calls `POST /auth/refresh/` when it gets `401 token_expired`.
+- **Login age (BVTGC-73, 2026-11-24):** a login lasts at most `JWT_ABSOLUTE_DAYS` (**90**) days from the moment the official typed their password, however often it is renewed. The refresh token carries that moment (`auth_time`) and every renewal keeps it; after the limit `POST /auth/refresh/` answers `401 session_revoked`, and the app shows the login screen as for any ended session. Logins from before this change start counting at their first renewal after it. `0` means no limit. The console is not affected (it ends after 30 idle minutes).
 
 **Web console: Django session** with CSRF.
 - `GET /auth/csrf/` sets the readable `csrftoken` cookie. `POST /auth/session/login/` creates the session; the cookie `sessionid` is HttpOnly, SameSite=Lax and Secure on the server.
@@ -373,7 +374,7 @@ Lean on purpose, for 2G.
 | Method and path | Auth | Request | Response |
 |---|---|---|---|
 | `POST /auth/login/` | public | `{"username", "password"}` (any other key, such as an older app's `"client"`, is ignored) | `200 {"access", "refresh", "user": Me}`. Mobile app. |
-| `POST /auth/refresh/` | refresh token | `{"refresh": "…"}` | `200 {"access", "refresh"}` |
+| `POST /auth/refresh/` | refresh token | `{"refresh": "…"}` | `200 {"access", "refresh"}`; `401 session_revoked` once the login is older than `JWT_ABSOLUTE_DAYS` (90) |
 | `POST /auth/logout/` | bearer | `{"refresh": "…", "all_devices"?: true}` | `204`. Blacklists the refresh token. `all_devices` also bumps `token_version`. |
 | `GET /auth/csrf/` | public | — | `200 {"detail": "ok"}` and the `csrftoken` cookie. Console. |
 | `POST /auth/session/login/` | public, `X-CSRFToken` | `{"username", "password"}` | `200 {"user": Me}` and the `sessionid` cookie. Console; needs `web_admin.access_web_console`. |

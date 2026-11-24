@@ -9,9 +9,11 @@ Console sessions store the same number (authentication.py), so they end too.
 
 from __future__ import annotations
 
+from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
 from django.db.models import F
+from django.utils import timezone
 from django.utils.translation import gettext as _
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.settings import api_settings
@@ -23,12 +25,31 @@ from grama.exceptions import AuthError
 from .models import User
 
 TOKEN_VERSION_CLAIM = "tv"
+#: When the official last typed their password (Unix seconds). Renewals keep it, so it measures the
+#: age of the login itself; after JWT_ABSOLUTE_DAYS renewal is refused (BVTGC-73).
+LOGIN_TIME_CLAIM = "auth_time"
+
+
+def _now() -> int:
+    return int(timezone.now().timestamp())
 
 
 def issue_tokens(user: User) -> dict[str, str]:
     refresh = RefreshToken.for_user(user)
     refresh[TOKEN_VERSION_CLAIM] = user.token_version
+    refresh[LOGIN_TIME_CLAIM] = _now()
     return {"access": str(refresh.access_token), "refresh": str(refresh)}
+
+
+def _login_too_old(refresh) -> bool:
+    """Has this login passed JWT_ABSOLUTE_DAYS? A token from before BVTGC-73 has no login time: its
+    count starts now, at its first renewal after the deploy, so nobody is logged out on release day."""
+    started = refresh.get(LOGIN_TIME_CLAIM)
+    if started is None:
+        refresh[LOGIN_TIME_CLAIM] = _now()
+        return False
+    days = settings.JWT_ABSOLUTE_DAYS
+    return bool(days) and _now() - int(started) > days * 86400
 
 
 def session_revoked() -> AuthError:
@@ -53,6 +74,9 @@ def rotate_refresh(raw_refresh: str) -> dict[str, str]:
     except TokenError:
         raise session_revoked() from None
     user_for_token(refresh)
+    if _login_too_old(refresh):
+        _use_once(refresh)  # this token is spent too: the next try gets the same answer
+        raise session_revoked()
 
     data = {"access": str(refresh.access_token)}
     _use_once(refresh)
