@@ -40,6 +40,7 @@ from apps.audit.models import AuditLog
 from apps.audit.services import record
 from apps.geography.areas import AreaDescriber, AreaRef
 from apps.geography.models import AreaLevel, District, Mandal, Village
+from apps.notifications.models import Device
 from grama.csvsafe import safe_writer
 from grama.exceptions import ApiError, permission_denied
 from grama.pagination import PageNumberPagination
@@ -52,6 +53,29 @@ from .permissions import client_via
 from .transliteration import MAX_LENGTH, to_telugu
 
 DECISIONS = [ReviewAction.Action.PUBLISH, ReviewAction.Action.RECHECK, ReviewAction.Action.DISCARD]
+#: Phones seen within this many days count in the dashboard's app versions (BVTGC-90).
+APP_VERSION_SEEN_DAYS = 30
+
+
+def app_versions(now) -> list[dict]:
+    """Phones by app version, from the version the app sends when it registers for push on start
+    (officials' and citizens' phones alike), seen in the last APP_VERSION_SEEN_DAYS days. Newest
+    build first; phones that never sent a version (builds before it) come last as "". Shows how many
+    old installs are left before APP_MIN_VERSION is raised."""
+    rows = (
+        Device.objects.filter(last_seen__gte=now - timedelta(days=APP_VERSION_SEEN_DAYS))
+        .values("app_version")
+        .annotate(phones=Count("id"))
+    )
+
+    def build(version: str) -> int:
+        number = version.rpartition("+")[2]
+        return int(number) if version and number.isdigit() else -1
+
+    return sorted(
+        ({"version": row["app_version"], "phones": row["phones"]} for row in rows),
+        key=lambda row: (-build(row["version"]), row["version"]),
+    )
 
 
 def area_admin_roles() -> list[str]:
@@ -269,6 +293,7 @@ class DashboardView(SuperAdminView):
                 "posts_per_day": posts_per_day,
                 "pending_by_district": pending_by_district,
                 "recent_activity": recent,
+                "app_versions": app_versions(now),
             }
         )
 
