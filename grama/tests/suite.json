@@ -85,6 +85,7 @@
         "apps/audit/tests/test_mask_migration.py",
         "apps/audit/tests/test_record_limits.py",
         "apps/audit/tests/test_record_safety_net.py",
+        "apps/service_requests/tests/test_push_jobs_no_names.py",
         "apps/web_public/tests/test_message_label.py",
         "grama/tests/test_log_leak.py"
       ]
