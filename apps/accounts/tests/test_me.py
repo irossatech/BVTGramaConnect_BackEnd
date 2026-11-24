@@ -55,6 +55,24 @@ def test_super_admin_sees_the_console_permission(api, world):
     assert data["capabilities"]["can_post"] is True
 
 
+@pytest.mark.parametrize(
+    ("username", "expected"),
+    [
+        # A Super Admin makes and manages other Super Admins (peers, owner decision), and every role below.
+        ("super", ["SUPER_ADMIN", "DISTRICT_ADMIN", "MANDAL_ADMIN", "VILLAGE_ADMIN", "PANCHAYAT_MEMBER"]),
+        # Everyone else: strictly lower roles only, never their own.
+        ("da_guntur", ["MANDAL_ADMIN", "VILLAGE_ADMIN", "PANCHAYAT_MEMBER"]),
+        ("va_kolakaluru", ["PANCHAYAT_MEMBER"]),
+        ("pm_kolakaluru", []),
+    ],
+)
+def test_deprecated_manageable_roles_follow_the_permission_rule(api, world, username, expected):
+    """BVTGC-76: the old capabilities block agreed with the real rule except for Super Admin peers."""
+    capabilities = api(world.users[username]).get("/api/v1/me/").json()["capabilities"]
+    assert sorted(capabilities["manageable_roles"]) == sorted(expected)
+    assert capabilities["can_manage_users"] is bool(expected)
+
+
 def test_super_admin_cannot_post_when_the_setting_is_off(api, world, super_admin_can_post):
     super_admin_can_post(False)
     data = api(world.users["super"]).get("/api/v1/me/").json()

@@ -171,7 +171,8 @@ def capabilities(user) -> dict:
         role.key
         for role in authz.roles().values()
         if role.manage_permission
-        and any(role.manage_permission in g.permissions and g.rank < role.rank for g in user_grants)
+        # authz.outranks: the rule every permission check uses, so a Super Admin's peers count (BVTGC-76).
+        and any(role.manage_permission in g.permissions and authz.outranks(g.rank, role) for g in user_grants)
     ]
     return {
         "can_post": "posts.create_post" in held,
