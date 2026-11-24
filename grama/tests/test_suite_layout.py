@@ -16,6 +16,25 @@ def test_every_category_has_a_title_and_files():
         assert category["title"] and category["files"], key
 
 
+def test_coverage_is_summed_per_app_and_the_least_covered_files_come_first():
+    def file(statements, covered):
+        return {"summary": {"num_statements": statements, "covered_lines": covered}}
+
+    summary = testsuite.coverage_summary({"files": {
+        "apps\\posts\\services.py": file(200, 180),   # Windows paths too
+        "apps/posts/views.py": file(100, 90),
+        "apps/feed/views.py": file(50, 10),
+        "grama/http.py": file(10, 0),                  # under 20 statements: not in the least-covered list
+    }})
+    assert summary["parts"]["apps/posts"] == {"statements": 300, "covered": 270, "percent": 90.0}
+    assert summary["parts"]["apps/feed"]["percent"] == 20.0
+    assert summary["parts"]["grama"]["percent"] == 0.0
+    assert summary["total"] == {"statements": 360, "covered": 280, "percent": 77.8}
+    assert [f["file"] for f in summary["least_covered"]] == [
+        "apps/feed/views.py", "apps/posts/services.py", "apps/posts/views.py",
+    ]
+
+
 def test_a_new_file_without_a_category_is_reported(monkeypatch):
     real = testsuite.test_files()
     monkeypatch.setattr(testsuite, "test_files", lambda: real | {"apps/posts/tests/test_brand_new.py"})

@@ -4,6 +4,7 @@
     python -m grama.testsuite permissions    one category (names: --list)
     python -m grama.testsuite --list         the categories and how many files each has
     python -m grama.testsuite --check        only check that every test file has one category
+    python -m grama.testsuite all --coverage also measure line coverage (coverage.py, requirements.txt)
 
 Categories live in grama/tests/suite.json. A test file in no category, in two, or listed but gone
 stops the run before any test starts, so a new test file cannot be left out of the report
@@ -74,12 +75,60 @@ def git(*args: str) -> str:
         return "unknown"
 
 
-def run_pytest(files: list[str], junit: Path) -> tuple[int, float]:
-    command = [sys.executable, "-m", "pytest", "-q", "-p", "no:logging", "-o", "junit_family=xunit1",
-               f"--junitxml={junit}", *files]
+#: Measured code: the apps and the project package, without the tests, the migrations and this runner.
+COVERAGE_SOURCE = "apps,grama"
+COVERAGE_OMIT = "*/tests/*,*/migrations/*,grama/testsuite.py"
+
+
+def run_pytest(files: list[str], junit: Path, coverage_data: Path | None = None) -> tuple[int, float]:
+    pytest = ["-m", "pytest", "-q", "-p", "no:logging", "-o", "junit_family=xunit1", f"--junitxml={junit}", *files]
+    if coverage_data is None:
+        command = [sys.executable, *pytest]
+    else:
+        command = [sys.executable, "-m", "coverage", "run", f"--data-file={coverage_data}",
+                   f"--source={COVERAGE_SOURCE}", f"--omit={COVERAGE_OMIT}", *pytest]
     started = time.monotonic()
     code = subprocess.run(command, cwd=ROOT).returncode
     return code, time.monotonic() - started
+
+
+def read_coverage(coverage_data: Path) -> dict | None:
+    """coverage's JSON report for the run, or None when coverage is missing or measured nothing."""
+    out = coverage_data.with_suffix(".json")
+    done = subprocess.run([sys.executable, "-m", "coverage", "json", f"--data-file={coverage_data}", "-o", str(out),
+                           "-q"], cwd=ROOT, capture_output=True, text=True)
+    if done.returncode != 0 or not out.exists():
+        return None
+    return json.loads(out.read_text(encoding="utf-8"))
+
+
+def coverage_summary(report: dict) -> dict:
+    """Statements and covered lines per part ("apps/posts", "grama"), the total, and the least covered files."""
+    parts: dict[str, Counter] = defaultdict(Counter)
+    files = []
+    for name, data in report.get("files", {}).items():
+        path = name.replace("\\", "/")
+        segments = path.split("/")
+        part = "/".join(segments[:2]) if segments[0] == "apps" and len(segments) > 2 else segments[0]
+        statements = data["summary"]["num_statements"]
+        covered = data["summary"]["covered_lines"]
+        parts[part]["statements"] += statements
+        parts[part]["covered"] += covered
+        files.append({"file": path, "statements": statements, "covered": covered})
+
+    def percent(covered: int, statements: int) -> float:
+        return round(100 * covered / statements, 1) if statements else 100.0
+
+    rows = {part: {**counts, "percent": percent(counts["covered"], counts["statements"])}
+            for part, counts in sorted(parts.items()) if counts["statements"]}
+    statements = sum(row["statements"] for row in rows.values())
+    covered = sum(row["covered"] for row in rows.values())
+    least = sorted((f for f in files if f["statements"] >= 20),
+                   key=lambda f: (f["covered"] / f["statements"], -f["statements"]))[:10]
+    for f in least:
+        f["percent"] = percent(f["covered"], f["statements"])
+    return {"parts": rows, "total": {"statements": statements, "covered": covered,
+                                     "percent": percent(covered, statements)}, "least_covered": least}
 
 
 def read_junit(junit: Path) -> list[dict]:
@@ -126,7 +175,8 @@ def short(text: str, length: int = 160) -> str:
     return text if len(text) <= length else text[: length - 1] + "…"
 
 
-def write_report(scope: str, config: dict, keys: list[str], results: list[dict], code: int, seconds: float) -> Path:
+def write_report(scope: str, config: dict, keys: list[str], results: list[dict], code: int, seconds: float,
+                 coverage: dict | None = None) -> Path:
     now = datetime.now(IST)
     rows = summarise(config, keys, results)
     totals = Counter()
@@ -161,6 +211,12 @@ def write_report(scope: str, config: dict, keys: list[str], results: list[dict],
         f"| Time | {seconds / 60:.1f} minutes |",
         f"| Tests | {totals['tests']}: {totals['passed']} passed, {totals['failed']} failed, "
         f"{totals['error']} errors, {totals['skipped']} skipped |",
+    ]
+    if coverage:
+        total = coverage["total"]
+        lines.append(f"| Line coverage | **{total['percent']}%** ({total['covered']:,} of {total['statements']:,} "
+                     f"statements in `apps/` and `grama/`, without tests and migrations) |")
+    lines += [
         "",
         "## By category",
         "",
@@ -173,6 +229,16 @@ def write_report(scope: str, config: dict, keys: list[str], results: list[dict],
             f"| {category['title']} (`{key}`) | {len(category['files'])} | {row['tests']} | {row['passed']} | "
             f"{row['failed']} | {row['error']} | {row['skipped']} | {row['seconds']:.0f} |"
         )
+    if coverage:
+        lines += ["", "## Line coverage", "",
+                  "Measured with coverage.py over this run" + ("" if scope == "all" else " (one category only, so lower)")
+                  + ".", "", "| Part | Statements | Covered | % |", "|---|---:|---:|---:|"]
+        lines += [f"| `{part}` | {row['statements']:,} | {row['covered']:,} | {row['percent']} |"
+                  for part, row in coverage["parts"].items()]
+        total = coverage["total"]
+        lines += [f"| **Total** | **{total['statements']:,}** | **{total['covered']:,}** | **{total['percent']}** |",
+                  "", "Least covered files (20 statements or more):", "", "| File | Statements | % |", "|---|---:|---:|"]
+        lines += [f"| `{f['file']}` | {f['statements']} | {f['percent']} |" for f in coverage["least_covered"]]
     lines += ["", "## Failures", ""]
     lines += [f"- `{r['file']}::{r['name']}`: {short(r['message'])}" for r in failures] or ["None."]
     lines += ["", "## Skipped, by reason", ""]
@@ -185,7 +251,7 @@ def write_report(scope: str, config: dict, keys: list[str], results: list[dict],
     stem = REPORTS / f"BE_TESTS_{scope}_{now:%Y-%m-%d_%H-%M-%S}"
     stem.with_suffix(".md").write_text("\n".join(lines), encoding="utf-8")
     stem.with_suffix(".json").write_text(json.dumps(
-        {"meta": meta, "categories": {key: dict(rows[key]) for key in keys}, "tests": results},
+        {"meta": meta, "categories": {key: dict(rows[key]) for key in keys}, "coverage": coverage, "tests": results},
         ensure_ascii=False, indent=1,
     ), encoding="utf-8")
     return stem.with_suffix(".md")
@@ -198,6 +264,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("scope", nargs="?", default="all", help=f"all, or one of: {', '.join(names)}")
     parser.add_argument("--list", action="store_true", help="list the categories")
     parser.add_argument("--check", action="store_true", help="only check that every test file has one category")
+    parser.add_argument("--coverage", action="store_true", help="also measure line coverage (coverage.py)")
     args = parser.parse_args(argv)
 
     if args.list:
@@ -216,11 +283,19 @@ def main(argv: list[str] | None = None) -> int:
 
     keys = names if args.scope == "all" else [args.scope]
     files = sorted(name for key in keys for name in config["categories"][key]["files"])
+    coverage = None
     with tempfile.TemporaryDirectory() as folder:
         junit = Path(folder) / "junit.xml"
-        code, seconds = run_pytest(files, junit)
+        data = Path(folder) / "coverage.data" if args.coverage else None
+        code, seconds = run_pytest(files, junit, data)
         results = read_junit(junit)
-    report = write_report(args.scope, config, keys, results, code, seconds)
+        if data is not None:
+            measured = read_coverage(data)
+            if measured is None:
+                print("Coverage was not measured: is coverage installed (requirements.txt)?", file=sys.stderr)
+            else:
+                coverage = coverage_summary(measured)
+    report = write_report(args.scope, config, keys, results, code, seconds, coverage)
     print(f"\nReport: {report.relative_to(ROOT).as_posix()}")
     return code
 
