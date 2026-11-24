@@ -162,8 +162,9 @@ def short(text: str, length: int = 160) -> str:
 
 
 def write_report(scope: str, config: dict, keys: list[str], results: list[dict], code: int, seconds: float,
-                 coverage: dict | None = None) -> Path:
-    now = datetime.now(IST)
+                 coverage: dict | None = None, started: datetime | None = None) -> Path:
+    """The report's .md and .json; `started` is when the run began (its file name and "Started" line)."""
+    now = started or datetime.now(IST)
     rows = summarise(config, keys, results)
     totals = Counter()
     for row in rows.values():
@@ -270,6 +271,7 @@ def main(argv: list[str] | None = None) -> int:
     keys = names if args.scope == "all" else [args.scope]
     files = sorted(name for key in keys for name in config["categories"][key]["files"])
     coverage = None
+    started = datetime.now(IST)
     with tempfile.TemporaryDirectory() as folder:
         outcomes = Path(folder) / "results.json"
         data = Path(folder) / "coverage.data" if args.coverage else None
@@ -281,7 +283,7 @@ def main(argv: list[str] | None = None) -> int:
                 print("Coverage was not measured: is coverage installed (requirements.txt)?", file=sys.stderr)
             else:
                 coverage = coverage_summary(measured)
-    report = write_report(args.scope, config, keys, results, code, seconds, coverage)
+    report = write_report(args.scope, config, keys, results, code, seconds, coverage, started)
     print(f"\nReport: {report.relative_to(ROOT).as_posix()}")
     return code
 

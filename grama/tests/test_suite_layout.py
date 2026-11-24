@@ -76,6 +76,18 @@ def test_the_plugin_splits_file_and_name_and_adds_up_the_time():
                                "outcome": "passed", "message": ""}
 
 
+def test_the_report_shows_when_the_run_started_not_when_it_ended(monkeypatch, tmp_path):
+    from datetime import datetime
+
+    monkeypatch.setattr(testsuite, "REPORTS", tmp_path)
+    started = datetime(2026, 11, 24, 11, 51, 0, tzinfo=testsuite.IST)
+    result = {"file": "grama/tests/test_y.py", "name": "test_z", "seconds": 480.0, "outcome": "passed", "message": ""}
+    report = testsuite.write_report("security", testsuite.load_config(), ["security"], [result], 0, 480.0,
+                                    started=started)
+    assert report.name == "BE_TESTS_security_2026-11-24_11-51-00.md"
+    assert "| Started | 2026-11-24 11:51:00 IST |" in report.read_text(encoding="utf-8")
+
+
 def test_a_new_file_without_a_category_is_reported(monkeypatch):
     real = testsuite.test_files()
     monkeypatch.setattr(testsuite, "test_files", lambda: real | {"apps/posts/tests/test_brand_new.py"})
