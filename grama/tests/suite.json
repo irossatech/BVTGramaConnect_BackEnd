@@ -1,0 +1,198 @@
+{
+  "about": "Backend test suite (audit stage S6, BVTGC-17). Every test file belongs to exactly one category; python -m grama.testsuite refuses to run while one does not. Run: python -m grama.testsuite all | <category> | --list | --check.",
+  "categories": {
+    "permissions": {
+      "title": "Permissions and areas",
+      "about": "Every group x permission x area, ranks, privilege escalation, who sees which post",
+      "files": [
+        "apps/accounts/tests/test_authz.py",
+        "apps/accounts/tests/test_escalation.py",
+        "apps/accounts/tests/test_matrix.py",
+        "apps/accounts/tests/test_me.py",
+        "apps/accounts/tests/test_super_admin_peers.py",
+        "apps/accounts/tests/test_sync_admin.py",
+        "apps/accounts/tests/test_user_permissions.py",
+        "apps/contacts/tests/test_access.py",
+        "apps/posts/tests/test_access.py",
+        "apps/posts/tests/test_area_posts_visible.py",
+        "apps/posts/tests/test_audience.py",
+        "apps/service_requests/tests/test_temporary_password_holder.py"
+      ]
+    },
+    "auth": {
+      "title": "Login, sessions and passwords",
+      "about": "App JWT and console session login, token version, lockout, password rules, usernames",
+      "files": [
+        "apps/accounts/tests/test_auth.py",
+        "apps/accounts/tests/test_lockout_hash.py",
+        "apps/accounts/tests/test_password_length.py",
+        "apps/accounts/tests/test_tokens.py",
+        "apps/accounts/tests/test_username_spaces.py"
+      ]
+    },
+    "posts": {
+      "title": "Posts, review, feed and sharing",
+      "about": "Status changes, first decision wins, reverse, media, translation, the citizen feed, share links",
+      "files": [
+        "apps/feed/tests/test_feed.py",
+        "apps/feed/tests/test_feed_owner_decisions.py",
+        "apps/posts/tests/test_app_config.py",
+        "apps/posts/tests/test_backfill_medium.py",
+        "apps/posts/tests/test_client_ref.py",
+        "apps/posts/tests/test_first_decision_race.py",
+        "apps/posts/tests/test_media_cleanup.py",
+        "apps/posts/tests/test_media_escalation.py",
+        "apps/posts/tests/test_media_time_limits.py",
+        "apps/posts/tests/test_owner_decisions.py",
+        "apps/posts/tests/test_posts_source_counts.py",
+        "apps/posts/tests/test_runtime_cache.py",
+        "apps/posts/tests/test_super_admin_reverse.py",
+        "apps/posts/tests/test_transitions.py",
+        "apps/posts/tests/test_translation.py",
+        "apps/posts/tests/test_video_metadata.py",
+        "apps/share/tests/test_share.py"
+      ]
+    },
+    "citizens": {
+      "title": "Citizens and service requests",
+      "about": "Registration, posting token, daily limits, blocks, citizen review, service requests and cancel",
+      "files": [
+        "apps/citizens/tests/test_blocked_citizens.py",
+        "apps/citizens/tests/test_blocked_posts.py",
+        "apps/citizens/tests/test_client_ref.py",
+        "apps/citizens/tests/test_media_budget.py",
+        "apps/citizens/tests/test_posting.py",
+        "apps/citizens/tests/test_registration.py",
+        "apps/citizens/tests/test_review.py",
+        "apps/citizens/tests/test_videos.py",
+        "apps/service_requests/tests/test_citizen_cancel.py",
+        "apps/service_requests/tests/test_client_ref.py",
+        "apps/service_requests/tests/test_old_requests_listed.py",
+        "apps/service_requests/tests/test_own_install.py",
+        "apps/service_requests/tests/test_service_requests.py",
+        "apps/service_requests/tests/test_services.py"
+      ]
+    },
+    "privacy": {
+      "title": "Privacy and audit log",
+      "about": "No passwords, tokens, full mobiles or emails in the audit log or the server log; audit written with its change",
+      "files": [
+        "apps/accounts/tests/test_audit_privacy.py",
+        "apps/accounts/tests/test_users_contact_masking.py",
+        "apps/audit/tests/test_audit.py",
+        "apps/audit/tests/test_audit_atomic.py",
+        "apps/audit/tests/test_audit_window.py",
+        "apps/audit/tests/test_mask_migration.py",
+        "apps/audit/tests/test_record_limits.py",
+        "apps/audit/tests/test_record_safety_net.py",
+        "apps/web_public/tests/test_message_label.py",
+        "grama/tests/test_log_leak.py"
+      ]
+    },
+    "notifications": {
+      "title": "Notifications and background jobs",
+      "about": "Push and inbox, retries, escalation, housekeeping, the worker",
+      "files": [
+        "apps/notifications/tests/test_api.py",
+        "apps/notifications/tests/test_delivery.py",
+        "apps/notifications/tests/test_glossary_migration.py",
+        "apps/notifications/tests/test_notifications.py",
+        "apps/notifications/tests/test_push_production.py",
+        "apps/notifications/tests/test_scheduled_retry.py",
+        "apps/notifications/tests/test_super_admin_added.py",
+        "apps/notifications/tests/test_topic_job_budget.py",
+        "apps/posts/tests/test_escalation_batches.py",
+        "grama/tests/test_health_worker.py",
+        "grama/tests/test_housekeeping.py",
+        "grama/tests/test_housekeeping_batches.py",
+        "grama/tests/test_notification_retention.py",
+        "grama/tests/test_queue_poll.py"
+      ]
+    },
+    "content": {
+      "title": "Areas, numbers, ads, bills and data commands",
+      "about": "Geography writes and imports, important numbers, banners, bills, Telugu name suggestions, seed commands",
+      "files": [
+        "apps/accounts/tests/test_load_demo_area.py",
+        "apps/accounts/tests/test_seed.py",
+        "apps/ads/tests/test_ads.py",
+        "apps/ads/tests/test_video_ads.py",
+        "apps/bills/tests/test_bills.py",
+        "apps/contacts/tests/test_admin.py",
+        "apps/contacts/tests/test_import.py",
+        "apps/contacts/tests/test_phones.py",
+        "apps/contacts/tests/test_public.py",
+        "apps/contacts/tests/test_type_delete.py",
+        "apps/geography/tests/test_api.py",
+        "apps/geography/tests/test_coordinates.py",
+        "apps/geography/tests/test_data_fixes.py",
+        "apps/geography/tests/test_import.py",
+        "apps/geography/tests/test_nearest.py",
+        "apps/geography/tests/test_writes.py",
+        "apps/web_admin/tests/test_transliterate.py"
+      ]
+    },
+    "performance": {
+      "title": "Query counts",
+      "about": "Fixed numbers of queries per page or job, whatever the rows (N+1 guards)",
+      "files": [
+        "apps/audit/tests/test_audit_queries.py",
+        "apps/citizens/tests/test_phone_summary.py",
+        "apps/contacts/tests/test_import_cost.py",
+        "apps/feed/tests/test_media_count.py",
+        "apps/notifications/tests/test_fan_out_cost.py",
+        "apps/posts/tests/test_list_counts_once.py",
+        "apps/service_requests/tests/test_list_queries.py",
+        "apps/web_admin/tests/test_admin_activity_paging.py",
+        "apps/web_admin/tests/test_report_cost.py",
+        "apps/web_admin/tests/test_report_queries.py"
+      ]
+    },
+    "database": {
+      "title": "Races, database differences and data migrations",
+      "about": "Requests arriving together, SQLite versus MySQL and PostgreSQL behaviour, data steps",
+      "files": [
+        "apps/accounts/tests/test_super_admin_race.py",
+        "apps/citizens/tests/test_block_atomic.py",
+        "apps/citizens/tests/test_block_migrations.py",
+        "apps/share/tests/test_share_code_any_database.py",
+        "grama/tests/test_engine_differences.py",
+        "grama/tests/test_key_clash.py",
+        "grama/tests/test_limits_under_concurrency.py",
+        "grama/tests/test_small_races.py"
+      ]
+    },
+    "api": {
+      "title": "API shape, errors and the contract",
+      "about": "Error shape, 400/404 instead of 500, contract and schema, languages, request id, console and website API, the suite's own categories",
+      "files": [
+        "apps/geography/tests/test_schema.py",
+        "apps/web_admin/tests/test_console_api.py",
+        "apps/web_public/tests/test_contact_message_counts.py",
+        "apps/web_public/tests/test_contact_messages_window.py",
+        "apps/web_public/tests/test_public_api.py",
+        "apps/web_public/tests/test_showcase_and_console.py",
+        "grama/tests/test_api_contract.py",
+        "grama/tests/test_bad_input.py",
+        "grama/tests/test_cache_headers.py",
+        "grama/tests/test_errors_and_races.py",
+        "grama/tests/test_i18n.py",
+        "grama/tests/test_project.py",
+        "grama/tests/test_request_id.py",
+        "grama/tests/test_schema.py",
+        "grama/tests/test_suite_layout.py",
+        "grama/tests/test_village_not_found.py"
+      ]
+    },
+    "security": {
+      "title": "Security settings and server safety",
+      "about": "Settings fail safe, Django admin off on servers, security gap fixes, sample data refused on servers",
+      "files": [
+        "apps/accounts/tests/test_server_guard.py",
+        "grama/tests/test_django_admin_off.py",
+        "grama/tests/test_security_gaps.py",
+        "grama/tests/test_settings_safety.py"
+      ]
+    }
+  }
+}

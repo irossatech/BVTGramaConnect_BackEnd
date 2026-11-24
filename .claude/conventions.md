@@ -51,6 +51,7 @@
 - Every permission rule gets a test, including the "outside the area" case. Follow the matrix style in `apps/accounts/tests/test_matrix.py` (every group × every permission × the same area, the parent, a sibling and another district) and `apps/posts/tests/test_access.py`: work out the expected answer in the test from the rules, not by calling the code under test.
 - Shared fixtures are in the root `conftest.py`: a small map (2 districts, 4 mandals, 8 villages) and one official per role and area (`world`, `api`). Put app-only fixtures in that app's `tests/conftest.py`.
 - Push is checked with the `push_outbox` fixture in `apps/notifications/tests/conftest.py`.
+- Every new test file goes into one category of `grama/tests/suite.json` (permissions, auth, posts, citizens, privacy, notifications, content, performance, database, api, security); `grama/tests/test_suite_layout.py` fails until it does. `python -m grama.testsuite all` runs the suite by category and writes a report to `test-reports/`.
 
 ## API changes
 

@@ -28,6 +28,7 @@ Linux or macOS: the same with `python3 -m venv .venv` and `source .venv/bin/acti
 | Task | Command |
 |---|---|
 | Tests | `python -m pytest -q -p no:logging` |
+| Tests by category, with a report | `python -m grama.testsuite all` (or one category; `--list`, `--check`). Writes `test-reports/BE_TESTS_<scope>_<date>.md` and `.json` (git-ignored) |
 | Missing migrations | `python manage.py makemigrations --check --dry-run` |
 | Telugu messages (after adding or changing a `_()` message) | `python manage.py translations` (updates `locale/te/LC_MESSAGES/django.po`, builds `django.mo`); `--check` only checks. No GNU gettext needed; commit both files |
 | Background worker | `python manage.py qcluster` |
