@@ -32,3 +32,6 @@ build_word_doc.py
 add_business_requirements.py
 *_with_Screenshots.docx
 swagger_screens/
+
+# Test suite reports (python -m grama.testsuite), local only
+test-reports/
