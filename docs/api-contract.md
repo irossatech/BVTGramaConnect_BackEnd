@@ -873,7 +873,7 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 |---|---|
 | Splash, language, welcome | none; `GET /categories` and geography warm the cache |
 | Location step | `GET /geo/nearest?lat=&lng=` (section 4), then the picker if needed |
-| Change village | `GET /geo/states`, `/geo/districts`, `/geo/mandals`, `/geo/villages`; `PATCH /devices/{id}` |
+| Change village | `GET /geo/states`, `/geo/districts`, `/geo/mandals`, `/geo/villages`; `PATCH /citizen/me/` (registered phones); push topics follow the new village; `POST /devices/` registers the push token, `DELETE /devices/{id}/` unlinks it at logout |
 | Citizen home | the first page of `GET /feed`, with `GET /feed/urgent` and `GET /feed/upcoming` |
 | News deck, videos | `GET /feed` with `category` or `has_video=1` |
 | Post detail | `GET /feed/posts/{id}` |
@@ -921,7 +921,7 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Posts and moderation | `GET /posts` with `status_counts`, `GET /posts/{id}`, `GET /posts/{id}/history`, `POST /posts/{id}/review`, `GET /categories` for the filter |
 | Reports | `GET /admin/reports/*` and their exports |
 | Audit log | `GET /audit`, `GET /audit/export` |
-| Settings | `/admin/settings`, `/admin/categories`, `/admin/notification-templates` |
+| Settings | `/admin/settings`, `/admin/categories` (list, edit, and `POST` for "Add category", web build of 2026-11-23), `/admin/notification-templates` |
 | Contact messages | `GET /admin/contact-messages` (full rows: the owner's decision of 2026-11-17 to show the mobile and message in the table; `contact=0` from WEB-DP-001 is no longer sent), `GET /admin/contact-messages/{id}` (View), `PATCH /admin/contact-messages/{id}` |
 | Important numbers | `GET /admin/contacts` (area and helpline tabs), `POST /admin/contacts`, `PATCH /admin/contacts/{id}`, `DELETE /admin/contacts/{id}`, `POST /admin/contacts/import`; types: `/admin/contact-types` |
 | Service requests | `GET /service-requests/`, `GET /service-requests/{id}/`, `PATCH /service-requests/{id}/`; assignees from `GET /users/` (shown to holders of `service_requests.view_service_requests`) |
@@ -939,6 +939,19 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | All pages | `GET /app-config/` (the languages switched on). `GET /public/site-config/` is no longer called (since 2026-11-07); the app still uses it |
 | Home phone mockup | `GET /public/showcase` |
 | Contact | `POST /public/contact-messages` |
+
+### Endpoints no client calls (BVTGC-77, 2026-11-23)
+
+Kept on purpose (backend team's decision on audit CROSS-API-108): each checks its permission and has tests, and an older app build installed from the website may still call one. Do not remove one without the app-version check of BVTGC-25 showing no old build uses it.
+
+| Endpoint | Instead the clients use |
+|---|---|
+| `GET /review/queue/` | `GET /posts/?status=PENDING` (with `source=official\|citizen` tabs) |
+| `GET /admin/contacts/targets/` | the `/geo/*` lists to pick areas |
+| `PATCH /devices/{id}/` | `PATCH /citizen/me/` for the village and language; `POST /devices/` again for a new push token |
+| `GET /admin/contacts/{id}/` | the rows of `GET /admin/contacts/` |
+| `GET /admin/ads/{id}/` | the rows of `GET /admin/ads/` |
+| `GET /health/` | uptime checks and the deploy scripts only |
 
 ---
 
