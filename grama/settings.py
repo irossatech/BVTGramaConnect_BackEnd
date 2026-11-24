@@ -421,6 +421,22 @@ SIMPLE_JWT = {
 JWT_ABSOLUTE_DAYS = env.int("JWT_ABSOLUTE_DAYS", default=90)
 if JWT_ABSOLUTE_DAYS < 0:
     raise ImproperlyConfigured("JWT_ABSOLUTE_DAYS must be 0 (no limit) or more.")
+
+# App updates (BVTGC-90 / BVTGC-25), sent in GET /app-config/. Values are app versions such as
+# "1.0.0+24"; the app compares only the build number after the "+". Empty = no prompt (the default).
+# APP_LATEST_VERSION: older apps show "Update available" (with Later). APP_MIN_VERSION: older apps show
+# a blocking "Please update the app" screen; raise it only after the new APK is on the website.
+APP_LATEST_VERSION = env.str("APP_LATEST_VERSION", default="").strip()
+APP_MIN_VERSION = env.str("APP_MIN_VERSION", default="").strip()
+_APP_VERSION = re.compile(r"\d+(\.\d+)*\+(\d+)")
+for _name in ("APP_LATEST_VERSION", "APP_MIN_VERSION"):
+    if globals()[_name] and not _APP_VERSION.fullmatch(globals()[_name]):
+        # A slip would only hide the prompt in the app; refusing to start makes it visible at deploy.
+        raise ImproperlyConfigured(f"{_name} must look like 1.0.0+24 (a version with its build number), or be empty.")
+if APP_LATEST_VERSION and APP_MIN_VERSION and (
+    int(_APP_VERSION.fullmatch(APP_MIN_VERSION).group(2)) > int(_APP_VERSION.fullmatch(APP_LATEST_VERSION).group(2))
+):
+    raise ImproperlyConfigured("APP_MIN_VERSION cannot have a higher build number than APP_LATEST_VERSION.")
  
 SPECTACULAR_SETTINGS = {
     "TITLE": "BVT Grama Connect API",

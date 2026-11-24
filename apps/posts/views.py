@@ -1,5 +1,6 @@
 """Posts API: docs/api-contract.md, sections 5 and 10."""
 
+from django.conf import settings
 from django.db import transaction
 from django.db.models import BooleanField, Case, Count, Prefetch, Q, Value, When
 from django.shortcuts import get_object_or_404
@@ -84,7 +85,8 @@ class CategoryListView(generics.ListAPIView):
 
 @method_decorator(cache_control(public=True, max_age=300), name="dispatch")
 class AppConfigView(APIView):
-    """What the apps need before login: the languages the Super Admin left on (contract section 5).
+    """What the apps need before login: the languages the Super Admin left on, and the app update
+    rules min_version / latest_version from the server's settings (contract section 5, BVTGC-90).
 
     Only these: escalation hours and the citizens' daily limit stay Super Admin only. No login, and a
     stale token is ignored, like /categories/. max-age 300: a switch reaches phones within 5 minutes.
@@ -94,11 +96,25 @@ class AppConfigView(APIView):
     authentication_classes: list = []
 
     @extend_schema(
-        summary="Public app settings: the languages switched on",
-        responses=inline_serializer("AppConfig", {"languages": serializers.DictField(child=serializers.BooleanField())}),
+        summary="Public app settings: the languages switched on, and the app update rules",
+        responses=inline_serializer(
+            "AppConfig",
+            {
+                "languages": serializers.DictField(child=serializers.BooleanField()),
+                "min_version": serializers.CharField(allow_null=True),
+                "latest_version": serializers.CharField(allow_null=True),
+            },
+        ),
     )
     def get(self, request):
-        return Response({"languages": {"te": True, "en": bool(services.runtime("LANGUAGE_EN_ENABLED"))}})
+        return Response(
+            {
+                "languages": {"te": True, "en": bool(services.runtime("LANGUAGE_EN_ENABLED"))},
+                # App updates (BVTGC-90): "1.0.0+24" or null; the app compares the build numbers only.
+                "min_version": settings.APP_MIN_VERSION or None,
+                "latest_version": settings.APP_LATEST_VERSION or None,
+            }
+        )
 
 
 class AdminCategoryViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, mixins.UpdateModelMixin, viewsets.GenericViewSet):

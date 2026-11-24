@@ -616,7 +616,7 @@ What the apps read before login:
 
 | Method and path | Who | Response |
 |---|---|---|
-| `GET /app-config` | public, no login (a stale token is ignored) | `{"languages": {"te": true, "en": bool}}`. `Cache-Control: public, max-age=300`, so a switch reaches phones within 5 minutes. Only the language switch: escalation hours and the daily limit stay Super Admin only. The app hides its language switch while `en` is `false`. |
+| `GET /app-config` | public, no login (a stale token is ignored) | `{"languages": {"te": true, "en": bool}, "min_version": "1.0.0+22"\|null, "latest_version": "1.0.0+24"\|null}`. `Cache-Control: public, max-age=300`, so a switch reaches phones within 5 minutes. Only these: escalation hours and the daily limit stay Super Admin only. The app hides its language switch while `en` is `false`. **App updates (BVTGC-90, 2026-11-24):** `min_version` and `latest_version` come from the server settings `APP_MIN_VERSION` and `APP_LATEST_VERSION` (`null` when not set, the default). The app compares only the **build number** after the `+` with its own: below `min_version` a blocking "Please update the app" screen; below `latest_version` an "Update available" note with Later; the download is the website APK. A missing or `null` field shows nothing. The server refuses to start with a value that has no build number, or a minimum above the latest. Raise `APP_MIN_VERSION` only after the new APK is on the website, and after the dashboard's `app_versions` shows few old installs. The app also sends its version in the header `X-App-Version: 1.0.0+21` on every call (optional; the server reads the version from `POST /devices/` and `POST /citizen/register/`). |
 
 ---
 
@@ -762,10 +762,11 @@ Needs `web_admin.view_dashboard`.
   },
   "posts_per_day": [{"date": "2026-10-01", "submitted": 6, "published": 5}],
   "pending_by_district": [{"district": Area, "pending": 12, "oldest_pending_hours": 26.0}],
-  "recent_activity": [AuditEntry]
+  "recent_activity": [AuditEntry],
+  "app_versions": [{"version": "1.0.0+24", "phones": 310}, {"version": "", "phones": 95}]
 }
 ```
-Built (web_admin app). Also returns `"escalation_hours"` (the effective setting). Drafts are not counted. `posts_per_day` covers the last 14 days, bucketed by Asia/Kolkata date in Python, so no database time-zone functions are needed. Each `pending_by_district` row also has `name_te`; `oldest_pending_hours` is null when nothing is pending. `active_admins` counts active users holding a District, Mandal or Village Admin role. `recent_activity` holds 6 entries; the app shows 5.
+Built (web_admin app). Also returns `"escalation_hours"` (the effective setting). `app_versions` (BVTGC-90): phones that registered for push in the last 30 days, by the `app_version` they sent, newest build first; `""` is builds from before the app sent it. Use it before raising `APP_MIN_VERSION`. Drafts are not counted. `posts_per_day` covers the last 14 days, bucketed by Asia/Kolkata date in Python, so no database time-zone functions are needed. Each `pending_by_district` row also has `name_te`; `oldest_pending_hours` is null when nothing is pending. `active_admins` counts active users holding a District, Mandal or Village Admin role. `recent_activity` holds 6 entries; the app shows 5.
 
 ### Reports (Super Admin)
 
@@ -895,7 +896,7 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Super Admin: all posts | `GET /posts` with `status_counts`; `POST /posts` only if allowed |
 | Super Admin: areas | `GET /geo/*?include_inactive=1&with_counts=1`, geography writes |
 | Super Admin: reports, audit, settings | `GET /admin/reports/*`, `GET /audit`, `/admin/settings`, `/admin/categories`, `/admin/notification-templates` |
-| App start | `POST /devices`; `GET /app-config` (the languages switched on) |
+| App start | `POST /devices` (with `app_version`); `GET /app-config` (the languages switched on, and `min_version` / `latest_version` for the update screen) |
 | Contacts tab (citizens) | `GET /contacts?village_id=`; `GET /contact-types` for chips and icons |
 | Citizen: first post (once per install) | `POST /citizen/challenge/`, Play Integrity on the phone, `POST /citizen/register/` |
 | Citizen: write a post, my posts | `POST /citizen/posts/`, `GET /citizen/posts/`, `GET /citizen/me/`; `PATCH /citizen/me/` after a village change |
