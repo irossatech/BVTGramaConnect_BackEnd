@@ -404,6 +404,8 @@ class SettingsSerializer(serializers.Serializer):
     languages = serializers.DictField(child=serializers.BooleanField())
     #: Posts one citizen phone may send in 24 hours; 0 is no limit (contract section 15).
     citizen_posts_per_day = serializers.IntegerField(min_value=0, max_value=1000)
+    #: Banners a citizen's Home shows, newest first; 0 is no limit (BVTGC-92).
+    ads_banner_limit = serializers.IntegerField(min_value=0, max_value=1000)
     admin_posts_auto_publish = serializers.BooleanField(read_only=True)
     review_first_decision_wins = serializers.BooleanField(read_only=True)
     super_admin_can_post = serializers.BooleanField(read_only=True)

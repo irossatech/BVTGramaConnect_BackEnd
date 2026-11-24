@@ -607,19 +607,20 @@ What `POST /posts` does:
   "review_escalation_hours": 24,
   "languages": {"te": true, "en": true},
   "citizen_posts_per_day": 5,
+  "ads_banner_limit": 0,
   "admin_posts_auto_publish": true,
   "review_first_decision_wins": true,
   "super_admin_can_post": true
 }
 ```
 - Values start from Django settings and environment variables, as CLAUDE.md defines. A value saved here overrides the default and is audited as `setting.changed`.
-- Editable: `review_escalation_hours` (6 to 168), `languages.en`, and `citizen_posts_per_day` (0 to 1000, 0 is no limit; section 15). Telugu cannot be switched off. The other three are read-only here.
+- Editable: `review_escalation_hours` (6 to 168), `languages.en`, `citizen_posts_per_day` (0 to 1000, 0 is no limit; section 15), and `ads_banner_limit` (0 to 1000): the banners a citizen's Home shows, newest first; **0 is no limit, the default** (owner's decision of 2026-11-24, BVTGC-92; section 17). Phones follow a change within about 5 minutes (`ads/` and `app-config/` are cached 300 s). Telugu cannot be switched off. The other three are read-only here.
 
 What the apps read before login:
 
 | Method and path | Who | Response |
 |---|---|---|
-| `GET /app-config` | public, no login (a stale token is ignored) | `{"languages": {"te": true, "en": bool}, "min_version": "1.0.0+22"\|null, "latest_version": "1.0.0+24"\|null, "topic_prefix": "qa_"\|""}`. `Cache-Control: public, max-age=300`, so a switch reaches phones within 5 minutes. Only these: escalation hours and the daily limit stay Super Admin only. The app hides its language switch while `en` is `false`. **App updates (BVTGC-90, 2026-11-24):** `min_version` and `latest_version` come from the server settings `APP_MIN_VERSION` and `APP_LATEST_VERSION` (`null` when not set, the default). The app compares only the **build number** after the `+` with its own: below `min_version` a blocking "Please update the app" screen; below `latest_version` an "Update available" note with Later; the download is the website APK. A missing or `null` field shows nothing. The server refuses to start with a value that has no build number, or a minimum above the latest. Raise `APP_MIN_VERSION` only after the new APK is on the website, and after the dashboard's `app_versions` shows few old installs. **Push topics (BVTGC-69):** `topic_prefix` is this server's `FCM_TOPIC_PREFIX` (`"qa_"` on qa, `""` in production); the app subscribes to its area topics with it (section 7). The app also sends its version in the header `X-App-Version: 1.0.0+21` on every call (optional; the server reads the version from `POST /devices/` and `POST /citizen/register/`). |
+| `GET /app-config` | public, no login (a stale token is ignored) | `{"languages": {"te": true, "en": bool}, "min_version": "1.0.0+22"\|null, "latest_version": "1.0.0+24"\|null, "topic_prefix": "qa_"\|"", "ads_banner_limit": 0}`. `Cache-Control: public, max-age=300`, so a switch reaches phones within 5 minutes. Only these: escalation hours and the daily limit stay Super Admin only. The app hides its language switch while `en` is `false`. **App updates (BVTGC-90, 2026-11-24):** `min_version` and `latest_version` come from the server settings `APP_MIN_VERSION` and `APP_LATEST_VERSION` (`null` when not set, the default). The app compares only the **build number** after the `+` with its own: below `min_version` a blocking "Please update the app" screen; below `latest_version` an "Update available" note with Later; the download is the website APK. A missing or `null` field shows nothing. The server refuses to start with a value that has no build number, or a minimum above the latest. Raise `APP_MIN_VERSION` only after the new APK is on the website, and after the dashboard's `app_versions` shows few old installs. **Push topics (BVTGC-69):** `topic_prefix` is this server's `FCM_TOPIC_PREFIX` (`"qa_"` on qa, `""` in production); the app subscribes to its area topics with it (section 7). **Banners (BVTGC-92):** `ads_banner_limit` is the Super Admin's banners-per-Home number (0 = no limit); the app shows at most that many of the banners `ads/` returns. The app also sends its version in the header `X-App-Version: 1.0.0+21` on every call (optional; the server reads the version from `POST /devices/` and `POST /citizen/register/`). |
 
 ---
 
@@ -1356,7 +1357,7 @@ Built (`apps.ads`). The Super Admin makes banner ads in the app (**More → Ads*
 
 | Method and path | Request | Response |
 |---|---|---|
-| `GET /ads/?village_id=` | `village_id` (required) | `[PublicAd]`, newest first, at most `ADS_PUBLIC_LIMIT` (10). `400 validation_error` without a numeric `village_id`; `404 not_found` with `"reason": "village_not_found"` for an unknown or inactive village (as `/contacts/`). `Cache-Control: public, max-age=300` (`ADS_PUBLIC_MAX_AGE`). Ignores any `Authorization` header. |
+| `GET /ads/?village_id=` | `village_id` (required) | `[PublicAd]`, newest first: at most `ads_banner_limit` of them (the Super Admin's setting, `PATCH /admin/settings/`), or all of them when it is 0, the default (BVTGC-92). `ADS_PUBLIC_LIMIT` in `.env` is only the starting value. `400 validation_error` without a numeric `village_id`; `404 not_found` with `"reason": "village_not_found"` for an unknown or inactive village (as `/contacts/`). `Cache-Control: public, max-age=300` (`ADS_PUBLIC_MAX_AGE`). Ignores any `Authorization` header. |
 
 ```jsonc
 // PublicAd: only what the banner needs

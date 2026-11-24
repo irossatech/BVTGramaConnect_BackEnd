@@ -259,7 +259,10 @@ def test_the_public_shape_has_only_the_banners_fields(api, world, media_root):
     assert row["image"].startswith("http://testserver/media/ads/")
 
 
-def test_at_most_ten_ads_newest_first(api, world, media_root):
+def test_a_starting_limit_from_env_shows_the_newest_first(api, world, media_root, settings):
+    # BVTGC-92: no limit by default; ADS_PUBLIC_LIMIT in .env is only the starting value, and the Super
+    # Admin's ads_banner_limit replaces it (apps/ads/tests/test_banner_limit.py).
+    settings.ADS_PUBLIC_LIMIT = 10
     for index in range(12):
         create(api, world, title=f"ad {index:02d}", image=banner(size=(800, 450)))
     assert shown(world) == [f"ad {index:02d}" for index in range(11, 1, -1)]

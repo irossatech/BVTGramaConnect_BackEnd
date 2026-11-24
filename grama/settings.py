@@ -602,7 +602,11 @@ ADS_MIN_WIDTH_PX = env.int("ADS_MIN_WIDTH_PX", default=800)
 ADS_IMAGE_MAX_PX = env.int("ADS_IMAGE_MAX_PX", default=1600)
 ADS_VIDEO_MAX_MB = env.int("ADS_VIDEO_MAX_MB", default=60)
 ADS_VIDEO_MAX_SECONDS = env.int("ADS_VIDEO_MAX_SECONDS", default=0)
-ADS_PUBLIC_LIMIT = env.int("ADS_PUBLIC_LIMIT", default=10)
+# Banners a citizen's Home shows, newest first: 0 = no limit (owner's decision of 2026-11-24, BVTGC-92),
+# N = at most N. The Super Admin changes it in Settings (ads_banner_limit); this is only the starting value.
+ADS_PUBLIC_LIMIT = env.int("ADS_PUBLIC_LIMIT", default=0)
+if ADS_PUBLIC_LIMIT < 0:
+    raise ImproperlyConfigured("ADS_PUBLIC_LIMIT must be 0 (no limit) or more.")
 ADS_PUBLIC_MAX_AGE = env.int("ADS_PUBLIC_MAX_AGE", default=300)
  
 SITE_HELPLINES = env.json(
