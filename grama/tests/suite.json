@@ -24,6 +24,7 @@
       "about": "App JWT and console session login, token version, lockout, password rules, usernames",
       "files": [
         "apps/accounts/tests/test_auth.py",
+        "apps/accounts/tests/test_lockout_backup_answer.py",
         "apps/accounts/tests/test_lockout_hash.py",
         "apps/accounts/tests/test_password_length.py",
         "apps/accounts/tests/test_tokens.py",
