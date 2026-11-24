@@ -259,10 +259,17 @@ def test_the_public_shape_has_only_the_banners_fields(api, world, media_root):
     assert row["image"].startswith("http://testserver/media/ads/")
 
 
-def test_at_most_ten_ads_newest_first(api, world, media_root):
+def test_every_running_ad_is_shown_newest_first(api, world, media_root):
+    """No cap since 2026-11-23 (BVTGC-80): before, only the newest 10 came back. 12 here, more than that."""
     for index in range(12):
-        create(api, world, title=f"ad {index:02d}", image=banner(size=(800, 450)))
-    assert shown(world) == [f"ad {index:02d}" for index in range(11, 1, -1)]
+        create(api, world, title=f"ad {index:02d}", image=banner(size=(800, 450)), area="ap" if index % 2 else "tenali")
+    create(api, world, title="switched off", image=banner(size=(800, 450)), is_active="false")
+    create(api, world, title="another mandal", image=banner(size=(800, 450)), area="mangalagiri")
+    assert shown(world) == [f"ad {index:02d}" for index in range(11, -1, -1)]
+
+
+def test_the_ads_limit_setting_is_gone(settings):
+    assert not hasattr(settings, "ADS_PUBLIC_LIMIT")
 
 
 def test_public_list_needs_an_active_village(world):

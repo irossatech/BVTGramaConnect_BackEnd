@@ -602,7 +602,8 @@ ADS_MIN_WIDTH_PX = env.int("ADS_MIN_WIDTH_PX", default=800)
 ADS_IMAGE_MAX_PX = env.int("ADS_IMAGE_MAX_PX", default=1600)
 ADS_VIDEO_MAX_MB = env.int("ADS_VIDEO_MAX_MB", default=60)
 ADS_VIDEO_MAX_SECONDS = env.int("ADS_VIDEO_MAX_SECONDS", default=0)
-ADS_PUBLIC_LIMIT = env.int("ADS_PUBLIC_LIMIT", default=10)
+# No ADS_PUBLIC_LIMIT since 2026-11-23 (BVTGC-80): a village's Home shows every running ad. A leftover
+# line in a server's .env is ignored.
 ADS_PUBLIC_MAX_AGE = env.int("ADS_PUBLIC_MAX_AGE", default=300)
  
 SITE_HELPLINES = env.json(

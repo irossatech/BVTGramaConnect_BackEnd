@@ -975,7 +975,7 @@ Kept on purpose (backend team's decision on audit CROSS-API-108): each checks it
 | Checking uploads | per step `VIDEO_PROBE_TIMEOUT_S` 15, `VIDEO_POSTER_TIMEOUT_S` 20, `VIDEO_STRIP_TIMEOUT_S` 45 (over: `415`); per request `MEDIA_PROCESSING_BUDGET_S` 90 (over: `400 validation_error`, nothing stored) |
 | Page size | feed 20, admin lists 100 |
 | Important numbers | 200 active per area (`CONTACTS_MAX_PER_AREA`); name 150, custom type 40 characters; CSV import 2 MB and 5,000 rows |
-| Home banner ads | Image at most 5 MB and at least 800 px wide, stored at most 1600 px; title 80, link 500 characters; at most 10 per village's Home |
+| Home banner ads | Image at most 5 MB and at least 800 px wide, stored at most 1600 px; title 80, link 500 characters; a village's Home shows every running ad, no cap (since 2026-11-23) |
 | Service requests | 10 per phone in 24 hours (`SERVICE_REQUESTS_PER_DAY`, 0 is no limit); name 100, address 5–300, details 500 characters |
 | Services | name 2–60 characters (unique, any case); `icon` and `color` from the lists in section 16; logo JPEG, PNG or WebP, at most 2 MB, at least 64 px a side, stored at most 256 px |
 | Citizen posts | 5 posts per phone in 24 hours (the Super Admin changes it in Settings; 0 is no limit); up to 3 photos (`MAX_PHOTOS_PER_POST`) or one video per post, never both; each photo at most `MAX_IMAGE_UPLOAD_MB` (10), the video at most `MAX_VIDEO_UPLOAD_MB` (60) and `VIDEO_MAX_SECONDS` (60 s); no limit on new phones (switchable: `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY`) |
@@ -1356,7 +1356,7 @@ Built (`apps.ads`). The Super Admin makes banner ads in the app (**More → Ads*
 
 | Method and path | Request | Response |
 |---|---|---|
-| `GET /ads/?village_id=` | `village_id` (required) | `[PublicAd]`, newest first, at most `ADS_PUBLIC_LIMIT` (10). `400 validation_error` without a numeric `village_id`; `404 not_found` with `"reason": "village_not_found"` for an unknown or inactive village (as `/contacts/`). `Cache-Control: public, max-age=300` (`ADS_PUBLIC_MAX_AGE`). Ignores any `Authorization` header. |
+| `GET /ads/?village_id=` | `village_id` (required) | `[PublicAd]`: every running ad for the village (switched on, inside its dates, for the village or an area above it), newest first, with no cap (since 2026-11-23, BVTGC-80; before, at most 10). `400 validation_error` without a numeric `village_id`; `404 not_found` with `"reason": "village_not_found"` for an unknown or inactive village (as `/contacts/`). `Cache-Control: public, max-age=300` (`ADS_PUBLIC_MAX_AGE`). Ignores any `Authorization` header. |
 
 ```jsonc
 // PublicAd: only what the banner needs
@@ -1425,7 +1425,6 @@ The app works out "Running", "Scheduled", "Paused" and "Ended" itself from the d
 | `ADS_IMAGE_MAX_PX` | 1600 | Longest side of the stored WebP |
 | `ADS_VIDEO_MAX_MB` | 60 | Largest banner video. The app (`kAdVideoMaxMb`) and the console (`AD_VIDEO_MAX_MB`) have the same number, and Nginx allows 70 MB for `/api/v1/admin/ads/`: change them together |
 | `ADS_VIDEO_MAX_SECONDS` | 0 | Longest banner video in seconds; 0 = any length (owner decision of 2026-11-02, confirmed 2026-11-14: banners have only the 60 MB limit, unlike post videos' 60 s). The apps do not check the length |
-| `ADS_PUBLIC_LIMIT` | 10 | Ads one village's Home shows |
 | `ADS_PUBLIC_MAX_AGE` | 300 | Seconds phones may reuse `/ads/` |
 
 ---

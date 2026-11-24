@@ -204,7 +204,8 @@ def delete(user, ad: Ad) -> None:
 
 
 def for_village(village_id: int) -> QuerySet:
-    """Ads switched on, inside their dates today (India time), for the village or an area above it."""
+    """Every ad switched on, inside its dates today (India time), for the village or an area above it,
+    newest first. No cap: the citizen's Home shows all of them (decision of 2026-11-23, BVTGC-80)."""
     today = timezone.localdate()
     chain = Q(pk__in=[])
     for level, area_id in ancestry(AreaRef(AreaLevel.VILLAGE, village_id)).items():
@@ -213,5 +214,5 @@ def for_village(village_id: int) -> QuerySet:
         Ad.objects.filter(chain, is_active=True)
         .filter(Q(starts_on__isnull=True) | Q(starts_on__lte=today))
         .filter(Q(ends_on__isnull=True) | Q(ends_on__gte=today))
-        .order_by("-created_at", "-id")[: settings.ADS_PUBLIC_LIMIT]
+        .order_by("-created_at", "-id")
     )
