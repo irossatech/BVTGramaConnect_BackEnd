@@ -21,6 +21,10 @@ from apps.geography.models import AreaLevel
 CITIZEN_ROLE = "CITIZEN"
 
 
+def category_icon_path(instance, filename):
+    return f"categories/{filename}"
+
+
 class Category(models.Model):
     key = models.SlugField(max_length=20, unique=True)
     name_te = models.CharField(max_length=60)
@@ -29,6 +33,9 @@ class Category(models.Model):
     short_name_en = models.CharField(max_length=40, blank=True)
     is_active = models.BooleanField(default=True)
     order = models.PositiveSmallIntegerField(default=0)
+    #: Optional icon the Super Admin uploaded, re-encoded as WebP by grama.logos (BVTGC-91).
+    #: Empty: the apps show their own picture for the key, or a default one.
+    icon = models.FileField(upload_to=category_icon_path, max_length=200, blank=True)
 
     class Meta:
         ordering = ["order", "id"]

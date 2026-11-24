@@ -1,6 +1,8 @@
-"""Uploaded logos for lists the Super Admin manages on Home: services and bills.
+"""Uploaded logos for lists the Super Admin manages: services and bills on Home, and post category
+icons (BVTGC-91, field `icon`).
 
     data = process_logo(upload)                 # bytes of a WebP, or 400 on `logo`
+    data = process_logo(upload, field="icon")   # the same, with the error on `icon`
     store_logo(service.logo, service.key, data)  # services/<key>-<random>-256.webp
     delete_after_commit(old_name, Service._meta.get_field("logo").storage)
 
@@ -25,30 +27,30 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from grama.exceptions import ApiError
 
 
-def _logo_error(message) -> ApiError:
-    return ApiError("validation_error", message, fields={"logo": [message]})
+def _logo_error(message, field: str = "logo") -> ApiError:
+    return ApiError("validation_error", message, fields={field: [message]})
 
 
-def process_logo(upload) -> bytes:
-    """The upload as a WebP logo (transparency kept), or 400 on `logo`."""
+def process_logo(upload, field: str = "logo") -> bytes:
+    """The upload as a WebP logo (transparency kept), or 400 on `field`."""
     from apps.posts.media import ALLOWED_FORMATS, MAX_PIXELS
 
     if upload.size > settings.SERVICE_LOGO_MAX_UPLOAD_MB * 1024 * 1024:
-        raise _logo_error(_("The logo can be at most %(mb)d MB.") % {"mb": settings.SERVICE_LOGO_MAX_UPLOAD_MB})
+        raise _logo_error(_("The logo can be at most %(mb)d MB.") % {"mb": settings.SERVICE_LOGO_MAX_UPLOAD_MB}, field)
     not_an_image = _("Upload a JPEG, PNG or WebP image.")
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("error", Image.DecompressionBombWarning)
             image = Image.open(upload)
             if image.format not in ALLOWED_FORMATS or image.width * image.height > MAX_PIXELS:
-                raise _logo_error(not_an_image)
+                raise _logo_error(not_an_image, field)
             image.load()
     except (UnidentifiedImageError, OSError, Image.DecompressionBombError, Image.DecompressionBombWarning):
-        raise _logo_error(not_an_image) from None
+        raise _logo_error(not_an_image, field) from None
     image = ImageOps.exif_transpose(image)
     if min(image.width, image.height) < settings.SERVICE_LOGO_MIN_PX:
         raise _logo_error(
-            _("The logo must be at least %(px)d pixels on each side.") % {"px": settings.SERVICE_LOGO_MIN_PX}
+            _("The logo must be at least %(px)d pixels on each side.") % {"px": settings.SERVICE_LOGO_MIN_PX}, field
         )
     has_alpha = image.mode in ("RGBA", "LA") or (image.mode == "P" and "transparency" in image.info)
     image = image.convert("RGBA" if has_alpha else "RGB")

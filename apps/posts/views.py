@@ -13,7 +13,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import generics, mixins, serializers, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -25,6 +25,7 @@ from apps.audit.services import record
 from apps.citizens import services as citizen_services
 from apps.geography.areas import AreaRef, within_q
 from apps.geography.models import AreaLevel
+from grama import logos
 from grama.pagination import use_known_count
 from grama.exceptions import ApiError, out_of_area, permission_denied
 from grama.params import UUID_REGEX, is_number, uuid_or_none
@@ -34,7 +35,7 @@ from . import services
 from .models import Category, Post, PostMedia, PostStatus, ReviewAction, SettingOverride
 from .serializers import (
     AdminCategorySerializer,
-    CategorySerializer,
+    CategoryListSerializer,
     CitizenBlockSerializer,
     CitizenDiscardAllSerializer,
     MediaSerializer,
@@ -79,7 +80,7 @@ class CategoryListView(generics.ListAPIView):
     permission_classes = [AllowAny]
     authentication_classes: list = []
     pagination_class = None
-    serializer_class = CategorySerializer
+    serializer_class = CategoryListSerializer
     queryset = Category.objects.filter(is_active=True)
 
 
@@ -117,9 +118,25 @@ class AppConfigView(APIView):
         )
 
 
+def _icon_removed(request) -> bool:
+    """`"icon": null` in JSON, or an empty `icon` field in a form, takes the icon away."""
+    return "icon" in request.data and not request.FILES.get("icon") and request.data.get("icon") in (None, "")
+
+
+def _new_icon(request) -> bytes | None:
+    """The uploaded `icon` as WebP bytes (grama.logos: type, size and pixels checked), or None; 400 on `icon`."""
+    upload = request.FILES.get("icon")
+    return logos.process_logo(upload, field="icon") if upload is not None else None
+
+
 class AdminCategoryViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, mixins.UpdateModelMixin, viewsets.GenericViewSet):
+    """Super Admin categories. JSON, or multipart with an `icon` image (BVTGC-91): POST adds the icon,
+    PATCH replaces it, and `"icon": null` on PATCH removes it. A replaced or removed file is deleted
+    only after the change is saved."""
+
     permission_classes = [IsAuthenticated, HasPerm("posts.manage_categories", PLATFORM, gettext_lazy("Only Super Admins can do this."))]
     serializer_class = AdminCategorySerializer
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
     pagination_class = None
     http_method_names = ["get", "post", "patch", "head", "options"]
 
@@ -129,16 +146,32 @@ class AdminCategoryViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, mixin
     # Each change and its audit entry are saved together or not at all (CLAUDE.md, audit rule).
     @transaction.atomic
     def perform_create(self, serializer):
+        icon = _new_icon(self.request)  # checked before anything is saved
         category = serializer.save()
-        record("category.created", actor=self.request.user, target=category, target_label=category.name_en, via="console")
+        if icon is not None:
+            logos.store_logo(category.icon, category.key, icon)
+            category.save(update_fields=["icon"])
+        record("category.created", actor=self.request.user, target=category, target_label=category.name_en,
+               via="console", data={"key": category.key, "icon": icon is not None})
 
     @transaction.atomic
     def perform_update(self, serializer):
+        icon = _new_icon(self.request)
+        remove = icon is None and _icon_removed(self.request) and bool(serializer.instance.icon)
         category = serializer.save()
         # Only the fields the serializer accepted and checked, never the raw request body.
+        changes = dict(serializer.validated_data)
+        if icon is not None or remove:
+            logos.delete_after_commit(category.icon.name, Category._meta.get_field("icon").storage)
+            if icon is not None:
+                logos.store_logo(category.icon, category.key, icon)
+            else:
+                category.icon = ""
+            category.save(update_fields=["icon"])
+            changes["icon"] = "replaced" if icon is not None else "removed"
         record(
             "category.updated", actor=self.request.user, target=category, target_label=category.name_en,
-            via="console", data=dict(serializer.validated_data),
+            via="console", data=changes,
         )
 
 
