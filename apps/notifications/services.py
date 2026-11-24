@@ -262,52 +262,60 @@ def tell_super_admins(actor, user) -> list[Notification]:
 SERVICE_MANAGE = "service_requests.manage_service_requests"
 
 
-def _service_request_notes(recipients: list, request) -> list[Notification]:
-    """Inbox items and pushes about a service request; recipients is [(user, template_key), ...].
+SERVICE_REQUEST_PUSHES_TASK = "apps.notifications.tasks.send_service_request_pushes"
 
-    Each text is in the user's language and names the service, the area and the citizen's name;
-    never the phone, email or address. One text per template and language, one INSERT, and one
-    push job per language (the push body is the service's name in that language).
+
+def service_request_push(request, template_key: str, language: str) -> tuple[str, str, dict]:
+    """(title, body, data) of a push about a service request, in `language`.
+
+    The title names the service, the area and the citizen's name; never the phone, email or address.
+    The body is the service's name. Used for the inbox item here and by the push job, which writes the
+    text when it sends, so the citizen's name never sits in the job tables (BVTGC-78).
     """
-    if not recipients:
-        return []
-    village = AreaRef(AreaLevel.VILLAGE, request.village_id)
-    names = {}  # language -> (service name, area name)
-    texts = {}  # (template_key, language) -> text
-    for user, template_key in recipients:
-        language = user.preferred_language
-        if language not in names:
-            area = AreaDescriber(language).describe(village)
-            names[language] = (request.service.display_name(language), area["name"] if area else "")
-        if (template_key, language) not in texts:
-            service, area_name = names[language]
-            texts[template_key, language] = render(
-                template_key, language, area=area_name, service=service, name=request.name,
-            )[:255]
-    created = Notification.objects.bulk_create([
-        Notification(
-            user=user,
-            kind=NotificationKind.SERVICE_REQUEST,
-            title=texts[template_key, user.preferred_language],
-            body=names[user.preferred_language][0][:500],
-            service_request=request,
-            area_level=AreaLevel.VILLAGE,
-            area_id=request.village_id,
-        )
-        for user, template_key in recipients
-    ])
+    area = AreaDescriber(language).describe(AreaRef(AreaLevel.VILLAGE, request.village_id))
+    service = request.service.display_name(language)
+    title = render(template_key, language, area=area["name"] if area else "", service=service, name=request.name)[:255]
     data = {
         "type": NotificationKind.SERVICE_REQUEST,
         "request_id": str(request.pk),
         "area_level": AreaLevel.VILLAGE,
         "area_id": request.village_id,
     }
-    for language, (service, _area_name) in names.items():
-        queue_pushes(
-            [[str(user.pk), texts[key, language]] for user, key in recipients if user.preferred_language == language],
-            service,
-            data,
+    return title, service, data
+
+
+def _service_request_notes(recipients: list, request) -> list[Notification]:
+    """Inbox items and pushes about a service request; recipients is [(user, template_key), ...].
+
+    Each text is in the user's language. One text per template and language, one INSERT, and one push
+    job for all recipients. The job gets only ids and template keys, not the texts: it writes them
+    itself (service_request_push), so the citizen's name is not stored with the job or its retries.
+    """
+    if not recipients:
+        return []
+    texts = {}  # (template_key, language) -> (title, body, data)
+    for user, template_key in recipients:
+        key = (template_key, user.preferred_language)
+        if key not in texts:
+            texts[key] = service_request_push(request, template_key, user.preferred_language)
+    created = Notification.objects.bulk_create([
+        Notification(
+            user=user,
+            kind=NotificationKind.SERVICE_REQUEST,
+            title=texts[template_key, user.preferred_language][0],
+            body=texts[template_key, user.preferred_language][1][:500],
+            service_request=request,
+            area_level=AreaLevel.VILLAGE,
+            area_id=request.village_id,
         )
+        for user, template_key in recipients
+    ])
+    async_task(
+        SERVICE_REQUEST_PUSHES_TASK,
+        request.pk,
+        [[str(user.pk), template_key] for user, template_key in recipients],
+        group="push",
+    )
     return created
 
 

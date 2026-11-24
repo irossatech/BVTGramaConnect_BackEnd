@@ -29,6 +29,7 @@ logger = logging.getLogger("grama.push")
 TOPIC_TASK = "apps.notifications.tasks.send_push_to_topic"
 DEVICE_TASK = "apps.notifications.tasks.send_push_to_device"
 CITIZEN_TASK = "apps.notifications.tasks.send_push_to_citizen"
+SERVICE_REQUEST_DEVICE_TASK = "apps.notifications.tasks.send_service_request_push_to_device"
 
 
 def _audit_failure(target: str, error: Exception) -> None:
@@ -176,6 +177,62 @@ def send_push_to_user(user_id: str, title: str, body: str, data: dict) -> int:
     if not gateway.enabled:
         return 0
     return sum(_send_to_device(gateway, device, title, body, data) for device in Device.objects.filter(user_id=user_id))
+
+
+def _service_request_to_device(gateway, device: Device, request_id, template_key: str, parts, attempt: int = 1) -> bool:
+    title, body, data = parts
+    message = PushMessage(title=title, body=body, data=data, token=device.fcm_token)
+    try:
+        # The retry gets ids and the template key only, never the text with the citizen's name (BVTGC-78).
+        return _deliver(
+            gateway, message, f"device {device.pk}", SERVICE_REQUEST_DEVICE_TASK,
+            (str(device.pk), request_id, template_key), attempt,
+        )
+    except InvalidDeviceToken:
+        device.delete()
+        return False
+
+
+def send_service_request_pushes(request_id, recipients: list[list[str]]) -> int:
+    """Pushes about one service request to officials; recipients is [[user_id, template_key], ...].
+
+    The texts are written here, each in the device owner's language, so the citizen's name is never an
+    argument of this job or of its retries (BVTGC-78). Returns how many devices got it.
+    """
+    from apps.service_requests.models import ServiceRequest
+
+    from . import services
+
+    gateway = get_push_gateway()
+    if not gateway.enabled or not recipients:
+        return 0
+    request = ServiceRequest.objects.select_related("service").filter(pk=request_id).first()
+    if request is None:
+        return 0
+    template_of = {str(user_id): template_key for user_id, template_key in recipients}
+    parts = {}  # (template_key, language) -> (title, body, data)
+    sent = 0
+    for device in Device.objects.filter(user_id__in=list(template_of)).select_related("user"):
+        key = (template_of[str(device.user_id)], device.user.preferred_language)
+        if key not in parts:
+            parts[key] = services.service_request_push(request, *key)
+        sent += _service_request_to_device(gateway, device, request.pk, key[0], parts[key])
+    return sent
+
+
+def send_service_request_push_to_device(device_id: str, request_id, template_key: str, attempt: int = 1) -> bool:
+    """One official's device: the scheduled retry of a service-request push. Writes the text again."""
+    from apps.service_requests.models import ServiceRequest
+
+    from . import services
+
+    gateway = get_push_gateway()
+    device = Device.objects.select_related("user").filter(pk=device_id, user__isnull=False).first()
+    request = ServiceRequest.objects.select_related("service").filter(pk=request_id).first()
+    if not gateway.enabled or device is None or request is None:
+        return False
+    parts = services.service_request_push(request, template_key, device.user.preferred_language)
+    return _service_request_to_device(gateway, device, request.pk, template_key, parts, attempt)
 
 
 def send_push_to_users(messages: list[list[str]], body: str, data: dict) -> int:
