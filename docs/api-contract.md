@@ -200,9 +200,10 @@ All errors share one shape:
 
 ### Category
 ```json
-{"key": "announce", "name": "గ్రామ చాటింపులు", "short_name": "చాటింపులు", "order": 1}
+{"key": "announce", "name": "గ్రామ చాటింపులు", "short_name": "చాటింపులు", "order": 1, "icon_url": null}
 ```
 Admin endpoints add `id`, `name_te`, `name_en`, `short_name_te`, `short_name_en`, `is_active`, `post_count`.
+`icon_url` (added 2026-11-24, BVTGC-91) is the absolute link of the icon the Super Admin uploaded, a WebP of at most 256 px, or `null`: then the apps show their own picture for the key, or a default one. It is in `GET /categories` and `GET /admin/categories`; a post's nested `category` does not carry it (the apps take it from the cached category list).
 
 ### Media
 ```json
@@ -506,8 +507,10 @@ Rules:
 |---|---|---|
 | `GET /categories` | public | `[Category]`, active only, in display order |
 | `GET /admin/categories` | Super Admin | `[Category with admin fields]` |
-| `POST /admin/categories` | Super Admin | `{"key", "name_te", "name_en", "short_name_te"?, "short_name_en"?}` → `201` (Pending Q6) |
-| `PATCH /admin/categories/{id}` | Super Admin | `{"name_te"?, "name_en"?, "is_active"?, "order"?}` (Pending Q6) |
+| `POST /admin/categories` | Super Admin | `{"key", "name_te", "name_en", "short_name_te"?, "short_name_en"?}` → `201` (Pending Q6). JSON, or multipart with an optional `icon` image file |
+| `PATCH /admin/categories/{id}` | Super Admin | `{"name_te"?, "name_en"?, "is_active"?, "order"?}` (Pending Q6). Multipart with `icon` replaces the icon; `"icon": null` (or an empty `icon` form field) removes it |
+
+**Category icon** (2026-11-24, BVTGC-91): the same checks as service and bill logos (section 16). JPEG, PNG or WebP, judged from the content; at most `SERVICE_LOGO_MAX_UPLOAD_MB` (2 MB) and at least `SERVICE_LOGO_MIN_PX` (64) pixels a side; stored as WebP with the longest side at most 256 px, transparency kept, EXIF removed. A bad file answers `400 validation_error` with `fields.icon`, and nothing is saved. Every new icon gets a new file name (phones cache `/media/`); a replaced or removed file is deleted once the change is saved. The audit entry says `"icon": true` on `category.created` and `"icon": "replaced"` or `"removed"` on `category.updated`. `GET /categories` is cached for up to an hour, so a new icon reaches the apps within the hour.
 
 A disabled category disappears from the compose form and from feed filters. Its published posts are hidden from the feed and the public pages until it is switched on again (`/feed/`, `/feed/upcoming/`, `/feed/urgent/`, `/feed/posts/?ids=`, `/public/showcase/`; `/feed/posts/{id}/` answers `404`). Officials still see them in their lists. Changed on 2026-10-31; before, they stayed visible.
 

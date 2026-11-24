@@ -38,16 +38,50 @@ class CategorySerializer(serializers.ModelSerializer):
         return obj.display_name(short=True)
 
 
+def category_icon_url(serializer, obj) -> str | None:
+    """Absolute URL of the category's uploaded icon, or null (BVTGC-91)."""
+    if not obj.icon:
+        return None
+    request = serializer.context.get("request")
+    return request.build_absolute_uri(obj.icon.url) if request is not None else obj.icon.url
+
+
+class CategoryListSerializer(CategorySerializer):
+    """GET /categories/: the Category shape plus `icon_url`. A post's nested category stays without it,
+    so every post in a list does not carry the same link again."""
+
+    icon_url = serializers.SerializerMethodField()
+
+    class Meta(CategorySerializer.Meta):
+        fields = [*CategorySerializer.Meta.fields, "icon_url"]
+
+    def get_icon_url(self, obj) -> str | None:
+        return category_icon_url(self, obj)
+
+
 class AdminCategorySerializer(serializers.ModelSerializer):
+    """The admin fields. `icon` (an image) comes as a file in multipart and is handled by the view."""
+
     post_count = serializers.IntegerField(read_only=True, default=0)
+    icon_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Category
         fields = [
             "id", "key", "name_te", "name_en", "short_name_te", "short_name_en",
-            "is_active", "order", "post_count",
+            "is_active", "order", "post_count", "icon_url",
         ]
         read_only_fields = ["id"]
+
+    def get_icon_url(self, obj) -> str | None:
+        return category_icon_url(self, obj)
+
+    def to_internal_value(self, data):
+        # Multipart: plain values, without the icon file (the view reads it). As a plain dict, a field
+        # left out stays left out; DRF would otherwise read a missing is_active in a form as false.
+        if hasattr(data, "dict"):
+            data = {key: value for key, value in data.dict().items() if key != "icon"}
+        return super().to_internal_value(data)
 
 
 class PersonSerializer(serializers.Serializer):
