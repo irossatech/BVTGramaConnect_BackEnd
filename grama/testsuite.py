@@ -15,7 +15,7 @@ which commit it ran, the config's hash, counts per category, every failure, ever
 reason and the slowest tests. The exit code is pytest's, so 0 means everything passed.
 
 Only the standard library is used here; the tests themselves run in a pytest child process with the
-project's normal settings (pytest.ini).
+project's normal settings (pytest.ini), and grama/testsuite_plugin.py hands every outcome back as JSON.
 """
 
 from __future__ import annotations
@@ -23,15 +23,17 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import platform
 import subprocess
 import sys
 import tempfile
 import time
-import xml.etree.ElementTree as ET
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+from grama import testsuite_plugin
 
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG = ROOT / "grama" / "tests" / "suite.json"
@@ -77,18 +79,19 @@ def git(*args: str) -> str:
 
 #: Measured code: the apps and the project package, without the tests, the migrations and this runner.
 COVERAGE_SOURCE = "apps,grama"
-COVERAGE_OMIT = "*/tests/*,*/migrations/*,grama/testsuite.py"
+COVERAGE_OMIT = "*/tests/*,*/migrations/*,grama/testsuite.py,grama/testsuite_plugin.py"
 
 
-def run_pytest(files: list[str], junit: Path, coverage_data: Path | None = None) -> tuple[int, float]:
-    pytest = ["-m", "pytest", "-q", "-p", "no:logging", "-o", "junit_family=xunit1", f"--junitxml={junit}", *files]
+def run_pytest(files: list[str], results: Path, coverage_data: Path | None = None) -> tuple[int, float]:
+    """Run pytest on `files`; grama/testsuite_plugin.py writes every outcome to `results` as JSON."""
+    pytest = ["-m", "pytest", "-q", "-p", "no:logging", "-p", "grama.testsuite_plugin", *files]
     if coverage_data is None:
         command = [sys.executable, *pytest]
     else:
         command = [sys.executable, "-m", "coverage", "run", f"--data-file={coverage_data}",
                    f"--source={COVERAGE_SOURCE}", f"--omit={COVERAGE_OMIT}", *pytest]
     started = time.monotonic()
-    code = subprocess.run(command, cwd=ROOT).returncode
+    code = subprocess.run(command, cwd=ROOT, env={**os.environ, testsuite_plugin.ENV: str(results)}).returncode
     return code, time.monotonic() - started
 
 
@@ -131,28 +134,11 @@ def coverage_summary(report: dict) -> dict:
                                      "percent": percent(covered, statements)}, "least_covered": least}
 
 
-def read_junit(junit: Path) -> list[dict]:
+def read_results(results: Path) -> list[dict]:
     """One dict per test: file, name, seconds, outcome (passed, failed, error, skipped) and message."""
-    if not junit.exists():
+    if not results.exists():
         return []
-    results = []
-    for case in ET.parse(junit).getroot().iter("testcase"):
-        outcome, message = "passed", ""
-        for tag in ("failure", "error", "skipped"):
-            child = case.find(tag)
-            if child is not None:
-                outcome = {"failure": "failed", "error": "error", "skipped": "skipped"}[tag]
-                message = (child.get("message") or child.text or "").strip()
-                break
-        results.append({
-            "file": (case.get("file") or "").replace("\\", "/"),
-            "name": case.get("name", ""),
-            "classname": case.get("classname", ""),
-            "seconds": float(case.get("time") or 0),
-            "outcome": outcome,
-            "message": message,
-        })
-    return results
+    return json.loads(results.read_text(encoding="utf-8"))
 
 
 def summarise(config: dict, keys: list[str], results: list[dict]) -> dict:
@@ -285,10 +271,10 @@ def main(argv: list[str] | None = None) -> int:
     files = sorted(name for key in keys for name in config["categories"][key]["files"])
     coverage = None
     with tempfile.TemporaryDirectory() as folder:
-        junit = Path(folder) / "junit.xml"
+        outcomes = Path(folder) / "results.json"
         data = Path(folder) / "coverage.data" if args.coverage else None
-        code, seconds = run_pytest(files, junit, data)
-        results = read_junit(junit)
+        code, seconds = run_pytest(files, outcomes, data)
+        results = read_results(outcomes)
         if data is not None:
             measured = read_coverage(data)
             if measured is None:
