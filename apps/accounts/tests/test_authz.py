@@ -54,12 +54,16 @@ SUPER_ONLY = {
     "ads.manage_ad",  # Home banner ads (contract section 17)
     "service_requests.manage_services",  # the services citizens ask for (contract section 16)
     "bills.manage_bills",  # bills and recharges on Home (contract section 18)
+    # The citizen wallet tools (contract section 21, BVTGC-121).
+    "accounts.manage_citizen_accounts", "wallet.view_wallets", "wallet.adjust_points", "wallet.review_referrals",
 }
 
 
 def expected_permissions(key: str, super_admin_can_post: bool = False) -> set[str]:
     # Every official manages important numbers in their own area (contacts plan, decision C1).
     perms = {MANAGE_PERMISSION[role] for role in MANAGES[key]} | {"posts.view_stats", "contacts.manage_contact"}
+    # Every official, never a citizen account (BVTGC-121).
+    perms |= {"accounts.use_official_api"}
     # Service requests (contract section 16): everyone sees them; a Panchayat member only those assigned to them.
     perms |= {"service_requests.view_service_requests"}
     if key != "PANCHAYAT_MEMBER":
@@ -82,6 +86,14 @@ def test_groups_hold_exactly_the_brief_s_permissions(db, key):
     assert held == expected_permissions(key, super_admin_can_post=True)
 
 
+def test_the_citizen_group_holds_only_its_wallet(db):
+    """A citizen's wallet account (BVTGC-121): one permission, a village role nobody can give through users/."""
+    row = RoleGroup.objects.select_related("group").get(key="CITIZEN")
+    held = {f"{app}.{code}" for app, code in row.group.permissions.values_list("content_type__app_label", "codename")}
+    assert held == {"wallet.use_wallet"}
+    assert (row.level, row.rank, row.platform_wide, row.manage_permission) == ("VILLAGE", 5, False, "")
+
+
 def test_super_admin_loses_posting_when_the_setting_is_off(super_admin_can_post):
     super_admin_can_post(False)
     group = RoleGroup.objects.get(key="SUPER_ADMIN").group
@@ -97,6 +109,7 @@ def test_role_groups_carry_level_rank_and_manage_permission(db):
         "MANDAL_ADMIN": ("Mandal Admin", "MANDAL", 2, False),
         "VILLAGE_ADMIN": ("Village Admin", "VILLAGE", 3, False),
         "PANCHAYAT_MEMBER": ("Panchayat Member", "VILLAGE", 4, False),
+        "CITIZEN": ("Citizen", "VILLAGE", 5, False),  # citizens' wallet accounts (BVTGC-121)
     }
     assert {key: rows[key].manage_permission for key in MANAGE_PERMISSION} == MANAGE_PERMISSION
 
@@ -108,6 +121,8 @@ def test_no_code_tests_group_names_or_keys():
         "apps/accounts/role_matrix.py",
         "apps/accounts/migrations/0005_roles_to_groups.py",
         "apps/accounts/management/commands/seed_sample_data.py",
+        # Generated: posted_as_role's choices gained CITIZEN (BVTGC-121); a list of labels, not a test of a role.
+        "apps/posts/migrations/0016_posted_as_role_citizen.py",
     }
     pattern = re.compile(
         r"[\"'](SUPER_ADMIN|DISTRICT_ADMIN|MANDAL_ADMIN|VILLAGE_ADMIN|PANCHAYAT_MEMBER"

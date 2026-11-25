@@ -265,7 +265,7 @@ The key matches the existing `CITIZEN_ROLE = "CITIZEN"` used for device posts (`
 | Permission | Held by |
 |---|---|
 | `wallet.use_wallet` | Citizen |
-| `wallet.view_wallets`, `wallet.adjust_points`, `wallet.review_referrals`, `wallet.manage_wallet_settings` | Super Admin (added to `PLATFORM_ADMIN`) |
+| `wallet.view_wallets`, `wallet.adjust_points`, `wallet.review_referrals` | Super Admin (added to `PLATFORM_ADMIN`). The wallet settings use the existing `posts.manage_settings` (contract section 21), so there is no separate settings permission. |
 | `accounts.manage_citizen_accounts` | Super Admin |
 | `accounts.use_official_api` | Every official group |
 

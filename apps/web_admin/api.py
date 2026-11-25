@@ -284,8 +284,9 @@ class DashboardView(SuperAdminView):
                     "escalated": pending.filter(escalated_at__isnull=False).count(),
                     "published_today": published_today,
                     "active_admins": admins.values("user_id").distinct().count(),
-                    "active_users": User.objects.filter(is_active=True).count(),
-                    "blocked_users": User.objects.filter(is_active=False).count(),
+                    # Officials only: citizen wallet accounts are counted on their own page (BVTGC-121).
+                    "active_users": User.objects.filter(is_active=True, citizen_account__isnull=True).count(),
+                    "blocked_users": User.objects.filter(is_active=False, citizen_account__isnull=True).count(),
                     "live_villages": Village.objects.active().count(),
                     "inactive_villages": Village.objects.count() - Village.objects.active().count(),
                 },
@@ -560,12 +561,13 @@ class ReportExportView(SuperAdminView):
 
 
 class HasAnyRole(BasePermission):
-    """Any official role anywhere (every role uses the name forms); an account without one gets 403."""
+    """Any official role anywhere (every role uses the name forms); an account without one, or a citizen's
+    wallet account, gets 403 (BVTGC-121)."""
 
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated:
             return False  # 401
-        if not authz.grants(request.user):
+        if not authz.official_grants(request.user):
             raise permission_denied()
         return True
 

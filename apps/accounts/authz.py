@@ -33,6 +33,7 @@ from dataclasses import dataclass, field
 from typing import Iterable
 
 from django.conf import settings
+from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Q, QuerySet
 
 from apps.geography.areas import DEPTH, AreaRef, ancestries, within_q
@@ -180,6 +181,27 @@ def is_usable(user, *, pending_change_ok: bool = False) -> bool:
         and getattr(user, "is_active", False)
         and (pending_change_ok or not getattr(user, "must_change_password", False))
     )
+
+
+def is_citizen_account(user) -> bool:
+    """A citizen's wallet account (BVTGC-106), never an official, whatever it holds.
+
+    The officials' login, screens and lists refuse it (BVTGC-121). Known by its CitizenAccount row,
+    not by a group, so it stays true while the account is blocked or its role is off. Django caches
+    the answer on the user object (found or not), so it costs one query per request at most.
+    """
+    if user is None or not getattr(user, "is_authenticated", False):
+        return False
+    try:
+        user.citizen_account
+    except ObjectDoesNotExist:
+        return False
+    return True
+
+
+def official_grants(user) -> list[Grant]:
+    """grants(), only those of an official group (holding accounts.use_official_api): never a citizen's."""
+    return grants_for(user, "accounts.use_official_api")
 
 
 def grants(user, *, pending_change_ok: bool = False) -> list[Grant]:

@@ -1,5 +1,10 @@
 """The role matrix: which Django group gets which permission. The one place it is written down.
 
+The five official groups, plus CITIZEN: the group of a citizen's optional wallet account (BVTGC-106).
+A citizen account is never an official: it holds only wallet.use_wallet, nobody can give its group
+through the API (manage_permission None), and the officials' login, screens and lists refuse it
+(authz.is_citizen_account). Every official group holds accounts.use_official_api; CITIZEN does not.
+
 Each official's access comes from their role assignments: one group (a role)
 in one area. A group's permissions apply only inside the assignment's area and
 the areas below it (State > District > Mandal > Village); apps/accounts/authz.py
@@ -59,6 +64,15 @@ CONTACTS = ["contacts.manage_contact"]
 # their area; a Panchayat member sees only those assigned to them and moves them on.
 SERVICE_REQUESTS_VIEW = ["service_requests.view_service_requests"]
 SERVICE_REQUESTS = [*SERVICE_REQUESTS_VIEW, "service_requests.manage_service_requests"]
+# Every official holds it, and no citizen account does: "any official role" (BVTGC-121).
+OFFICIAL = ["accounts.use_official_api"]
+# The Super Admin's citizen wallet tools (docs/api-contract.md, section 21; BVTGC-106).
+WALLET_ADMIN = [
+    "accounts.manage_citizen_accounts",
+    "wallet.view_wallets",
+    "wallet.adjust_points",
+    "wallet.review_referrals",
+]
 PLATFORM_ADMIN = [
     "accounts.manage_groups",
     "geography.manage_master_data",
@@ -78,6 +92,7 @@ PLATFORM_ADMIN = [
     "service_requests.manage_services",
     # Bills and recharges on Home (docs/api-contract.md, section 18).
     "bills.manage_bills",
+    *WALLET_ADMIN,
 ]
 
 # Every official, Panchayat members included (decision of 2026-11-19; was 8 for members).
@@ -110,6 +125,7 @@ ROLE_GROUPS: dict[str, dict] = {
             *CONTACTS,
             *SERVICE_REQUESTS,
             *PLATFORM_ADMIN,
+            *OFFICIAL,
         ],
         # CLAUDE.md "Configurable rules": the Super Admin posts only when this is on.
         "requires_setting": {perm: "SUPER_ADMIN_CAN_POST" for perm in POSTING},
@@ -132,6 +148,7 @@ ROLE_GROUPS: dict[str, dict] = {
             *USER_ACTIONS,
             *CONTACTS,
             *SERVICE_REQUESTS,
+            *OFFICIAL,
         ],
     },
     "MANDAL_ADMIN": {
@@ -151,6 +168,7 @@ ROLE_GROUPS: dict[str, dict] = {
             *USER_ACTIONS,
             *CONTACTS,
             *SERVICE_REQUESTS,
+            *OFFICIAL,
         ],
     },
     "VILLAGE_ADMIN": {
@@ -169,6 +187,7 @@ ROLE_GROUPS: dict[str, dict] = {
             *USER_ACTIONS,
             *CONTACTS,
             *SERVICE_REQUESTS,
+            *OFFICIAL,
         ],
     },
     "PANCHAYAT_MEMBER": {
@@ -181,7 +200,23 @@ ROLE_GROUPS: dict[str, dict] = {
         "password_min_length": PASSWORD_MIN_LENGTH,
         # Their posts wait for review: they lack publish_post (posts/services.py).
         # takedown_post added 2026-11-17: Panchayat members may take down citizen posts and their own.
-        "permissions": [*POSTING, "posts.takedown_post", "posts.view_stats", *CONTACTS, *SERVICE_REQUESTS_VIEW],
+        "permissions": [
+            *POSTING, "posts.takedown_post", "posts.view_stats", *CONTACTS, *SERVICE_REQUESTS_VIEW, *OFFICIAL,
+        ],
+    },
+    "CITIZEN": {
+        # A citizen's wallet account (BVTGC-106): given at sign-up for the village chosen in the app,
+        # never through users/ (manage_permission None), and never an official. The key is the
+        # posted_as_role citizen posts already carry (posts.models.CITIZEN_ROLE).
+        "name": "Citizen",
+        "name_te": "పౌరుడు",
+        "level": "VILLAGE",
+        "rank": 5,
+        "platform_wide": False,
+        "manage_permission": None,
+        # No password rule from the roles: citizens have their own (apps/citizens/passwords.py, D15).
+        "password_min_length": 0,
+        "permissions": ["wallet.use_wallet"],
     },
 }
 

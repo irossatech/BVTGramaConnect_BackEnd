@@ -17,7 +17,8 @@ from apps.accounts.roles import Role
 from apps.geography.areas import AreaRef
 from apps.geography.models import AreaLevel
 
-#: posted_as_role of a citizen post. Not a group: citizens have no account (contract section 15).
+#: posted_as_role of a citizen post (contract section 15): posting needs no account. Since BVTGC-121 it is
+#: also the key of the group of citizens' wallet accounts (role_matrix), which never posts as an official.
 CITIZEN_ROLE = "CITIZEN"
 
 

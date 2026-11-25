@@ -197,8 +197,17 @@ Roles are Django groups (`django.contrib.auth.models.Group`). A small table, `Ro
 | `MANDAL_ADMIN` | Mandal Admin | మండల అడ్మిన్ | Mandal | 2 | `accounts.manage_mandal_admin` |
 | `VILLAGE_ADMIN` | Village Admin | గ్రామ అడ్మిన్ | Village | 3 | `accounts.manage_village_admin` |
 | `PANCHAYAT_MEMBER` | Panchayat Member | పంచాయతీ సభ్యుడు | Village | 4 | `accounts.manage_panchayat_member` |
+| `CITIZEN` | Citizen | పౌరుడు | Village | 5 | Nobody: given at sign-up to a citizen's wallet account (BVTGC-106) |
 
-Rank 0 is the highest. The groups, their levels, ranks and permissions are written in one place: `ROLE_GROUPS` in `apps/accounts/role_matrix.py`.
+Rank 0 is the highest.
+
+**Citizen wallet accounts (since BVTGC-121).** A citizen may open an optional account for the wallet of points and referrals (`docs/api-contract.md`, section 21). It holds the `CITIZEN` group for the village chosen in the app, with one permission, `wallet.use_wallet`. It is **never an official**:
+- the officials' login (`auth/login/`, `auth/session/login/`) refuses it with `400 invalid_credentials`, the same answer as a wrong password, even when it is blocked;
+- the officials' endpoints that need no particular permission (`GET /me/`, `POST /auth/password/change/`, the notification inbox, `/posts/`) answer it `403 permission_denied` (`IsOfficialAccount` in `apps/accounts/permissions.py`);
+- "any official role" means holding `accounts.use_official_api`, which every official group has and `CITIZEN` has not: the Telugu name suggestions and the published posts an official sees above their area (`authz.official_grants`);
+- nobody can give the group through `users/`, so citizen accounts never appear in an official's user list, and the dashboard counts officials only.
+
+Code asks `authz.is_citizen_account(user)`, which looks for the account's `CitizenAccount` row, never the group's key. The groups, their levels, ranks and permissions are written in one place: `ROLE_GROUPS` in `apps/accounts/role_matrix.py`.
 
 **Role assignments.** An official holds one or more `RoleAssignment` rows: `user`, `group`, `area_level`, `area_id`, `is_active`, `assigned_by`, `assigned_at`. Each gives the group's permissions in that one area and the areas below it. Adding an assignment adds the user to the group; removing or deactivating the last one for that group takes them out of it.
 
@@ -212,6 +221,7 @@ Rank 0 is the highest. The groups, their levels, ranks and permissions are writt
 
 | Permission | Super Admin | District Admin | Mandal Admin | Village Admin | Panchayat Member |
 |---|---|---|---|---|---|
+| `accounts.use_official_api` | yes | yes | yes | yes | yes |
 | `posts.create_post` | yes, if SUPER_ADMIN_CAN_POST | yes | yes | yes | yes |
 | `posts.submit_post` | yes, if SUPER_ADMIN_CAN_POST | yes | yes | yes | yes |
 | `posts.review_post` | yes | yes | yes | yes |  |
@@ -251,6 +261,12 @@ Rank 0 is the highest. The groups, their levels, ranks and permissions are writt
 | `ads.manage_ad` | yes |  |  |  |  |
 | `service_requests.manage_services` | yes |  |  |  |  |
 | `bills.manage_bills` | yes |  |  |  |  |
+| `accounts.manage_citizen_accounts` | yes |  |  |  |  |
+| `wallet.view_wallets` | yes |  |  |  |  |
+| `wallet.adjust_points` | yes |  |  |  |  |
+| `wallet.review_referrals` | yes |  |  |  |  |
+
+The `CITIZEN` group holds only `wallet.use_wallet`, which no official group holds (section 6).
 
 Rules on top of the table:
 
@@ -264,7 +280,7 @@ Rules on top of the table:
   | **District / Mandal / Village Admin** (in their area) | yes | yes | no | no | yes |
   | **Panchayat member** (their village) | yes | no (other members) | no | no | yes |
   Officials may also take down their own published post anywhere (even if targeting an area outside their assignment).
-- **Seeing published posts above your area (backend plan of 2026-11-20).** Every official, whatever their group, sees the published posts for any area that is or contains one of their assignments' areas (their village, mandal, district, Everyone), as the citizens there do (`apps.posts.services.covering_scope_q`). It is read only and needs no permission: every action on such a post keeps its own check above, so it adds no button. Only published posts; pending and decided ones above the area stay hidden.
+- **Seeing published posts above your area (backend plan of 2026-11-20).** Every official, whatever their group, sees the published posts for any area that is or contains one of their assignments' areas (their village, mandal, district, Everyone), as the citizens there do (`apps.posts.services.covering_scope_q`). It is read only and needs no permission: every action on such a post keeps its own check above, so it adds no button. Only official assignments count (`authz.official_grants`): a citizen's wallet role never shows posts (BVTGC-121). Only published posts; pending and decided ones above the area stay hidden.
 - **Reversing a decision** needs `posts.reverse_decision` and a group ranked strictly above the one that decided. A Super Admin may reverse any decision, another Super Admin's and their own included (owner's decision of 2026-11-21). Reversing a published post (moving it to Pending or Discarded) is also gated by the take-down rank rule.
 - **First decision wins.** A second reviewer gets `409 already_decided`.
 - **User actions** need the permission over the user's area and a group ranked strictly below the admin's own. This covers assigning, reassigning, removing, blocking, resetting and unlocking. An admin can never give a group at or above their own rank. The one exception: Super Admins act on other Super Admins and give the role, with the rules of section 4, "More Super Admins".

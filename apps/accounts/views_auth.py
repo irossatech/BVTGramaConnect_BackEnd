@@ -30,6 +30,7 @@ from apps.audit.services import record
 from grama.exceptions import ApiError
 
 from . import authz
+from .permissions import IsOfficialAccount
 from .authentication import CONSOLE_PERMISSION, came_from_console, not_console_user
 from .credentials import authenticate_official, check_new_password, refuse, wrong_current_password
 from .lockout import SESSION_TOKEN_VERSION
@@ -166,7 +167,8 @@ class SessionLogoutView(PublicAuthView):
 
 
 class PasswordChangeView(APIView):
-    permission_classes = [IsAuthenticated]
+    # Officials only: a citizen account changes its password at citizen/account/password/ (BVTGC-121).
+    permission_classes = [IsOfficialAccount]
 
     @extend_schema(
         summary="Choose a new password; every other session ends",
@@ -209,7 +211,8 @@ class PasswordChangeView(APIView):
 
 
 class MeView(APIView):
-    permission_classes = [IsAuthenticated]
+    # Officials only: a citizen account reads GET /citizen/account/ (BVTGC-121).
+    permission_classes = [IsOfficialAccount]
 
     @extend_schema(summary="The logged-in official, their groups, areas and permissions", responses=MeSerializer)
     def get(self, request):

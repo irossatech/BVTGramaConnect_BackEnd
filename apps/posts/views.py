@@ -21,7 +21,7 @@ from rest_framework.views import APIView
 from apps.accounts import authz
 from apps.accounts.authentication import client_via
 from apps.accounts.models import RoleAssignment, User
-from apps.accounts.permissions import PLATFORM, HasPerm
+from apps.accounts.permissions import PLATFORM, HasPerm, IsOfficialAccount
 from apps.audit.services import record
 from apps.citizens import services as citizen_services
 from apps.geography.areas import AreaRef, within_q
@@ -262,7 +262,7 @@ def citizen_filter(user, raw, queryset):
 
 
 class PostViewSet(viewsets.GenericViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsOfficialAccount]  # a citizen account gets 403 (BVTGC-121)
     serializer_class = PostSerializer
     lookup_value_regex = UUID_REGEX  # /posts/abc/ is a 404, not a crash
 

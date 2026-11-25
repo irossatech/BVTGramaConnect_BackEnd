@@ -52,9 +52,9 @@ def test_sync_recreates_missing_groups(db):
     Group.objects.filter(name="Panchayat Member").delete()
     changes = sync_role_permissions()
     assert "PANCHAYAT_MEMBER: created group 'Panchayat Member'" in changes
-    # create, submit, view_stats, manage_contact (contacts decision C1), view_service_requests and
-    # takedown_post (owner's rule of 2026-11-17)
-    assert RoleGroup.objects.get(key="PANCHAYAT_MEMBER").group.permissions.count() == 6
+    # create, submit, view_stats, manage_contact (contacts decision C1), view_service_requests,
+    # takedown_post (owner's rule of 2026-11-17) and use_official_api (BVTGC-121)
+    assert RoleGroup.objects.get(key="PANCHAYAT_MEMBER").group.permissions.count() == 7
 
 
 def test_command_reports_audits_once_and_checks(db):
@@ -110,7 +110,7 @@ def test_group_permission_changes_outside_the_sync_are_audited(db):
     assert entry.data == {"change": "added", "permissions": ["audit.view_audit_log"]}
     group.permissions.clear()
     removed = AuditLog.objects.filter(action="setting.group_permissions_changed", data__change="removed").get()
-    assert len(removed.data["permissions"]) == 22
+    assert len(removed.data["permissions"]) == 23  # with use_official_api (BVTGC-121)
 
 
 # --- Django admin ----------------------------------------------------------------------------------

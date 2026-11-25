@@ -61,6 +61,23 @@ class HasPerm(BasePermission):
         return True
 
 
+class IsOfficialAccount(BasePermission):
+    """Logged in, and not a citizen's wallet account (BVTGC-121).
+
+    For the officials' endpoints that need no particular permission: GET /me/, the password change,
+    the notification inbox and /posts/. A citizen account gets 403 permission_denied there; it has
+    its own endpoints (docs/api-contract.md, section 21).
+    """
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False  # 401 not_authenticated
+        if authz.is_citizen_account(user):
+            raise permission_denied()
+        return True
+
+
 class ManagesUsers(BasePermission):
     """The user may give at least one role somewhere (any manage_* permission over a lower group)."""
 
