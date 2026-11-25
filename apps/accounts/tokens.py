@@ -9,6 +9,8 @@ Console sessions store the same number (authentication.py), so they end too.
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
@@ -22,7 +24,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from grama.exceptions import AuthError
 
-from .models import User
+from .models import RefreshRotation, User
 
 TOKEN_VERSION_CLAIM = "tv"
 #: When the official last typed their password (Unix seconds). Renewals keep it, so it measures the
@@ -67,19 +69,42 @@ def user_for_token(token) -> User:
     return user
 
 
+class _SentRefreshToken(RefreshToken):
+    """A refresh token as sent to POST /auth/refresh/: signature, expiry, ID and type are checked here,
+    the blacklist by rotate_refresh itself (_use_once, then _reissue), so a token whose answer was lost
+    can get its grace (BVTGC-93). A token blacklisted any other way (logout, login age) has no rotation
+    row and is refused there."""
+
+    def check_blacklist(self) -> None:
+        pass
+
+
 def rotate_refresh(raw_refresh: str) -> dict[str, str]:
-    """New access and refresh tokens; the old refresh token is blacklisted."""
+    """New access and refresh tokens; the old refresh token is blacklisted.
+
+    A token used a moment ago comes back when the app never got the answer (a weak network). Within
+    JWT_REFRESH_GRACE_SECONDS of its first use it still works (BVTGC-93): see _reissue.
+    """
     try:
-        refresh = RefreshToken(raw_refresh)
+        refresh = _SentRefreshToken(raw_refresh)
     except TokenError:
         raise session_revoked() from None
-    user_for_token(refresh)
+    user_for_token(refresh)  # a block, a reset or "log out everywhere" ends the grace too
     if _login_too_old(refresh):
         _use_once(refresh)  # this token is spent too: the next try gets the same answer
         raise session_revoked()
 
+    old_jti = refresh[api_settings.JTI_CLAIM]
+    if not _use_once(refresh, allow_reuse=True):
+        return _reissue(refresh, old_jti)
+    data = _new_pair(refresh)
+    RefreshRotation.objects.create(old_jti=old_jti, new_jti=refresh[api_settings.JTI_CLAIM])
+    return data
+
+
+def _new_pair(refresh) -> dict[str, str]:
+    """An access token from `refresh`, then `refresh` itself turned into a new refresh token."""
     data = {"access": str(refresh.access_token)}
-    _use_once(refresh)
     refresh.set_jti()
     refresh.set_exp()
     refresh.set_iat()
@@ -88,22 +113,52 @@ def rotate_refresh(raw_refresh: str) -> dict[str, str]:
     return data
 
 
-def _use_once(refresh) -> None:
+def _reissue(refresh, old_jti: str) -> dict[str, str]:
+    """The second chance for a refresh token already used (BVTGC-93).
+
+    Only when it was replaced within the window and its replacement is still unused: never used for a
+    refresh of its own and not logged out (both blacklist it). The replacement, whose answer was lost,
+    ends here and a new pair is given, so one usable chain is left. Two such requests at once: the
+    database's unique rule on the blacklist lets one through, the other answers session_revoked.
+    """
+    window = settings.JWT_REFRESH_GRACE_SECONDS
+    if window <= 0:
+        raise session_revoked()
+    since = timezone.now() - timedelta(seconds=window)
+    rotation = RefreshRotation.objects.filter(old_jti=old_jti, at__gte=since).first()
+    replacement = rotation and OutstandingToken.objects.filter(jti=rotation.new_jti).first()
+    if not replacement:
+        raise session_revoked()
+    try:
+        with transaction.atomic():
+            BlacklistedToken.objects.create(token=replacement)
+            data = _new_pair(refresh)
+            RefreshRotation.objects.filter(pk=rotation.pk).update(new_jti=refresh[api_settings.JTI_CLAIM])
+    except IntegrityError:
+        raise session_revoked() from None
+    return data
+
+
+def _use_once(refresh, *, allow_reuse: bool = False) -> bool:
     """Blacklist the refresh token being exchanged, so that only one request can use it (audit BE-DB-022).
 
     simplejwt's blacklist() uses get_or_create, so two requests with the same token at the same moment both
-    passed and both got new tokens. A plain insert lets the database's unique rule pick one: the other
-    request answers 401 session_revoked, as for any used token.
+    passed and both got new tokens. A plain insert lets the database's unique rule pick one. The other
+    request gets False with `allow_reuse` (rotate_refresh then tries the grace of BVTGC-93), else 401
+    session_revoked, as for any used token.
     """
     token = OutstandingToken.objects.filter(jti=refresh[api_settings.JTI_CLAIM]).first()
     if token is None:  # issued outside issue_tokens(): keep simplejwt's way
         refresh.blacklist()
-        return
+        return True
     try:
         with transaction.atomic():
             BlacklistedToken.objects.create(token=token)
     except IntegrityError:
+        if allow_reuse:
+            return False
         raise session_revoked() from None
+    return True
 
 
 def blacklist_refresh(raw_refresh: str) -> None:

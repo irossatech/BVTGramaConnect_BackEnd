@@ -1,7 +1,9 @@
 """Three small races (audit finding BE-DB-022). The other, simultaneous request is stood in for by letting
 the first check through, or by changing the row behind the caller's back.
 
-- A refresh token used by two requests at the same moment gives new tokens to one of them only.
+- A refresh token used by two requests at the same moment leaves one usable chain only (since BVTGC-93
+  the second gets a pair and the first one's ends, as for a lost answer; outside the grace window the
+  second is refused).
 - A service-request change starts from the saved status, so history and audit name the real "from".
 - One django-q2 schedule per name, whatever ran before; duplicates are removed.
 """
@@ -26,13 +28,28 @@ pytestmark = pytest.mark.django_db
 REFRESH = "/api/v1/auth/refresh/"
 
 
-def test_a_refresh_token_used_twice_at_once_works_once(world):
+def refresh(token):
+    return APIClient().post(REFRESH, {"refresh": token}, format="json")
+
+
+def test_a_refresh_token_used_twice_at_once_leaves_one_chain(world):
     tokens = issue_tokens(world.users["va_kolakaluru"])
-    first = APIClient().post(REFRESH, {"refresh": tokens["refresh"]}, format="json")
+    first = refresh(tokens["refresh"])
     assert first.status_code == 200
     # The second request read the token before the first one blacklisted it: its check saw nothing.
     with mock.patch.object(RefreshToken, "check_blacklist"):
-        second = APIClient().post(REFRESH, {"refresh": tokens["refresh"]}, format="json")
+        second = refresh(tokens["refresh"])
+    assert second.status_code == 200
+    assert refresh(first.json()["refresh"]).status_code == 401  # the first chain ended
+    assert refresh(second.json()["refresh"]).status_code == 200
+
+
+def test_outside_the_grace_a_refresh_token_used_twice_works_once(world, settings):
+    settings.JWT_REFRESH_GRACE_SECONDS = 0
+    tokens = issue_tokens(world.users["va_kolakaluru"])
+    assert refresh(tokens["refresh"]).status_code == 200
+    with mock.patch.object(RefreshToken, "check_blacklist"):
+        second = refresh(tokens["refresh"])
     assert second.status_code == 401 and second.json()["error"]["code"] == "session_revoked"
 
 

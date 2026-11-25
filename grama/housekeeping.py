@@ -4,6 +4,8 @@
   keeps only the newest Q_CLUSTER["save_limit"] (250) successful tasks itself.
 - Expired JWT refresh tokens (simplejwt's OutstandingToken; their
   BlacklistedToken rows go with them), as `flushexpiredtokens` does.
+- Refresh rotations (which refresh token replaced which, token IDs only) older
+  than a day; the grace for a lost refresh answer needs only seconds (BVTGC-93).
 - Expired console sessions, as `clearsessions` does.
 - django-axes AccessFailureLog rows (one per failed login, with the IP) older
   than LOGIN_FAILURE_LOG_KEEP_MINUTES (60): IP addresses are not kept longer
@@ -55,10 +57,14 @@ def run_housekeeping(now=None) -> dict:
     from django_q.models import Failure
     from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
 
+    from apps.accounts.models import RefreshRotation
+
     now = now or timezone.now()
     cutoff = now - timedelta(days=settings.HOUSEKEEPING_KEEP_DAYS)
     failed_tasks = _delete_in_batches(Failure.objects.filter(stopped__lt=cutoff))
     expired_tokens = _delete_in_batches(OutstandingToken.objects.filter(expires_at__lte=now))
+    # Which refresh token replaced which: needed only for JWT_REFRESH_GRACE_SECONDS (BVTGC-93).
+    _delete_in_batches(RefreshRotation.objects.filter(at__lt=now - timedelta(days=1)))
     sessions = _delete_in_batches(Session.objects.filter(expire_date__lt=now))
     login_failures = _delete_in_batches(
         AccessFailureLog.objects.filter(attempt_time__lte=now - timedelta(minutes=LOGIN_FAILURE_LOG_KEEP_MINUTES))

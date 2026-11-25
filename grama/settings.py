@@ -419,6 +419,10 @@ SIMPLE_JWT = {
 # the official typed their password, renewal is refused and the app asks for the login again.
 # 0 = no limit. The console has its own idle limit (CONSOLE_SESSION_IDLE_MINUTES).
 JWT_ABSOLUTE_DAYS = env.int("JWT_ABSOLUTE_DAYS", default=90)
+# A refresh token sent again within this many seconds of its first use (its answer was lost on a weak
+# network) still works while its replacement is unused: the lost replacement ends and a new pair is given
+# (BVTGC-93). The window counts from the first use and never grows. 0 = no second chance.
+JWT_REFRESH_GRACE_SECONDS = env.int("JWT_REFRESH_GRACE_SECONDS", default=60)
 if JWT_ABSOLUTE_DAYS < 0:
     raise ImproperlyConfigured("JWT_ABSOLUTE_DAYS must be 0 (no limit) or more.")
 
