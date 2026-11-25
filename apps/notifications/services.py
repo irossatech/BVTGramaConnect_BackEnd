@@ -406,3 +406,24 @@ def alert_escalation(post, level: str, hours: int) -> list[Notification]:
         template_key="escalation",
         hours=hours,
     )
+
+
+# --- The citizen wallet (BVTGC-129) ----------------------------------------------------------------------------
+
+WALLET_EVENTS = ("referral_joined", "points_confirmed", "points_not_confirmed")
+
+
+def tell_wallets(event: str, referral_id, recipients: list[tuple]) -> int:
+    """A push to citizens' wallet accounts, each in their own language: `recipients` is [(user, values)].
+
+    Push only, with no inbox item: the wallet history is the record (contract section 21). The phones are
+    the ones the app registered with POST /devices/ and the citizen's login; a blocked or deleted account
+    has none. Data holds ids only. Returns how many accounts were queued.
+    """
+    messages = [
+        [str(user.pk), render(event, user.preferred_language or "te", **values)[:255]]
+        for user, values in recipients
+        if user.is_active
+    ]
+    queue_pushes(messages, "", {"type": NotificationKind.WALLET, "event": event, "referral_id": str(referral_id)})
+    return len(messages)

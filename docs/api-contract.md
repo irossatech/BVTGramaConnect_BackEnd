@@ -656,19 +656,21 @@ What `POST /posts` does:
   "languages": {"te": true, "en": true},
   "citizen_posts_per_day": 5,
   "ads_banner_limit": 0,
+  "wallet_enabled": false, "wallet_pilot_mandals": [], "referral_reward_points": 50, "welcome_bonus_points": 20,
+  "referral_hold_days": 7, "referral_active_days": 2, "referrals_per_month": 30, "welcome_bonuses_per_phone": 3,
   "admin_posts_auto_publish": true,
   "review_first_decision_wins": true,
   "super_admin_can_post": true
 }
 ```
 - Values start from Django settings and environment variables, as CLAUDE.md defines. A value saved here overrides the default and is audited as `setting.changed`.
-- Editable: `review_escalation_hours` (6 to 168), `languages.en`, `citizen_posts_per_day` (0 to 1000, 0 is no limit; section 15), and `ads_banner_limit` (0 to 1000): the banners a citizen's Home shows, newest first; **0 is no limit, the default** (owner's decision of 2026-11-24, BVTGC-92; section 17). Phones follow a change within about 5 minutes (`ads/` and `app-config/` are cached 300 s). Telugu cannot be switched off. The other three are read-only here.
+- Editable: `review_escalation_hours` (6 to 168), `languages.en`, `citizen_posts_per_day` (0 to 1000, 0 is no limit; section 15), and `ads_banner_limit` (0 to 1000): the banners a citizen's Home shows, newest first; **0 is no limit, the default** (owner's decision of 2026-11-24, BVTGC-92; section 17). Phones follow a change within about 5 minutes (`ads/` and `app-config/` are cached 300 s). Telugu cannot be switched off. The other three are read-only here. The citizen wallet's eight settings (BVTGC-129) are in section 21, "Settings".
 
 What the apps read before login:
 
 | Method and path | Who | Response |
 |---|---|---|
-| `GET /app-config` | public, no login (a stale token is ignored) | `{"languages": {"te": true, "en": bool}, "min_version": "1.0.0+22"\|null, "latest_version": "1.0.0+24"\|null, "topic_prefix": "qa_"\|"", "ads_banner_limit": 0}`. `Cache-Control: public, max-age=300`, so a switch reaches phones within 5 minutes. Only these: escalation hours and the daily limit stay Super Admin only. The app hides its language switch while `en` is `false`. **App updates (BVTGC-90, 2026-11-24):** `min_version` and `latest_version` come from the server settings `APP_MIN_VERSION` and `APP_LATEST_VERSION` (`null` when not set, the default). The app compares only the **build number** after the `+` with its own: below `min_version` a blocking "Please update the app" screen; below `latest_version` an "Update available" note with Later; the download is the website APK. A missing or `null` field shows nothing. The server refuses to start with a value that has no build number, or a minimum above the latest. Raise `APP_MIN_VERSION` only after the new APK is on the website, and after the dashboard's `app_versions` shows few old installs. **Push topics (BVTGC-69):** `topic_prefix` is this server's `FCM_TOPIC_PREFIX` (`"qa_"` on qa, `""` in production); the app subscribes to its area topics with it (section 7). **Banners (BVTGC-92):** `ads_banner_limit` is the Super Admin's banners-per-Home number (0 = no limit); the app shows at most that many of the banners `ads/` returns. The app also sends its version in the header `X-App-Version: 1.0.0+21` on every call (optional; the server reads the version from `POST /devices/` and `POST /citizen/register/`). |
+| `GET /app-config` | public, no login (a stale token is ignored) | `{"languages": {"te": true, "en": bool}, "min_version": "1.0.0+22"\|null, "latest_version": "1.0.0+24"\|null, "topic_prefix": "qa_"\|"", "ads_banner_limit": 0, "wallet_enabled": false, "wallet_pilot_mandals": [], "wallet_consent_version": "2026-11-25"}` (the wallet fields: section 21, BVTGC-129). `Cache-Control: public, max-age=300`, so a switch reaches phones within 5 minutes. Only these: escalation hours and the daily limit stay Super Admin only. The app hides its language switch while `en` is `false`. **App updates (BVTGC-90, 2026-11-24):** `min_version` and `latest_version` come from the server settings `APP_MIN_VERSION` and `APP_LATEST_VERSION` (`null` when not set, the default). The app compares only the **build number** after the `+` with its own: below `min_version` a blocking "Please update the app" screen; below `latest_version` an "Update available" note with Later; the download is the website APK. A missing or `null` field shows nothing. The server refuses to start with a value that has no build number, or a minimum above the latest. Raise `APP_MIN_VERSION` only after the new APK is on the website, and after the dashboard's `app_versions` shows few old installs. **Push topics (BVTGC-69):** `topic_prefix` is this server's `FCM_TOPIC_PREFIX` (`"qa_"` on qa, `""` in production); the app subscribes to its area topics with it (section 7). **Banners (BVTGC-92):** `ads_banner_limit` is the Super Admin's banners-per-Home number (0 = no limit); the app shows at most that many of the banners `ads/` returns. The app also sends its version in the header `X-App-Version: 1.0.0+21` on every call (optional; the server reads the version from `POST /devices/` and `POST /citizen/register/`). |
 
 Planned (section 21, BVTGC-106): `GET /app-config` also returns `wallet_enabled`, `wallet_pilot_mandals` and `wallet_consent_version`.
 
@@ -777,10 +779,10 @@ Invite and reset emails use the same retries (section 3).
 
 | Method and path | Who | Request or response |
 |---|---|---|
-| `GET /admin/notification-templates/` | Super Admin | `[{"key", "name", "name_te", "name_en", "channel": "push", "recipient": "author"\|"citizens"\|"reviewers"\|"higher_admin"\|"citizen"\|"assignee"\|"super_admins", "text_te", "text_en", "variables": ["title", "comment"], "editable": true, "updated_at"}]` |
+| `GET /admin/notification-templates/` | Super Admin | `[{"key", "name", "name_te", "name_en", "channel": "push", "recipient": "author"\|"citizens"\|"reviewers"\|"higher_admin"\|"citizen"\|"assignee"\|"super_admins"\|"wallet", "text_te", "text_en", "variables": ["title", "comment"], "editable": true, "updated_at"}]` |
 | `PATCH /admin/notification-templates/{key}/` | Super Admin | `{"text_te", "text_en"}`, both required; only the listed `variables` may appear, each written as a plain `{name}` (nothing else inside the braces; a brace on its own is `{{` or `}}`). Anything else: `400 validation_error` on that field. Audited as `template.updated`. |
 
-Keys, seeded by a migration: `post_published`, `post_approved`, `post_recheck`, `post_discarded`, `post_unpublished`, `review_pending`, `escalation`, the service-request keys (section 16) and `super_admin_added` (recipient `super_admins`, variables `actor` and `name`; section 3), all push and editable. There are no SMS texts.
+Keys, seeded by a migration: `post_published`, `post_approved`, `post_recheck`, `post_discarded`, `post_unpublished`, `review_pending`, `escalation`, the service-request keys (section 16), `super_admin_added` (recipient `super_admins`, variables `actor` and `name`; section 3), and the citizen wallet's `referral_joined` (variable `name`), `points_confirmed` (`points`) and `points_not_confirmed` (`points`, `reason`), recipient `wallet` (BVTGC-129; section 21), all push and editable. There are no SMS texts.
 
 ---
 
@@ -1684,7 +1686,7 @@ The console's menu shows **Citizens & wallet** to holders of any of these permis
 
 ### Settings
 
-`GET`/`PATCH /admin/settings/` adds (audited as `setting.changed`):
+`GET`/`PATCH /admin/settings/` adds (audited as `setting.changed`) **live** (BVTGC-129):
 
 | Key | Default | Range |
 |---|---|---|
@@ -1697,7 +1699,9 @@ The console's menu shows **Citizens & wallet** to holders of any of these permis
 | `referrals_per_month` | 30 | 0 to 1,000 (0 is no limit) |
 | `welcome_bonuses_per_phone` | 3 | 0 to 10 |
 
-`GET /app-config/` adds `wallet_enabled`, `wallet_pilot_mandals` (mandal ids) and `wallet_consent_version` (the consent notice the sign-up must name). Phones follow a change within about 5 minutes, as for the other fields.
+A mandal id that is not an active mandal, or `referral_active_days` above `referral_hold_days` (the saved one when the PATCH leaves it out), answers `400 validation_error` on that field; nothing is saved. `wallet_pilot_mandals` comes back sorted, without repeats. A change applies to the next sign-up or decision: referrals already started keep their hold date and the points they hold. The `.env` values are only the starting values until the Super Admin saves one.
+
+`GET /app-config/` **live** (BVTGC-129) adds `wallet_enabled`, `wallet_pilot_mandals` (mandal ids, sorted) and `wallet_consent_version` (the consent notice the sign-up must name). Phones follow a change within about 5 minutes, as for the other fields.
 
 ### Rules
 
@@ -1729,7 +1733,12 @@ The console's menu shows **Citizens & wallet** to holders of any of these permis
 
 ### Pushes and audit
 
-- Pushes to the account's phone (registered with `POST /devices/` and the citizen JWT), push only, with no inbox entry (the wallet history is the record): kind `WALLET`, data `{"type": "referral_joined" | "points_confirmed" | "points_not_confirmed", "referral_id"}`. Texts are notification templates (section 7), editable in the console.
+- Pushes to the account's phone (registered with `POST /devices/` and the citizen JWT), push only, with no inbox entry (the wallet history is the record) **live** (BVTGC-129). Data `{"type": "WALLET", "event": "referral_joined" | "points_confirmed" | "points_not_confirmed", "referral_id"}`, like the other pushes' `type`; the app opens the wallet. (Changed in BVTGC-129 before any app used it: the event was in `type`.) When:
+  - `referral_joined` to the referrer, when a friend's sign-up with their code is done (template variable `name`, the friend's name);
+  - `points_confirmed` to each citizen whose held points the hourly job or the Super Admin confirmed (`points`);
+  - `points_not_confirmed` to each citizen whose held points were not confirmed (`points`, and `reason`: the reason's words in their language, or the Super Admin's comment). Not sent to a blocked or deleted account.
+
+  Texts are the notification templates of the same keys (section 7), in the citizen's language, editable in the console.
 - Audit actions: `citizen.account_created`, `citizen.code_sent`, `citizen.password_reset`, `citizen.password_changed`, `citizen.email_changed`, `citizen.mobile_changed`, `citizen.village_changed`, `citizen.account_blocked`, `citizen.account_unblocked`, `citizen.account_deleted` (with `via`: `app`, `website`, `admin`), `citizen.account_found`, `citizen.email_set_by_admin`, `citizen.mobile_released`, `referral.created`, `referral.confirmed`, `referral.rejected`, `wallet.adjusted`, `wallet.mismatch`. Logins use `auth.login` with `via` `citizen`. Audit data holds a masked email and the last 4 digits of a number at most.
 
 ### Later stage (WhatsApp and SMS, before Bills & Recharges)

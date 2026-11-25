@@ -103,6 +103,16 @@ RUNTIME_SETTINGS = {
     "CITIZEN_POSTS_PER_DAY": int,
     #: Banners on a citizen's Home: 0 = no limit, N = at most N (BVTGC-92).
     "ADS_PUBLIC_LIMIT": int,
+    # The citizen wallet (BVTGC-129, contract section 21 "Settings"): the switch, the pilot mandals and the
+    # reward rules. Read where they are used, so a change in the console applies to the next sign-up or decision.
+    "WALLET_ENABLED": bool,
+    "WALLET_PILOT_MANDALS": list,
+    "REFERRAL_REWARD_POINTS": int,
+    "WELCOME_BONUS_POINTS": int,
+    "REFERRAL_HOLD_DAYS": int,
+    "REFERRAL_ACTIVE_DAYS": int,
+    "REFERRALS_PER_MONTH": int,
+    "WELCOME_BONUSES_PER_PHONE": int,
 }
 
 
