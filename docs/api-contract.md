@@ -1644,12 +1644,12 @@ An optional account for citizens, used **only for the wallet of points and refer
 
 | Method and path | Request | Response |
 |---|---|---|
-| `GET /citizen/account/` | — | `Account`. The app calls it when it opens; it records the day for the active rule. |
-| `PATCH /citizen/account/` | any of `{village_id, language}` | `Account`. A new village moves the Citizen role with it. |
-| `POST /citizen/account/password/` | `{current_password, new_password}` | `200 {access, refresh}`: other logins end, this phone gets new tokens, a notice is emailed. `400 invalid_credentials` (wrong current password; the 5th wrong try within 15 minutes ends every session: `401 session_revoked`); `400 validation_error` on `new_password` |
-| `POST /citizen/account/email/` | `{email, password}` (the new email) | `200 CodeSent` with `email_hint`: a code went to the new email. `409 email_in_use`; `400 invalid_credentials`; `503 email_unavailable` |
-| `POST /citizen/account/email/verify/` | `{code}` | `200 Account`: the email changed and the old address got a notice. `400 code_wrong`, `code_expired`; `409 email_in_use` |
-| `POST /citizen/account/mobile/` | `{mobile, password}` (the new number) | `200 Account` (`mobile_verified` becomes `false`). `409 mobile_in_use` (point the citizen to the help line); `400 invalid_credentials` |
+| `GET /citizen/account/` **live** (BVTGC-125) | — | `Account`. The app calls it when it opens; it records the day for the active rule. |
+| `PATCH /citizen/account/` **live** (BVTGC-125) | any of `{village_id, language}` | `Account`. A new village moves the Citizen role with it. |
+| `POST /citizen/account/password/` **live** (BVTGC-125) | `{current_password, new_password}` | `200 {access, refresh}`: other logins end, this phone gets new tokens, a notice is emailed. `400 invalid_credentials` (wrong current password; the 5th wrong try within 15 minutes ends every session: `401 session_revoked`); `400 validation_error` on `new_password` |
+| `POST /citizen/account/email/` **live** (BVTGC-125) | `{email, password}` (the new email) | `200 CodeSent` with `email_hint`: a code went to the new email. `409 email_in_use`; `400 invalid_credentials`; `503 email_unavailable` |
+| `POST /citizen/account/email/verify/` **live** (BVTGC-125) | `{code}` | `200 Account`: the email changed and the old address got a notice. `400 code_wrong`, `code_expired`; `409 email_in_use` |
+| `POST /citizen/account/mobile/` **live** (BVTGC-125) | `{mobile, password}` (the new number) | `200 Account` (`mobile_verified` becomes `false`). `409 mobile_in_use` (point the citizen to the help line); `400 invalid_credentials` |
 | `POST /citizen/account/delete/` | `{password}` | `204`. The account is closed at once (see "Deletion"). `400 invalid_credentials` |
 | `GET /wallet/` | `?cursor=` | The cursor list of section 1 with the summary as sibling keys: `{confirmed_points, held_points, next_release_at, next, previous, results: [WalletEntry]}`, newest first, 20 a page. Every page repeats the summary. |
 

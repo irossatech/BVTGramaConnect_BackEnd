@@ -10,6 +10,11 @@ Login and the forgotten password (BVTGC-124): the email or the mobile number fin
 the officials' login limits apply as they are (accounts.credentials.authenticate_with_limits), keyed on
 the account's username, so the email and the number count as one account.
 
+The citizen's own account (BVTGC-125): reading it records the day for the referral active rule; the
+village, the language, the password, the email (with a code to the new address) and the mobile number
+change here. A wrong password on these counts with the officials' wrong tries on "Change password", so
+guessing ends every session of the account.
+
 The full mobile number is never stored: login and uniqueness use its keyed hash (PHONE_HASH_KEY).
 """
 
@@ -31,8 +36,9 @@ from django.utils.translation import gettext as _
 from rest_framework import status
 
 from apps.accounts import credentials, lockout
-from apps.accounts.models import RoleAssignment, User, mobile_validator
-from apps.accounts.tokens import revoke_all_sessions
+from apps.accounts.models import RoleAssignment, RoleGroup, User, mobile_validator
+from apps.accounts.tokens import issue_tokens, revoke_all_sessions
+from apps.audit.masking import mask_email
 from apps.audit.services import record
 from apps.geography.areas import AreaRef
 from apps.geography.models import AreaLevel, Village
@@ -41,7 +47,7 @@ from apps.posts.services import runtime
 from grama.exceptions import ApiError
 
 from . import codes, emails
-from .models import CitizenAccount, PendingSignup, VerificationCode
+from .models import CitizenAccount, CitizenActiveDay, PendingSignup, VerificationCode
 from .passwords import check_citizen_password
 from .services import _active_village, _keyed_hash, _validation, hash_android_id
 
@@ -118,6 +124,23 @@ def _in_use(*, mobile_hash: str, email_key: str) -> None:
         raise ApiError(
             "email_in_use",
             _("This email already has an account. Log in or reset your password."),
+            status=status.HTTP_409_CONFLICT,
+        )
+
+
+def _taken_elsewhere(*, mobile_hash: str = "", email_key: str = "") -> None:
+    """For a logged-in citizen's change: the same 409 codes as at sign-up, with words that point to the help
+    line (D16), since logging in or resetting does not help here."""
+    if mobile_hash and CitizenAccount.objects.filter(mobile_hash=mobile_hash).exists():
+        raise ApiError(
+            "mobile_in_use",
+            _("This mobile number belongs to another account. If it is yours, call the help line."),
+            status=status.HTTP_409_CONFLICT,
+        )
+    if email_key and CitizenAccount.objects.filter(email_key=email_key).exists():
+        raise ApiError(
+            "email_in_use",
+            _("This email belongs to another account. If it is yours, call the help line."),
             status=status.HTTP_409_CONFLICT,
         )
 
@@ -401,4 +424,144 @@ def reset_password(login: str, code: str, new_password: str, *, via: str = "citi
     emails.notify("password_changed", account.email, language=user.preferred_language, name=user.name)
     account.refresh_from_db()
     account.user.refresh_from_db()
+    return account
+
+
+# --- The citizen's own account (BVTGC-125) --------------------------------------------------------------
+
+def record_active_day(account: CitizenAccount) -> None:
+    """One row per India date the app opens with the account (the referral active rule); the first open of
+    a day also sets last_active_at. Cheap: get_or_create on the unique pair."""
+    _row, created = CitizenActiveDay.objects.get_or_create(account=account, day=timezone.localdate())
+    if created:
+        CitizenAccount.objects.filter(pk=account.pk).update(last_active_at=timezone.now())
+
+
+def _check_own_password(account: CitizenAccount, password: str) -> None:
+    """Raise unless `password` is the account's. A wrong one is audited and counted with the wrong tries on
+    "Change password"; too many end every session (401 session_revoked)."""
+    user = account.user
+    if user.check_password(password or ""):
+        return
+    error = credentials.wrong_current_password(user, via="citizen")
+    if error.error_code == "invalid_credentials":
+        raise ApiError("invalid_credentials", _("Wrong password."))
+    raise error
+
+
+def update_account(account: CitizenAccount, *, village_id=None, language=None, via: str = "citizen") -> CitizenAccount:
+    """PATCH /citizen/account/: a new village moves the Citizen role with it (no pilot check: an existing
+    account keeps working wherever its village moves); a language for emails and pushes."""
+    user = account.user
+    with transaction.atomic():
+        if village_id is not None and int(village_id) != account.village_id:
+            new_village = _active_village(village_id)
+            old_village = account.village_id
+            CitizenAccount.objects.filter(pk=account.pk).update(village_id=new_village)
+            citizen_group = RoleGroup.objects.get(key=CITIZEN_ROLE).group_id
+            RoleAssignment.objects.filter(user=user, group_id=citizen_group, is_active=True).update(
+                area_level=AreaLevel.VILLAGE, area_id=new_village
+            )
+            record(
+                "citizen.village_changed", actor=user, target=user, target_label=user.name, via=via,
+                data={"from": old_village, "to": new_village},
+            )
+        if language in ("te", "en") and language != user.preferred_language:
+            User.objects.filter(pk=user.pk).update(preferred_language=language)
+    account.refresh_from_db()
+    account.user.refresh_from_db()
+    return account
+
+
+def change_password(account: CitizenAccount, current: str, new: str, *, via: str = "citizen") -> dict:
+    """The citizen's own password change. Every other session ends; this phone gets new tokens."""
+    _check_own_password(account, current)
+    user = account.user
+    check_citizen_password(new, name=user.name, email=account.email, mobile_hash=account.mobile_hash or "", field="new_password")
+    if new == current:
+        message = _("Choose a password different from the current one.")
+        raise ApiError("validation_error", message, fields={"new_password": [message]})
+    with transaction.atomic():
+        user.set_password(new)
+        user.password_changed_at = timezone.now()
+        user.save(update_fields=["password", "password_changed_at"])
+        revoke_all_sessions(user)  # also unlinks the phones; the app links this one again at once
+        record("citizen.password_changed", actor=user, target=user, target_label=user.name, via=via)
+    emails.notify("password_changed", account.email, language=user.preferred_language, name=user.name)
+    user.refresh_from_db()
+    return issue_tokens(user)
+
+
+def start_email_change(account: CitizenAccount, email: str, password: str, *, via: str = "citizen") -> codes.CodeSent:
+    """A CHANGE_EMAIL code to the new address, after the password. The email changes only with that code."""
+    _check_own_password(account, password)
+    email = (email or "").strip().lower()
+    email_key = canonical_email(email)
+    if email_key == account.email_key:
+        message = _("This is already your email.")
+        raise ApiError("validation_error", message, fields={"email": [message]})
+    _taken_elsewhere(email_key=email_key)
+    user = account.user
+    return codes.send_code(
+        purpose=VerificationCode.Purpose.CHANGE_EMAIL,
+        to_email=email,
+        email_key=email_key,
+        language=user.preferred_language,
+        name=user.name,
+        account=account,
+        via=via,
+    )
+
+
+def finish_email_change(account: CitizenAccount, code: str, *, via: str = "citizen") -> CitizenAccount:
+    """The right code moves the account to the new address; the old address gets a notice."""
+    row = codes.check_code(purpose=VerificationCode.Purpose.CHANGE_EMAIL, code=code, account=account)
+    old_email, new_email, new_key = account.email, row.new_email, row.new_email_key
+    user = account.user
+    try:
+        with transaction.atomic():
+            if not codes.consume(row):
+                raise codes.expired_error()
+            CitizenAccount.objects.filter(pk=account.pk).update(
+                email=new_email, email_key=new_key, email_verified_at=timezone.now()
+            )
+            VerificationCode.objects.filter(pk=row.pk).update(new_email="", new_email_key="")
+            record(
+                "citizen.email_changed", actor=user, target=user, target_label=user.name, via=via,
+                data={"from": mask_email(old_email), "to": mask_email(new_email)},
+            )
+    except IntegrityError:
+        _taken_elsewhere(email_key=new_key)  # another account took it meanwhile: 409
+        raise
+    if old_email:
+        emails.notify("email_changed", old_email, language=user.preferred_language, name=user.name, new_email=new_email)
+    account.refresh_from_db()
+    return account
+
+
+def change_mobile(account: CitizenAccount, mobile: str, password: str, *, via: str = "citizen") -> CitizenAccount:
+    """A new mobile number, after the password; not confirmed by a code until the later stage (D17), so it
+    clears mobile_verified_at. Also how an account whose number the Super Admin removed adds a new one."""
+    _check_own_password(account, password)
+    mobile = clean_mobile(mobile)
+    mobile_hash = hash_mobile(mobile)
+    if mobile_hash == account.mobile_hash:
+        message = _("This is already your mobile number.")
+        raise ApiError("validation_error", message, fields={"mobile": [message]})
+    _taken_elsewhere(mobile_hash=mobile_hash)
+    user = account.user
+    old_last4 = account.mobile_last4
+    try:
+        with transaction.atomic():
+            CitizenAccount.objects.filter(pk=account.pk).update(
+                mobile_hash=mobile_hash, mobile_last4=mobile[-4:], mobile_verified_at=None
+            )
+            record(
+                "citizen.mobile_changed", actor=user, target=user, target_label=user.name, via=via,
+                data={"from": old_last4, "to": mobile[-4:]},
+            )
+    except IntegrityError:
+        _taken_elsewhere(mobile_hash=mobile_hash)
+        raise
+    account.refresh_from_db()
     return account

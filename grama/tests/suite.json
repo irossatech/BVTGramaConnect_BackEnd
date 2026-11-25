@@ -71,6 +71,7 @@
       "files": [
         "apps/citizens/tests/test_blocked_citizens.py",
         "apps/citizens/tests/test_blocked_posts.py",
+        "apps/citizens/tests/test_citizen_account.py",
         "apps/citizens/tests/test_client_ref.py",
         "apps/citizens/tests/test_media_budget.py",
         "apps/citizens/tests/test_officials_only_categories.py",
