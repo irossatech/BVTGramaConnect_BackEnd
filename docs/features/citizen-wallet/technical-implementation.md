@@ -619,14 +619,20 @@ Claude drafts the mockups; Admin and the owner approve them. They are **plain HT
 
 | File | Screens |
 |---|---|
-| `mobile.html` | Sign in to earn points; Create account (with field errors); Check your email; Log in (with the lock message); Forgot password (two steps); Wallet (empty, held, history); Invite friends; Profile with the account entries; Change password, email and mobile; Delete my account; "Coming to your area soon"; the new-number prompt (`mobile_missing`) |
-| `console.html` | Citizens & wallet: Accounts tab, account panel with block, delete, set email, remove number and adjust points; Referrals tab; the wallet part of Settings |
+| `mobile.html` | Sign in to earn points; Create account (with field errors); Check your email; Log in (with the lock message); Forgot password (two steps); Wallet (empty, held, history); Invite friends; Profile with the account entries; Change password, email and mobile; Delete my account; "Coming to your area soon"; the new-number prompt (`mobile_missing`); the three wallet pushes |
+| `console.html` | Citizens & wallet: Accounts tab, account panel with block, delete, set email, remove number and adjust points; find by mobile or email; Referrals tab with the reject dialog; Wallet entries tab; the adjust dialog; the wallet part of Settings |
 | `website.html` | Download section with a friend's code; Delete my wallet account (three steps) |
 | `emails.html` | The code email and the three notices, in Telugu and English |
 
 Every screen in Telugu (the default) and English, at a budget phone's width (360 px).
 
 - **Done when:** Admin approves each file; changes are noted in the ticket; the files are committed.
+- **Approved by Admin on 2026-11-25**, after they were checked against the backend as built (BVTGC-123 to BVTGC-130). Changes then:
+  - the console shows only what the API gives (no accounts export, referral count, mandal name or active-days column);
+  - the reject and adjust dialogs warn that the citizen reads the comment or reason;
+  - the app shows the three wallet pushes;
+  - the emails read word for word as the server sends them.
+  The Admin chose a Wallet entries tab with its own list endpoint (`GET /admin/wallet/entries/`, FR-33) over the export alone.
 
 ## 9. Infrastructure: the server team (BVTGC-143)
 

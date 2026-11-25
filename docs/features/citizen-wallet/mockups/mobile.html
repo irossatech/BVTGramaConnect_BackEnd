@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="te">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wallet mockups: app</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@500;600;700&family=Nunito+Sans:wght@400;600;700&family=Noto+Sans+Telugu:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue: #0D3B7A; --navy: #0A2550; --green: #1F8A3B; --orange: #E9791E; --yellow: #F2DD3D;
+    --red: #B3261E; --red-bg: #FDE7E5; --bg: #F6F8F3; --card: #FFFFFF; --card-border: #EEF2F6;
+    --input: #CFD8E3; --ink: #17212E; --body: #3B4A5C; --muted: #6B7A8C; --disabled: #9AA6B4;
+    --pending-bg: #FFF0DC; --pending: #B35A0E; --ok-bg: #E4F4DF; --ok: #1D7A33;
+    --shadow: 0 2px 8px rgba(0,64,126,.08); --raised: 0 10px 28px rgba(0,64,126,.14);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #E9EDF2; font-family: "Nunito Sans", "Noto Sans Telugu", sans-serif; color: var(--ink); }
+  /* Telugu at 88% of each element's own size, as in the prototype (the text sits in an inner span). */
+  html[lang="te"] .tt { font-family: "Noto Sans Telugu", "Nunito Sans", sans-serif; font-size: 88%; }
+  .page-head { position: sticky; top: 0; z-index: 5; background: var(--navy); color: #fff; padding: 14px 24px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+  .page-head h1 { font: 700 18px Rubik, sans-serif; margin: 0; }
+  .page-head p { margin: 0; font-size: 13px; opacity: .85; flex: 1 1 320px; }
+  .lang { display: flex; background: rgba(255,255,255,.12); border-radius: 999px; padding: 3px; }
+  .lang button { border: 0; background: transparent; color: #fff; font: 600 13px "Nunito Sans", "Noto Sans Telugu", sans-serif; padding: 6px 14px; border-radius: 999px; cursor: pointer; }
+  .lang button.on { background: #fff; color: var(--navy); }
+  .grid { display: flex; flex-wrap: wrap; gap: 28px; padding: 24px; justify-content: center; }
+  figure { margin: 0; width: 360px; }
+  figcaption { font: 600 13px "Nunito Sans", sans-serif; color: var(--body); margin: 0 4px 8px; }
+  figcaption b { font-family: Rubik, sans-serif; color: var(--navy); }
+  figcaption small { display: block; font-weight: 400; color: var(--muted); margin-top: 2px; }
+  .phone { width: 360px; height: 740px; background: var(--bg); border-radius: 28px; box-shadow: var(--raised); overflow: hidden; position: relative; border: 8px solid #10151d; display: flex; flex-direction: column; }
+  .status { height: 22px; background: var(--blue); color: #fff; font-size: 11px; padding: 3px 14px; display: flex; justify-content: space-between; }
+  .hdr { height: 60px; background: var(--blue); color: #fff; display: flex; align-items: center; gap: 10px; padding: 0 16px; box-shadow: 0 2px 10px rgba(10,37,80,.25); flex: none; }
+  .hdr .disc { width: 34px; height: 34px; border-radius: 50%; background: #fff; color: var(--blue); display: grid; place-items: center; font: 700 13px Rubik, sans-serif; }
+  .hdr .back { font-size: 22px; width: 24px; }
+  .hdr h2 { font: 700 17px Rubik, "Noto Sans Telugu", sans-serif; margin: 0; flex: 1; }
+  .body { flex: 1; overflow: hidden; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .card { background: var(--card); border: 1px solid var(--card-border); border-radius: 16px; box-shadow: var(--shadow); padding: 14px; }
+  .hero { font: 700 22px Rubik, "Noto Sans Telugu", sans-serif; color: var(--navy); margin: 4px 0 0; }
+  .sub { color: var(--body); font-size: 14px; margin: 0; line-height: 1.45; }
+  .muted { color: var(--muted); font-size: 12.5px; line-height: 1.4; }
+  label.f { display: block; font-size: 12.5px; font-weight: 700; color: var(--body); margin-bottom: 4px; }
+  .in { border: 1.5px solid var(--input); border-radius: 12px; background: #fff; height: 46px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; font-size: 15px; color: var(--ink); }
+  .in.ph { color: var(--disabled); }
+  .in.err { border-color: var(--red); }
+  .in.focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(13,59,122,.12); }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .errt { font-size: 12px; color: var(--red); margin-top: 4px; }
+  .eye { color: var(--muted); font-size: 13px; }
+  .btn { height: 54px; border-radius: 999px; border: 0; background: var(--blue); color: #fff; font: 700 16px "Nunito Sans", "Noto Sans Telugu", sans-serif; display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; }
+  .btn.green { background: var(--green); }
+  .btn.red { background: var(--red); }
+  .btn.sec { background: #fff; color: var(--blue); border: 1.5px solid var(--blue); }
+  .btn.small { height: 40px; font-size: 14px; }
+  .btn::after { content: "›"; font-size: 20px; line-height: 1; }
+  .btn.noarrow::after { content: none; }
+  .link { color: var(--blue); font-weight: 700; font-size: 14px; text-align: center; }
+  .check { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; color: var(--body); }
+  .box { width: 20px; height: 20px; border-radius: 6px; border: 2px solid var(--green); background: var(--green); color: #fff; display: grid; place-items: center; font-size: 13px; flex: none; }
+  .box.off { background: #fff; border-color: var(--input); }
+  .code { display: flex; gap: 8px; justify-content: center; }
+  .code span { width: 42px; height: 52px; border: 1.5px solid var(--input); border-radius: 12px; background: #fff; display: grid; place-items: center; font: 700 22px Rubik, sans-serif; }
+  .code span.f { border-color: var(--blue); }
+  .banner { border-radius: 12px; padding: 10px 12px; font-size: 13px; line-height: 1.4; }
+  .banner.err { background: var(--red-bg); color: var(--red); }
+  .banner.warn { background: var(--pending-bg); color: var(--pending); }
+  .banner.info { background: #E3F0FB; color: var(--blue); }
+  .row { display: flex; align-items: center; gap: 10px; }
+  .grow { flex: 1; }
+  .nav { position: absolute; left: 14px; right: 14px; bottom: 12px; height: 60px; background: var(--blue); border-radius: 999px; display: flex; align-items: center; justify-content: space-around; box-shadow: 0 4px 12px rgba(10,37,80,.18); padding: 0 6px; }
+  .nav i { font-style: normal; color: rgba(255,255,255,.78); font-size: 20px; }
+  .nav .on { background: #fff; color: var(--blue); border-radius: 999px; padding: 8px 14px; font: 700 13px "Nunito Sans", "Noto Sans Telugu", sans-serif; }
+  .balance { background: linear-gradient(135deg, var(--blue), var(--navy)); color: #fff; border-radius: 16px; padding: 16px; box-shadow: var(--raised); }
+  .balance .n { font: 700 40px Rubik, sans-serif; line-height: 1; }
+  .balance .l { font-size: 13px; opacity: .85; }
+  .pill { display: inline-block; border-radius: 999px; padding: 3px 10px; font-size: 11.5px; font-weight: 700; }
+  .pill.held { background: var(--pending-bg); color: var(--pending); }
+  .pill.ok { background: var(--ok-bg); color: var(--ok); }
+  .pill.no { background: #EEF2F6; color: var(--body); }
+  .hist { display: flex; flex-direction: column; }
+  .hist .it { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--card-border); align-items: center; }
+  .hist .it:last-child { border-bottom: 0; }
+  .ic { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; font-size: 16px; flex: none; }
+  .pts { font: 700 16px Rubik, sans-serif; }
+  .pts.plus { color: var(--green); }
+  .pts.held { color: var(--pending); }
+  .pts.no { color: var(--disabled); text-decoration: line-through; }
+  .menu .it { display: flex; align-items: center; gap: 12px; padding: 13px 4px; border-bottom: 1px solid var(--card-border); font-size: 15px; }
+  .menu .it:last-child { border-bottom: 0; }
+  .menu .it .chev { margin-left: auto; color: var(--disabled); }
+  .sheet { position: absolute; left: 0; right: 0; bottom: 0; background: #fff; border-radius: 20px 20px 0 0; padding: 20px 16px 22px; box-shadow: 0 -10px 28px rgba(0,64,126,.18); display: flex; flex-direction: column; gap: 12px; }
+  .scrim { position: absolute; inset: 0; background: rgba(10,37,80,.45); }
+  .grab { width: 40px; height: 4px; border-radius: 2px; background: var(--input); margin: -8px auto 4px; }
+  .refcode { font: 700 26px Rubik, sans-serif; letter-spacing: 3px; color: var(--navy); text-align: center; background: #F2F6FB; border: 1.5px dashed var(--blue); border-radius: 14px; padding: 12px; }
+  .tri { height: 4px; background: linear-gradient(90deg, var(--orange) 33%, #fff 33% 66%, var(--green) 66%); }
+  .feedcard { height: 92px; background: linear-gradient(120deg, #DDE7F2, #EEF2F6); border-radius: 14px; }
+  .notes { max-width: 1100px; margin: 0 auto 40px; padding: 0 24px; color: var(--body); font-size: 14px; line-height: 1.55; }
+  .notes h3 { font: 700 16px Rubik, sans-serif; color: var(--navy); }
+</style>
+</head>
+<body>
+<div class="page-head">
+  <h1>Citizen wallet: app screens</h1>
+  <p>Draft mockups for BVTGC-131, for approval. Colours, fonts and shapes from the approved prototype (Mobile V2). Telugu is the default; switch to check both.</p>
+  <div class="lang"><button data-l="te" class="on">తెలుగు</button><button data-l="en">English</button></div>
+</div>
+
+<div class="grid">
+
+<!-- 1. Home entry -->
+<figure><figcaption><b>1. Home: the wallet entry</b><small>Shown while the wallet is on and the app's village is in a pilot mandal. Opens screen 2.</small></figcaption>
+<div class="phone"><div class="status"><span>9:41</span><span>4G ▮▮▮</span></div>
+  <div class="hdr"><div class="disc">GC</div><h2 class="t" data-t="appname"></h2><span>🔔</span></div>
+  <div class="body">
+    <div class="card" style="background:linear-gradient(135deg,#FFF6E8,#fff);border-color:#FBE2C0">
+      <div class="row"><div class="ic" style="background:var(--orange);color:#fff">★</div>
+        <div class="grow"><div class="t" style="font:700 16px Rubik,'Noto Sans Telugu',sans-serif;color:var(--navy)" data-t="earn_title"></div>
+        <div class="muted t" data-t="earn_sub"></div></div></div>
+      <div style="height:10px"></div>
+      <div class="btn small green t" data-t="earn_btn"></div>
+    </div>
+    <div class="feedcard"></div><div class="feedcard"></div><div class="feedcard"></div>
+  </div>
+  <div class="nav"><span class="on t" data-t="nav_home"></span><i>📰</i><i>☎</i><i>👤</i></div>
+</div></figure>
+
+<!-- 2. Sheet -->
+<figure><figcaption><b>2. Sign in to earn points</b><small>A sheet over Home. Two choices only.</small></figcaption>
+<div class="phone"><div class="status"><span>9:41</span><span>4G ▮▮▮</span></div>
+  <div class="hdr"><div class="disc">GC</div><h2 class="t" data-t="appname"></h2></div>
+  <div class="body"><div class="feedcard"></div><div class="feedcard"></div></div>
+  <div class="scrim"></div>
+  <div class="sheet"><div class="grab"></div>
+    <div class="hero t" style="font-size:20px" data-t="sheet_title"></div>
+    <p class="sub t" data-t="sheet_sub"></p>
+    <div class="btn t" data-t="create"></div>
+    <div class="btn sec t" data-t="login"></div>
+    <p class="muted t" style="text-align:center" data-t="sheet_note"></p>
+  </div>
+</div></figure>
+
+<!-- 3. Create account -->
+<figure><figcaption><b>3. Create account</b><small>The client's form. The app checks that the two passwords match; the server checks the rest. On Android the mobile field offers the phone's SIM numbers.</small></figcaption>
+<div class="phone"><div class="status"><span>9:41</span><span>4G ▮▮▮</span></div>
+  <div class="hdr"><span class="back">‹</span><h2 class="t" data-t="create"></h2></div>
+  <div class="body" style="gap:9px">
+    <div><label class="f t" data-t="f_name"></label><div class="in">రవి కుమార్</div></div>
+    <div><label class="f t" data-t="f_mobile"></label><div class="in">98765 43210<span class="eye">📱</span></div></div>
+    <div><label class="f t" data-t="f_email"></label><div class="in">ravi.kumar@gmail.com</div></div>
+    <div><label class="f t" data-t="f_pass"></label><div class="in focus">••••••••<span class="eye t" data-t="show"></span></div><div class="hint t" data-t="pass_rule"></div></div>
+    <div><label class="f t" data-t="f_pass2"></label><div class="in">••••••••</div></div>
+    <div><label class="f t" data-t="f_ref"></label><div class="in">K7QX2MPA</div></div>
+    <div class="check"><span class="box">✓</span><span class="t" data-t="age"></span></div>
+    <div class="check"><span class="box">✓</span><span class="t" data-t="agree"></span></div>
+    <div class="btn t" data-t="create_btn"></div>
+  </div>
+</div></figure>
+
+<!-- 4. Create account: already registered -->
+<figure><figcaption><b>4. Create account: number already registered</b><small><code>409 mobile_in_use</code> (or <code>email_in_use</code>). Offers Log in and Forgot password; the help line if it is not theirs (D16).</small></figcaption>
+<div class="phone"><div class="status"><span>9:41</span><span>4G ▮▮▮</span></div>
+  <div class="hdr"><span class="back">‹</span><h2 class="t" data-t="create"></h2></div>
+  <div class="body" style="gap:9px">
+    <div><label class="f t" data-t="f_name"></label><div class="in">రవి కుమార్</div></div>
+    <div><label class="f t" data-t="f_mobile"></label><div class="in err">98765 43210</div><div class="errt t" data-t="mobile_taken"></div></div>
+    <div class="banner warn t" data-t="taken_banner"></div>
+    <div class="btn t" data-t="login"></div>
+    <div class="btn sec t" data-t="forgot"></div>
+    <p class="muted t" style="text-align:center" data-t="not_mine"></p>
+  </div>
+</div></figure>
+
+<!-- 5. Check your email -->
+<figure><figcaption><b>5. Check your email</b><small>After Create account. The code also shows in the email's subject. Send again after 60 seconds.</small></figcaption>
+<div class="phone"><div class="status"><span>9:41</span><span>4G ▮▮▮</span></div>
+  <div class="hdr"><span class="back">‹</span><h2 class="t" data-t="check_email"></h2></div>
+  <div class="body">
+    <div style="text-align:center;font-size:44px">✉️</div>
+    <p class="sub t" style="text-align:center" data-t="sent_to"></p>
+    <p style="text-align:center;font:700 16px Rubik,sans-serif;margin:-4px 0 4px">r***@gmail.com</p>
+    <div class="code"><span>4</span><span>8</span><span>2</span><span class="f">9</span><span></span><span></span></div>
+    <div class="banner info t" data-t="spam"></div>
+    <div class="btn t" data-t="verify_btn"></div>
+    <p class="link t" style="color:var(--muted)" data-t="resend_in"></p>
+    <p class="link t" data-t="change_email"></p>
+  </div>
+</div></figure>
+
+<!-- 6. Log in -->
+<figure><figcaption><b>6. Log in</b><small>Email or mobile number, and the password. After 5 wrong passwords from one place, the account waits 15 minutes (the banner).</small></figcaption>
+<div class="phone"><div class="status"><span>9:41</span><span>4G ▮▮▮</span></div>
+  <div class="hdr"><span class="back">‹</span><h2 class="t" data-t="login"></h2></div>
+  <div class="body">
+    <div class="tri"></div>
+    <p class="hero t" data-t="welcome_back"></p>
+    <div><label class="f t" data-t="f_login"></label><div class="in">98765 43210</div></div>
+    <div><label class="f t" data-t="f_pass"></label><div class="in err">••••••<span class="eye t" data-t="show"></span></div><div class="errt t" data-t="wrong_pass"></div></div>
+    <div class="banner err t" data-t="locked"></div>
+    <div class="btn t" data-t="login"></div>
+    <p class="link t" data-t="forgot"></p>
+    <p class="muted t" style="text-align:center" data-t="no_account"></p>
+  </div>
+</div></figure>
+
+<!-- 7. Forgot password, step 1 -->
+<figure><figcaption><b>7. Forgot password: step 1</b><small>The same message whatever was typed, so the screen never tells who is registered.</small></figcaption>
+<div class="phone"><div class="status"><span>9:41</span><span>4G ▮▮▮</span></div>
+  <div class="hdr"><span class="back">‹</span><h2 class="t" data-t="forgot_title"></h2></div>
+  <div class="body">
+    <p class="sub t" data-t="forgot_sub"></p>
+    <div><label class="f t" data-t="f_login"></label><div class="in focus">ravi.kumar@gmail.com</div></div>
+    <div class="btn t" data-t="send_code"></div>
+    <div class="banner info t" data-t="if_registered"></div>
+    <p class="muted t" data-t="lost_email"></p>
+  </div>
+</div></figure>
+
+<!-- 8. Forgot password, step 2 -->
+<figure><figcaption><b>8. Forgot password: step 2</b><small>The code, then the new password twice. Every other login ends; a notice email is sent.</small></figcaption>
+<div class="phone"><div class="status"><span>9:41</span><span>4G ▮▮▮</span></div>
+  <div class="hdr"><span class="back">‹</span><h2 class="t" data-t="forgot_title"></h2></div>
+  <div class="body">
+    <label class="f t" data-t="f_code"></label>
+    <div class="code"><span>4</span><span>8</span><span>2</span><span>9</span><span>1</span><span class="f">3</span></div>
+    <div class="errt t" style="text-align:center" data-t="code_wrong"></div>
+    <div><label class="f t" data-t="f_newpass"></label><div class="in">••••••••<span class="eye t" data-t="show"></span></div><div class="hint t" data-t="pass_rule"></div></div>
+    <div><label class="f t" data-t="f_pass2"></label><div class="in">••••••••</div></div>
+    <div class="btn t" data-t="save_pass"></div>
+    <p class="link t" style="color:var(--muted)" data-t="resend_in"></p>
+  </div>
+</div></figure>
+
+<!-- 9. Wallet -->
+<figure><figcaption><b>9. Wallet</b><small>Confirmed balance, points on hold with their date, and the history with each status and reason.</small></figcaption>
+<div class="phone"><div class="status"><span>9:41</span><span>4G ▮▮▮</span></div>
+  <div class="hdr"><span class="back">‹</span><h2 class="t" data-t="wallet"></h2></div>
+  <div class="body">
+    <div class="balance"><div class="l t" data-t="points_name"></div><div class="n">120</div>
+      <div class="row" style="margin-top:10px"><span class="pill held t" data-t="held_20"></span><span class="l t" data-t="held_date"></span></div></div>
+    <div class="row"><div class="btn small green t" data-t="invite"></div></div>
+    <div class="card hist" style="padding:4px 14px">
+      <div class="it"><div class="ic" style="background:var(--pending-bg);color:var(--pending)">⏳</div><div class="grow"><div class="t" style="font-weight:700;font-size:14px" data-t="h1"></div><div class="muted t" data-t="h1s"></div></div><div class="pts held">+20</div></div>
+      <div class="it"><div class="ic" style="background:var(--ok-bg);color:var(--ok)">✓</div><div class="grow"><div class="t" style="font-weight:700;font-size:14px" data-t="h2"></div><div class="muted t" data-t="h2s"></div></div><div class="pts plus">+50</div></div>
+      <div class="it"><div class="ic" style="background:#EEF2F6;color:var(--body)">✕</div><div class="grow"><div class="t" style="font-weight:700;font-size:14px" data-t="h3"></div><div class="muted t" data-t="h3s"></div></div><div class="pts no">+50</div></div>
+      <div class="it"><div class="ic" style="background:var(--ok-bg);color:var(--ok)">✓</div><div class="grow"><div class="t" style="font-weight:700;font-size:14px" data-t="h4"></div><div class="muted t" data-t="h4s"></div></div><div class="pts plus">+20</div></div>
+    </div>
+    <p class="muted t" style="text-align:center;margin:0" data-t="no_cash"></p>
+    <p class="link t" style="margin:0" data-t="questions"></p>
+  </div>
+</div></figure>
+
+<!-- 10. Invite friends -->
+<figure><figcaption><b>10. Invite friends</b><small>The code, Copy, and Share (WhatsApp first). The link opens the website's download section, or the app with the code filled in.</small></figcaption>
+<div class="phone"><div class="status"><span>9:41</span><span>4G ▮▮▮</span></div>
+  <div class="hdr"><span class="back">‹</span><h2 class="t" data-t="invite"></h2></div>
+  <div class="body">
+    <div style="text-align:center;font-size:44px">🤝</div>
+    <p class="hero t" style="text-align:center" data-t="invite_title"></p>
+    <p class="sub t" style="text-align:center" data-t="invite_sub"></p>
+    <label class="f t" style="text-align:center" data-t="your_code"></label>
+    <div class="refcode">K7QX2MPA</div>
+    <div class="btn sec small noarrow t" data-t="copy"></div>
+    <div class="btn green t" data-t="share_wa"></div>
+    <p class="muted t" style="text-align:center" data-t="invite_rules"></p>
+  </div>
+</div></figure>
+
+<!-- 11. Profile -->
+<figure><figcaption><b>11. Profile: account entries</b><small>Added to the citizen's existing Profile.</small></figcaption>
+<div class="phone"><div class="status"><span>9:41</span><span>4G ▮▮▮</span></div>
+  <div class="hdr"><div class="disc">GC</div><h2 class="t" data-t="profile"></h2></div>
+  <div class="body">
+    <div class="card row"><div class="ic" style="background:#6B7A8C;color:#fff;width:44px;height:44px;font:700 16px Rubik,sans-serif">ర</div>
+      <div class="grow"><div style="font:700 16px Rubik,'Noto Sans Telugu',sans-serif">రవి కుమార్</div><div class="muted">r***@gmail.com · ••••3210</div></div></div>
+    <div class="card menu" style="padding:2px 12px">
+      <div class="it">💰 <span class="t" data-t="wallet"></span><span class="chev">›</span></div>
+      <div class="it">🤝 <span class="t" data-t="invite"></span><span class="chev">›</span></div>
+      <div class="it">🔑 <span class="t" data-t="change_pass"></span><span class="chev">›</span></div>
+      <div class="it">✉️ <span class="t" data-t="change_email"></span><span class="chev">›</span></div>
+      <div class="it">📱 <span class="t" data-t="change_mobile"></span><span class="chev">›</span></div>
+      <div class="it">↩ <span class="t" data-t="logout"></span><span class="chev">›</span></div>
+      <div class="it" style="color:var(--red)">🗑 <span class="t" data-t="delete"></span><span class="chev">›</span></div>
+    </div>
+  </div>
+  <div class="nav"><i>🏠</i><i>📰</i><i>☎</i><span class="on t" data-t="nav_profile"></span></div>
+</div></figure>
+
+<!-- 12. Change email -->
+<figure><figcaption><b>12. Change email</b><small>The new email and the password; then the code screen (5) for the new address. The old address gets a notice. Change password and Change mobile number use the same layout.</small></figcaption>
+<div class="phone"><div class="status"><span>9:41</span><span>4G ▮▮▮</span></div>
+  <div class="hdr"><span class="back">‹</span><h2 class="t" data-t="change_email"></h2></div>
+  <div class="body">
+    <p class="sub t" data-t="current_email"></p>
+    <div><label class="f t" data-t="f_newemail"></label><div class="in focus">ravi.k@yahoo.com</div></div>
+    <div><label class="f t" data-t="f_pass"></label><div class="in">••••••••<span class="eye t" data-t="show"></span></div></div>
+    <div class="btn t" data-t="send_code"></div>
+    <p class="muted t" data-t="email_change_note"></p>
+  </div>
+</div></figure>
+
+<!-- 13. Delete account -->
+<figure><figcaption><b>13. Delete my account</b><small>The password and a clear warning. The account closes at once; personal details are removed (Q8).</small></figcaption>
+<div class="phone"><div class="status"><span>9:41</span><span>4G ▮▮▮</span></div>
+  <div class="hdr"><span class="back">‹</span><h2 class="t" data-t="delete"></h2></div>
+  <div class="body">
+    <div class="banner err t" data-t="delete_warn"></div>
+    <div class="card"><div class="muted t" data-t="you_lose"></div><div style="font:700 28px Rubik,sans-serif;color:var(--red)">120 + 20</div><div class="muted t" data-t="points_name"></div></div>
+    <div><label class="f t" data-t="f_pass"></label><div class="in focus">••••••••</div></div>
+    <div class="check"><span class="box off"></span><span class="t" data-t="understand"></span></div>
+    <div class="btn red t" data-t="delete_btn"></div>
+    <div class="btn sec noarrow t" data-t="cancel"></div>
+  </div>
+</div></figure>
+
+<!-- 14. Coming soon -->
+<figure><figcaption><b>14. Not in the pilot yet</b><small>An invite link opened in a village outside the pilot mandals (D13). The rest of the app works as today.</small></figcaption>
+<div class="phone"><div class="status"><span>9:41</span><span>4G ▮▮▮</span></div>
+  <div class="hdr"><div class="disc">GC</div><h2 class="t" data-t="appname"></h2></div>
+  <div class="body" style="justify-content:center;text-align:center">
+    <div style="font-size:54px">🌱</div>
+    <p class="hero t" data-t="soon_title"></p>
+    <p class="sub t" data-t="soon_sub"></p>
+    <div class="btn sec noarrow t" data-t="ok"></div>
+  </div>
+</div></figure>
+
+<!-- 15. Mobile missing -->
+<figure><figcaption><b>15. Add your mobile number</b><small>When the Super Admin removed the number from this account (<code>mobile_missing</code>, D16). Shown before anything else.</small></figcaption>
+<div class="phone"><div class="status"><span>9:41</span><span>4G ▮▮▮</span></div>
+  <div class="hdr"><h2 class="t" data-t="add_mobile"></h2></div>
+  <div class="body">
+    <div class="banner warn t" data-t="mobile_removed"></div>
+    <div><label class="f t" data-t="f_mobile"></label><div class="in focus ph">__________<span class="eye">📱</span></div></div>
+    <div><label class="f t" data-t="f_pass"></label><div class="in">••••••••</div></div>
+    <div class="btn t" data-t="save"></div>
+    <p class="link t" data-t="help_line"></p>
+  </div>
+</div></figure>
+
+<!-- 16. Wallet pushes -->
+<figure><figcaption><b>16. Wallet pushes</b><small>Push only, no inbox item; tapping one opens the wallet (data <code>type: WALLET</code>). Texts are editable in the console; these are the defaults. Never sent to a blocked or deleted account.</small></figcaption>
+<div class="phone" style="background:linear-gradient(180deg,#1C2A3A,#2E4A63)"><div class="status" style="color:#fff"><span>9:41</span><span>4G ▮▮▮</span></div>
+  <div class="body" style="gap:10px;padding-top:30px">
+    <div style="text-align:center;color:#fff;font:300 56px Rubik,sans-serif">9:41</div>
+    <div class="card" style="padding:10px 12px"><div class="row"><div class="disc" style="width:22px;height:22px;font-size:9px">GC</div><b class="t" style="font-size:12px" data-t="appname"></b><span class="muted" style="margin-left:auto">now</span></div><div class="t" style="font-size:13.5px;margin-top:4px" data-t="push_joined"></div></div>
+    <div class="card" style="padding:10px 12px"><div class="row"><div class="disc" style="width:22px;height:22px;font-size:9px">GC</div><b class="t" style="font-size:12px" data-t="appname"></b><span class="muted" style="margin-left:auto">2 Dec</span></div><div class="t" style="font-size:13.5px;margin-top:4px" data-t="push_confirmed"></div></div>
+    <div class="card" style="padding:10px 12px"><div class="row"><div class="disc" style="width:22px;height:22px;font-size:9px">GC</div><b class="t" style="font-size:12px" data-t="appname"></b><span class="muted" style="margin-left:auto">2 Dec</span></div><div class="t" style="font-size:13.5px;margin-top:4px" data-t="push_not_confirmed"></div></div>
+  </div>
+</div></figure>
+
+</div>
+
+<div class="notes">
+  <h3>Notes for review</h3>
+  <ul>
+    <li>Every text is a draft. The points' name follows the default ("Grama points") until the client answers Q1 (BVTGC-144).</li>
+    <li>Errors from the server show under their field, in the citizen's language; long Telugu messages wrap to two lines.</li>
+    <li>Buttons, inputs and cards follow the prototype: 54 px pill buttons with a chevron, 12 to 16 px radii, Rubik headings, Nunito Sans body, Noto Sans Telugu at 88%.</li>
+    <li>Screens are drawn at 360 px wide, a budget phone's width.</li>
+  </ul>
+</div>
+
+<script>
+const T = {
+  appname: ["గ్రామ కనెక్ట్", "Grama Connect"],
+  nav_home: ["హోమ్", "Home"], nav_profile: ["ప్రొఫైల్", "Profile"],
+  earn_title: ["స్నేహితులను ఆహ్వానించి పాయింట్లు పొందండి", "Invite friends, earn points"],
+  earn_sub: ["మీ స్నేహితుడు చేరితే మీకు 50, వారికి 20 గ్రామ పాయింట్లు.", "50 Grama points for you and 20 for your friend when they join."],
+  earn_btn: ["పాయింట్ల కోసం సైన్ ఇన్ చేయండి", "Sign in to earn points"],
+  sheet_title: ["పాయింట్ల కోసం సైన్ ఇన్ చేయండి", "Sign in to earn points"],
+  sheet_sub: ["వార్తలు చదవడానికి, పోస్ట్ చేయడానికి ఖాతా అవసరం లేదు. వాలెట్ కోసం మాత్రమే.", "You don't need an account to read or post news. It's only for the wallet."],
+  sheet_note: ["18 సంవత్సరాలు నిండిన వారికి మాత్రమే.", "For people aged 18 or over."],
+  create: ["ఖాతా సృష్టించండి", "Create account"], login: ["లాగిన్", "Log in"],
+  f_name: ["పేరు", "Name"], f_mobile: ["మొబైల్ నంబర్", "Mobile number"], f_email: ["ఈమెయిల్", "Email"],
+  f_pass: ["పాస్‌వర్డ్", "Password"], f_pass2: ["పాస్‌వర్డ్ మళ్లీ", "Confirm password"],
+  f_ref: ["స్నేహితుడి కోడ్ (ఉంటే)", "Friend's code (if you have one)"],
+  f_login: ["ఈమెయిల్ లేదా మొబైల్ నంబర్", "Email or mobile number"], f_code: ["6 అంకెల కోడ్", "6-digit code"],
+  f_newpass: ["కొత్త పాస్‌వర్డ్", "New password"], f_newemail: ["కొత్త ఈమెయిల్", "New email"],
+  show: ["చూపించు", "Show"],
+  pass_rule: ["కనీసం 8 అక్షరాలు లేదా అంకెలు.", "At least 8 letters or numbers."],
+  age: ["నా వయస్సు 18 సంవత్సరాలు లేదా అంతకంటే ఎక్కువ.", "I am 18 or older."],
+  agree: ["గోప్యతా విధానం మరియు నిబంధనలకు అంగీకరిస్తున్నాను. మొబైల్ నంబర్, ఈమెయిల్ ఎందుకు అవసరమో అక్కడ ఉంది.", "I agree to the privacy policy and terms. They explain why we need your mobile number and email."],
+  create_btn: ["ఖాతా సృష్టించండి", "Create account"],
+  mobile_taken: ["ఈ నంబర్‌తో ఇప్పటికే ఖాతా ఉంది.", "This number already has an account."],
+  taken_banner: ["ఇది మీ ఖాతా అయితే లాగిన్ చేయండి. పాస్‌వర్డ్ గుర్తు లేకపోతే రీసెట్ చేయండి.", "If it's yours, log in. If you've forgotten the password, reset it."],
+  forgot: ["పాస్‌వర్డ్ మర్చిపోయారా?", "Forgot password?"],
+  not_mine: ["ఈ నంబర్ మీది, కానీ ఖాతా మీది కాదా? హెల్ప్ లైన్‌కు కాల్ చేయండి.", "Your number, but not your account? Call the help line."],
+  check_email: ["మీ ఈమెయిల్ చూడండి", "Check your email"],
+  sent_to: ["6 అంకెల కోడ్ ఈ ఈమెయిల్‌కు పంపాము:", "We sent a 6-digit code to:"],
+  spam: ["కనిపించకపోతే స్పామ్ ఫోల్డర్ కూడా చూడండి.", "Can't see it? Check your spam folder too."],
+  verify_btn: ["ధృవీకరించండి", "Confirm"],
+  resend_in: ["0:45 తర్వాత మళ్లీ పంపండి", "Send again in 0:45"],
+  change_email: ["ఈమెయిల్ మార్చండి", "Change email"],
+  welcome_back: ["మళ్లీ స్వాగతం", "Welcome back"],
+  wrong_pass: ["పాస్‌వర్డ్ తప్పు.", "Wrong password."],
+  locked: ["చాలా సార్లు తప్పు పాస్‌వర్డ్. 15 నిమిషాల తర్వాత మళ్లీ ప్రయత్నించండి లేదా పాస్‌వర్డ్ రీసెట్ చేయండి.", "Too many wrong passwords. Try again in 15 minutes, or reset your password."],
+  no_account: ["ఖాతా లేదా? ఖాతా సృష్టించండి", "No account yet? Create one"],
+  forgot_title: ["పాస్‌వర్డ్ రీసెట్", "Reset password"],
+  forgot_sub: ["మీ ఈమెయిల్ లేదా మొబైల్ నంబర్ ఇవ్వండి. ఖాతా ఈమెయిల్‌కు కోడ్ వస్తుంది.", "Enter your email or mobile number. A code goes to your account's email."],
+  send_code: ["కోడ్ పంపండి", "Send code"],
+  if_registered: ["ఇది నమోదై ఉంటే, దాని ఈమెయిల్‌కు కోడ్ పంపాము.", "If this is registered, we sent a code to its email."],
+  lost_email: ["ఆ ఈమెయిల్ తెరవలేకపోతున్నారా? యాప్‌లోని హెల్ప్ లైన్‌కు కాల్ చేయండి.", "Can't open that email any more? Call the help line in the app."],
+  code_wrong: ["కోడ్ తప్పు. ఇంకా 4 ప్రయత్నాలు.", "Wrong code. 4 tries left."],
+  save_pass: ["పాస్‌వర్డ్ సేవ్ చేయండి", "Save password"],
+  wallet: ["వాలెట్", "Wallet"], points_name: ["గ్రామ పాయింట్లు", "Grama points"],
+  held_20: ["20 హోల్డ్‌లో", "20 on hold"], held_date: ["2 డిసెంబర్ నాటికి", "expected 2 December"],
+  invite: ["స్నేహితులను ఆహ్వానించండి", "Invite friends"],
+  h1: ["స్వాగత బోనస్", "Welcome bonus"], h1s: ["హోల్డ్‌లో · 2 డిసెంబర్ నాటికి", "On hold · expected 2 December"],
+  h2: ["లక్ష్మి చేరారు", "Lakshmi joined"], h2s: ["నిర్ధారించబడింది · 18 నవంబర్", "Confirmed · 18 November"],
+  h3: ["సురేష్ చేరారు", "Suresh joined"], h3s: ["నిర్ధారించబడలేదు: యాప్ వాడలేదు", "Not confirmed: didn't use the app"],
+  h4: ["నిర్వాహకుల సవరణ", "Correction by the admin"], h4s: ["నిర్ధారించబడింది · 10 నవంబర్", "Confirmed · 10 November"],
+  no_cash: ["పాయింట్లకు నగదు విలువ లేదు, ఇతరులకు బదిలీ చేయలేరు.", "Points have no cash value and can't be transferred."],
+  questions: ["పాయింట్ల గురించి సందేహాలా?", "Questions about points?"],
+  invite_title: ["మీ స్నేహితులను ఆహ్వానించండి", "Invite your friends"],
+  invite_sub: ["వారు చేరి కొన్ని రోజులు యాప్ వాడితే మీకు 50, వారికి 20 పాయింట్లు.", "When they join and use the app for a few days, you get 50 points and they get 20."],
+  your_code: ["మీ కోడ్", "Your code"], copy: ["కాపీ చేయండి", "Copy"],
+  share_wa: ["వాట్సాప్‌లో పంపండి", "Share on WhatsApp"],
+  invite_rules: ["నెలకు 30 మంది వరకు. ఒకే ఫోన్‌లోని ఖాతాలకు సూచించిన వారికి పాయింట్లు రావు.", "Up to 30 a month. No points for inviting an account on your own phone."],
+  profile: ["ప్రొఫైల్", "Profile"],
+  change_pass: ["పాస్‌వర్డ్ మార్చండి", "Change password"], change_mobile: ["మొబైల్ నంబర్ మార్చండి", "Change mobile number"],
+  logout: ["లాగ్ అవుట్", "Log out"], delete: ["నా ఖాతాను తొలగించండి", "Delete my account"],
+  current_email: ["ప్రస్తుత ఈమెయిల్: r***@gmail.com", "Current email: r***@gmail.com"],
+  email_change_note: ["కొత్త ఈమెయిల్‌కు కోడ్ పంపుతాము. పాత ఈమెయిల్‌కు సమాచారం వెళ్తుంది.", "We'll send a code to the new email. Your old email will get a notice."],
+  delete_warn: ["ఖాతా తొలగిస్తే మీ పాయింట్లన్నీ పోతాయి. దీన్ని తిరిగి పొందలేరు.", "Deleting your account loses all your points. It can't be undone."],
+  you_lose: ["మీరు కోల్పోయేవి", "You will lose"],
+  understand: ["నేను అర్థం చేసుకున్నాను", "I understand"],
+  delete_btn: ["ఖాతాను తొలగించండి", "Delete account"], cancel: ["రద్దు", "Cancel"],
+  soon_title: ["త్వరలో మీ ప్రాంతానికి", "Coming to your area soon"],
+  soon_sub: ["గ్రామ పాయింట్లు ప్రస్తుతం కొన్ని మండలాల్లో మాత్రమే ఉన్నాయి. మీ స్నేహితుడి కోడ్‌ను గుర్తుంచుకోండి.", "Grama points are in a few mandals for now. Keep your friend's code for later."],
+  ok: ["సరే", "OK"],
+  add_mobile: ["మొబైల్ నంబర్ చేర్చండి", "Add your mobile number"],
+  mobile_removed: ["మీ ఖాతాలో మొబైల్ నంబర్ లేదు. కొనసాగడానికి మీ నంబర్ ఇవ్వండి.", "Your account has no mobile number. Add yours to continue."],
+  save: ["సేవ్ చేయండి", "Save"],
+  help_line: ["సహాయం కావాలా? హెల్ప్ లైన్", "Need help? Help line"],
+  push_joined: ["లక్ష్మి దేవి మీ ఆహ్వాన కోడ్‌తో గ్రామ కనెక్ట్‌లో చేరారు. మీ వాలెట్ చూడండి.", "Lakshmi Devi joined Grama Connect with your invite code. See your wallet."],
+  push_confirmed: ["మీ వాలెట్‌లో 50 పాయింట్లు నిర్ధారించబడ్డాయి.", "50 points are confirmed in your wallet."],
+  push_not_confirmed: ["20 పాయింట్లు నిర్ధారించబడలేదు. కారణం మీ వాలెట్‌లో చూడండి.", "20 points were not confirmed. See the reason in your wallet."],
+};
+function setLang(l) {
+  document.documentElement.lang = l;
+  const i = l === "te" ? 0 : 1;
+  document.querySelectorAll("[data-t]").forEach(el => {
+    const v = T[el.dataset.t];
+    const s = document.createElement("span");
+    s.className = "tt";
+    s.textContent = v ? v[i] : "[" + el.dataset.t + "]";
+    el.replaceChildren(s);
+  });
+  document.querySelectorAll(".lang button").forEach(b => b.classList.toggle("on", b.dataset.l === l));
+}
+document.querySelectorAll(".lang button").forEach(b => b.addEventListener("click", () => setLang(b.dataset.l)));
+setLang("te");
+</script>
+</body>
+</html>

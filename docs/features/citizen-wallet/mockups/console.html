@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wallet mockups: console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@500;600;700&family=Nunito+Sans:wght@400;600;700&family=Noto+Sans+Telugu:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue: #0D3B7A; --navy: #0A2550; --green: #1F8A3B; --orange: #E9791E; --red: #B3261E; --red-bg: #FDE7E5;
+    --bg: #F6F8F3; --card: #fff; --line: #EEF2F6; --input: #CFD8E3; --ink: #17212E; --body: #3B4A5C; --muted: #6B7A8C; --disabled: #9AA6B4;
+    --pending-bg: #FFF0DC; --pending: #B35A0E; --ok-bg: #E4F4DF; --ok: #1D7A33;
+    --shadow: 0 2px 8px rgba(0,64,126,.08); --raised: 0 10px 28px rgba(0,64,126,.14);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #E3E8EE; font: 14px "Nunito Sans", "Noto Sans Telugu", sans-serif; color: var(--ink); }
+  .te { font-family: "Noto Sans Telugu", sans-serif; font-size: 88%; }
+  .page-head { background: var(--navy); color: #fff; padding: 14px 24px; }
+  .page-head h1 { font: 700 18px Rubik, sans-serif; margin: 0 0 2px; }
+  .page-head p { margin: 0; font-size: 13px; opacity: .85; }
+  .frame-title { max-width: 1280px; margin: 26px auto 8px; padding: 0 4px; font: 700 15px Rubik, sans-serif; color: var(--navy); }
+  .frame-title small { display: block; font: 400 13px "Nunito Sans", sans-serif; color: var(--body); margin-top: 2px; }
+  .canvas { width: 1280px; height: 760px; margin: 0 auto; background: var(--bg); display: flex; position: relative; overflow: hidden; box-shadow: var(--raised); border-radius: 10px; }
+  .side { width: 248px; background: #fff; border-right: 1px solid var(--line); padding: 18px 14px; display: flex; flex-direction: column; gap: 4px; flex: none; }
+  .brand { display: flex; align-items: center; gap: 10px; font: 700 16px Rubik, sans-serif; color: var(--navy); margin: 0 6px 16px; }
+  .brand .disc { width: 34px; height: 34px; border-radius: 50%; background: var(--blue); color: #fff; display: grid; place-items: center; font-size: 13px; }
+  .nav { padding: 9px 12px; border-radius: 10px; color: var(--body); font-weight: 600; display: flex; gap: 10px; align-items: center; }
+  .nav.on { background: #E3F0FB; color: var(--blue); font-weight: 700; }
+  .nav .new { margin-left: auto; background: var(--orange); color: #fff; font-size: 10.5px; border-radius: 999px; padding: 1px 7px; }
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .top { height: 64px; background: #fff; border-bottom: 1px solid var(--line); display: flex; align-items: center; padding: 0 24px; gap: 14px; flex: none; }
+  .top h2 { font: 700 20px Rubik, sans-serif; color: var(--navy); margin: 0; flex: 1; }
+  .avatar { width: 34px; height: 34px; border-radius: 50%; background: var(--navy); color: #fff; display: grid; place-items: center; font: 700 13px Rubik, sans-serif; }
+  .content { padding: 18px 24px; display: flex; flex-direction: column; gap: 14px; overflow: hidden; }
+  .tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--line); }
+  .tab { padding: 10px 14px; font-weight: 700; color: var(--muted); border-bottom: 3px solid transparent; }
+  .tab.on { color: var(--blue); border-color: var(--blue); }
+  .tab .n { background: var(--pending-bg); color: var(--pending); border-radius: 999px; font-size: 11.5px; padding: 1px 7px; margin-left: 4px; }
+  .bar { display: flex; gap: 10px; align-items: center; }
+  .in { height: 38px; border: 1.5px solid var(--input); border-radius: 10px; background: #fff; display: flex; align-items: center; padding: 0 12px; color: var(--disabled); gap: 8px; }
+  .in.val { color: var(--ink); }
+  .btn { height: 38px; border-radius: 999px; border: 0; background: var(--blue); color: #fff; font-weight: 700; padding: 0 16px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .btn.sec { background: #fff; color: var(--blue); border: 1.5px solid var(--blue); }
+  .btn.green { background: var(--green); }
+  .btn.red { background: #fff; color: var(--red); border: 1.5px solid var(--red); }
+  .btn.redfill { background: var(--red); }
+  .btn.ghost { background: transparent; color: var(--body); border: 1.5px solid var(--input); }
+  table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 14px; overflow: hidden; box-shadow: var(--shadow); }
+  th { text-align: left; font: 700 12px "Nunito Sans", sans-serif; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; padding: 11px 12px; background: #FAFBFC; border-bottom: 1px solid var(--line); }
+  td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  tr.sel td { background: #F2F7FD; }
+  .pill { display: inline-block; border-radius: 999px; padding: 2px 9px; font-size: 11.5px; font-weight: 700; }
+  .pill.ok { background: var(--ok-bg); color: var(--ok); } .pill.held { background: var(--pending-bg); color: var(--pending); }
+  .pill.no { background: #EEF2F6; color: var(--body); } .pill.bad { background: var(--red-bg); color: var(--red); }
+  .num { font: 700 14px Rubik, sans-serif; }
+  .muted { color: var(--muted); font-size: 12.5px; }
+  .panel { position: absolute; top: 0; right: 0; bottom: 0; width: 520px; background: #fff; box-shadow: -10px 0 28px rgba(0,64,126,.14); display: flex; flex-direction: column; }
+  .panel .ph { padding: 18px 22px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 12px; }
+  .panel .ph h3 { margin: 0; font: 700 18px Rubik, sans-serif; flex: 1; }
+  .panel .pb { padding: 16px 22px; display: flex; flex-direction: column; gap: 14px; overflow: hidden; }
+  .kv { display: grid; grid-template-columns: 150px 1fr; gap: 8px 12px; font-size: 13.5px; }
+  .kv dt { color: var(--muted); } .kv dd { margin: 0; font-weight: 600; }
+  .stats { display: flex; gap: 10px; }
+  .stat { flex: 1; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+  .stat .n { font: 700 24px Rubik, sans-serif; color: var(--navy); }
+  .acts { display: flex; flex-wrap: wrap; gap: 8px; }
+  .sec-title { font: 700 13px Rubik, sans-serif; color: var(--navy); margin: 4px 0 -4px; }
+  .entry { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .scrim { position: absolute; inset: 0; background: rgba(10,37,80,.45); }
+  .modal { position: absolute; top: 120px; left: 50%; transform: translateX(-50%); width: 460px; background: #fff; border-radius: 16px; box-shadow: var(--raised); padding: 20px 22px; display: flex; flex-direction: column; gap: 12px; }
+  .modal h3 { margin: 0; font: 700 18px Rubik, sans-serif; color: var(--navy); }
+  .modal label { font-size: 12.5px; font-weight: 700; color: var(--body); }
+  .warn { background: var(--pending-bg); color: var(--pending); border-radius: 10px; padding: 10px 12px; font-size: 13px; line-height: 1.4; }
+  .info { background: #E3F0FB; color: var(--blue); border-radius: 10px; padding: 10px 12px; font-size: 13px; line-height: 1.4; }
+  .check { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; }
+  .box { width: 18px; height: 18px; border-radius: 5px; background: var(--green); color: #fff; display: grid; place-items: center; font-size: 12px; flex: none; margin-top: 1px; }
+  .box.off { background: #fff; border: 2px solid var(--input); }
+  .area { min-height: 70px; align-items: flex-start; padding-top: 8px; }
+  .card { background: #fff; border-radius: 14px; box-shadow: var(--shadow); padding: 18px 20px; }
+  .card h3 { margin: 0 0 4px; font: 700 16px Rubik, sans-serif; color: var(--navy); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 24px; margin-top: 14px; }
+  .field label { display: block; font-size: 12.5px; font-weight: 700; color: var(--body); margin-bottom: 4px; }
+  .switch { width: 44px; height: 24px; border-radius: 999px; background: var(--green); position: relative; }
+  .switch::after { content: ""; position: absolute; top: 3px; right: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { background: #E3F0FB; color: var(--blue); border-radius: 999px; padding: 4px 10px; font-size: 12.5px; font-weight: 700; }
+  .notes { max-width: 1280px; margin: 26px auto 40px; color: var(--body); line-height: 1.55; }
+  .notes h3 { font: 700 16px Rubik, sans-serif; color: var(--navy); }
+</style>
+</head>
+<body>
+<div class="page-head">
+  <h1>Citizen wallet: Super Admin console</h1>
+  <p>Draft mockups for BVTGC-131, for approval. A new page in the console's existing style: sidebar, tables, side panel 520 px, modals 460 px. Citizen names stay in Telugu where people typed them so.</p>
+</div>
+
+<!-- Frame 1 -->
+<div class="frame-title">1. Citizens &amp; wallet: Accounts tab with the account panel open<small>Search by name or the last 4 digits; "Find by mobile or email" for a caller. The panel shows only the masked email and the last 4 digits.</small></div>
+<div class="canvas">
+  <div class="side">
+    <div class="brand"><div class="disc">GC</div>Grama Connect</div>
+    <div class="nav">▦ Dashboard</div><div class="nav">📝 Posts</div><div class="nav">👥 Users</div><div class="nav">🗺 Geography</div>
+    <div class="nav">☎ Important numbers</div><div class="nav">🧾 Service requests</div><div class="nav on">💰 Citizens &amp; wallet <span class="new">New</span></div>
+    <div class="nav">📊 Reports</div><div class="nav">🛡 Audit log</div><div class="nav">⚙ Settings</div>
+  </div>
+  <div class="main">
+    <div class="top"><h2>Citizens &amp; wallet</h2><span class="muted">Pilot: 3 mandals</span><div class="avatar">SA</div></div>
+    <div class="content">
+      <div class="tabs"><div class="tab on">Accounts</div><div class="tab">Referrals <span class="n">12</span></div><div class="tab">Wallet entries</div></div>
+      <div class="bar">
+        <div class="in" style="width:250px">🔍 Name, last 4 digits or code</div>
+        <div class="in" style="width:160px">All villages ▾</div>
+        <div class="in" style="width:130px">Active ▾</div>
+        <span style="flex:1"></span>
+        <div class="btn sec">Find by mobile or email</div>
+      </div>
+      <table style="width:720px">
+        <tr><th>Name</th><th>Village</th><th>Mobile</th><th>Email</th><th>Points</th><th>Status</th></tr>
+        <tr class="sel"><td><span class="te">రవి కుమార్</span></td><td><span class="te">కొలకలూరు</span></td><td>••3210</td><td>r***@gmail.com</td><td class="num">120 <span class="pill held">+20</span></td><td><span class="pill ok">Active</span></td></tr>
+        <tr><td><span class="te">లక్ష్మి దేవి</span></td><td><span class="te">కొలకలూరు</span></td><td>••7781</td><td>l***@gmail.com</td><td class="num">20</td><td><span class="pill ok">Active</span></td></tr>
+        <tr><td>Suresh Babu</td><td><span class="te">నందివెలుగు</span></td><td>••4410</td><td>s***@yahoo.com</td><td class="num">0</td><td><span class="pill bad">Blocked</span></td></tr>
+        <tr><td><span class="te">పద్మ</span></td><td><span class="te">తెనాలి</span></td><td><span class="pill held">No number</span></td><td>p***@gmail.com</td><td class="num">50</td><td><span class="pill ok">Active</span></td></tr>
+        <tr><td>Deleted citizen</td><td><span class="te">కొలకలూరు</span></td><td>—</td><td>—</td><td class="num">—</td><td><span class="pill no">Deleted</span></td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="ph"><h3><span class="te">రవి కుమార్</span></h3><span class="pill ok">Active</span><span style="font-size:20px;color:var(--muted)">✕</span></div>
+    <div class="pb">
+      <div class="stats">
+        <div class="stat"><div class="muted">Confirmed</div><div class="n">120</div></div>
+        <div class="stat"><div class="muted">On hold</div><div class="n" style="color:var(--pending)">20</div></div>
+      </div>
+      <dl class="kv">
+        <dt>Village</dt><dd><span class="te">కొలకలూరు</span></dd>
+        <dt>Mobile</dt><dd>••••3210 <span class="pill no">not confirmed yet</span></dd>
+        <dt>Email</dt><dd>r***@gmail.com <span class="pill ok">confirmed</span></dd>
+        <dt>Referral code</dt><dd>K7QX2MPA</dd>
+        <dt>Joined</dt><dd>25 Nov 2026 · last active today</dd>
+      </dl>
+      <div class="sec-title">Actions</div>
+      <div class="acts"><div class="btn green">Adjust points</div><div class="btn sec">Set new email</div><div class="btn sec">Remove mobile number</div><div class="btn red">Block</div><div class="btn red">Delete</div></div>
+      <div class="sec-title">Wallet history <span class="muted" style="font-weight:400">(newest first; every entry with its reason)</span></div>
+      <div>
+        <div class="entry"><span>Welcome bonus · <span class="muted">on hold until 2 Dec</span></span><span class="num" style="color:var(--pending)">+20</span></div>
+        <div class="entry"><span>Referral: <span class="te">లక్ష్మి దేవి</span> · <span class="muted">confirmed 18 Nov</span></span><span class="num" style="color:var(--green)">+50</span></div>
+        <div class="entry"><span>Referral: Suresh Babu · <span class="muted">not confirmed: not active</span></span><span class="num" style="color:var(--disabled)">+50</span></div>
+        <div class="entry"><span>Adjustment by <span class="muted">Super Admin: "Reward missed on 18 Nov"</span></span><span class="num" style="color:var(--green)">+30</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Frame 2 -->
+<div class="frame-title">2. Set new email, after a call-back (D16)<small>The button works only after the tick. "Remove mobile number" uses the same dialog without the email field. Nobody sees or sets a password.</small></div>
+<div class="canvas">
+  <div class="side"><div class="brand"><div class="disc">GC</div>Grama Connect</div><div class="nav on">💰 Citizens &amp; wallet</div></div>
+  <div class="main"><div class="top"><h2>Citizens &amp; wallet</h2><div class="avatar">SA</div></div></div>
+  <div class="scrim"></div>
+  <div class="modal">
+    <h3>Set a new email for <span class="te">రవి కుమార్</span></h3>
+    <div class="warn">Only after you have called the account's mobile number back (••••3210) and spoken to the citizen. The citizen then uses "Forgot password" to set a password; the code to the new email confirms it.</div>
+    <div class="check"><span class="box">✓</span><span>I called the number back and spoke to the citizen.</span></div>
+    <label>New email</label><div class="in val">ravi.k@yahoo.com</div>
+    <label>Reason (saved in the audit log)</label><div class="in val area">Lost access to the old Gmail account; called back on 25 Nov.</div>
+    <div class="bar" style="justify-content:flex-end"><div class="btn ghost">Cancel</div><div class="btn">Set new email</div></div>
+  </div>
+</div>
+
+<!-- Frame 3 -->
+<div class="frame-title">3. Find by mobile or email<small>For a citizen on the phone. A POST: the number never goes into a URL. Audited.</small></div>
+<div class="canvas">
+  <div class="side"><div class="brand"><div class="disc">GC</div>Grama Connect</div><div class="nav on">💰 Citizens &amp; wallet</div></div>
+  <div class="main"><div class="top"><h2>Citizens &amp; wallet</h2><div class="avatar">SA</div></div></div>
+  <div class="scrim"></div>
+  <div class="modal">
+    <h3>Find a citizen's account</h3>
+    <div class="info">Type the full mobile number or email the caller gives. Only an exact match is shown.</div>
+    <label>Mobile number or email</label><div class="in val">98765 43210</div>
+    <div class="bar" style="justify-content:flex-end"><div class="btn ghost">Cancel</div><div class="btn">Find</div></div>
+    <table><tr><th>Name</th><th>Village</th><th>Mobile</th><th></th></tr>
+      <tr><td><span class="te">రవి కుమార్</span></td><td><span class="te">కొలకలూరు</span></td><td>••3210</td><td><span style="color:var(--blue);font-weight:700">Open ›</span></td></tr></table>
+  </div>
+</div>
+
+<!-- Frame 4 -->
+<div class="frame-title">4. Referrals tab<small>Pending referrals are decided by the hourly job after the hold; the Super Admin may confirm or reject earlier, with a comment. A family on one phone, or a 4th welcome bonus on a phone, shows in each account's wallet history.</small></div>
+<div class="canvas">
+  <div class="side"><div class="brand"><div class="disc">GC</div>Grama Connect</div><div class="nav on">💰 Citizens &amp; wallet</div></div>
+  <div class="main">
+    <div class="top"><h2>Citizens &amp; wallet</h2><div class="avatar">SA</div></div>
+    <div class="content">
+      <div class="tabs"><div class="tab">Accounts</div><div class="tab on">Referrals <span class="n">12</span></div><div class="tab">Wallet entries</div></div>
+      <div class="bar"><div class="tab on" style="border:0;padding:0 8px">Pending 12</div><div class="tab" style="border:0;padding:0 8px">Confirmed 41</div><div class="tab" style="border:0;padding:0 8px">Rejected 7</div><span style="flex:1"></span><div class="in" style="width:240px">🔍 Name, last 4 digits or code</div><div class="btn ghost">Export CSV</div></div>
+      <table>
+        <tr><th>Invited by</th><th>New citizen</th><th>Joined</th><th>Decided after</th><th>Status</th><th></th></tr>
+        <tr><td><span class="te">రవి కుమార్</span> ••3210 <span class="muted">K7QX2MPA</span></td><td><span class="te">లక్ష్మి దేవి</span> ••7781</td><td>25 Nov</td><td>2 Dec</td><td><span class="pill held">Pending</span></td><td><span class="btn green" style="height:32px">Confirm</span> <span class="btn red" style="height:32px">Reject</span></td></tr>
+        <tr><td>Suresh Babu ••4410 <span class="muted">P3RT8WXA</span></td><td>Ramesh ••4471</td><td>24 Nov</td><td>1 Dec</td><td><span class="pill held">Pending</span></td><td><span class="btn green" style="height:32px">Confirm</span> <span class="btn red" style="height:32px">Reject</span></td></tr>
+        <tr><td><span class="te">పద్మ</span> <span class="pill held">No number</span></td><td><span class="te">శ్రీను</span> ••9902</td><td>17 Nov</td><td>24 Nov</td><td><span class="pill no">Not confirmed: not active</span> <span class="muted">by the hourly job</span></td><td></td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+
+<!-- Frame 4d -->
+<div class="frame-title">4d. Wallet entries tab<small>Every entry of every wallet, newest first, in pages (<code>GET /admin/wallet/entries/</code>, the Admin's decision of 2026-11-25 for FR-33). The same filters as the CSV export; a row opens the citizen's panel.</small></div>
+<div class="canvas">
+  <div class="side"><div class="brand"><div class="disc">GC</div>Grama Connect</div><div class="nav on">💰 Citizens &amp; wallet</div></div>
+  <div class="main">
+    <div class="top"><h2>Citizens &amp; wallet</h2><div class="avatar">SA</div></div>
+    <div class="content">
+      <div class="tabs"><div class="tab">Accounts</div><div class="tab">Referrals <span class="n">12</span></div><div class="tab on">Wallet entries</div></div>
+      <div class="bar"><div class="in" style="width:150px">All kinds ▾</div><div class="in" style="width:150px">All statuses ▾</div><div class="in" style="width:200px">📅 1 Nov – 25 Nov</div><span style="flex:1"></span><div class="btn ghost">Export CSV</div></div>
+      <table>
+        <tr><th>When</th><th>Citizen</th><th>Kind</th><th>Points</th><th>Status</th><th>Reason</th></tr>
+        <tr><td>25 Nov 10:42</td><td><span class="te">రవి కుమార్</span> ••3210</td><td>Adjustment</td><td class="num">+30</td><td><span class="pill ok">Confirmed</span></td><td>Reward missed on 18 Nov <span class="muted">· Super Admin</span></td></tr>
+        <tr><td>25 Nov 09:15</td><td><span class="te">లక్ష్మి దేవి</span> ••7781</td><td>Welcome bonus</td><td class="num">+20</td><td><span class="pill held">On hold</span></td><td></td></tr>
+        <tr><td>25 Nov 09:15</td><td><span class="te">రవి కుమార్</span> ••3210</td><td>Referral reward</td><td class="num">+50</td><td><span class="pill held">On hold</span></td><td></td></tr>
+        <tr><td>24 Nov 18:02</td><td>Suresh Babu ••4410</td><td>Referral reward</td><td class="num">+50</td><td><span class="pill no">Cancelled</span></td><td>No reward: both accounts signed up on the same phone.</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Frame 4b -->
+<div class="frame-title">4b. Reject a referral<small>Confirm uses the same dialog. The comment is required, and on a rejection both citizens read it in their wallet history (<code>reason</code>), so it is written for them.</small></div>
+<div class="canvas">
+  <div class="side"><div class="brand"><div class="disc">GC</div>Grama Connect</div><div class="nav on">💰 Citizens &amp; wallet</div></div>
+  <div class="main"><div class="top"><h2>Citizens &amp; wallet</h2><div class="avatar">SA</div></div></div>
+  <div class="scrim"></div>
+  <div class="modal">
+    <h3>Reject this referral?</h3>
+    <div class="info"><span class="te">రవి కుమార్</span> ••3210 invited <span class="te">లక్ష్మి దేవి</span> ••7781 on 25 Nov. Their points on hold (50 and 20) are cancelled.</div>
+    <div class="warn">Both citizens see this comment in their wallet. Write it for them, without anyone's number or email.</div>
+    <label>Comment</label><div class="in val area">Two accounts of one family on two phones; please call the help line if this is wrong.</div>
+    <div class="bar" style="justify-content:flex-end"><div class="btn ghost">Cancel</div><div class="btn red">Reject</div></div>
+  </div>
+</div>
+
+<!-- Frame 4c -->
+<div class="frame-title">4c. Adjust points<small>From the account panel. Whole points, plus or minus, at most 100,000; the confirmed balance can never go below zero ("Only 120 confirmed points"). The reason shows in the citizen's wallet history.</small></div>
+<div class="canvas">
+  <div class="side"><div class="brand"><div class="disc">GC</div>Grama Connect</div><div class="nav on">💰 Citizens &amp; wallet</div></div>
+  <div class="main"><div class="top"><h2>Citizens &amp; wallet</h2><div class="avatar">SA</div></div></div>
+  <div class="scrim"></div>
+  <div class="modal">
+    <h3>Adjust points for <span class="te">రవి కుమార్</span></h3>
+    <div class="info">Confirmed now: 120 · on hold: 20. Only confirmed points change.</div>
+    <div class="bar"><div class="btn sec">+ Add</div><div class="btn ghost">− Take away</div></div>
+    <label>Points</label><div class="in val">30</div>
+    <div class="warn">The citizen sees this reason in their wallet.</div>
+    <label>Reason</label><div class="in val area">Reward missed on 18 Nov; checked with the help line.</div>
+    <div class="bar" style="justify-content:flex-end"><div class="btn ghost">Cancel</div><div class="btn green">Add 30 points</div></div>
+  </div>
+</div>
+
+<!-- Frame 5 -->
+<div class="frame-title">5. Settings: the wallet card<small>Added to the existing Settings page. Every change is audited (setting.changed). Phones follow within about 5 minutes.</small></div>
+<div class="canvas">
+  <div class="side"><div class="brand"><div class="disc">GC</div>Grama Connect</div><div class="nav on">⚙ Settings</div></div>
+  <div class="main">
+    <div class="top"><h2>Settings</h2><div class="avatar">SA</div></div>
+    <div class="content">
+      <div class="card" style="width:900px">
+        <div class="bar"><h3 style="flex:1">Citizen wallet</h3><span class="muted">On</span><div class="switch"></div></div>
+        <div class="muted">While off, the wallet is hidden in the app and on the website, and its addresses answer "not found".</div>
+        <div class="field" style="margin-top:14px"><label>Pilot mandals (empty means everywhere)</label>
+          <div class="in val" style="height:auto;min-height:42px;padding:8px 10px"><div class="chips"><span class="chip">Tenali ✕</span><span class="chip">Kollipara ✕</span><span class="chip">Duggirala ✕</span><span style="color:var(--blue);font-weight:700;margin-left:6px">+ Add mandal</span></div></div></div>
+        <div class="grid2">
+          <div class="field"><label>Referral reward (points)</label><div class="in val">50</div></div>
+          <div class="field"><label>Welcome bonus (points)</label><div class="in val">20</div></div>
+          <div class="field"><label>Holding period (days)</label><div class="in val">7</div></div>
+          <div class="field"><label>Active days needed in the holding period (at most the holding period)</label><div class="in val">2</div></div>
+          <div class="field"><label>Confirmed referrals per citizen per month (0 = no limit)</label><div class="in val">30</div></div>
+          <div class="field"><label>Welcome bonuses per phone</label><div class="in val">3</div></div>
+        </div>
+        <div class="bar" style="justify-content:flex-end;margin-top:16px"><div class="btn">Save</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="notes">
+  <h3>Notes for review</h3>
+  <ul>
+    <li>The page shows to holders of the new wallet permissions; today only the Super Admin.</li>
+    <li>No screen shows a full email or mobile number; CSV exports carry the same masked values.</li>
+    <li>"Adjust points" opens a dialog with whole points (plus or minus) and a required reason; a balance cannot go below zero.</li>
+    <li>Block, Unblock and Delete ask for a reason, like the existing user actions. A blocked account shows Unblock instead of Block; a deleted one ("Deleted citizen") has no actions. The buttons follow each row's <code>allowed_actions</code>.</li>
+    <li><b>Wallet entries tab</b> (frame 4d): every entry in pages, with the export's filters; decided by the Admin on 2026-11-25 (option a), served by <code>GET /admin/wallet/entries/</code>.</li>
+    <li>CSV exports: referrals and wallet entries only (J8), with the same masked values; accounts are not exported.</li>
+    <li>Settings errors show under the field, for example "These are not active mandals: 99" or "The active days cannot be more than the days points are held (7)".</li>
+    <li>The existing Notification texts page lists three new texts with the recipient "The citizen's wallet account": a friend joined, points confirmed, points not confirmed.</li>
+    <li>The page works while the wallet is switched off, so the Super Admin can still help, export and delete.</li>
+  </ul>
+</div>
+</body>
+</html>
