@@ -17,7 +17,7 @@ REPO = Path(__file__).resolve().parents[2]
 def settings_in_subprocess(code: str, env: dict) -> subprocess.CompletedProcess:
     clean = {name: value for name, value in os.environ.items()
              if name not in {"DEBUG", "ALLOWED_HOSTS", "DATABASE_URL", "MEDIA_ROOT", "STATIC_ROOT", "PYTEST_VERSION",
-                             "DEBUG_ON_PUBLIC_HOST", "SECRET_KEY"}}
+                             "DEBUG_ON_PUBLIC_HOST", "SECRET_KEY", "TEST_DATABASE_URL"}}
     return subprocess.run(
         [sys.executable, "-c", code], cwd=REPO, env={**clean, **env},
         capture_output=True, text=True, timeout=60,
@@ -76,3 +76,17 @@ def test_tests_use_sqlite_and_test_media_even_in_production_mode():
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.split() == ["django.db.backends.sqlite3", ".test-media", "MD5PasswordHasher"]
+
+
+def test_tests_take_only_their_own_database_url():
+    """CI runs the suite on MariaDB and PostgreSQL through TEST_DATABASE_URL (BVTGC-17); a server's
+    DATABASE_URL is still never used, and Django prefixes the database name with test_ itself."""
+    result = settings_in_subprocess(
+        "import pytest, grama.settings as s; d = s.DATABASES['default']; print(d['ENGINE'], d['NAME'], d['HOST'])",
+        {
+            "PYTEST_VERSION": "9", "DATABASE_URL": "mysql://grama:x@db.example.in:3306/grama",
+            "TEST_DATABASE_URL": "postgres://ci:ci@127.0.0.1:5432/grama_ci",
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.split() == ["django.db.backends.postgresql", "grama_ci", "127.0.0.1"]
