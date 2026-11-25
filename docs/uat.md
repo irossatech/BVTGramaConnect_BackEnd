@@ -138,6 +138,86 @@ For the QA engineer and the client's testers during user acceptance testing. Wor
 | W8 | Phone picture | The home page's phone shows real published posts: a featured one with a photo and two more. |
 | W9 | Page links | Each page has its own address. Opening it directly, or reloading, shows that page. |
 
+## Citizen wallet: before you start (BVTGC-145)
+
+The wallet is an optional citizen account for points and referrals (BackEnd `docs/features/citizen-wallet/requirements.md`). The test plan is `docs/features/citizen-wallet/test-plan.md`. Run these on the qa server.
+
+1. **Email works on qa** (BVTGC-143): a test code reaches a Gmail inbox, not spam. Have at least two Gmail addresses and one address at another provider, all yours.
+2. **Phones:** at least two budget Android phones with the new app build, one with two SIM cards. For the family checks, one phone is shared by three test accounts.
+3. **Console settings** (Settings → Citizen wallet), as the Super Admin:
+   - switch the wallet **on**;
+   - add the mandal of your test village to **Pilot mandals** (leave one other village outside it);
+   - set the **holding period to 1 day** and the **active days to 2**, so a referral is decided the next day: confirmed when the friend opened the app on both days, not confirmed when they did not. Put the suggested values (7 and 2) back after testing.
+4. **Language:** do each flow once in Telugu (the default) and once in English. Every Telugu word, in the app, the emails and the console, must show correctly.
+5. Write down each test account's mobile number and email; delete the accounts at the end (CW25, CW26).
+
+## Citizen wallet: citizen (mobile app)
+
+| # | Check | Expected |
+|---|---|---|
+| CW1 | No account | A citizen who never signs up reads news, posts and asks for services exactly as before; nothing asks them to log in. Home shows a **Sign in to earn points** card only. |
+| CW2 | Switched off, or outside the pilot | With the wallet off in the console, the card is gone within 5 minutes (after reopening the app). In a village outside the pilot mandals the card does not show, and an invite link says the wallet is coming to that area soon. |
+| CW3 | Create account form | Name, mobile number, email, password, the password again, a friend's code (optional), **I am 18 or older** and **I agree**. On Android, tapping the mobile field offers the phone's SIM numbers; picking one fills the 10 digits. Different passwords are caught by the app. A 7-character password, `12345678`, or the citizen's own name or number as the password is refused with a reason; 8 characters of any kind otherwise work. Without the 18+ tick the account is refused. |
+| CW4 | Check your email | A code email arrives within a minute, in the citizen's language, with the code in the subject; the screen shows the address half hidden (`r***@gmail.com`) and reminds about the spam folder. A wrong code says how many tries are left; after 5 wrong tries the code is dead and a new one is needed. **Send again** works only after 60 seconds; a sixth code in one day is refused. **Change email** goes back to the form. |
+| CW5 | Account created | After the right code the citizen is logged in. The wallet shows 0 points and the citizen's own referral code. Closing and reopening the app keeps them logged in. |
+| CW6 | Already registered | Signing up again with the same mobile number, or the same email, is refused with **Log in** and **Forgot password?**. A Gmail address with dots or a `+` part (`lakshmi.devi+x@gmail.com`) counts as the same email as `lakshmidevi@gmail.com`. |
+| CW7 | Log in | **Log in** works with the email and with the mobile number (also typed with `+91` or spaces), and the password. A wrong password and an unknown login give the same message. After 5 wrong passwords from one phone the account waits 15 minutes, whichever of the two was typed, and the message says how long. |
+| CW8 | Forgot password | **Forgot password?** gives the same message whether or not the email or number is registered. The code arrives; a new password typed twice works; the citizen's other phone is logged out; an email says the password was changed. |
+| CW9 | Officials' login | The account's email or number and password at the officials' login (app or console) are refused as a wrong password. |
+| CW10 | Change password | From Profile, with the current password: other phones are logged out; an email notice arrives. A wrong current password is refused. |
+| CW11 | Change email | The new email and the password: a code goes to the new address; after it, the account uses the new email and the old address gets an "email changed" notice. An email another account uses is refused, pointing to the help line. |
+| CW12 | Change mobile number | The new number and the password. A number another account uses is refused, pointing to the help line. Login with the new number works; the old one no longer does. |
+| CW13 | Change village | Choosing another village in the app moves the account with it; the wallet and points stay. |
+| CW14 | Log out | **Log out** returns to the app without an account; village and saved news stay. Wallet pushes stop reaching the phone. |
+| CW15 | Invite | The wallet's **Invite** shares a message with a link (WhatsApp first). On another phone the link opens the website's download section with the code and **Copy**; the app, opened from the link, fills the code into Create account. A code can only be given at sign-up. A citizen's own code, or the code of a blocked or deleted account, is refused. |
+| CW16 | Points on hold | When the friend signs up with the code, both wallets show the points **on hold** (50 and 20 with the suggested amounts) with the date they are expected, and the inviter gets a push "… joined Grama Connect with your invite code". |
+| CW17 | Confirmed | With the qa settings of "Before you start", the friend opens the app on both days: within an hour after the hold, both points are **confirmed**, the balances grow, and both phones get a push. |
+| CW18 | Not confirmed | A second friend signs up with the code but does not open the app the next day: after the hold, both entries show **not confirmed** with the reason ("the new citizen did not use the app on enough days"), and both get a push. |
+| CW19 | Family phones | Two family members sign up on one shared phone, each with their own number and email: each gets the welcome points; a referral between the two pays no inviter reward (the history says why). A fourth account made on that phone gets no welcome points, with the reason shown. |
+| CW20 | No second welcome bonus | After deleting an account (CW25), a new account with the same mobile number or email gets no welcome points again. |
+| CW21 | Wallet screen | The confirmed balance, the points on hold with their date, and the history (date, reason, points, status) in the citizen's language. "Points have no cash value" shows. **Questions about points?** opens the help-line numbers, where the support number is listed. |
+| CW22 | Number removed by the Super Admin | After the Super Admin removes the number (CW31), the app asks for a mobile number before anything else; adding one with the password works. |
+| CW23 | Blocked | When the Super Admin blocks the account (CW32), the phone is logged out at once; logging in says the account is blocked. |
+| CW24 | Slow network | Sign-up, login and the wallet work on 3G; a lost connection shows "no internet", never a crash, and the form keeps what was typed. |
+| CW25 | Delete in the app | **Delete my account** asks for the password and an "I understand" tick and says the points will be lost. After it: the app is a plain citizen app again, an "account deleted" email arrives, logging in fails, and the same number and email can sign up again. |
+
+## Citizen wallet: website
+
+| # | Check | Expected |
+|---|---|---|
+| CW26 | Delete my wallet account | The website's deletion page asks for the email or mobile number, then sends a code to the account's email; the code and "I understand" delete the account, and the confirmation and the "account deleted" email follow. An unknown or blocked login gets the same message as a registered one, and no email. A code from **Forgot password** does not work here; a wrong code says how many tries are left. |
+| CW27 | Friend's code | The invite link opens the download section with the friend's code and **Copy**. A link with a code that is not 8 letters and digits shows no box. |
+| CW28 | Legal texts | The privacy policy and terms describe the account, the data collected (with the email), the 18+ rule, that points have no cash value, and link to the deletion page, in Telugu and English. |
+
+## Citizen wallet: Super Admin (console and app)
+
+| # | Check | Expected |
+|---|---|---|
+| CW29 | Citizens & wallet | The page lists the accounts newest first; search by name (Telugu or English), the last 4 digits or a referral code; filters by village and by status (active, blocked, deleted). No screen shows a full email or mobile number: the last 4 digits and `r***@gmail.com` only. |
+| CW30 | Find a caller's account | **Find by mobile or email** with the full number or email a caller gives shows only an exact match; the audit log records the search with the last 4 digits or the masked email only. |
+| CW31 | Help after a call-back | **Set new email** and **Remove mobile number** work only after ticking "I called the number back" and typing a reason. After a new email the citizen uses **Forgot password**, and its code goes to the new address; the old address gets a notice. After removing the number, another account can use it. |
+| CW32 | Block, unblock, delete | Each needs a reason. Block logs the citizen out at once; Unblock lets them log in; Delete removes the name, email and number ("Deleted citizen", no actions left) and emails the notice. |
+| CW33 | Referrals | Pending, Confirmed and Rejected tabs with counts; search by either citizen. **Confirm** and **Reject** need a comment; a rejection's comment shows in both citizens' wallets. Deciding one the hourly job or another Super Admin already decided says so and refreshes the row. |
+| CW34 | Adjust points | Add or take away whole points with a reason, which the citizen sees in the wallet. Taking away more than the confirmed balance is refused ("Only … confirmed points"). |
+| CW35 | Wallet entries and CSV | The Wallet entries tab lists every entry with filters (kind, status, dates). **Export CSV** for referrals and for entries opens in Excel with Telugu names correct and only last 4 digits and masked emails. |
+| CW36 | Settings | The wallet card saves the switch, the pilot mandals and the amounts and limits. A value out of range, an unknown mandal, or more active days than the holding period is refused under its field. Phones follow a change within about 5 minutes. |
+| CW37 | Push texts | Notification texts lists three wallet texts (a friend joined, points confirmed, points not confirmed) for "The citizen's wallet account"; an edit shows on the next push. |
+| CW38 | Audit log | Every action above shows, with its label in Telugu and English, and never a full email, number, password or code. |
+| CW39 | Works while off | With the wallet switched off, the Citizens & wallet page, exports and deletions still work. |
+
+## Citizen wallet: other officials
+
+| # | Check | Expected |
+|---|---|---|
+| CW40 | No citizens for officials | District, Mandal and Village Admins and Panchayat members see no citizen accounts in Users, no wallet pages, and dashboard counts of officials only. Asking the wallet's admin addresses with their login is refused. |
+
+## Citizen wallet: emails and pushes
+
+| # | Check | Expected |
+|---|---|---|
+| CW41 | Emails | Every email (the code for sign-up, forgotten password, new email and deletion; the password-changed, email-changed and account-deleted notices) comes from the client's sender address, in the citizen's language, lands in the inbox, has no links, and says replies are not read. |
+| CW42 | Pushes | Wallet pushes come in the citizen's language and open the wallet when tapped. None reaches a blocked or deleted account, or a phone that logged out. |
+
 ## Across the platform
 
 | # | Check | Expected |
@@ -146,3 +226,4 @@ For the QA engineer and the client's testers during user acceptance testing. Wor
 | X2 | Speed on 2G/3G | The feed's first page appears within a few seconds; photos are small. |
 | X3 | Blocked user | Is logged out on every device and in the console within one request, and cannot log in again. |
 | X4 | Data privacy | Passwords, temporary ones included, never appear in logs, the audit log or web addresses, and searches by email or mobile do not appear in the Nginx access log. The audit row for a contact message never shows the sender's name or number. |
+| X5 | Wallet data privacy | A citizen wallet account's full email, mobile number, password and codes never appear in the console, CSV exports, the audit log or web addresses; only the last 4 digits and a masked email (`r***@gmail.com`). |

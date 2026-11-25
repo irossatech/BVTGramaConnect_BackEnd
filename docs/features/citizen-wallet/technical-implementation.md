@@ -691,6 +691,8 @@ Test plan: Admin writes it (BVTGC-145) and Anvesh Kolli reviews it. UAT: the tes
 - the Super Admin: search, find, call-back help, block, adjust, settings, CSV;
 - officials: they see no citizens, and their login refuses a citizen.
 
+Written (2026-11-25): the checklist is `docs/uat.md`, "Citizen wallet" (CW1 to CW42, and X5); the plan, with the qa settings, the test data, the automated suites and the start and finish rules, is [test-plan.md](test-plan.md).
+
 **BVTGC-146 UAT on qa (3.5 days).**
 - **Devices:** at least two budget Android phones, one with two SIMs.
 - **Email:** real inboxes, at least two Gmail and one other provider, with the codes checked for spam placement.
