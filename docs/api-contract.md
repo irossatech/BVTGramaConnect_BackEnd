@@ -360,11 +360,12 @@ Lean on purpose, for 2G.
 
 ### AuditEntry
 ```json
-{"id": "…", "at": "…", "actor": {"id": "…", "name": "Suresh Babu", "role": "VILLAGE_ADMIN"}, "action": "post.published", "type": "posts", "target_label": "గ్రామ సభ సమావేశం – అక్టోబర్ 20", "target": {"type": "post", "id": "c2d4…"}, "area": Area, "via": "app"}
+{"id": "…", "at": "…", "actor": {"id": "…", "name": "Suresh Babu", "role": "VILLAGE_ADMIN"}, "action": "post.published", "action_label": "పోస్ట్‌ను ప్రచురించారు", "type": "posts", "target_label": "గ్రామ సభ సమావేశం – అక్టోబర్ 20", "target": {"type": "post", "id": "c2d4…"}, "area": Area, "via": "app"}
 ```
+- `action_label` (new on 2026-11-25, CROSS-CONV-002, BVTGC-100): the action in words, in the `Accept-Language` language (Telugu by default), written to follow the actor's name: "published a post", "registered a citizen phone", "పోస్ట్‌ను ప్రచురించారు". Clients show it instead of their own lists. Every action has one; a code the server does not know yet reads "other action (<code>)". `action` stays as it is, for filters (`?action=`) and older clients.
 - `type` values: `posts`, `users`, `areas`, `logins`, `settings`, `system`.
 - `via` values: `app`, `console`, `system`.
-- `action` keys, localised by the client: `auth.login`, `post.submitted`, `post.resubmitted`, `post.published`, `post.auto_published`, `post.recheck`, `post.discarded`, `post.unpublished`, `post.reversed`, `post.escalated`, `post.created`, `post.updated`, `post.deleted`, `user.updated`, `user.username_changed`, `user.created`, `user.blocked`, `user.unblocked`, `user.reassigned`, `user.assignment_added`, `user.assignment_removed`, `area.created`, `area.updated`, `area.deactivated`, `area.reactivated`, `category.created`, `category.updated`, `setting.changed`, `template.updated`, `report.exported`, `post.blocked`, `citizen.blocked`, `citizen.unblocked`, `citizen.block_ended` (actor System: the block's time was up; added 2026-11-21), `citizen.posts_discarded`.
+- `action` keys (the full list with their words is `apps/audit/labels.py`), for example: `auth.login`, `post.submitted`, `post.resubmitted`, `post.published`, `post.auto_published`, `post.recheck`, `post.discarded`, `post.unpublished`, `post.reversed`, `post.escalated`, `post.created`, `post.updated`, `post.deleted`, `user.updated`, `user.username_changed`, `user.created`, `user.blocked`, `user.unblocked`, `user.reassigned`, `user.assignment_added`, `user.assignment_removed`, `area.created`, `area.updated`, `area.deactivated`, `area.reactivated`, `category.created`, `category.updated`, `setting.changed`, `template.updated`, `report.exported`, `post.blocked`, `citizen.blocked`, `citizen.unblocked`, `citizen.block_ended` (actor System: the block's time was up; added 2026-11-21), `citizen.posts_discarded`.
 
 ---
 
@@ -746,7 +747,7 @@ Needs `audit.view_audit_log`; the export needs `audit.export_audit_log`.
 | Method and path | Request | Response |
 |---|---|---|
 | `GET /audit` | `q` (actor, action, target, area), `type`, `actor`, `action`, `from`, `to` (dates), `page` | Page of `AuditEntry`, plus `"counts_by_type"` and `"window": {"from": "2026-05-24", "to": "2026-11-19"}`, the days actually shown |
-| `GET /audit/export?format=csv&…` | same filters | CSV file. UTF-8 with BOM so Excel shows Telugu. Writes `report.exported`. More than 50,000 matching entries: `400 validation_error` on `from` and `to` ("Choose a shorter date range"), and nothing is written. |
+| `GET /audit/export?format=csv&…` | same filters | CSV file. UTF-8 with BOM so Excel shows Telugu. Columns: `time, user, role, action, type, target, area_level, area_id, via, what_happened`; `what_happened` (last, new on 2026-11-25) is `action_label` in the `Accept-Language` language. Writes `report.exported`. More than 50,000 matching entries: `400 validation_error` on `from` and `to` ("Choose a shorter date range"), and nothing is written. |
 
 **Which days are shown** (decision of 2026-11-20: nothing is hidden by age), the same for the list, its counts and the export:
 - Without `from` and `to`: **every entry, however old**, newest first, in pages; `window.from` is the day of the oldest entry. **Changed 2026-11-20:** it was the last 180 days (and 90 before 2026-11-19).

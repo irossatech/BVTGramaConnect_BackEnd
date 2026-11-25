@@ -101,12 +101,13 @@ def test_export_holds_every_matching_entry_in_order(api, world):
     response = api(world.users["super"]).get("/api/v1/audit/export/?format=csv")
     assert response.status_code == 200
     lines = response.content.decode("utf-8").splitlines()
-    assert lines[0] == "﻿time,user,role,action,type,target,area_level,area_id,via"
+    assert lines[0] == "﻿time,user,role,action,type,target,area_level,area_id,via,what_happened"
     body = [line.split(",", 1)[1] for line in lines[1:]]  # without the time
     kaza = world.ref("kaza").id
-    assert body[0] == f"da_guntur,DISTRICT_ADMIN,user.blocked,users,గోపాల్,VILLAGE,{kaza},app"
-    assert body[1] == "System,,push.failed,system,,,,app"
-    assert body[2] == "ma_tenali,MANDAL_ADMIN,post.published,posts,'=1+1,,,app"  # formula-safe
+    # what_happened: the action in words, Telugu by default (BVTGC-100).
+    assert body[0] == f"da_guntur,DISTRICT_ADMIN,user.blocked,users,గోపాల్,VILLAGE,{kaza},app,వినియోగదారుని నిరోధించారు"
+    assert body[1] == "System,,push.failed,system,,,,app,నోటిఫికేషన్ చేరలేదు"
+    assert body[2] == "ma_tenali,MANDAL_ADMIN,post.published,posts,'=1+1,,,app,పోస్ట్‌ను ప్రచురించారు"  # formula-safe
     assert len(body) == 3  # the export's own report.exported entry is written after the file
 
 
