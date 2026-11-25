@@ -32,6 +32,45 @@ Contents:
 - Field names are `snake_case`. Enum values are `UPPER_CASE`, except category keys and language codes.
 - **Links to uploaded files are absolute** in every endpoint: photos, videos, posters, thumbnails, ad images, service and bill logos, for example `https://<site>/media/posts/2026/10/<id>-0.webp` (BVTGC-68, 2026-11-23; before, the feed and the citizen's own posts sent the path `/media/...` only). Clients use the link as it is.
 
+### Versions and changes (BVTGC-96, 2026-11-25; proposed, to be agreed by the backend, web and mobile teams)
+
+Why: the website and the console are deployed together with the server, but app APKs downloaded from the website stay on phones for months. Every change is judged against the **oldest app build still in use**, not only the current one.
+
+**Safe changes** (additive; announce them, no waiting):
+- a new endpoint, or a new method on an existing one;
+- a new field in a response;
+- a new optional field in a request (leaving it out behaves as before);
+- a new error code on a new endpoint or field.
+
+Clients must make these safe: **ignore response fields they do not know**, show an unknown enum value (a new status, category or role) with a neutral fallback rather than crash, and show `error.message` for an error code they do not know (section 1, Errors).
+
+**Breaking changes** (need the steps below):
+- removing or renaming an endpoint, a field or an enum value;
+- changing a field's type, meaning, unit or format (for example a date's format, a path that becomes a full link);
+- making an optional request field required, or refusing a value that was accepted before;
+- changing an error code or status code that clients act on;
+- changing a default, the paging shape or the sort order clients rely on.
+
+**How a breaking change is made, within `/api/v1/`:**
+1. **Add the new way next to the old one** (a new field, value or endpoint) and mark the old one in this contract: "**Deprecated** since <date> (<ticket>), replaced by <new>; removed after <condition>". Announce it to the web developer and the mobile team before merging (`.claude/api.md`).
+2. **Web:** the console and the website switch in the same release as the server or the next one (one domain, deployed together).
+3. **App:** the old way stays until **both** are true: (a) `APP_MIN_VERSION` has been raised past the last build that uses the old way (below), and (b) at least **60 days** have passed since the first build without it was put on the website.
+4. Only then remove the old way: update this contract, refresh `docs/client-calls.json` (`python manage.py client_calls`, BVTGC-97); the contract test fails if a client still calls a removed route.
+
+**Raising `APP_MIN_VERSION`** (the blocking "Please update the app" screen, section 5, `GET /app-config`):
+- only for a reason: retiring a deprecated field or endpoint, a security fix, or a server change old builds cannot follow;
+- the new APK is on the website first, and `APP_LATEST_VERSION` has shown the "Update available" note for at least **14 days**;
+- the Super Admin dashboard's `app_versions` (section 8, phones seen in the last 30 days by build) shows the builds below the new minimum at **under 5%** of phones; the rest see the update screen;
+- the owner or lead agrees, since it blocks everyone on an older build until they update.
+
+**`/api/v2/`** is used only when a change cannot be made side by side in `/api/v1/` (for example a new login model or a whole resource redesigned). Then `/api/v1/` keeps working, unchanged, until `APP_MIN_VERSION` has moved past every build that calls it; the two are documented separately. No `/api/v2/` is planned.
+
+**Deprecated now:**
+
+| What | Since | Replaced by | Removed when |
+|---|---|---|---|
+| `capabilities` in `Me` (section 2) | 2026-10-21 | `permissions` | the app no longer reads it and `APP_MIN_VERSION` is past the last build that does (steps above) |
+
 ### Identifiers
 - Users, role assignments, posts, media, review actions, notifications, devices, audit entries: UUID strings.
 - States, districts, mandals, villages, categories: integers. Villages may also carry the government `lgd_code` used for master-data import.
@@ -174,11 +213,13 @@ All errors share one shape:
 | 429 | `locked_out` | 5 failed logins for this username from this IP address, or (since 2026-11-25) 20 within an hour for this username from any addresses; `retry_after_s` gives the seconds left. Same answer and message for both |
 | 429 | `throttled` | Rate limit; `retry_after_s` gives the seconds to wait, and the `Retry-After` header is set |
 
+Section 21 (citizen accounts and the wallet, planned) adds its own codes, listed there.
+
 ### Enumerations
 
 | Name | Values |
 |---|---|
-| `role` | A group's key: `SUPER_ADMIN`, `DISTRICT_ADMIN`, `MANDAL_ADMIN`, `VILLAGE_ADMIN`, `PANCHAYAT_MEMBER` (`docs/authorization.md`, section 6). Citizens have no account. `CITIZEN` appears only as the role a citizen post was written under (`posted_as.role`, `source_role`; section 15). `SYSTEM` appears only as an actor in history and audit. |
+| `role` | A group's key: `SUPER_ADMIN`, `DISTRICT_ADMIN`, `MANDAL_ADMIN`, `VILLAGE_ADMIN`, `PANCHAYAT_MEMBER` (`docs/authorization.md`, section 6). Citizens need no account; the optional wallet account of section 21 (planned) holds the group `CITIZEN`, which never appears in officials' lists. `CITIZEN` is also the role a citizen post was written under (`posted_as.role`, `source_role`; section 15). `SYSTEM` appears only as an actor in history and audit. |
 | `level` | `STATE`, `DISTRICT`, `MANDAL`, `VILLAGE` |
 | `post.status` | `DRAFT`, `PENDING`, `PUBLISHED`, `RECHECK`, `DISCARDED`, `UNPUBLISHED`, `BLOCKED`. The prototypes call `UNPUBLISHED` "Taken down". `BLOCKED` (added 2026-11-20) is a citizen post closed because the Super Admin blocked its phone (section 15); the citizen API shows it as `DISCARDED`. **Since 2026-11-21** a block changes no post, so no post becomes `BLOCKED` any more; migrations `posts.0013` and `posts.0014` moved the ones there were, and the posts a block discarded before 2026-11-20, back to `PENDING`. Clients keep the value for safety. |
 | `review_action.action` | `SUBMIT`, `RESUBMIT`, `PUBLISH`, `AUTO_PUBLISH`, `RECHECK`, `DISCARD`, `UNPUBLISH`, `ESCALATE`, `REVERSE`, `BLOCK` (a block closed the post, 2026-11-20 to 2026-11-21 only; `last_review` shows it with the block's comment) |
@@ -626,6 +667,8 @@ What the apps read before login:
 |---|---|---|
 | `GET /app-config` | public, no login (a stale token is ignored) | `{"languages": {"te": true, "en": bool}, "min_version": "1.0.0+22"\|null, "latest_version": "1.0.0+24"\|null, "topic_prefix": "qa_"\|"", "ads_banner_limit": 0}`. `Cache-Control: public, max-age=300`, so a switch reaches phones within 5 minutes. Only these: escalation hours and the daily limit stay Super Admin only. The app hides its language switch while `en` is `false`. **App updates (BVTGC-90, 2026-11-24):** `min_version` and `latest_version` come from the server settings `APP_MIN_VERSION` and `APP_LATEST_VERSION` (`null` when not set, the default). The app compares only the **build number** after the `+` with its own: below `min_version` a blocking "Please update the app" screen; below `latest_version` an "Update available" note with Later; the download is the website APK. A missing or `null` field shows nothing. The server refuses to start with a value that has no build number, or a minimum above the latest. Raise `APP_MIN_VERSION` only after the new APK is on the website, and after the dashboard's `app_versions` shows few old installs. **Push topics (BVTGC-69):** `topic_prefix` is this server's `FCM_TOPIC_PREFIX` (`"qa_"` on qa, `""` in production); the app subscribes to its area topics with it (section 7). **Banners (BVTGC-92):** `ads_banner_limit` is the Super Admin's banners-per-Home number (0 = no limit); the app shows at most that many of the banners `ads/` returns. The app also sends its version in the header `X-App-Version: 1.0.0+21` on every call (optional; the server reads the version from `POST /devices/` and `POST /citizen/register/`). |
 
+Planned (section 21, BVTGC-106): `GET /app-config` also returns `wallet_enabled`, `wallet_pilot_mandals` and `wallet_consent_version`.
+
 ---
 
 ## 6. feed (public, no login)
@@ -920,6 +963,8 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Super Admin: More → Services | `GET /admin/services/`, `POST /admin/services/`, `PATCH /admin/services/{key}/`, `POST /admin/services/order/` |
 | Citizen: Home → Bills & Recharges | `GET /bills/` |
 | Super Admin: More → Bills & Recharges | `GET /admin/bills/`, `POST /admin/bills/`, `PATCH /admin/bills/{key}/`, `POST /admin/bills/order/` |
+| Citizen wallet account (planned, section 21): Create account, Check your email, Log in, Forgot password | `POST /citizen/auth/signup/`, `/signup/resend/`, `/signup/verify/`; `POST /citizen/auth/login/`; `POST /citizen/auth/password/forgot/`, `/password/reset/` |
+| Citizen: Wallet, Invite friends, account entries in Profile (planned, section 21) | `GET /citizen/account/`, `PATCH /citizen/account/`, `GET /wallet/`, `POST /citizen/account/password/`, `/email/`, `/email/verify/`, `/mobile/`, `/delete/`; `POST /devices/` with the citizen JWT |
 
 ### Super Admin console
 
@@ -943,6 +988,7 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Ads | `GET /admin/ads/`, `POST /admin/ads/` (multipart), `PATCH /admin/ads/{id}/`, `DELETE /admin/ads/{id}/` |
 | Blocked citizens (Posts → Blocked) | `GET /admin/citizens/blocked/`, `GET /admin/citizens/{id}/blocks/`, `POST /admin/citizens/{id}/unblock/`; from a post: `POST /posts/{id}/block-citizen/`, `/unblock-citizen/`, `/discard-citizen-posts/` |
 | Telugu name suggestions (forms) | `GET /admin/transliterate/` |
+| Citizens & wallet (planned, section 21) | `GET /admin/citizen-accounts/`, `POST /admin/citizen-accounts/find/`, `…/{id}/email/`, `/release-mobile/`, `/block/`, `/unblock/`, `/delete/`; `GET /admin/referrals/`, `…/{id}/confirm/`, `/reject/`; `POST /admin/wallets/{id}/adjust/`; `GET /admin/wallet/export/`; the wallet settings in `/admin/settings/` |
 
 ### Public website
 
@@ -951,6 +997,8 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | All pages | `GET /app-config/` (the languages switched on). `GET /public/site-config/` is no longer called (since 2026-11-07); the app still uses it |
 | Home phone mockup | `GET /public/showcase` |
 | Contact | `POST /public/contact-messages` |
+| Download section with a friend's referral code (planned, section 21) | none: the page reads `ref` from its address |
+| Delete my wallet account (planned, section 21) | `POST /citizen/auth/delete/code/`, `POST /citizen/auth/delete/` |
 
 ### Endpoints no client calls (BVTGC-77, 2026-11-23)
 
@@ -986,6 +1034,7 @@ Kept on purpose (backend team's decision on audit CROSS-API-108): each checks it
 | Service requests | 10 per phone in 24 hours (`SERVICE_REQUESTS_PER_DAY`, 0 is no limit); name 100, address 5–300, details 500 characters |
 | Services | name 2–60 characters (unique, any case); `icon` and `color` from the lists in section 16; logo JPEG, PNG or WebP, at most 2 MB, at least 64 px a side, stored at most 256 px |
 | Citizen posts | 5 posts per phone in 24 hours (the Super Admin changes it in Settings; 0 is no limit); up to 3 photos (`MAX_PHOTOS_PER_POST`) or one video per post, never both; each photo at most `MAX_IMAGE_UPLOAD_MB` (10), the video at most `MAX_VIDEO_UPLOAD_MB` (60) and `VIDEO_MAX_SECONDS` (60 s); no limit on new phones (switchable: `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY`) |
+| Citizen wallet accounts (planned, section 21) | Codes: valid 10 minutes, 5 tries, one a minute, 5 a day per account or email and 10 a day per phone; 5 wrong passwords per account and IP address lock it for 15 minutes; an unfinished sign-up is kept 24 hours |
 
 ---
 
@@ -1512,3 +1561,171 @@ Built (`apps.share`, `apps.posts.sharing`). Not under `/api/v1/`: these are page
 - **Robots:** shared post pages may be indexed (posts are public news); the "no longer available" page is `noindex`. Ask the owner if posts should be `noindex` too.
 - **Settings:** `PUBLIC_BASE_URL` (https, with the final slash; `setup.sh` writes `https://<DOMAIN>/`), `SITE_WEBSITE_URL` (where `/app/` goes), `ANDROID_PACKAGE` (`com.bvt.app`), `ANDROID_CERT_SHA256` (comma separated; today the upload key; add Play's app signing key once the app is on Play), `SHARE_PAGE_MAX_AGE`.
 - **Mobile, later:** an `intent-filter` with `autoVerify` for `https://<domain>/p/…`, which then opens the post through `GET /feed/share/{code}/`. Needs the final domain.
+
+---
+
+## 21. Citizen accounts and the wallet (Planned, BVTGC-106)
+
+**Planned, not built yet.** Agreed on 2026-11-25 so the app and the website can be built in parallel with the backend (lead's decision). Each endpoint is marked **live** here when its code is merged; until then the server answers `404`. Requirements and design: `docs/features/citizen-wallet/` (decisions D1 to D17).
+
+An optional account for citizens, used **only for the wallet of points and referrals** (D2). Reading, posting and service requests keep working without it. The account and the posting token (`X-Citizen-Token`, section 15) are separate things: a phone may have both, and neither needs the other.
+
+### Authentication
+
+- A citizen signs up with a form (name, mobile number, email, password) and confirms the email with a 6-digit code, then logs in with `POST /citizen/auth/login/` using the email **or** the mobile number, plus the password.
+- The answer is the same JWT pair as for officials (`Authorization: Bearer`), with the same `POST /auth/refresh/`, `POST /auth/logout/`, the 90-day limit (`JWT_ABSOLUTE_DAYS`) and `401 session_revoked`.
+- The officials' `POST /auth/login/` and `POST /auth/session/login/` answer a citizen account `400 invalid_credentials`, like a wrong password. Every officials' endpoint answers a citizen JWT `403 permission_denied`; `POST /auth/password/change/` too (citizens use `POST /citizen/account/password/`). `GET /me/` is for officials; citizens use `GET /citizen/account/`.
+- An app holds one account at a time: an official's or a citizen's.
+- **Feature switch:** while `wallet_enabled` is `false` (`GET /app-config/`), every endpoint of this section answers `404 not_found`.
+- **Pilot:** while `wallet_pilot_mandals` is not empty, sign-up is open only for villages in those mandals (`403 wallet_not_in_area`). Existing accounts keep working wherever their village moves.
+
+### Objects
+
+```jsonc
+// Account (GET /citizen/account/)
+{"name": "రవి కుమార్", "language": "te",
+ "village": {"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు"},
+ "email_hint": "r***@gmail.com", "email_verified": true,
+ "mobile_last4": "4821",
+ "mobile_missing": false,      // true after the Super Admin removed the number: ask for a new one first
+ "mobile_verified": false,     // confirmed by WhatsApp or SMS code; false until the later stage (D17)
+ "referral_code": "K7QX2MPA",
+ "invite_url": "https://<domain>/app/?ref=K7QX2MPA",
+ "wallet": {"confirmed_points": 120, "held_points": 20,
+            "next_release_at": "2026-12-02T10:00:00+05:30"},   // null when nothing is held
+ "referral": {"status": "PENDING", "confirm_after": "2026-12-02T10:00:00+05:30"},  // own referral by a friend, or null
+ "created_at": "2026-11-25T10:00:00+05:30"}
+
+// WalletEntry (GET /wallet/ entries)
+{"id": "5d1c…", "points": 50,
+ "kind": "REFERRAL_REWARD",     // REFERRAL_REWARD, WELCOME_BONUS, ADJUSTMENT
+ "status": "HELD",              // HELD, CONFIRMED, CANCELLED
+ "reason_key": null,            // see "Reasons" below; null when there is nothing to explain
+ "reason": null,                // text in the request's language; an adjustment's text as the Super Admin wrote it
+ "created_at": "…", "decided_at": null}
+
+// CodeSent: the answer to every request that sends a code
+{"expires_in": 600, "resend_after": 60, "email_hint": "r***@gmail.com"}   // email_hint only where noted
+```
+
+**Reasons** (`reason_key`): `same_phone` (no referrer reward: both accounts signed up on one phone), `welcome_limit` (no welcome bonus: the phone or a deleted account already had one), `no_device` (no welcome bonus: the sign-up sent no `android_id`), `not_active`, `monthly_limit`, `blocked`, `deleted`, `rejected` (by the Super Admin, with the comment as `reason`), `adjustment`.
+
+### Fields and their rules
+
+| Field | Rule |
+|---|---|
+| `name` | 1 to 100 characters, Telugu or English |
+| `mobile` | 10 digits starting with 6, 7, 8 or 9, without `+91` (`mobile_validator`) |
+| `email` | A valid address, at most 254 characters, stored in lower case. Gmail addresses that differ only by dots or a `+` part before the @ count as the same email |
+| `password` | At least 8 characters of any kind (numbers only is fine); very common passwords, and passwords too close to the name, email or mobile number, are refused with `400 validation_error` on `password`. The app checks "confirm password" itself; the server gets one password |
+| `village_id` | An active village; in the pilot mandals while the pilot runs |
+| `age_confirmed` | Must be `true` (`400 age_required`) |
+| `consent_version` | The current `wallet_consent_version` from `GET /app-config/` (`400 validation_error` otherwise: the app reloads the notice) |
+| `language` | `te` (default) or `en`: the language of emails and pushes |
+| `referral_code` | Optional, 8 letters and digits; only at sign-up |
+| `android_id` | Optional, Android's `Settings.Secure.ANDROID_ID`, as in section 15 (kept only as a keyed hash). Without it no welcome bonus is given |
+| `login` | An email (contains `@`) or a 10-digit mobile number |
+| `code` | The 6 digits from the email |
+
+### Sign-up, login and a forgotten password (public, no login)
+
+| Method and path | Request | Response |
+|---|---|---|
+| `POST /citizen/auth/signup/` | `{name, mobile, email, password, village_id, age_confirmed, consent_version, language, referral_code?, android_id?}` | `200 {signup_token, expires_in, resend_after, email_hint}`: a code went to the email. `409 mobile_in_use` or `409 email_in_use` (offer **Log in** and **Forgot password?**); `400 validation_error`, `400 age_required`; `403 wallet_not_in_area`; `400 referral_code_invalid`, `referral_code_own`, `referral_not_open`; `503 email_unavailable` |
+| `POST /citizen/auth/signup/resend/` | `{signup_token}` | `200 CodeSent`; `429 code_cooldown` with `retry_after_s`, `429 code_limit`; `401 signup_token_invalid` |
+| `POST /citizen/auth/signup/verify/` | `{signup_token, code}` | `201 {access, refresh, account: Account}`: the account exists now. `400 code_wrong` with `attempts_left`, `400 code_expired` (send a new one); `401 signup_token_invalid` (expired after 24 hours, or already used); `409 mobile_in_use` / `email_in_use` (someone finished first); the referral errors above |
+| `POST /citizen/auth/login/` | `{login, password}` | `200 {access, refresh, account: Account}`. `400 invalid_credentials` (wrong password, unknown login or deleted account: the same answer); `403 account_blocked`; `429 locked_out` with `retry_after_s` |
+| `POST /citizen/auth/password/forgot/` | `{login}` | `200 {expires_in, resend_after}`, **the same for every login**, registered or not: show "If this is registered, we sent a code to its email". `429 code_cooldown`, `code_limit`; `503 email_unavailable` |
+| `POST /citizen/auth/password/reset/` | `{login, code, new_password}` | `200 {access, refresh, account: Account}`: every other login of the account ends, a lock ends, and a notice is emailed. `400 code_wrong` with `attempts_left`; `400 code_expired` (also for an unknown login); `400 validation_error` on `new_password` |
+
+### The citizen's own account (citizen JWT)
+
+| Method and path | Request | Response |
+|---|---|---|
+| `GET /citizen/account/` | — | `Account`. The app calls it when it opens; it records the day for the active rule. |
+| `PATCH /citizen/account/` | any of `{village_id, language}` | `Account`. A new village moves the Citizen role with it. |
+| `POST /citizen/account/password/` | `{current_password, new_password}` | `200 {access, refresh}`: other logins end, this phone gets new tokens, a notice is emailed. `400 invalid_credentials` (wrong current password; the 5th wrong try within 15 minutes ends every session: `401 session_revoked`); `400 validation_error` on `new_password` |
+| `POST /citizen/account/email/` | `{email, password}` (the new email) | `200 CodeSent` with `email_hint`: a code went to the new email. `409 email_in_use`; `400 invalid_credentials`; `503 email_unavailable` |
+| `POST /citizen/account/email/verify/` | `{code}` | `200 Account`: the email changed and the old address got a notice. `400 code_wrong`, `code_expired`; `409 email_in_use` |
+| `POST /citizen/account/mobile/` | `{mobile, password}` (the new number) | `200 Account` (`mobile_verified` becomes `false`). `409 mobile_in_use` (point the citizen to the help line); `400 invalid_credentials` |
+| `POST /citizen/account/delete/` | `{password}` | `204`. The account is closed at once (see "Deletion"). `400 invalid_credentials` |
+| `GET /wallet/` | `?cursor=` | `{confirmed_points, held_points, next_release_at, entries: {results: [WalletEntry], next}}`, newest first, 20 a page |
+
+### Deleting the account from the website (public, no login)
+
+The website's **Delete my wallet account** page (its address is the deletion link for Google Play).
+
+| Method and path | Request | Response |
+|---|---|---|
+| `POST /citizen/auth/delete/code/` | `{login}` | `200 {expires_in, resend_after}`, the same for every login: a code goes to the account's email. `429 code_cooldown`, `code_limit`; `503 email_unavailable` |
+| `POST /citizen/auth/delete/` | `{login, code}` | `200 {deleted: true}`. `400 code_wrong` with `attempts_left`, `400 code_expired` (also for an unknown login). A password reset code does not work here. |
+
+### Super Admin (console)
+
+| Method and path | Permission | Request | Response |
+|---|---|---|---|
+| `GET /admin/citizen-accounts/` | `accounts.manage_citizen_accounts` | `q` (name, or the last 4 digits), `village_id`, `status` (`active`, `blocked`, `deleted`), `page` | Rows: `id`, `name`, `village`, `mobile_last4`, `email_hint`, `email_verified`, `mobile_verified`, `confirmed_points`, `held_points`, `status`, `created_at`, `last_active_at`, `allowed_actions` |
+| `POST /admin/citizen-accounts/find/` | same | `{mobile}` or `{email}` (a POST, so no personal data goes in a URL) | `{results: [row]}`; audited `citizen.account_found` |
+| `POST /admin/citizen-accounts/{id}/email/` | same | `{email, reason, called_back: true}` | Row. Sets a new email, not yet confirmed; codes sent to the old one stop working. The citizen then uses **Forgot password**. `409 email_in_use`; `400 validation_error` unless `called_back` is `true` |
+| `POST /admin/citizen-accounts/{id}/release-mobile/` | same | `{reason, called_back: true}` | Row. Removes the number from this account (its next `GET /citizen/account/` says `mobile_missing: true`) |
+| `POST /admin/citizen-accounts/{id}/block/`, `/unblock/`, `/delete/` | same | `{reason}` | Row. Block ends every session at once. |
+| `GET /admin/referrals/` | `wallet.review_referrals` | `status` (`PENDING`, `CONFIRMED`, `REJECTED`), `q`, `page` | Rows: `id`, `referrer` and `referee` (name, `mobile_last4`), `status`, `reason_key`, `pending_at`, `confirm_after`, `decided_at`, `decided_by`, `allowed_actions` (`confirm`, `reject`) |
+| `POST /admin/referrals/{id}/confirm/`, `/reject/` | `wallet.review_referrals` | `{comment}` (required) | Row; `409 already_decided` when the hourly job or another Super Admin decided first |
+| `POST /admin/wallets/{account_id}/adjust/` | `wallet.adjust_points` | `{points, reason}`: whole points, not 0, may be negative; reason required | The account's wallet summary; `409 not_enough_points` when it would go below zero |
+| `GET /admin/wallet/export/` | `wallet.view_wallets` | `type=referrals\|entries`, the list's filters | CSV with a UTF-8 BOM; last 4 digits and masked emails only |
+| `GET`, `PATCH /admin/settings/` | `posts.manage_settings` (existing) | adds the wallet settings below | Settings |
+
+The console's menu shows **Citizens & wallet** to holders of any of these permissions; today only the Super Admin.
+
+### Settings
+
+`GET`/`PATCH /admin/settings/` adds (audited as `setting.changed`):
+
+| Key | Default | Range |
+|---|---|---|
+| `wallet_enabled` | `false` | |
+| `wallet_pilot_mandals` | `[]` (everywhere) | a list of active mandal ids |
+| `referral_reward_points` | 50 | 0 to 10,000 |
+| `welcome_bonus_points` | 20 | 0 to 10,000 |
+| `referral_hold_days` | 7 | 1 to 90 |
+| `referral_active_days` | 2 | 0 to `referral_hold_days` |
+| `referrals_per_month` | 30 | 0 to 1,000 (0 is no limit) |
+| `welcome_bonuses_per_phone` | 3 | 0 to 10 |
+
+`GET /app-config/` adds `wallet_enabled`, `wallet_pilot_mandals` (mandal ids) and `wallet_consent_version` (the consent notice the sign-up must name). Phones follow a change within about 5 minutes, as for the other fields.
+
+### Rules
+
+- **Codes:** 6 digits, valid 10 minutes, 5 wrong tries. A new code after 60 seconds (`429 code_cooldown` with `retry_after_s`); at most 5 a day per account or email address, and 10 a day per phone (`android_id`) (`429 code_limit`). Codes arrive by email, with the code in the subject, in the citizen's language. Until BVTGC-105 brings back real visitor addresses there is no limit per IP address (section 13).
+- **Lockout:** 5 wrong passwords for one account from one IP address lock it there for 15 minutes (`429 locked_out`), as for officials; the email and the mobile number count as one account. The ceiling per username (20 failures within an hour from any addresses, BVTGC-110) applies too. A password reset ends a lock.
+- **Unfinished sign-ups** are forgotten after 24 hours; the number and email stay free until the code is entered.
+- **One account per mobile number and per email.** Until the later stage the mobile number is not confirmed by a code (`mobile_verified` false).
+- **Referral code:** only at sign-up. Refused with `referral_code_invalid` (no such code), `referral_code_own` (the same mobile number or email), `referral_not_open` (the referrer is blocked or deleted). A referral starts `PENDING` when the account is created; the hourly job confirms or rejects it after `referral_hold_days`.
+- **Points** are whole numbers and never cash; they cannot be transferred. Entries are never edited or deleted, only reversed by a new entry.
+- **Deletion** (app, website or Super Admin): the account closes at once, every session ends, the name, email and number are removed, points on hold are cancelled. Confirmed entries and referrals stay without personal details (owner's decision of 2026-11-25, Q8).
+- **Privacy:** full emails and mobile numbers never appear in a URL, a log, an audit entry or a CSV export; the console shows `email_hint` and `mobile_last4`.
+
+### Errors (new)
+
+| HTTP | `code` | When |
+|---|---|---|
+| 400 | `age_required` | Sign-up without `age_confirmed: true` |
+| 400 | `code_wrong` | Wrong code; `attempts_left` gives the tries left |
+| 400 | `code_expired` | The code is older than 10 minutes, used, out of tries, or there is no live code for that login |
+| 400 | `referral_code_invalid`, `referral_code_own`, `referral_not_open` | The referral code at sign-up (see Rules) |
+| 401 | `signup_token_invalid` | The sign-up is older than 24 hours or already finished |
+| 403 | `wallet_not_in_area` | Sign-up for a village outside the pilot mandals |
+| 409 | `mobile_in_use`, `email_in_use` | The number or email belongs to another citizen account |
+| 409 | `not_enough_points` | An adjustment would take the balance below zero |
+| 429 | `code_cooldown` | A new code was asked for within 60 seconds; `retry_after_s` |
+| 429 | `code_limit` | Too many codes today for this account, address or phone |
+| 503 | `email_unavailable` | The email service could not be reached; try again later. Nothing else is affected |
+
+### Pushes and audit
+
+- Pushes to the account's phone (registered with `POST /devices/` and the citizen JWT): kind `WALLET`, data `{"type": "referral_joined" | "points_confirmed" | "points_not_confirmed", "referral_id"}`. Texts are notification templates (section 7), editable in the console.
+- Audit actions: `citizen.account_created`, `citizen.code_sent`, `citizen.password_reset`, `citizen.password_changed`, `citizen.email_changed`, `citizen.mobile_changed`, `citizen.village_changed`, `citizen.account_blocked`, `citizen.account_unblocked`, `citizen.account_deleted` (with `via`: `app`, `website`, `admin`), `citizen.account_found`, `citizen.email_set_by_admin`, `citizen.mobile_released`, `referral.created`, `referral.confirmed`, `referral.rejected`, `wallet.adjusted`, `wallet.mismatch`. Logins use `auth.login` with `via` `citizen_app`. Audit data holds a masked email and the last 4 digits of a number at most.
+
+### Later stage (WhatsApp and SMS, before Bills & Recharges)
+
+Not planned in detail yet: endpoints to confirm the mobile number by a WhatsApp or SMS code (`mobile_verified`), and a password reset by those codes, will be added here when the stage is planned. Bills & Recharges will answer `403 mobile_not_verified` to an account whose number is not confirmed.

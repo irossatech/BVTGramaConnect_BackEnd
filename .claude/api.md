@@ -9,7 +9,7 @@ The live schema is at `/api/schema/` and Swagger UI at `/api/docs/`: open on lap
 1. Update `docs/api-contract.md` first: path, request, response, errors, permissions.
 2. Change the code and add tests in the same pull request.
 3. Tell the teams that use the endpoint (table below) before merging into `dev`. Additive changes (a new optional field) are safe; renaming or removing a field needs a date agreed with each client team.
-4. Keep `/api/v1/` stable. A breaking change that clients cannot follow together goes under `/api/v2/`.
+4. Keep `/api/v1/` stable. A breaking change that clients cannot follow together goes under `/api/v2/`. What counts as breaking, how long the old way stays, and when to raise `APP_MIN_VERSION`: `docs/api-contract.md`, section 1, "Versions and changes" (BVTGC-96).
 
 ## The contract test (BVTGC-97)
 
