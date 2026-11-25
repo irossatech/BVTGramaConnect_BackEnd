@@ -167,10 +167,12 @@
       "about": "Requests arriving together, SQLite versus MySQL and PostgreSQL behaviour, data steps",
       "files": [
         "apps/accounts/tests/test_super_admin_race.py",
+        "apps/citizens/tests/test_account_models.py",
         "apps/citizens/tests/test_block_atomic.py",
         "apps/citizens/tests/test_block_migrations.py",
         "apps/posts/tests/test_media_limits_concurrency.py",
         "apps/share/tests/test_share_code_any_database.py",
+        "apps/wallet/tests/test_models.py",
         "grama/tests/test_engine_differences.py",
         "grama/tests/test_key_clash.py",
         "grama/tests/test_limits_under_concurrency.py",
