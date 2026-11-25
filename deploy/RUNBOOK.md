@@ -75,6 +75,19 @@ It puts back the previous recorded **pair** (backend and web together, so the co
 
 Migrations are never reversed. Before changing anything, the rollback compares the migrations applied to the database with the ones the older backend has; if the database is ahead, it lists them and stops. Then restore the backup taken before that deploy (`restore.sh`, below) and run `deploy.sh --rollback` again. The next normal `deploy.sh` brings the branch's latest code back, so fix or revert the bad commit on the branch first.
 
+### When a migration fails part-way
+
+On MySQL each schema change is saved at once, so a migration that fails in the middle leaves the database half changed; on PostgreSQL the failing migration is undone, but the ones before it in the same deploy stay. Either way the database no longer matches any release (audit finding BE-DB-013, BVTGC-109). `deploy.sh` stops with the migration's error and the app may not start. Then:
+
+1. Do not run `deploy.sh` again: it would try the same migration on a half-changed database.
+2. Find the backup taken just before this deploy: the newest `/var/backups/gramaconnect/gramaconnect-<time>.tar.gpg`, from minutes ago (the deploy log says "Backup before deploying"). If the deploy ran with `BACKUP_BEFORE_DEPLOY=0` or without `sudo`, there is none: use last night's backup and say so to the lead, since changes made since then are lost.
+3. Restore only the database (a migration does not touch `/var/media`): `sudo bash /srv/gramaconnect/backend/deploy/restore.sh --db-only <file>`.
+4. Put the previous release back: `sudo bash /srv/gramaconnect/backend/deploy/deploy.sh --rollback`. It now finds the database in step with the older backend.
+5. Check: `gc showmigrations` lists no migration the older backend lacks, the API health check answers `ok`, and the console signs in.
+6. Fix or revert the failing migration on the branch, run it on qa first (the qa deploy also takes a backup before pulling, `deploy/qa/BVT-deploy.sh`), then deploy again.
+
+Writing migrations so this stays rare: keep schema changes and data steps in separate migrations, and give data steps a reverse step (`.claude/conventions.md`, "Database").
+
 ### Servers set up before the web repos were merged
 
 The website and the console used to be two repos, cloned to `/srv/gramaconnect/public` and `/srv/gramaconnect/admin`. They are now one repo, BVTGramaConnect, cloned to `/srv/gramaconnect/web`. Nginx and the server env (`WEB_PUBLIC_DIR`, `WEB_ADMIN_DIR`) do not change. On such a server, once:
