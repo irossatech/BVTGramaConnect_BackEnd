@@ -6,7 +6,7 @@
 | Date | 2026-11-25 |
 | Decisions by | Admin (project lead), 2026-11-25 |
 | Technical design | [technical-implementation.md](technical-implementation.md) |
-| Depends on | Citizen accounts and the wallet from [Citizen wallet and referrals](../citizen-wallet/requirements.md) (BVTGC-106), which go live first (D13) |
+| Depends on | Citizen accounts and the wallet from [Citizen wallet and referrals](../citizen-wallet/requirements.md) (BVTGC-106), and its WhatsApp and SMS stage, which confirms citizens' mobile numbers (wallet D17). Both go live first (D13) |
 | Applies to | Mobile app, backend API, Super Admin console, public website |
 
 ## 1. Summary
@@ -17,7 +17,7 @@ Bills are paid through **Bharat Connect** (BBPS, the national bill payment netwo
 
 Prepaid mobile recharges for Jio, Airtel and Vi are not available on Bharat Connect today, so they go through a **recharge API** from the same partner.
 
-Paying needs a **citizen account with a verified mobile number** (the account planned in BVTGC-106). Reading news, posting and service requests stay without login.
+Paying needs a **citizen account with a verified mobile number** (the account planned in BVTGC-106). Citizens confirm their number with a WhatsApp or SMS code in the wallet's later stage (wallet D17). Reading news, posting and service requests stay without login.
 
 Citizens can use their **wallet points** as a discount on any bill or recharge whose category accepts points. The client pays the discounted part from its own money, so points never pay a biller and never become cash. The Super Admin controls everything about points at any time: what a point is worth, how much of a payment points may cover, and which categories accept them.
 
@@ -39,7 +39,7 @@ Citizens can use their **wallet points** as a discount on any bill or recharge w
 | D10 | What a point is worth | A Super Admin setting. The client sets it before go-live. |
 | D11 | How much of a payment points may cover | Fully controlled by the Super Admin, who can change it at any time: the share of each payment (up to the whole payment) and a monthly limit per account. |
 | D12 | Which bills accept points | Controlled by the Super Admin, category by category, at any time. Each category, and prepaid recharge, has its own switch for active or inactive, and its own switch for points on or off. |
-| D13 | Order of release | The wallet goes live first. Bills & Recharges come after it. Points cannot be spent until then. |
+| D13 | Order of release | The wallet goes live first, then its WhatsApp and SMS stage, in which every citizen confirms their mobile number (wallet D17). Bills & Recharges come after both. Points cannot be spent until then. Updated 2026-11-25 (wallet v5: the wallet starts with email and password, and numbers are confirmed only in that stage). |
 
 ## 3. Scope
 
@@ -69,8 +69,8 @@ Citizens can use their **wallet points** as a discount on any bill or recharge w
 
 | Who | What changes |
 |---|---|
-| Citizen without an account | Sees the Bills & Recharges row. Tapping a tile asks them to sign in with their mobile number and a code. |
-| Citizen with an account | Every account has a verified mobile number from sign-up (wallet D1, D6). Pays bills and recharges, sees history, saved billers and receipts, raises complaints. |
+| Citizen without an account | Sees the Bills & Recharges row. Tapping a tile asks them to log in (email or mobile number, and password) or create an account. |
+| Citizen with an account | Has confirmed their mobile number with a WhatsApp or SMS code (wallet D17); a citizen who has not yet is asked to do it first. Pays bills and recharges, sees history, saved billers and receipts, raises complaints. |
 | Super Admin | Sees payments and complaints, follows the daily reconciliation, changes the settings, exports CSV. Adds or hides Home tiles as today, and links each tile to a category. Switches each category active or inactive and points on or off. Sets the point value and the points limits, and sees what the points discounts cost the client. |
 | Officials | Nothing changes. |
 | Client's support person | Answers citizens' payment questions using the Super Admin console. Who this is, is open question Q2. |
@@ -120,7 +120,7 @@ Citizens can use their **wallet points** as a discount on any bill or recharge w
 ## 6. Functional requirements
 
 ### Access
-- **FR-1** Paying needs a signed-in citizen account whose mobile number is verified. Anyone else who taps a tile is asked to sign in first. Since wallet v3, signing in proves the number, so every account qualifies.
+- **FR-1** Paying needs a signed-in citizen account whose mobile number is verified. Anyone else who taps a tile is asked to log in first, and a citizen whose number is not confirmed yet is asked to confirm it with a WhatsApp or SMS code. Since wallet v5, numbers are confirmed in the wallet's WhatsApp and SMS stage (wallet D17), which goes live before Bills & Recharges; signing up alone no longer proves the number.
 - **FR-2** The whole feature hides when it is switched off. Bills and recharges switch separately. While switched off, the tiles show "coming soon" as today.
 
 ### Catalogue
@@ -262,7 +262,7 @@ Changeable by the Super Admin, except where marked.
 | Phase | What | Notes |
 |---|---|---|
 | 0 | Client gets terms, chooses the partner, signs, completes KYC and the visit | Paperwork, in parallel with phases 1 and 2. Usually the longest part. |
-| 1 | The citizen wallet goes live (BVTGC-106): accounts, mobile verification, collect-only points | A prerequisite (D13). Paying needs the account. |
+| 1 | The citizen wallet goes live (BVTGC-106): accounts with email and password, collect-only points. Then its WhatsApp and SMS stage confirms every citizen's mobile number (wallet D17) | A prerequisite (D13). Paying needs the account and a confirmed number. |
 | 2 | Bill payments and points as a discount on the partner's test system, then NBBL certification | Backend, app and console |
 | 3 | Prepaid recharges on the partner's test system | Same partner, same payment flow |
 | 4 | Production with pilot accounts, then everyone | Switches in the console |
