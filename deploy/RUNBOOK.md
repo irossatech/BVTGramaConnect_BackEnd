@@ -128,7 +128,7 @@ Proves the backups work. Do it on a spare server, never on production.
 
 | Secret | How | Effect |
 |---|---|---|
-| `SECRET_KEY` | Delete the `SECRET_KEY=` line from `/etc/gramaconnect/gramaconnect.env`, run `setup.sh` (it generates a new one), then `deploy.sh` | Every JWT is signed with it: all officials must log in again |
+| `SECRET_KEY` | First, unless `PHONE_HASH_KEY=` is already in `/etc/gramaconnect/gramaconnect.env`, add that line with the current `SECRET_KEY` value (copy it exactly; never change it afterwards). Then delete the `SECRET_KEY=` line, run `setup.sh` (it generates a new one), then `deploy.sh` | Every JWT is signed with it: all officials must log in again, and current login lockouts are cleared. Citizen phones keep their daily limits and blocks through `PHONE_HASH_KEY` (BE-SEC-109). Skip that first step and every phone looks new: blocked citizens can post again after reinstalling the app |
 | Database password | `sudo rm /etc/gramaconnect/db.password`, run `setup.sh`, then restart the app | `setup.sh` sets a new password in the database, `DATABASE_URL` and the backup credentials |
 | Backup passphrase | Replace `/etc/gramaconnect/backup.passphrase` | Old backups still need the old passphrase: keep it until they expire |
 | Firebase key | Replace the JSON file (below), restart | Revoke the old key in the Firebase console |

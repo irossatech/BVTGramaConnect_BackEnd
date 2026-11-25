@@ -95,10 +95,17 @@ def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
+def phone_hash_key() -> bytes:
+    """PHONE_HASH_KEY, or SECRET_KEY while it is empty (BE-SEC-109, BVTGC-111). Its own setting, so that
+    changing SECRET_KEY does not make every phone look new: blocks and daily limits survive a reinstall
+    only while the Android ID hashes match."""
+    return (settings.PHONE_HASH_KEY or settings.SECRET_KEY).encode()
+
+
 def _keyed_hash(kind: bytes, value: str | None) -> str:
     if not value:
         return ""
-    return hmac.new(settings.SECRET_KEY.encode(), kind + b":" + value.encode(), hashlib.sha256).hexdigest()
+    return hmac.new(phone_hash_key(), kind + b":" + value.encode(), hashlib.sha256).hexdigest()
 
 
 def hash_ip(ip: str | None) -> str:
