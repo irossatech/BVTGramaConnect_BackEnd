@@ -13,9 +13,10 @@ def test_without_a_login_both_languages_are_on_by_default(db):
     assert response.status_code == 200
     # min_version / latest_version (BVTGC-90): null until the server sets them, so no update prompt.
     # topic_prefix (BVTGC-69): "" by default, as in production. ads_banner_limit (BVTGC-92): 0 = no limit.
+    # The wallet fields (BVTGC-129): off, everywhere, and the consent notice's version.
     assert response.json() == {
         "languages": {"te": True, "en": True}, "min_version": None, "latest_version": None, "topic_prefix": "",
-        "ads_banner_limit": 0,
+        "ads_banner_limit": 0, "wallet_enabled": False, "wallet_pilot_mandals": [], "wallet_consent_version": "2026-11-25",
     }
     assert "public" in response["Cache-Control"] and "max-age=300" in response["Cache-Control"]
 
@@ -38,7 +39,10 @@ def test_it_carries_only_what_the_apps_need(world, api):
     data = APIClient().get(URL).json()
     # Escalation hours and the daily limit stay Super Admin only; the update rules (BVTGC-90) and the
     # topic prefix (BVTGC-69) and the banner limit (BVTGC-92) are for every app.
-    assert set(data) == {"languages", "min_version", "latest_version", "topic_prefix", "ads_banner_limit"}
+    assert set(data) == {
+        "languages", "min_version", "latest_version", "topic_prefix", "ads_banner_limit",
+        "wallet_enabled", "wallet_pilot_mandals", "wallet_consent_version",
+    }
 
 
 # --- Push topic prefix (BVTGC-69) ------------------------------------------------------------------

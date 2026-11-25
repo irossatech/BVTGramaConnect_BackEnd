@@ -120,6 +120,9 @@ def start_referral(referee, referrer, *, now=None) -> Referral:
         "referral.created", target_label=referral.referrer.referral_code, via="citizen",
         data={"referral": str(referral.id), "same_phone": same_phone},
     )
+    # FR-30: the referrer hears that a friend joined, once the sign-up has committed.
+    referrer_user, friend_name = referrer.user, referee.user.name
+    transaction.on_commit(lambda: _tell("referral_joined", referral.id, [(referrer_user, {"name": friend_name})]))
     return referral
 
 
@@ -135,7 +138,9 @@ def decide(referral: Referral, *, confirm: bool, reason_key: str = "", by=None, 
         )
         if not moved:
             return False
+        paid: list[tuple] = []  # (wallet id = user id, points) of every held entry decided here
         for entry in WalletEntry.objects.filter(referral=referral, status=WalletEntry.Status.HELD):
+            paid.append((entry.wallet_id, entry.points))
             if confirm:
                 WalletEntry.objects.filter(pk=entry.pk).update(status=WalletEntry.Status.CONFIRMED, decided_at=now)
                 Wallet.objects.filter(pk=entry.wallet_id).update(
@@ -152,7 +157,37 @@ def decide(referral: Referral, *, confirm: bool, reason_key: str = "", by=None, 
             "referral.confirmed" if confirm else "referral.rejected", actor=by, target_label=str(referral.id)[:8],
             via="admin" if by is not None else "system", data={"referral": str(referral.id), "reason": reason_key or None},
         )
+        # FR-30: both citizens hear the outcome of their held points, once it has committed.
+        comment_shown = comment if by is not None else ""
+        transaction.on_commit(lambda: _tell_decision(referral.id, paid, confirm, reason_key, comment_shown))
     return True
+
+
+def _tell(event: str, referral_id, recipients: list[tuple]) -> None:
+    from apps.notifications.services import tell_wallets
+
+    tell_wallets(event, referral_id, recipients)
+
+
+def _tell_decision(referral_id, paid: list[tuple], confirmed: bool, reason_key: str, comment: str) -> None:
+    """points_confirmed or points_not_confirmed to each account whose held points were decided."""
+    from django.contrib.auth import get_user_model
+    from django.utils import translation
+
+    from .serializers import REASONS
+
+    users = get_user_model().objects.in_bulk([user_id for user_id, _points in paid])
+    recipients = []
+    for user_id, points in paid:
+        user = users.get(user_id)
+        if user is None:
+            continue
+        values = {"points": points}
+        if not confirmed:
+            with translation.override(user.preferred_language or "te"):
+                values["reason"] = comment or (str(REASONS[reason_key]) if reason_key in REASONS else "")
+        recipients.append((user, values))
+    _tell("points_confirmed" if confirmed else "points_not_confirmed", referral_id, recipients)
 
 
 def _india_month_start(now):

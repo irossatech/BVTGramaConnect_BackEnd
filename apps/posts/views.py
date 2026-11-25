@@ -110,6 +110,9 @@ class AppConfigView(APIView):
                 "latest_version": serializers.CharField(allow_null=True),
                 "topic_prefix": serializers.CharField(),
                 "ads_banner_limit": serializers.IntegerField(),
+                "wallet_enabled": serializers.BooleanField(),
+                "wallet_pilot_mandals": serializers.ListField(child=serializers.IntegerField()),
+                "wallet_consent_version": serializers.CharField(),
             },
         ),
     )
@@ -127,6 +130,11 @@ class AppConfigView(APIView):
                 # Banners on a citizen's Home (BVTGC-92): the Super Admin's number, 0 = no limit. Citizens
                 # cannot read /admin/settings/, and the app follows the limit itself too.
                 "ads_banner_limit": int(services.runtime("ADS_PUBLIC_LIMIT")),
+                # The citizen wallet (BVTGC-129): the app shows it only while on, and offers sign-up only in
+                # the pilot mandals' villages (empty: everywhere); the sign-up names this consent notice.
+                "wallet_enabled": wallet_setting("WALLET_ENABLED"),
+                "wallet_pilot_mandals": wallet_setting("WALLET_PILOT_MANDALS"),
+                "wallet_consent_version": settings.CITIZEN_CONSENT_VERSION,
             }
         )
 
@@ -574,6 +582,49 @@ class StatsView(APIView):
         )
 
 
+#: The wallet's console settings (BVTGC-129) and the runtime settings behind them.
+WALLET_SETTINGS = {
+    "wallet_enabled": "WALLET_ENABLED",
+    "wallet_pilot_mandals": "WALLET_PILOT_MANDALS",
+    "referral_reward_points": "REFERRAL_REWARD_POINTS",
+    "welcome_bonus_points": "WELCOME_BONUS_POINTS",
+    "referral_hold_days": "REFERRAL_HOLD_DAYS",
+    "referral_active_days": "REFERRAL_ACTIVE_DAYS",
+    "referrals_per_month": "REFERRALS_PER_MONTH",
+    "welcome_bonuses_per_phone": "WELCOME_BONUSES_PER_PHONE",
+}
+
+
+def wallet_setting(key: str):
+    value = services.runtime(key)
+    if key == "WALLET_ENABLED":
+        return bool(value)
+    if key == "WALLET_PILOT_MANDALS":
+        return sorted({int(item) for item in (value or [])})
+    return int(value)
+
+
+def _wallet_changes(validated: dict) -> dict:
+    """The wallet settings in a PATCH, checked against each other and the map; 400 validation_error."""
+    from apps.geography.models import Mandal
+
+    changes = {key: validated[field] for field, key in WALLET_SETTINGS.items() if field in validated}
+    if "WALLET_PILOT_MANDALS" in changes:
+        wanted = sorted(set(changes["WALLET_PILOT_MANDALS"]))
+        known = set(Mandal.objects.active().filter(id__in=wanted).values_list("id", flat=True))
+        unknown = [str(mandal) for mandal in wanted if mandal not in known]
+        if unknown:
+            message = _("These are not active mandals: %(ids)s.") % {"ids": ", ".join(unknown)}
+            raise ApiError("validation_error", message, fields={"wallet_pilot_mandals": [message]})
+        changes["WALLET_PILOT_MANDALS"] = wanted
+    hold = changes.get("REFERRAL_HOLD_DAYS", wallet_setting("REFERRAL_HOLD_DAYS"))
+    active = changes.get("REFERRAL_ACTIVE_DAYS", wallet_setting("REFERRAL_ACTIVE_DAYS"))
+    if active > hold:
+        message = _("The active days cannot be more than the days points are held (%(n)d).") % {"n": hold}
+        raise ApiError("validation_error", message, fields={"referral_active_days": [message]})
+    return changes
+
+
 def current_settings() -> dict:
     from django.conf import settings
 
@@ -582,6 +633,7 @@ def current_settings() -> dict:
         "languages": {"te": True, "en": bool(services.runtime("LANGUAGE_EN_ENABLED"))},
         "citizen_posts_per_day": int(services.runtime("CITIZEN_POSTS_PER_DAY")),
         "ads_banner_limit": int(services.runtime("ADS_PUBLIC_LIMIT")),  # 0 = no limit (BVTGC-92)
+        **{field: wallet_setting(key) for field, key in WALLET_SETTINGS.items()},
         "admin_posts_auto_publish": settings.ADMIN_POSTS_AUTO_PUBLISH,
         "review_first_decision_wins": settings.REVIEW_FIRST_DECISION_WINS,
         "super_admin_can_post": settings.SUPER_ADMIN_CAN_POST,
@@ -597,7 +649,7 @@ class AdminSettingsView(APIView):
         return Response(current_settings())
 
     @extend_schema(
-        summary="Change escalation hours, switch English, set the citizen posts per day or the banners per Home",
+        summary="Change escalation hours, switch English, the citizen posts per day, the banners per Home or the wallet",
         request=SettingsSerializer,
         responses=SettingsSerializer,
     )
@@ -612,6 +664,7 @@ class AdminSettingsView(APIView):
             changes["CITIZEN_POSTS_PER_DAY"] = data.validated_data["citizen_posts_per_day"]
         if "ads_banner_limit" in data.validated_data:
             changes["ADS_PUBLIC_LIMIT"] = data.validated_data["ads_banner_limit"]
+        changes.update(_wallet_changes(data.validated_data))
         languages = data.validated_data.get("languages")
         if languages is not None:
             if languages.get("te") is False:

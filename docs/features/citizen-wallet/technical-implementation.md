@@ -458,6 +458,13 @@ Citizens stay out of the officials' user lists without extra code: `authz.manage
   - **Audit labels:** the keys of contract section 21, added to the console's and the app's label lists (tell Mohit).
   - **Telugu:** run `python manage.py translations` and write the Telugu of every new message.
 - **Done when:** the settings validate their ranges and are audited; `test_i18n.py` passes; the switch hides every endpoint.
+- **As built (BVTGC-129):**
+  - the push data is `{"type": "WALLET", "event", "referral_id"}`, like the other pushes' `type` (the contract had the event in `type`; no app used it yet);
+  - pushes go after the database commits, through `notifications.services.tell_wallets`, and never to a blocked or deleted account;
+  - the templates' recipient is the new `wallet` ("The citizen's wallet account");
+  - the default "not confirmed" text points to the wallet for the reason; `{reason}` is there for the Super Admin to add;
+  - pilot mandals must be active mandals, and the active days at most the hold days;
+  - a test walks every citizen wallet URL, so a new one cannot miss the switch.
 
 ### 5.12 Permission and security tests, documents (BVTGC-130, 2 days)
 

@@ -48,6 +48,8 @@ class NotificationKind(models.TextChoices):
     ESCALATION = "ESCALATION", _("Escalated post")
     ACCOUNT = "ACCOUNT", _("Account")
     SERVICE_REQUEST = "SERVICE_REQUEST", _("Service request")
+    #: Citizen wallet pushes (BVTGC-129): push only, no inbox item; the wallet history is the record.
+    WALLET = "WALLET", _("Wallet")
 
 
 class Notification(models.Model):
@@ -91,6 +93,7 @@ class Recipient(models.TextChoices):
     CITIZEN = "citizen", _("The citizen who sent it")
     SUPER_ADMINS = "super_admins", _("The other Super Admins")
     ASSIGNEE = "assignee", _("The official it is assigned to")
+    WALLET = "wallet", _("The citizen's wallet account")
 
 
 class NotificationTemplate(models.Model):

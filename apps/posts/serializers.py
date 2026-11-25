@@ -418,6 +418,18 @@ class SettingsSerializer(serializers.Serializer):
     citizen_posts_per_day = serializers.IntegerField(min_value=0, max_value=1000)
     #: Banners a citizen's Home shows, newest first; 0 is no limit (BVTGC-92).
     ads_banner_limit = serializers.IntegerField(min_value=0, max_value=1000)
+    # The citizen wallet (BVTGC-129; contract section 21, "Settings").
+    wallet_enabled = serializers.BooleanField()
+    wallet_pilot_mandals = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), allow_empty=True, max_length=1000,
+        help_text="Mandal ids where sign-up is open; empty: everywhere",
+    )
+    referral_reward_points = serializers.IntegerField(min_value=0, max_value=10_000)
+    welcome_bonus_points = serializers.IntegerField(min_value=0, max_value=10_000)
+    referral_hold_days = serializers.IntegerField(min_value=1, max_value=90)
+    referral_active_days = serializers.IntegerField(min_value=0, max_value=90, help_text="At most referral_hold_days")
+    referrals_per_month = serializers.IntegerField(min_value=0, max_value=1000, help_text="0 is no limit")
+    welcome_bonuses_per_phone = serializers.IntegerField(min_value=0, max_value=10)
     admin_posts_auto_publish = serializers.BooleanField(read_only=True)
     review_first_decision_wins = serializers.BooleanField(read_only=True)
     super_admin_can_post = serializers.BooleanField(read_only=True)
