@@ -32,7 +32,6 @@ from apps.posts.sharing import invite_url
 from apps.accounts.authentication import client_via
 from apps.accounts.permissions import PLATFORM, HasPerm
 from grama.exceptions import ApiError
-from grama.http import client_ip
 
 from .models import ContactMessage
 
@@ -117,9 +116,8 @@ class ContactMessageView(PublicView):
         data = ContactMessageSerializer(data=request.data)
         data.is_valid(raise_exception=True)
         values = data.validated_data
-        ip = client_ip(request)
-        # No limit on how many messages one address sends (decision of 2026-11-20). The hidden
-        # `website` field still stops simple bots.
+        # No limit on how many messages one address sends (decision of 2026-11-20), and the sender's
+        # IP address is not stored (BVTGC-103). The hidden `website` field still stops simple bots.
 
         if values["website"]:
             # Pretend success so bots learn nothing; store nothing.
@@ -131,7 +129,6 @@ class ContactMessageView(PublicView):
             village_text=values["village_text"].strip(),
             message=values["message"],
             language=values["language"],
-            ip_address=ip,
         )
         return Response({"id": message.id, "created_at": message.created_at}, status=status.HTTP_201_CREATED)
 

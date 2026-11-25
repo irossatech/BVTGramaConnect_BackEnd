@@ -51,7 +51,15 @@ def test_contact_message_is_stored_with_telugu_intact(api):
     assert message.name == "రవి"
     assert message.village_text == "కొలకలూరు, తెనాలి"
     assert message.message == "మా గ్రామాన్ని చేర్చండి"
-    assert message.ip_address == "10.9.9.9"
+
+
+def test_the_senders_ip_address_is_not_stored(api):
+    """BVTGC-103: no IP address column, and the address sent appears in no stored value."""
+    response = send(api, ip="10.9.9.9")
+    assert response.status_code == 201
+    assert "ip_address" not in {field.name for field in ContactMessage._meta.get_fields()}
+    stored = ContactMessage.objects.filter(pk=response.json()["id"]).values().get()
+    assert "10.9.9.9" not in str(stored)
 
 
 @pytest.mark.parametrize("village", ["", "   "])
