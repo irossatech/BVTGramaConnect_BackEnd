@@ -132,6 +132,7 @@ Proves the backups work. Do it on a spare server, never on production.
 | Database password | `sudo rm /etc/gramaconnect/db.password`, run `setup.sh`, then restart the app | `setup.sh` sets a new password in the database, `DATABASE_URL` and the backup credentials |
 | Backup passphrase | Replace `/etc/gramaconnect/backup.passphrase` | Old backups still need the old passphrase: keep it until they expire |
 | Firebase key | Replace the JSON file (below), restart | Revoke the old key in the Firebase console |
+| SMTP password (citizen wallet email) | Make new SMTP credentials at the email service, replace `EMAIL_HOST_USER` and `EMAIL_HOST_PASSWORD` in the environment file, restart both services, send a test code ("Email for citizen wallet codes", step 6), then delete the old credentials at the service | None for users; a citizen who asks for a code during the restart may get "try again later" (`503 email_unavailable`) |
 
 ## Security notes
 
@@ -164,6 +165,48 @@ Proves the backups work. Do it on a spare server, never on production.
 4. Restart both services. `systemctl status gramaconnect-qcluster` must be running (only the worker sends pushes), and `journalctl -u gramaconnect-qcluster -n 50` must not show "FCM disabled".
 5. Every post goes out at high priority by default (`PUSH_ALL_POSTS_HIGH_PRIORITY`). `PUSH_TTL_SECONDS` (one day) rarely needs changing.
 6. Rotate the key yearly, and at once if it leaks: a new key, install it as above, restart, then delete the old key in Google Cloud. Failed pushes are in the audit log as `push.failed`.
+
+## Email for citizen wallet codes (BVTGC-143)
+
+The server sends email only to citizens' wallet accounts: the sign-up, forgotten-password and website-deletion codes, and three notices (password changed, email changed, account deleted). Officials never get email. Until email is set up, `gc check` warns `citizens.W002`, and a citizen who asks for a code gets `503 email_unavailable`; nothing else is affected. Do it on **qa first**, then on production before the wallet is switched on. The wallet itself (`WALLET_ENABLED`) stays off: the Super Admin switches it on in the console (Settings).
+
+1. **Service and sender (client, C7).** An email-sending service, for example Amazon SES in Mumbai (`ap-south-1`) or Zoho ZeptoMail, and a sender address on the client's domain, for example `no-reply@<client domain>`. Replies are not read; the emails say so and give the help line. On SES: verify the domain, then ask for production access ("request to leave the sandbox"); until then SES delivers only to verified addresses.
+2. **DNS on the sender's domain** (the client's domain admin, with the server team). Without these, Gmail puts the codes in spam:
+   - **SPF:** the service's include in the domain's one SPF record, for example `v=spf1 include:amazonses.com ~all`. A domain has one SPF record: merge with the existing one, never add a second.
+   - **DKIM:** the records the service gives (SES "Easy DKIM": three CNAME records).
+   - **DMARC:** a TXT record at `_dmarc.<domain>`, starting with `v=DMARC1; p=none; rua=mailto:<a mailbox the client reads>`; after two clean weeks, `p=quarantine`.
+3. **The SMTP port.** From the server: `timeout 5 bash -c '</dev/tcp/email-smtp.ap-south-1.amazonaws.com/587' && echo open`. If it is not open, the host blocks outgoing mail ports: ask the hosting provider (BVTGC-39).
+4. **SMTP credentials.** For SES, the "SMTP credentials" made in the SES console, not an IAM access key. A secret: hand it over in person or through a password manager, never in git, chat or email.
+5. **The server's environment file** (`/etc/gramaconnect/gramaconnect.env`; on qa the `.env` next to the backend, `deploy/qa/README.md`):
+
+   ```
+   EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+   EMAIL_HOST=email-smtp.ap-south-1.amazonaws.com
+   EMAIL_PORT=587
+   EMAIL_HOST_USER=<SMTP user>
+   EMAIL_HOST_PASSWORD=<SMTP password>
+   EMAIL_USE_TLS=True
+   EMAIL_TIMEOUT=10
+   DEFAULT_FROM_EMAIL=Grama Connect <no-reply@<client domain>>
+   CITIZEN_CONSENT_VERSION=2026-11-25
+   ```
+
+   `CITIZEN_CONSENT_VERSION` is the date of the privacy policy and terms the sign-up names; change it only together with new legal texts (BVTGC-141). Restart both services, then `gc check` must not list `citizens.W002`.
+6. **A test code, in Telugu and in English**, to a team mailbox (never a citizen's: the address stays in the shell history). Use a Gmail address and one other provider:
+
+   ```
+   gc shell -c "from apps.citizens import emails; print(emails.send_code('<team mailbox>', purpose='SIGNUP', code='482913', language='te', name='పరీక్ష'))"
+   gc shell -c "from apps.citizens import emails; print(emails.send_code('<team mailbox>', purpose='SIGNUP', code='482913', language='en', name='Test'))"
+   ```
+
+   Each prints the message's Message-ID. Expected: the email is in the **inbox, not spam**, within a minute; the subject reads "గ్రామ కనెక్ట్ కోడ్: 482913" (then "Grama Connect code: 482913"); the Telugu shows without boxes; and Gmail's "Show original" says `SPF: PASS`, `DKIM: PASS` and `DMARC: PASS`. On qa, run the same through `.venv/bin/python manage.py shell -c "…"`. An error instead of a Message-ID: see step 8.
+7. **A daily cap and a bounce alert** at the service. The app already limits codes (5 a day per account or email address, 10 per phone), but a cap at the service stops a runaway bot: during the pilot about 2,000 emails a day is plenty. Alert the team when bounces pass 5 % or complaints 0.1 % (on SES, CloudWatch alarms on `Reputation.BounceRate` and `Reputation.ComplaintRate`; on ZeptoMail, its bounce notification email). A high bounce rate gets the account paused by the service.
+8. **What the logs show.** A send that fails is logged as `Citizen email 'code' not sent: <error type>`, with the kind and the error type only, never the address or the code (`journalctl -u gramaconnect-gunicorn | grep "Citizen email"`). Every code sent is in the audit log as "sent a wallet code by email", with the address masked. Common error types:
+   - `SMTPAuthenticationError`: wrong SMTP user or password (or an IAM key used instead of SMTP credentials);
+   - `SMTPSenderRefused` or "Email address is not verified": the sender or domain is not verified, or SES is still in the sandbox;
+   - `TimeoutError` or `ConnectionRefusedError`: port 587 is blocked (step 3);
+   - `SMTPRecipientsRefused`: the citizen's address does not exist; nothing to fix on the server.
+9. **The wallet's schedules.** `deploy.sh` (and `deploy/qa/BVT-deploy.sh`) runs `ensure_schedules` after `migrate`, which registers the hourly referral decisions and the daily wallet check. Check once after the first wallet deploy: `gc shell -c "from django_q.models import Schedule; print(sorted(Schedule.objects.values_list('name', flat=True)))"` lists `check-wallet-caches` and `decide-due-referrals`.
 
 ## Shared links and WhatsApp previews
 

@@ -652,6 +652,7 @@ Owner: Admin, who passes the work to the server team. Area: DevOps.
 | Backups | Server team | The new tables are in the same database; nothing extra |
 
 - **Depends on:** BVTGC-105, which brings back real visitor addresses for the per-IP limits before go-live, and BVTGC-39, the production hosting details.
+- **Step by step for the server team:** `deploy/RUNBOOK.md`, "Email for citizen wallet codes": the service, the DNS records, the port check, the environment lines, a test code in Telugu and English from the shell, the cap and bounce alert, what the logs show, and rotating the SMTP password ("Rotating secrets").
 - **Done when:** a test code from qa reaches a Gmail inbox, not spam, in Telugu; the same on production before the release.
 
 ## 10. Client (BVTGC-144)
