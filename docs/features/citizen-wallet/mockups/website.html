@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="te">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wallet mockups: website</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@500;600;700&family=Nunito+Sans:wght@400;600;700&family=Noto+Sans+Telugu:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue: #0D3B7A; --navy: #0A2550; --green: #1F8A3B; --orange: #E9791E; --red: #B3261E; --red-bg: #FDE7E5;
+    --bg: #F6F8F3; --line: #EEF2F6; --input: #CFD8E3; --ink: #17212E; --body: #3B4A5C; --muted: #6B7A8C;
+    --shadow: 0 2px 8px rgba(0,64,126,.08); --raised: 0 10px 28px rgba(0,64,126,.14);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #E3E8EE; font: 15px "Nunito Sans", "Noto Sans Telugu", sans-serif; color: var(--ink); }
+  html[lang="te"] .tt { font-family: "Noto Sans Telugu", "Nunito Sans", sans-serif; font-size: 88%; }
+  .page-head { position: sticky; top: 0; z-index: 5; background: var(--navy); color: #fff; padding: 14px 24px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+  .page-head h1 { font: 700 18px Rubik, sans-serif; margin: 0; }
+  .page-head p { margin: 0; font-size: 13px; opacity: .85; flex: 1 1 320px; }
+  .lang { display: flex; background: rgba(255,255,255,.12); border-radius: 999px; padding: 3px; }
+  .lang button { border: 0; background: transparent; color: #fff; font: 600 13px "Nunito Sans", "Noto Sans Telugu", sans-serif; padding: 6px 14px; border-radius: 999px; cursor: pointer; }
+  .lang button.on { background: #fff; color: var(--navy); }
+  .frame-title { max-width: 1100px; margin: 26px auto 8px; padding: 0 16px; font: 700 15px Rubik, sans-serif; color: var(--navy); }
+  .frame-title small { display: block; font: 400 13px "Nunito Sans", sans-serif; color: var(--body); margin-top: 2px; }
+  .row-frames { display: flex; gap: 24px; justify-content: center; flex-wrap: wrap; padding: 0 16px; }
+  .site { background: #fff; box-shadow: var(--raised); border-radius: 12px; overflow: hidden; }
+  .site.desk { width: 1100px; max-width: 100%; }
+  .site.mob { width: 360px; }
+  .sitebar { height: 64px; display: flex; align-items: center; gap: 10px; padding: 0 24px; border-bottom: 1px solid var(--line); }
+  .disc { width: 34px; height: 34px; border-radius: 50%; background: var(--blue); color: #fff; display: grid; place-items: center; font: 700 13px Rubik, sans-serif; }
+  .sitebar b { font: 700 17px Rubik, sans-serif; color: var(--navy); flex: 1; }
+  .sitebar span { color: var(--body); font-weight: 600; font-size: 14px; }
+  .download { background: linear-gradient(135deg, var(--blue), var(--navy)); color: #fff; padding: 40px; display: flex; gap: 40px; align-items: center; }
+  .download h2 { font: 700 30px Rubik, "Noto Sans Telugu", sans-serif; margin: 0 0 8px; }
+  .download p { margin: 0 0 18px; opacity: .9; line-height: 1.5; }
+  .apk { display: inline-flex; align-items: center; gap: 8px; background: var(--green); color: #fff; border-radius: 999px; height: 52px; padding: 0 24px; font-weight: 700; }
+  .refbox { margin-top: 22px; background: #fff; color: var(--ink); border-radius: 16px; padding: 16px 18px; display: flex; align-items: center; gap: 14px; max-width: 520px; box-shadow: var(--raised); }
+  .refbox .code { font: 700 24px Rubik, sans-serif; letter-spacing: 3px; color: var(--navy); }
+  .refbox .lbl { font-size: 13px; color: var(--muted); }
+  .copy { margin-left: auto; border: 1.5px solid var(--blue); color: var(--blue); border-radius: 999px; padding: 8px 16px; font-weight: 700; font-size: 14px; }
+  .phonepic { width: 220px; height: 420px; border-radius: 28px; border: 8px solid #10151d; background: var(--bg); flex: none; }
+  .del { padding: 28px 22px; display: flex; flex-direction: column; gap: 12px; background: var(--bg); min-height: 560px; }
+  .del h2 { font: 700 22px Rubik, "Noto Sans Telugu", sans-serif; color: var(--navy); margin: 0; }
+  .del p { margin: 0; color: var(--body); line-height: 1.5; font-size: 14px; }
+  .step { font: 700 12px Rubik, sans-serif; color: var(--orange); letter-spacing: .05em; }
+  label { font-size: 12.5px; font-weight: 700; color: var(--body); }
+  .in { border: 1.5px solid var(--input); border-radius: 12px; background: #fff; height: 46px; padding: 0 12px; display: flex; align-items: center; font-size: 15px; }
+  .codein { display: flex; gap: 7px; }
+  .codein span { width: 40px; height: 50px; border: 1.5px solid var(--input); border-radius: 12px; background: #fff; display: grid; place-items: center; font: 700 21px Rubik, sans-serif; }
+  .btn { height: 52px; border-radius: 999px; background: var(--blue); color: #fff; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+  .btn.red { background: var(--red); }
+  .note { border-radius: 12px; padding: 10px 12px; font-size: 13px; line-height: 1.45; }
+  .note.info { background: #E3F0FB; color: var(--blue); }
+  .note.err { background: var(--red-bg); color: var(--red); }
+  .note.ok { background: #E4F4DF; color: #1D7A33; }
+  .check { display: flex; gap: 10px; font-size: 13.5px; color: var(--body); }
+  .box { width: 20px; height: 20px; border-radius: 6px; background: var(--red); color: #fff; display: grid; place-items: center; font-size: 13px; flex: none; }
+  .notes { max-width: 1100px; margin: 26px auto 40px; padding: 0 16px; color: var(--body); line-height: 1.55; font-size: 14px; }
+  .notes h3 { font: 700 16px Rubik, sans-serif; color: var(--navy); }
+</style>
+</head>
+<body>
+<div class="page-head">
+  <h1>Citizen wallet: website</h1>
+  <p>Draft mockups for BVTGC-131, for approval, in the website's existing style. Telugu is the default; switch to check both.</p>
+  <div class="lang"><button data-l="te" class="on">తెలుగు</button><button data-l="en">English</button></div>
+</div>
+
+<div class="frame-title">1. Download section with a friend's referral code<small>Opened from an invite link (<code>/app/?ref=K7QX2MPA</code> redirects here). The box shows only for a well-formed code (8 characters from the code alphabet), checked by the page itself, so the website never asks the server whether a code exists; anything else is ignored.</small></div>
+<div class="row-frames"><div class="site desk">
+  <div class="sitebar"><div class="disc">GC</div><b data-t="appname"></b><span data-t="m_how"></span><span data-t="m_faq"></span><span data-t="m_contact"></span></div>
+  <div class="download">
+    <div style="flex:1">
+      <h2 data-t="dl_title"></h2>
+      <p data-t="dl_sub"></p>
+      <span class="apk" data-t="dl_btn"></span>
+      <div class="refbox">
+        <div><div class="lbl" data-t="ref_label"></div><div class="code">K7QX2MPA</div><div class="lbl" data-t="ref_hint"></div></div>
+        <span class="copy" data-t="copy"></span>
+      </div>
+    </div>
+    <div class="phonepic"></div>
+  </div>
+</div></div>
+
+<div class="frame-title">2. Delete my wallet account (<code>/delete-account/</code>)<small>Three steps, phone width. Its address is the deletion link given to Google Play; the privacy policy links to it.</small></div>
+<div class="row-frames">
+  <div class="site mob"><div class="sitebar"><div class="disc">GC</div><b data-t="appname"></b></div>
+    <div class="del">
+      <div class="step" data-t="step1"></div>
+      <h2 data-t="del_title"></h2>
+      <p data-t="del_sub"></p>
+      <label data-t="f_login"></label><div class="in">98765 43210</div>
+      <div class="btn" data-t="send_code"></div>
+      <p data-t="del_other"></p>
+    </div>
+  </div>
+  <div class="site mob"><div class="sitebar"><div class="disc">GC</div><b data-t="appname"></b></div>
+    <div class="del">
+      <div class="step" data-t="step2"></div>
+      <h2 data-t="del_title"></h2>
+      <div class="note info" data-t="if_registered"></div>
+      <label data-t="f_code"></label>
+      <div class="codein"><span>4</span><span>8</span><span>2</span><span>9</span><span>1</span><span>3</span></div>
+      <div class="note err" data-t="del_warn"></div>
+      <div class="check"><span class="box">✓</span><span data-t="understand"></span></div>
+      <div class="btn red" data-t="del_btn"></div>
+    </div>
+  </div>
+  <div class="site mob"><div class="sitebar"><div class="disc">GC</div><b data-t="appname"></b></div>
+    <div class="del">
+      <div class="step" data-t="step3"></div>
+      <div style="font-size:48px;text-align:center">✓</div>
+      <h2 data-t="done_title"></h2>
+      <div class="note ok" data-t="done_sub"></div>
+      <p data-t="done_more"></p>
+    </div>
+  </div>
+</div>
+
+<div class="notes">
+  <h3>Notes for review</h3>
+  <ul>
+    <li>The page never says whether a number or email is registered: step 2 always reads "If this is registered, we sent a code to its email".</li>
+    <li>A wrong code shows "Wrong code. 4 tries left." under the code; an old code offers "Send a new code".</li>
+    <li>A blocked account gets no code, with the same message as an unknown one; the Super Admin deletes it on request.</li>
+    <li>The privacy policy and terms gain the account, the data (with the email), the 18+ rule, "points have no cash value" and a link to this page.</li>
+  </ul>
+</div>
+
+<script>
+const T = {
+  appname: ["గ్రామ కనెక్ట్", "Grama Connect"],
+  m_how: ["ఎలా పనిచేస్తుంది", "How it works"], m_faq: ["ప్రశ్నలు", "FAQ"], m_contact: ["సంప్రదించండి", "Contact"],
+  dl_title: ["యాప్ డౌన్‌లోడ్ చేసుకోండి", "Get the app"],
+  dl_sub: ["మీ గ్రామం యొక్క ధృవీకరించిన వార్తలు, తెలుగులో, ఉచితంగా.", "Verified news for your village, in Telugu, free."],
+  dl_btn: ["Android యాప్ డౌన్‌లోడ్", "Download for Android"],
+  ref_label: ["మీ స్నేహితుడి రిఫరల్ కోడ్", "Your friend's referral code"],
+  ref_hint: ["ఖాతా సృష్టించేటప్పుడు ఈ కోడ్ ఇవ్వండి.", "Enter this code when you create your account."],
+  copy: ["కాపీ", "Copy"],
+  step1: ["దశ 1 / 3", "STEP 1 OF 3"], step2: ["దశ 2 / 3", "STEP 2 OF 3"], step3: ["దశ 3 / 3", "STEP 3 OF 3"],
+  del_title: ["వాలెట్ ఖాతాను తొలగించండి", "Delete my wallet account"],
+  del_sub: ["యాప్ లేకపోయినా మీ ఖాతాను ఇక్కడ తొలగించవచ్చు. ఖాతా ఈమెయిల్‌కు కోడ్ పంపుతాము.", "You can delete your account here, even without the app. We'll send a code to the account's email."],
+  f_login: ["ఈమెయిల్ లేదా మొబైల్ నంబర్", "Email or mobile number"],
+  send_code: ["కోడ్ పంపండి", "Send code"],
+  del_other: ["వార్తలు చదవడానికి, పోస్ట్ చేయడానికి ఖాతా అవసరం లేదు; అవి ఇలాగే పనిచేస్తాయి.", "Reading and posting news don't need an account; they keep working."],
+  if_registered: ["ఇది నమోదై ఉంటే, దాని ఈమెయిల్‌కు కోడ్ పంపాము. స్పామ్ ఫోల్డర్ కూడా చూడండి.", "If this is registered, we sent a code to its email. Check the spam folder too."],
+  f_code: ["6 అంకెల కోడ్", "6-digit code"],
+  del_warn: ["మీ పాయింట్లన్నీ పోతాయి. మీ పేరు, ఈమెయిల్, మొబైల్ నంబర్ తొలగించబడతాయి. దీన్ని తిరిగి పొందలేరు.", "All your points will be lost. Your name, email and mobile number are removed. This can't be undone."],
+  understand: ["నేను అర్థం చేసుకున్నాను", "I understand"],
+  del_btn: ["నా ఖాతాను తొలగించండి", "Delete my account"],
+  done_title: ["మీ ఖాతా తొలగించబడింది", "Your account is deleted"],
+  done_sub: ["నిర్ధారణ ఈమెయిల్ పంపాము.", "We've sent a confirmation email."],
+  done_more: ["మీరు యాప్‌లో వార్తలు చదవడం కొనసాగించవచ్చు. మళ్లీ ఖాతా కావాలంటే ఎప్పుడైనా సృష్టించవచ్చు.", "You can keep reading news in the app. You can create a new account at any time."],
+};
+function setLang(l) {
+  document.documentElement.lang = l;
+  const i = l === "te" ? 0 : 1;
+  document.querySelectorAll("[data-t]").forEach(el => {
+    const v = T[el.dataset.t];
+    const s = document.createElement("span");
+    s.className = "tt";
+    s.textContent = v ? v[i] : "[" + el.dataset.t + "]";
+    el.replaceChildren(s);
+  });
+  document.querySelectorAll(".lang button").forEach(b => b.classList.toggle("on", b.dataset.l === l));
+}
+document.querySelectorAll(".lang button").forEach(b => b.addEventListener("click", () => setLang(b.dataset.l)));
+setLang("te");
+</script>
+</body>
+</html>
