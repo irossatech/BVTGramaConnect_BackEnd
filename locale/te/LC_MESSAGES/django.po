@@ -414,7 +414,7 @@ msgstr "చిత్రం వెడల్పు కనీసం %(px)d పి�
 msgid "Give a village id."
 msgstr "గ్రామం ఐడి ఇవ్వండి."
 
-#: apps/ads/views.py:60 apps/bills/views.py:25 apps/contacts/views_admin.py:144 apps/contacts/views_admin.py:174 apps/geography/views_admin.py:51 apps/posts/views.py:150 apps/posts/views.py:593 apps/service_requests/views.py:228 apps/web_admin/api.py:213 apps/web_admin/api.py:217 apps/web_public/api.py:185
+#: apps/ads/views.py:60 apps/bills/views.py:25 apps/contacts/views_admin.py:144 apps/contacts/views_admin.py:174 apps/geography/views_admin.py:51 apps/posts/views.py:150 apps/posts/views.py:593 apps/service_requests/views.py:228 apps/web_admin/api.py:215 apps/web_admin/api.py:219 apps/web_public/api.py:185
 msgid "Only Super Admins can do this."
 msgstr "దీనిని సూపర్ అడ్మిన్లు మాత్రమే చేయగలరు."
 
@@ -750,23 +750,27 @@ msgstr "పౌరుని వేచి ఉన్న పోస్ట్‌లన
 msgid "sent a wallet code by email"
 msgstr "వాలెట్ కోడ్‌ను ఈమెయిల్‌లో పంపారు"
 
-#: apps/audit/labels.py:111
+#: apps/audit/labels.py:110
+msgid "created a citizen wallet account"
+msgstr "పౌరుని వాలెట్ ఖాతా సృష్టించారు"
+
+#: apps/audit/labels.py:112
 msgid "exported a report"
 msgstr "నివేదికను ఎగుమతి చేశారు"
 
-#: apps/audit/labels.py:112
+#: apps/audit/labels.py:113
 msgid "email not delivered"
 msgstr "ఈమెయిల్ చేరలేదు"
 
-#: apps/audit/labels.py:113
+#: apps/audit/labels.py:114
 msgid "email skipped"
 msgstr "ఈమెయిల్ పంపలేదు"
 
-#: apps/audit/labels.py:114
+#: apps/audit/labels.py:115
 msgid "notification not delivered"
 msgstr "నోటిఫికేషన్ చేరలేదు"
 
-#: apps/audit/labels.py:123
+#: apps/audit/labels.py:124
 #, python-format
 msgid "other action (%(code)s)"
 msgstr "ఇతర చర్య (%(code)s)"
@@ -828,7 +832,7 @@ msgstr "ఆడిట్ లాగ్‌ను సూపర్ అడ్మిన
 msgid "Only Super Admins can download the audit log."
 msgstr "ఆడిట్ లాగ్‌ను సూపర్ అడ్మిన్లు మాత్రమే డౌన్‌లోడ్ చేయగలరు."
 
-#: apps/audit/views.py:237 apps/web_admin/api.py:540
+#: apps/audit/views.py:237 apps/web_admin/api.py:542
 msgid "Only CSV export is available."
 msgstr "CSV ఎగుమతి మాత్రమే అందుబాటులో ఉంది."
 
@@ -873,6 +877,10 @@ msgstr "ఇప్పుడు ఈమెయిల్ పంపలేకపోయ�
 #, python-format
 msgid "Wrong code. Tries left: %(n)d."
 msgstr "కోడ్ తప్పు. మిగిలిన ప్రయత్నాలు: %(n)d."
+
+#: apps/citizens/passwords.py:29 apps/citizens/passwords.py:26
+msgid "The password cannot contain your mobile number."
+msgstr "పాస్‌వర్డ్‌లో మీ మొబైల్ నంబర్ ఉండకూడదు."
 
 #: apps/citizens/serializers.py:218
 msgid "Citizens cannot post in this category."
@@ -956,6 +964,42 @@ msgstr "ఫోన్ తనిఖీ ఇప్పుడు అందుబాట
 #: apps/citizens/services.py:442 apps/posts/services.py:774
 msgid "Not a citizen post."
 msgstr "ఇది పౌరుడి పోస్ట్ కాదు."
+
+#: apps/citizens/services_account.py:139
+msgid "This sign-up has expired or was already finished. Start again."
+msgstr "ఈ నమోదు గడువు ముగిసింది లేదా ఇప్పటికే పూర్తయింది. మళ్లీ మొదలుపెట్టండి."
+
+#: apps/citizens/services_account.py:107
+msgid "This mobile number already has an account. Log in or reset your password."
+msgstr "ఈ మొబైల్ నంబర్‌తో ఇప్పటికే ఖాతా ఉంది. లాగిన్ చేయండి లేదా పాస్‌వర్డ్ రీసెట్ చేయండి."
+
+#: apps/citizens/services_account.py:113
+msgid "This email already has an account. Log in or reset your password."
+msgstr "ఈ ఈమెయిల్‌తో ఇప్పటికే ఖాతా ఉంది. లాగిన్ చేయండి లేదా పాస్‌వర్డ్ రీసెట్ చేయండి."
+
+#: apps/citizens/services_account.py:126
+msgid "No such referral code."
+msgstr "ఈ రిఫరల్ కోడ్ లేదు."
+
+#: apps/citizens/services_account.py:128
+msgid "You cannot use your own referral code."
+msgstr "మీ స్వంత రిఫరల్ కోడ్‌ను వాడలేరు."
+
+#: apps/citizens/services_account.py:130
+msgid "This referral code can no longer be used."
+msgstr "ఈ రిఫరల్ కోడ్‌ను ఇక వాడలేరు."
+
+#: apps/citizens/services_account.py:181
+msgid "The wallet is not open in your area yet."
+msgstr "మీ ప్రాంతంలో వాలెట్ ఇంకా ప్రారంభం కాలేదు."
+
+#: apps/citizens/services_account.py:183
+msgid "Confirm that you are 18 or older."
+msgstr "మీ వయస్సు 18 సంవత్సరాలు లేదా అంతకంటే ఎక్కువ అని నిర్ధారించండి."
+
+#: apps/citizens/services_account.py:185
+msgid "Agree to the latest consent notice."
+msgstr "తాజా సమ్మతి ప్రకటనకు అంగీకరించండి."
 
 #: apps/citizens/views_admin.py:58
 msgid "active is 1 or 0."
@@ -2063,19 +2107,19 @@ msgstr "ఈ అభ్యర్థన ఇప్పటికే '%(status)s' స�
 msgid "Your role cannot see service requests."
 msgstr "మీ పాత్ర సేవా అభ్యర్థనలను చూడలేదు."
 
-#: apps/web_admin/api.py:117
+#: apps/web_admin/api.py:118
 msgid "days must be between 1 and 366."
 msgstr "days విలువ 1 నుండి 366 మధ్య ఉండాలి."
 
-#: apps/web_admin/api.py:538
+#: apps/web_admin/api.py:540
 msgid "No such report."
 msgstr "ఈ నివేదిక లేదు."
 
-#: apps/web_admin/api.py:117
+#: apps/web_admin/api.py:118
 msgid "1 to 366."
 msgstr "1 నుండి 366."
 
-#: apps/web_admin/api.py:540
+#: apps/web_admin/api.py:542
 msgid "Use csv."
 msgstr "csv వాడండి."
 

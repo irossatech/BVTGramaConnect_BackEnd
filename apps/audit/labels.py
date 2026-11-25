@@ -107,6 +107,7 @@ ACTION_LABELS = {
     "citizen.posts_discarded": _("discarded a citizen’s waiting posts"),
     # Citizen wallet accounts (BVTGC-106)
     "citizen.code_sent": _("sent a wallet code by email"),
+    "citizen.account_created": _("created a citizen wallet account"),
     # Reports and delivery
     "report.exported": _("exported a report"),
     "email.failed": _("email not delivered"),

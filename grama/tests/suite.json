@@ -35,7 +35,8 @@
         "apps/accounts/tests/test_refresh_grace.py",
         "apps/accounts/tests/test_tokens.py",
         "apps/accounts/tests/test_username_spaces.py",
-        "apps/citizens/tests/test_email_codes.py"
+        "apps/citizens/tests/test_email_codes.py",
+        "apps/citizens/tests/test_signup.py"
       ]
     },
     "posts": {

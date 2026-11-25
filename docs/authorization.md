@@ -391,6 +391,7 @@ python manage.py sync_role_permissions
 | `auth.locked_out` | A username and IP pair is locked, or (`"scope": "username"`) a username is locked from every address by the ceiling per username |
 | `auth.ip_locked_out` | An IP address reached the cap per address (written again since BVTGC-105; not written from 2026-11-20 to 2026-11-25). It holds the limit and window, never the IP |
 | `user.unlocked` | An admin unlocked a user |
+| `citizen.account_created` | A citizen finished the wallet sign-up with the email code (BVTGC-123): the village and whether a referral code was used |
 | `citizen.code_sent` | A wallet code went by email to a citizen (BVTGC-122): the purpose, the channel and the masked address, never the code or the full address |
 | `user.password_changed` | An official changed their own password |
 | `user.password_reset` | An admin reset someone's password |
