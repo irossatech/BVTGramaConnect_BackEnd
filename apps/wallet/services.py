@@ -157,10 +157,10 @@ def reject_reason(referral: Referral, now=None) -> str:
     """Why a referral past its hold is not confirmed, or "" (FR-24, FR-25)."""
     now = now or timezone.now()
     referrer, referee = referral.referrer, referral.referee
+    if referrer.deleted_at is not None or referee.deleted_at is not None:
+        return "deleted"  # before "blocked": a deleted account is inactive too
     if not referrer.user.is_active or not referee.user.is_active:
         return "blocked"
-    if referrer.deleted_at is not None or referee.deleted_at is not None:
-        return "deleted"
     days = referee.active_days.filter(
         day__gte=timezone.localtime(referral.pending_at).date(), day__lte=timezone.localtime(referral.confirm_after).date()
     ).count()

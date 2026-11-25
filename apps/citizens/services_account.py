@@ -15,6 +15,11 @@ village, the language, the password, the email (with a code to the new address) 
 change here. A wrong password on these counts with the officials' wrong tries on "Change password", so
 guessing ends every session of the account.
 
+Deletion (BVTGC-127): in the app with the password, on the website with an emailed code, or by the
+Super Admin with a reason (BVTGC-128), all through delete_account(). The account closes at once and its
+personal details go; confirmed points and referrals stay without them (owner's decision of 2026-11-25,
+Q8, the one exception to "data is kept permanently").
+
 The full mobile number is never stored: login and uniqueness use its keyed hash (PHONE_HASH_KEY).
 """
 
@@ -30,6 +35,7 @@ from django.contrib.auth.hashers import make_password
 from django.core import signing
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
+from django.db.models import F, Q
 from django.http import Http404
 from django.utils import timezone
 from django.utils.translation import gettext as _
@@ -569,3 +575,149 @@ def change_mobile(account: CitizenAccount, mobile: str, password: str, *, via: s
         raise
     account.refresh_from_db()
     return account
+
+
+# --- Deletion (BVTGC-127) ---------------------------------------------------------------------------------
+
+DELETED_NAME = "Deleted citizen"
+
+
+def delete_account(account: CitizenAccount, *, via: str, by=None, reason: str = "") -> None:
+    """Close the account at once and remove its personal details (requirements section 9, FR-9).
+
+    One transaction: every session ends and the phones are unlinked; the name, username, password, email
+    and number go; the email key and number hash move to deleted_* for a time (requirements Q9), so a new
+    sign-up gets no second welcome bonus; its email codes go; the Citizen role ends. Its referrals still
+    waiting are not confirmed (reason "deleted", FR-24: the outcome is already certain), which cancels the
+    points on hold on both sides, and anything else on hold in its wallet is cancelled too. Confirmed
+    entries and decided referrals stay, for the audit trail. The "account deleted" notice goes to the
+    address read before it is cleared, once the deletion has committed. `via` is app, website or admin.
+    A second call does nothing.
+    """
+    from apps.accounts.authz import forget
+    from apps.accounts.signals import sync_user_groups
+    from apps.wallet import services as wallet
+    from apps.wallet.models import Referral, Wallet, WalletEntry
+
+    user = account.user
+    address, name, language = account.email, user.name, user.preferred_language
+    now = timezone.now()
+    with transaction.atomic():
+        closed = CitizenAccount.objects.filter(pk=account.pk, deleted_at__isnull=True).update(
+            deleted_at=now,
+            deleted_mobile_hash=account.mobile_hash or "",
+            deleted_email_key=account.email_key or "",
+            mobile_hash=None,
+            mobile_last4="",
+            email="",
+            email_key=None,
+        )
+        if not closed:
+            return  # already deleted, perhaps by a second request at the same moment
+        User.objects.filter(pk=user.pk).update(
+            is_active=False,
+            name=DELETED_NAME,
+            name_te="",
+            email=None,
+            username=f"deleted.{uuid.uuid4().hex}",
+            password=make_password(None),  # unusable
+        )
+        VerificationCode.objects.filter(account=account).delete()  # they hold the address
+        RoleAssignment.objects.filter(user=user, is_active=True).update(is_active=False)
+        sync_user_groups(user)  # update() skips the signals that keep the Django groups in step
+        waiting = Referral.objects.filter(status=Referral.Status.PENDING).filter(
+            Q(referrer=account) | Q(referee=account)
+        )
+        for referral in waiting:
+            wallet.decide(referral, confirm=False, reason_key="deleted", now=now)
+        own = Wallet.objects.filter(account=account).first()
+        if own is not None:
+            held = WalletEntry.objects.filter(wallet=own, status=WalletEntry.Status.HELD)
+            points = sum(held.values_list("points", flat=True))
+            held.update(status=WalletEntry.Status.CANCELLED, reason_key="deleted", decided_at=now)
+            if points:
+                Wallet.objects.filter(pk=own.pk).update(held_points=F("held_points") - points)
+        record(
+            "citizen.account_deleted", actor=by or None, target=user, target_label=DELETED_NAME, via=via,
+            data={"via": via, **({"reason": reason} if reason else {})},
+        )
+        revoke_all_sessions(user)  # also unlinks the phones from push (BVTGC-94)
+        if address:
+            transaction.on_commit(
+                lambda: emails.notify("account_deleted", address, language=language, name=name)
+            )
+    user.refresh_from_db()
+    account.refresh_from_db()
+    forget(user)
+
+
+def delete_own_account(account: CitizenAccount, password: str, *, via: str = "app") -> None:
+    """POST /citizen/account/delete/: the citizen, in the app, after the password."""
+    _check_own_password(account, password)
+    delete_account(account, via=via)
+
+
+def send_delete_code(login: str, *, via: str = "website") -> dict:
+    """POST /citizen/auth/delete/code/: a DELETE code to the account's email; the same answer for every login."""
+    require_wallet()
+    account = _open_account(login)
+    if account is None:
+        return {"expires_in": int(codes.CODE_TTL.total_seconds()), "resend_after": int(codes.RESEND_AFTER.total_seconds())}
+    return codes.send_code(
+        purpose=VerificationCode.Purpose.DELETE,
+        to_email=account.email,
+        email_key=account.email_key or canonical_email(account.email),
+        language=account.user.preferred_language,
+        name=account.user.name,
+        account=account,
+        via=via,
+    ).as_dict()
+
+
+def delete_with_code(login: str, code: str, *, via: str = "website") -> None:
+    """POST /citizen/auth/delete/: the website's deletion with a DELETE code (D12). Only someone who can open
+    the account's email can delete it; an unknown login reads as an expired code."""
+    require_wallet()
+    account = _open_account(login)
+    if account is None:
+        raise codes.expired_error()
+    row = codes.check_code(purpose=VerificationCode.Purpose.DELETE, code=code, account=account)
+    if not codes.consume(row):
+        raise codes.expired_error()
+    delete_account(account, via=via)
+
+
+# --- Housekeeping (BVTGC-127; grama/housekeeping.py runs it daily) ------------------------------------------
+
+#: A used or dead code row is needed only for the daily limits: a week is plenty.
+CODE_KEEP_DAYS = 7
+#: The active-day rows are a counter for the referral hold, not records.
+ACTIVE_DAY_KEEP_DAYS = 60
+
+
+def housekeeping(now=None) -> dict:
+    """Forget what the wallet accounts no longer need: unfinished sign-ups past 24 hours (with their codes),
+    codes older than a week, active days older than 60 days, and deleted accounts' fingerprints after
+    CITIZEN_DELETED_KEEP_DAYS (requirements Q9). Returns the rows removed or cleared per kind."""
+    now = now or timezone.now()
+    pending = PendingSignup.objects.filter(expires_at__lt=now)
+    pending_count = pending.count()
+    pending.delete()
+    old_codes = VerificationCode.objects.filter(created_at__lt=now - timedelta(days=CODE_KEEP_DAYS))
+    code_count = old_codes.count()
+    old_codes.delete()
+    old_days = CitizenActiveDay.objects.filter(day__lt=timezone.localdate(now) - timedelta(days=ACTIVE_DAY_KEEP_DAYS))
+    day_count = old_days.count()
+    old_days.delete()
+    keep = settings.CITIZEN_DELETED_KEEP_DAYS
+    cleared = 0
+    if keep > 0:
+        cleared = CitizenAccount.objects.filter(deleted_at__lt=now - timedelta(days=keep)).exclude(
+            deleted_mobile_hash="", deleted_email_key=""
+        ).update(deleted_mobile_hash="", deleted_email_key="")
+    return {
+        "citizen_pending_signups": pending_count,
+        "citizen_codes": code_count,
+        "citizen_active_days": day_count,
+        "citizen_deleted_fingerprints": cleared,
+    }

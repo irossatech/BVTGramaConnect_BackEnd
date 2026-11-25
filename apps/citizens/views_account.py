@@ -8,8 +8,8 @@ off. The services in services_account.py do the work; these views only read and 
 from __future__ import annotations
 
 from django.contrib.auth.signals import user_logged_in
-from drf_spectacular.utils import extend_schema
-from rest_framework import status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -25,6 +25,8 @@ from .serializers_account import (
     AccountUpdateSerializer,
     CitizenPasswordChangeSerializer,
     CodeOnlySerializer,
+    DeleteWithCodeSerializer,
+    PasswordOnlySerializer,
     EmailChangeSerializer,
     MobileChangeSerializer,
     TokenPairOnlySerializer,
@@ -210,3 +212,40 @@ class AccountMobileView(CitizenAccountView):
         return self.answer(
             accounts.change_mobile(self.account(), data.validated_data["mobile"], data.validated_data["password"])
         )
+
+
+# --- Deletion (BVTGC-127) -----------------------------------------------------------------------------------
+
+
+class AccountDeleteView(CitizenAccountView):
+    @extend_schema(summary="Delete the wallet account at once, after the password", request=PasswordOnlySerializer, responses={204: None})
+    def post(self, request):
+        data = PasswordOnlySerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        accounts.delete_own_account(self.account(), data.validated_data["password"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class DeleteCodeView(WalletPublicView):
+    @extend_schema(
+        summary="The website's deletion page: email a code (the same answer for every login)",
+        request=CitizenForgotSerializer,
+        responses=CodeSentSerializer,
+    )
+    def post(self, request):
+        data = CitizenForgotSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        return Response(accounts.send_delete_code(data.validated_data["login"]))
+
+
+class DeleteWithCodeView(WalletPublicView):
+    @extend_schema(
+        summary="The website's deletion page: delete the account with the emailed code",
+        request=DeleteWithCodeSerializer,
+        responses={200: inline_serializer("Deleted", {"deleted": serializers.BooleanField()})},
+    )
+    def post(self, request):
+        data = DeleteWithCodeSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        accounts.delete_with_code(data.validated_data["login"], data.validated_data["code"])
+        return Response({"deleted": True})

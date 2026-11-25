@@ -21,6 +21,9 @@ urlpatterns = [
     path("citizen/account/email/", views_account.AccountEmailView.as_view(), name="account-email"),
     path("citizen/account/email/verify/", views_account.AccountEmailVerifyView.as_view(), name="account-email-verify"),
     path("citizen/account/mobile/", views_account.AccountMobileView.as_view(), name="account-mobile"),
+    path("citizen/account/delete/", views_account.AccountDeleteView.as_view(), name="account-delete"),
+    path("citizen/auth/delete/code/", views_account.DeleteCodeView.as_view(), name="delete-code"),
+    path("citizen/auth/delete/", views_account.DeleteWithCodeView.as_view(), name="delete"),
     # The Super Admin's blocked citizens (owner's request of 2026-11-21).
     path("admin/citizens/blocked/", views_admin.BlockedCitizensView.as_view(), name="admin-blocked"),
     path("admin/citizens/<uuid:pk>/blocks/", views_admin.CitizenBlocksView.as_view(), name="admin-blocks"),

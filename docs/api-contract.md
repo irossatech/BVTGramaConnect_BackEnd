@@ -1650,7 +1650,7 @@ An optional account for citizens, used **only for the wallet of points and refer
 | `POST /citizen/account/email/` **live** (BVTGC-125) | `{email, password}` (the new email) | `200 CodeSent` with `email_hint`: a code went to the new email. `409 email_in_use`; `400 invalid_credentials`; `503 email_unavailable` |
 | `POST /citizen/account/email/verify/` **live** (BVTGC-125) | `{code}` | `200 Account`: the email changed and the old address got a notice. `400 code_wrong`, `code_expired`; `409 email_in_use` |
 | `POST /citizen/account/mobile/` **live** (BVTGC-125) | `{mobile, password}` (the new number) | `200 Account` (`mobile_verified` becomes `false`). `409 mobile_in_use` (point the citizen to the help line); `400 invalid_credentials` |
-| `POST /citizen/account/delete/` | `{password}` | `204`. The account is closed at once (see "Deletion"). `400 invalid_credentials` |
+| `POST /citizen/account/delete/` **live** (BVTGC-127) | `{password}` | `204`. The account is closed at once (see "Deletion"). `400 invalid_credentials` |
 | `GET /wallet/` **live** (BVTGC-126) | `?cursor=` | The cursor list of section 1 with the summary as sibling keys: `{confirmed_points, held_points, next_release_at, next, previous, results: [WalletEntry]}`, newest first, 20 a page. Every page repeats the summary. |
 
 ### Deleting the account from the website (public, no login)
@@ -1659,8 +1659,8 @@ The website's **Delete my wallet account** page (its address is the deletion lin
 
 | Method and path | Request | Response |
 |---|---|---|
-| `POST /citizen/auth/delete/code/` | `{login}` | `200 {expires_in, resend_after}`, the same for every login: a code goes to the account's email. `429 code_cooldown`, `code_limit`; `503 email_unavailable` |
-| `POST /citizen/auth/delete/` | `{login, code}` | `200 {deleted: true}`. `400 code_wrong` with `attempts_left`, `400 code_expired` (also for an unknown login). A password reset code does not work here. |
+| `POST /citizen/auth/delete/code/` **live** (BVTGC-127) | `{login}` | `200 {expires_in, resend_after}`, the same for every login: a code goes to the account's email. `429 code_cooldown`, `code_limit`; `503 email_unavailable` |
+| `POST /citizen/auth/delete/` **live** (BVTGC-127) | `{login, code}` | `200 {deleted: true}`. `400 code_wrong` with `attempts_left`, `400 code_expired` (also for an unknown login). A password reset code does not work here. |
 
 ### Super Admin (console)
 
@@ -1705,7 +1705,7 @@ The console's menu shows **Citizens & wallet** to holders of any of these permis
 - **One account per mobile number and per email.** Until the later stage the mobile number is not confirmed by a code (`mobile_verified` false).
 - **Referral code:** only at sign-up. Refused with `referral_code_invalid` (no such code), `referral_code_own` (the same mobile number or email), `referral_not_open` (the referrer is blocked or deleted). A referral starts `PENDING` when the account is created; the hourly job confirms or rejects it after `referral_hold_days`.
 - **Points** are whole numbers and never cash; they cannot be transferred. Entries are never edited or deleted, only reversed by a new entry.
-- **Deletion** (app, website or Super Admin): the account closes at once, every session ends, the name, email and number are removed, points on hold are cancelled. Confirmed entries and referrals stay without personal details (owner's decision of 2026-11-25, Q8).
+- **Deletion** (app, website or Super Admin): the account closes at once, every session ends and its phones are unlinked from push, the name, email and number are removed, points on hold are cancelled. Its referrals still on hold end as not confirmed with the reason `deleted`, on both sides: the friend's welcome bonus on hold, or the referrer's reward on hold, is cancelled too (FR-24). Confirmed entries and referrals stay without personal details (owner's decision of 2026-11-25, Q8). The "account deleted" email goes to the old address. The same number or email may sign up again, without a second welcome bonus for a year (`CITIZEN_DELETED_KEEP_DAYS`, requirements Q9). A blocked account gets no code on the website (the same answer as an unknown login); the Super Admin deletes it.
 - **Privacy:** full emails and mobile numbers never appear in a URL, a log, an audit entry or a CSV export; the console shows `email_hint` and `mobile_last4`.
 
 ### Errors (new)

@@ -62,6 +62,15 @@ class MobileChangeSerializer(serializers.Serializer):
     password = serializers.CharField(max_length=128, trim_whitespace=False)
 
 
+class PasswordOnlySerializer(serializers.Serializer):
+    password = serializers.CharField(max_length=128, trim_whitespace=False)
+
+
+class DeleteWithCodeSerializer(serializers.Serializer):
+    login = serializers.CharField(max_length=254, help_text="The email, or the 10-digit mobile number")
+    code = serializers.CharField(max_length=10)
+
+
 class TokenPairOnlySerializer(serializers.Serializer):
     access = serializers.CharField()
     refresh = serializers.CharField()
