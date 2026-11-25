@@ -113,4 +113,6 @@ def test_ensure_schedules_registers_the_daily_job():
     assert schedule.schedule_type == Schedule.DAILY
     assert schedule.repeats == -1
     assert import_string(schedule.func) is run_housekeeping
-    assert Schedule.objects.count() == 3  # escalation, citizen block endings and housekeeping, no duplicates
+    # Escalation, citizen block endings, housekeeping, and the wallet's referral decisions and daily check
+    # (BVTGC-126): no duplicates after two runs.
+    assert Schedule.objects.count() == 5
