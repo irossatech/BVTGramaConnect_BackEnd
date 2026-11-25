@@ -228,12 +228,13 @@ def review_scope_q(user, perm: str = REVIEW) -> Exists:
 
 def covering_scope_q(user) -> Exists | Q:
     """Posts with a target that is one of the user's areas or contains one (their village, mandal,
-    district, the state: Everyone), over every active role assignment, whatever its permissions.
+    district, the state: Everyone), over every active official role assignment, whatever its other
+    permissions. A citizen's wallet role never counts (BVTGC-121).
 
     The same chain the citizen feed reads for a village (feed.views.targets_for_village), so an official
     sees at least what the citizens of their area see. One query per level for the whole chain.
     """
-    found = authz.grants(user)
+    found = authz.official_grants(user)
     if any(grant.platform_wide for grant in found):
         return Q()
     query = Q(pk__in=[])

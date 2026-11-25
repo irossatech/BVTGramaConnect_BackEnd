@@ -26,6 +26,15 @@ class Wallet(models.Model):
     held_points = models.PositiveIntegerField(default=0)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        # Given to groups only in apps/accounts/role_matrix.py (BVTGC-121).
+        permissions = [
+            ("use_wallet", "Use one's own wallet and referral code (citizen accounts)"),
+            ("view_wallets", "See citizens' wallets and referrals, and export them"),
+            ("adjust_points", "Correct a citizen's points, with a reason"),
+            ("review_referrals", "Confirm or reject referrals"),
+        ]
+
     def __str__(self):
         return f"wallet {str(self.account_id)[:8]}"
 

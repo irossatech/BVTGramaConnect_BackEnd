@@ -157,6 +157,9 @@ class User(AbstractBaseUser, PermissionsMixin):
             ("reassign_user", "Move the role of an official to another area"),
             ("unlock_user", "Unlock an official locked out by failed logins"),
             ("manage_groups", "Edit groups and role assignments in Django admin"),
+            # Citizen wallet (BVTGC-106, BVTGC-121).
+            ("use_official_api", "Use the officials' screens and API (every official, never a citizen account)"),
+            ("manage_citizen_accounts", "Find, block, delete and help citizen wallet accounts"),
         ]
 
     def __str__(self):

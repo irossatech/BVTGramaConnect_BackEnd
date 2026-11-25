@@ -6,6 +6,7 @@
       "about": "Every group x permission x area, ranks, privilege escalation, who sees which post",
       "files": [
         "apps/accounts/tests/test_authz.py",
+        "apps/accounts/tests/test_citizen_role.py",
         "apps/accounts/tests/test_escalation.py",
         "apps/accounts/tests/test_matrix.py",
         "apps/accounts/tests/test_me.py",

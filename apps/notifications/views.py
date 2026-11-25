@@ -14,7 +14,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.authentication import client_via
-from apps.accounts.permissions import PLATFORM, HasPerm
+from apps.accounts.permissions import PLATFORM, HasPerm, IsOfficialAccount
 from apps.audit.services import record
 from grama.exceptions import ApiError, permission_denied
 
@@ -108,7 +108,7 @@ class InboxPagination(CursorPagination):
 
 
 class NotificationListView(generics.ListAPIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsOfficialAccount]  # officials only (BVTGC-121)
     serializer_class = NotificationSerializer
     pagination_class = InboxPagination
 
@@ -129,7 +129,7 @@ class NotificationListView(generics.ListAPIView):
 
 
 class NotificationReadView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsOfficialAccount]  # officials only (BVTGC-121)
 
     @extend_schema(summary="Mark one notification read", request=None, responses={204: None})
     def post(self, request, pk):
@@ -141,7 +141,7 @@ class NotificationReadView(APIView):
 
 
 class NotificationReadAllView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsOfficialAccount]  # officials only (BVTGC-121)
 
     @extend_schema(summary="Mark every notification read", request=None, responses={204: None})
     def post(self, request):

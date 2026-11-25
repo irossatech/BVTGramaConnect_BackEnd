@@ -25,7 +25,7 @@ from apps.audit.services import record
 from grama.exceptions import ApiError
 from grama.http import client_ip
 
-from . import lockout
+from . import authz, lockout
 from .models import RoleGroup, User, normalize_username
 
 #: No 0/O, 1/l/I: the password is read off a screen and typed on a phone.
@@ -140,6 +140,11 @@ def authenticate_official(request, username: str, password: str, *, via: str, re
         if key and lockout.username_seconds_left(key):
             lockout.audit_username_lockout(request, key)  # this failure reached the ceiling
             raise locked_out(request, key)
+        raise invalid_credentials()
+    if authz.is_citizen_account(user):
+        # A citizen's wallet account never logs in here (BVTGC-121): the same answer as a wrong
+        # password, given before the blocked check so the answer tells nothing about the account.
+        record("auth.login_refused", target=user, target_label=user.name, via=via, data={"reason": "citizen_account"})
         raise invalid_credentials()
     if not user.is_active:
         raise refuse(user, "account_blocked", _("This account is blocked."), via)
