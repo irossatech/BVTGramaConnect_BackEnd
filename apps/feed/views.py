@@ -54,7 +54,11 @@ def published_posts():
     first_thumb = media.order_by("order", "created_at").values("thumbnail")[:1]
     # The first photo for big cards, at full size (1280 px): the 640 px file looked soft on
     # 1080 px phone screens. A video's poster stays in video.poster_url.
-    first_image = media.filter(kind=MediaKind.IMAGE).order_by("order", "created_at").values("image")[:1]
+    first_photo = media.filter(kind=MediaKind.IMAGE).order_by("order", "created_at")
+    first_image = first_photo.values("image")[:1]
+    # Its 640 px copy (POST_MEDIUM_PX) as well, for cards on slow networks (CROSS-API-003, BVTGC-95);
+    # the app picks which one to show. Empty until backfill_medium_images ran for older photos.
+    first_medium = first_photo.values("medium")[:1]
     video = media.filter(kind=MediaKind.VIDEO)
     # Counted per post in a subquery, like the media above: Count("media") would join and GROUP BY every
     # published post before the newest page could be picked (audit finding BE-DB-008).
@@ -68,6 +72,7 @@ def published_posts():
         .annotate(
             thumbnail_name=Subquery(first_thumb),
             image_name=Subquery(first_image),
+            medium_name=Subquery(first_medium),
             media_count=Coalesce(Subquery(media_total, output_field=IntegerField()), 0),
             video_name=Subquery(video.values("video")[:1]),
             video_poster_name=Subquery(video.values("image")[:1]),

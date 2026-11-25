@@ -72,7 +72,7 @@ def test_slim_shape_with_thumbnail(world, make_post):
     first, second = rows
     assert set(first) == {
         "id", "category", "language", "title", "body", "translation", "area", "targets", "published_at",
-        "thumbnail_url", "image_url", "media_count", "source_role", "source_area", "event", "is_urgent", "video",
+        "thumbnail_url", "image_url", "medium_url", "media_count", "source_role", "source_area", "event", "is_urgent", "video",
         "share_url",
     }
     assert first["event"] is None and first["is_urgent"] is False and first["video"] is None

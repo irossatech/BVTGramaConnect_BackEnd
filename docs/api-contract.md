@@ -209,7 +209,7 @@ Admin endpoints add `id`, `name_te`, `name_en`, `short_name_te`, `short_name_en`
 ```json
 {"id": "6f1c…", "kind": "image", "url": "https://<site>/media/posts/2026/10/6f1c-1280.webp", "thumb_url": "https://<site>/media/posts/2026/10/6f1c-320.webp", "width": 1280, "height": 853, "bytes": 84213}
 ```
-- Images: the server checks type and size, turns the photo upright, strips EXIF, converts to WebP and keeps three sizes: at most 1280 px (also the feed's `image_url`), 640 px (kept for a possible low-data mode, not sent by the API today) and 320 px on the long side. The original is not kept. Media objects keep their shape: `url` is the 1280 px file and `thumb_url` the 320 px one. URLs are absolute (section 1).
+- Images: the server checks type and size, turns the photo upright, strips EXIF, converts to WebP and keeps three sizes: at most 1280 px (also the feed's `image_url`), 640 px (the feed's `medium_url` since 2026-11-25, for cards) and 320 px on the long side. The original is not kept. Media objects keep their shape: `url` is the 1280 px file and `thumb_url` the 320 px one. URLs are absolute (section 1).
 - Video: `{"id", "kind": "video", "url", "poster_url", "thumb_url", "width", "height", "duration_s", "bytes"}`. `url` is the MP4, `poster_url` the poster frame as WebP (at most 1280 px), `thumb_url` its 320 px thumbnail, `width` and `height` the poster's size, `bytes` the video's size. Photo media carry `"poster_url": null` and `"duration_s": null`.
 - `focus_y` (0 to 1) is the crop focus the prototypes use for cover images. Optional.
 
@@ -654,6 +654,7 @@ No login. These views ignore any `Authorization` header, so a stale token on a c
   "published_at": "2026-10-14T10:32:00+05:30",
   "thumbnail_url": "https://<site>/media/posts/2026/10/…-320.webp",
   "image_url": "https://<site>/media/posts/2026/10/…-1280.webp",
+  "medium_url": "https://<site>/media/posts/2026/10/…-640.webp",
   "media_count": 3,
   "source_role": "VILLAGE_ADMIN",
   "source_area": {"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు"},
@@ -671,6 +672,7 @@ No login. These views ignore any `Authorization` header, so a stale token on a c
 - The list carries the full `body`, not an excerpt. The app's news deck shows the body on the card, and one larger page costs less on 2G than a request per card.
 - `thumbnail_url` is the first photo's 320 px WebP, or `null`. URLs are absolute (section 1).
 - `image_url` is the first photo at full size: its 1280 px WebP (`POST_IMAGE_MAX_PX`). `null` for a post without a photo and for a video post (use `video.poster_url`). (For a few days it pointed at the 640 px copy, which looked soft on big cards; that was reverted on 2026-10-28.) Use it for large cards and `thumbnail_url` for small rows. Clients fall back to `thumbnail_url` when the field is missing.
+- `medium_url` is the same first photo at 640 px (`POST_MEDIUM_PX`), for feed cards on slow networks (CROSS-API-003, BVTGC-95; new on 2026-11-25, so older clients ignore it). About a third of the bytes of `image_url`; keep `image_url` for the full-screen photo. `null` whenever `image_url` is, and also for a photo uploaded before the 640 px copy existed until the server's one-off `backfill_medium_images` has run: clients then use `image_url`. In every feed shape (list, `GET /feed/posts/{id}/`, `?ids=`, upcoming, urgent, `GET /feed/share/{code}/`).
 - `category` is the key only; the app caches `GET /categories`.
 
 `FeedPost` (detail) is `FeedItem` plus `"path": "కొలకలూరు · తెనాలి · గుంటూరు"` and `"media": [{"id", "kind", "url", "thumb_url", "poster_url", "width", "height", "duration_s"}]`.
