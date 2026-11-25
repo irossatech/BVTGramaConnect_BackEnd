@@ -9,8 +9,8 @@
 - Expired console sessions, as `clearsessions` does.
 - django-axes AccessFailureLog rows (one per failed login, with the IP) older
   than LOGIN_FAILURE_LOG_KEEP_MINUTES (60): IP addresses are not kept longer
-  than needed. (60 minutes was the window of the IP-wide cap that read them,
-  removed on 2026-11-20; the cleanup stays as it was.)
+  than needed. The ceiling per username reads them (apps/accounts/lockout.py),
+  so a longer LOGIN_USERNAME_WINDOW_MINUTES keeps them that long instead.
 - Officials' read notifications older than NOTIFICATION_KEEP_DAYS (90; 0 keeps
   them all). Unread ones stay until read (owner decision, audit finding BE-DB-018).
 
@@ -66,9 +66,8 @@ def run_housekeeping(now=None) -> dict:
     # Which refresh token replaced which: needed only for JWT_REFRESH_GRACE_SECONDS (BVTGC-93).
     _delete_in_batches(RefreshRotation.objects.filter(at__lt=now - timedelta(days=1)))
     sessions = _delete_in_batches(Session.objects.filter(expire_date__lt=now))
-    login_failures = _delete_in_batches(
-        AccessFailureLog.objects.filter(attempt_time__lte=now - timedelta(minutes=LOGIN_FAILURE_LOG_KEEP_MINUTES))
-    )
+    keep = max(LOGIN_FAILURE_LOG_KEEP_MINUTES, settings.LOGIN_USERNAME_WINDOW_MINUTES)
+    login_failures = _delete_in_batches(AccessFailureLog.objects.filter(attempt_time__lte=now - timedelta(minutes=keep)))
     return {
         "failed_tasks": failed_tasks,
         "expired_tokens": expired_tokens,

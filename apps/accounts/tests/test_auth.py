@@ -215,7 +215,8 @@ def test_lockout_is_audited_once(world):
 
 # --- No per-IP login limits in this phase (lead's decision of 2026-11-20) ----------------------
 # The IP-wide cap (50 failures an hour) and the login throttle (30 logins an hour) were removed.
-# Only the lockout above remains: 5 failures for one username from one IP.
+# Only the lockouts remain: 5 failures for one username from one IP, and the ceiling per username
+# (20 an hour from any IPs, test_lockout_username_ceiling.py).
 
 
 def test_many_failures_on_other_usernames_do_not_block_the_address(world):

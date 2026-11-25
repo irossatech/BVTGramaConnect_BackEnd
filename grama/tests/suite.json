@@ -27,6 +27,7 @@
         "apps/accounts/tests/test_auth.py",
         "apps/accounts/tests/test_lockout_backup_answer.py",
         "apps/accounts/tests/test_lockout_hash.py",
+        "apps/accounts/tests/test_lockout_username_ceiling.py",
         "apps/accounts/tests/test_login_age.py",
         "apps/accounts/tests/test_password_length.py",
         "apps/accounts/tests/test_refresh_grace.py",

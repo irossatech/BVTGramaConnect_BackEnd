@@ -171,7 +171,7 @@ All errors share one shape:
 | 409 | `media_conflict` | A post has up to 3 photos or one video, never both: a photo for a post with a video, a second video, or a video for a post with photos (sections 5 and 15) |
 | 413 | `file_too_large` | Upload over the limit |
 | 415 | `unsupported_media` | File type not allowed |
-| 429 | `locked_out` | 5 failed logins for this username from this IP address; `retry_after_s` gives the seconds left |
+| 429 | `locked_out` | 5 failed logins for this username from this IP address, or (since 2026-11-25) 20 within an hour for this username from any addresses; `retry_after_s` gives the seconds left. Same answer and message for both |
 | 429 | `throttled` | Rate limit; `retry_after_s` gives the seconds to wait, and the `Retry-After` header is set |
 
 ### Enumerations
@@ -389,9 +389,10 @@ Login rules:
 - **Usernames** (owner's decision of 2026-11-17): 3 to 150 characters; letters, digits, `@ . _ + -` and single spaces between words, e.g. `ravi kumar`. The server trims, lower-cases and collapses spaces before checking, on create, on change and at login. Otherwise `400 validation_error` on `username` ("Use 3 to 150 letters, digits, spaces or @ . _ + - characters.").
 - A wrong password and an unknown username give the same `400 invalid_credentials`.
 - **Lockout** (django-axes): 5 failures for one username from one IP address lock that pair for 15 minutes. Every try then answers `429 locked_out` with `retry_after_s`, even with the right password. A success clears the count. An admin can unlock early (`POST /users/{id}/unlock/`).
+- **Ceiling per username** (WEB-SEC-019, lead's decision of 2026-11-25): 20 failures for one username within an hour, from any addresses, lock that username from every address for 15 minutes after the last of them, with the same `429 locked_out` and `retry_after_s`. Tries during it are not counted. A success, an unlock or a password reset clears it, and `locked_out` on the user shows it too. No client change is needed.
 - **No per-IP login limits** (lead's decision of 2026-11-20, not needed in this phase): the IP-wide cap (50 failures an hour) and the login throttle (30 logins an hour) were removed, so the login endpoints no longer answer `429 throttled`. Clients may keep their `throttled` message; it is simply not sent for logins any more.
 - After the password check: blocked → `403 account_blocked`; no active role → `403 permission_denied`; console login without `web_admin.access_web_console` → `403 not_console_user`, and no session.
-- A successful login updates `last_login_at` and writes `auth.login` with `via` (`app` or `console`). Failures write `auth.login_failed`, refusals `auth.login_refused`, lockouts `auth.locked_out`. (`auth.ip_locked_out` entries written before 2026-11-20 stay in the audit log.)
+- A successful login updates `last_login_at` and writes `auth.login` with `via` (`app` or `console`). Failures write `auth.login_failed`, refusals `auth.login_refused`, lockouts `auth.locked_out` (`"scope": "username"` for the ceiling per username). (`auth.ip_locked_out` entries written before 2026-11-20 stay in the audit log.)
 
 Passwords:
 - Hashed with Argon2. New passwords pass Django's validators: at least 12 characters for every official, Panchayat members included (since 2026-11-19; it was 8 for Panchayat members), not common, not all digits, not like the username, and at least one capital letter, one small letter, one number and one special character (anything not a letter, number or space, such as `@ # $ % & * ! ?`). Generated temporary passwords follow the same rules (12 characters). Existing passwords keep working until next changed, except that a login with a password shorter than the person's roles need answers with `must_change_password: true`, and the app or console shows the change-password screen as for a temporary password. A new password must differ from the current one. Errors come as `400 validation_error` with `fields.new_password` (or `fields.password` for admin-set passwords).

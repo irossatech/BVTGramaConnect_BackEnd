@@ -13,8 +13,10 @@ Failed logins lock a username + IP pair after LOGIN_MAX_FAILURES (5) tries
 for LOGIN_LOCKOUT_MINUTES (django-axes), on purpose. The login users below
 guess wrong passwords for made-up usernames, so they get 400
 invalid_credentials and, once a pair is locked, 429 locked_out; both count as
-expected, not as failures. To measure the login path itself, raise
-LOGIN_MAX_FAILURES on the test server only.
+expected, not as failures. A username also locks from every address after
+LOGIN_MAX_FAILURES_PER_USERNAME (20) failures in an hour. To measure the
+login path itself, raise LOGIN_MAX_FAILURES (and set
+LOGIN_MAX_FAILURES_PER_USERNAME=0) on the test server only.
 """
 
 import random

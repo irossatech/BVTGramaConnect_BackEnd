@@ -1,7 +1,8 @@
 """Passwords for officials: login checks, temporary passwords, validation.
 
-- Login (app and console) goes through Django's authenticate(): django-axes refuses locked-out username +
-  IP pairs, then OfficialBackend checks the password. Usernames are matched without case. Unknown usernames take as
+- Login (app and console) goes through Django's authenticate(): a username over the ceiling per username
+  is refused first (lockout.py), then django-axes refuses locked-out username + IP pairs, then
+  OfficialBackend checks the password. Usernames are matched without case. Unknown usernames take as
   long as real ones (ModelBackend hashes a dummy password).
 - New accounts and resets get a temporary password, set by the admin or
   generated here and shown once in the API response. It is never emailed,
@@ -104,7 +105,7 @@ def invalid_credentials() -> ApiError:
 
 
 def locked_out(request, username: str) -> ApiError:
-    """429 locked_out, with how long the username + IP lockout still lasts."""
+    """429 locked_out, with how long the lockout still lasts (the username + IP pair or the ceiling per username)."""
     seconds = lockout.seconds_left(username, client_ip(request))
     return ApiError(
         "locked_out",
@@ -127,9 +128,17 @@ def authenticate_official(request, username: str, password: str, *, via: str, re
     the password check, so it tells nothing to someone without the password.
     """
     key = normalize_username(username)
+    if key and lockout.username_seconds_left(key):
+        # The ceiling per username (WEB-SEC-019): refused before the password is checked, and not
+        # counted, so the lockout is not extended.
+        lockout.audit_refused_try(request, key)
+        raise locked_out(request, key)
     user = authenticate(request, username=key, password=password)
     if user is None:
         if getattr(request, "axes_locked_out", False):
+            raise locked_out(request, key)
+        if key and lockout.username_seconds_left(key):
+            lockout.audit_username_lockout(request, key)  # this failure reached the ceiling
             raise locked_out(request, key)
         raise invalid_credentials()
     if not user.is_active:
