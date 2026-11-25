@@ -279,6 +279,8 @@ Places that must change, because a citizen account now has a role and a password
 | `posts/services.py` `covering_scope_q` | `GET /posts/` would list a village's posts to a citizen | Count only grants holding `accounts.use_official_api` |
 | Dashboard and reports (`web_admin/api.py`) | Counts such as blocked users would include citizens | Officials only |
 | `users/{id}/unlock/` and lockout lists | Citizen lockouts would show among officials' | Officials only |
+| `apps/notifications/views.py` inbox (`GET /notifications/`, read, read-all; `IsAuthenticated`) | A citizen JWT passes `IsAuthenticated` | Officials only (`403`); wallet pushes keep no inbox entry |
+| `apps/accounts/views_auth.py` `MeView` (`GET /me/`) | A citizen would get an official's empty profile | `403`; the app uses `GET /citizen/account/` |
 
 Citizens stay out of the officials' user lists without extra code: `authz.manageable_users` keeps only users whose every assignment the actor may manage, and a group with `manage_permission: None` is managed by nobody.
 
@@ -442,7 +444,7 @@ Citizens stay out of the officials' user lists without extra code: `authz.manage
   - **Pushes:**
     - `NotificationKind.WALLET`;
     - templates `referral_joined`, `points_confirmed` and `points_not_confirmed` in Telugu and English, added by a data migration and editable in the console;
-    - sent through `send_push_to_users`, with only ids in the data.
+    - sent through `send_push_to_users`, with only ids in the data; push only, no inbox entry (contract review, BVTGC-119).
   - **Audit labels:** the keys of contract section 21, added to the console's and the app's label lists (tell Mohit).
   - **Telugu:** run `python manage.py translations` and write the Telugu of every new message.
 - **Done when:** the settings validate their ranges and are audited; `test_i18n.py` passes; the switch hides every endpoint.

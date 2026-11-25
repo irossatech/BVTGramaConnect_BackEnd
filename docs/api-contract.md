@@ -1576,6 +1576,7 @@ An optional account for citizens, used **only for the wallet of points and refer
 - The answer is the same JWT pair as for officials (`Authorization: Bearer`), with the same `POST /auth/refresh/`, `POST /auth/logout/`, the 90-day limit (`JWT_ABSOLUTE_DAYS`) and `401 session_revoked`.
 - The officials' `POST /auth/login/` and `POST /auth/session/login/` answer a citizen account `400 invalid_credentials`, like a wrong password. Every officials' endpoint answers a citizen JWT `403 permission_denied`; `POST /auth/password/change/` too (citizens use `POST /citizen/account/password/`). `GET /me/` is for officials; citizens use `GET /citizen/account/`.
 - An app holds one account at a time: an official's or a citizen's.
+- **Which calls carry the citizen's token** (contract review, BVTGC-119): the app sends `Authorization: Bearer` with a citizen JWT only to the endpoints of this section, `POST /devices/` and `DELETE /devices/{id}/` (so pushes reach the account), `POST /auth/refresh/` and `POST /auth/logout/`. The citizen endpoints of section 15 keep using `X-Citizen-Token` and ignore `Authorization`. The officials' notification inbox (`GET /notifications/` and its actions) answers a citizen JWT `403 permission_denied`.
 - **Feature switch:** while `wallet_enabled` is `false` (`GET /app-config/`), every endpoint of this section answers `404 not_found`.
 - **Pilot:** while `wallet_pilot_mandals` is not empty, sign-up is open only for villages in those mandals (`403 wallet_not_in_area`). Existing accounts keep working wherever their village moves.
 
@@ -1649,7 +1650,7 @@ An optional account for citizens, used **only for the wallet of points and refer
 | `POST /citizen/account/email/verify/` | `{code}` | `200 Account`: the email changed and the old address got a notice. `400 code_wrong`, `code_expired`; `409 email_in_use` |
 | `POST /citizen/account/mobile/` | `{mobile, password}` (the new number) | `200 Account` (`mobile_verified` becomes `false`). `409 mobile_in_use` (point the citizen to the help line); `400 invalid_credentials` |
 | `POST /citizen/account/delete/` | `{password}` | `204`. The account is closed at once (see "Deletion"). `400 invalid_credentials` |
-| `GET /wallet/` | `?cursor=` | `{confirmed_points, held_points, next_release_at, entries: {results: [WalletEntry], next}}`, newest first, 20 a page |
+| `GET /wallet/` | `?cursor=` | The cursor list of section 1 with the summary as sibling keys: `{confirmed_points, held_points, next_release_at, next, previous, results: [WalletEntry]}`, newest first, 20 a page. Every page repeats the summary. |
 
 ### Deleting the account from the website (public, no login)
 
@@ -1664,15 +1665,15 @@ The website's **Delete my wallet account** page (its address is the deletion lin
 
 | Method and path | Permission | Request | Response |
 |---|---|---|---|
-| `GET /admin/citizen-accounts/` | `accounts.manage_citizen_accounts` | `q` (name, or the last 4 digits), `village_id`, `status` (`active`, `blocked`, `deleted`), `page` | Rows: `id`, `name`, `village`, `mobile_last4`, `email_hint`, `email_verified`, `mobile_verified`, `confirmed_points`, `held_points`, `status`, `created_at`, `last_active_at`, `allowed_actions` |
+| `GET /admin/citizen-accounts/` | `accounts.manage_citizen_accounts` | `q` (name, or the last 4 digits), `village_id`, `status` (`active`, `blocked`, `deleted`), `page`, `page_size` | Page numbers (section 1): `{count, next, previous, results}`. Rows: `id`, `name`, `village`, `mobile_last4`, `email_hint`, `email_verified`, `mobile_verified`, `confirmed_points`, `held_points`, `status`, `created_at`, `last_active_at`, `allowed_actions` |
 | `POST /admin/citizen-accounts/find/` | same | `{mobile}` or `{email}` (a POST, so no personal data goes in a URL) | `{results: [row]}`; audited `citizen.account_found` |
 | `POST /admin/citizen-accounts/{id}/email/` | same | `{email, reason, called_back: true}` | Row. Sets a new email, not yet confirmed; codes sent to the old one stop working. The citizen then uses **Forgot password**. `409 email_in_use`; `400 validation_error` unless `called_back` is `true` |
 | `POST /admin/citizen-accounts/{id}/release-mobile/` | same | `{reason, called_back: true}` | Row. Removes the number from this account (its next `GET /citizen/account/` says `mobile_missing: true`) |
 | `POST /admin/citizen-accounts/{id}/block/`, `/unblock/`, `/delete/` | same | `{reason}` | Row. Block ends every session at once. |
-| `GET /admin/referrals/` | `wallet.review_referrals` | `status` (`PENDING`, `CONFIRMED`, `REJECTED`), `q`, `page` | Rows: `id`, `referrer` and `referee` (name, `mobile_last4`), `status`, `reason_key`, `pending_at`, `confirm_after`, `decided_at`, `decided_by`, `allowed_actions` (`confirm`, `reject`) |
+| `GET /admin/referrals/` | `wallet.review_referrals` | `status` (`PENDING`, `CONFIRMED`, `REJECTED`), `q`, `page`, `page_size` | Page numbers, with `status_counts` next to `results`. Rows: `id`, `referrer` and `referee` (name, `mobile_last4`), `status`, `reason_key`, `pending_at`, `confirm_after`, `decided_at`, `decided_by`, `allowed_actions` (`confirm`, `reject`) |
 | `POST /admin/referrals/{id}/confirm/`, `/reject/` | `wallet.review_referrals` | `{comment}` (required) | Row; `409 already_decided` when the hourly job or another Super Admin decided first |
 | `POST /admin/wallets/{account_id}/adjust/` | `wallet.adjust_points` | `{points, reason}`: whole points, not 0, may be negative; reason required | The account's wallet summary; `409 not_enough_points` when it would go below zero |
-| `GET /admin/wallet/export/` | `wallet.view_wallets` | `type=referrals\|entries`, the list's filters | CSV with a UTF-8 BOM; last 4 digits and masked emails only |
+| `GET /admin/wallet/export/?type=referrals\|entries&format=csv` | `wallet.view_wallets` | the list's filters | CSV with a UTF-8 BOM, like the other exports; last 4 digits and masked emails only. Errors come back as JSON. Writes `report.exported`. |
 | `GET`, `PATCH /admin/settings/` | `posts.manage_settings` (existing) | adds the wallet settings below | Settings |
 
 The console's menu shows **Citizens & wallet** to holders of any of these permissions; today only the Super Admin.
@@ -1715,7 +1716,7 @@ The console's menu shows **Citizens & wallet** to holders of any of these permis
 | 400 | `referral_code_invalid`, `referral_code_own`, `referral_not_open` | The referral code at sign-up (see Rules) |
 | 401 | `signup_token_invalid` | The sign-up is older than 24 hours or already finished |
 | 403 | `wallet_not_in_area` | Sign-up for a village outside the pilot mandals |
-| 409 | `mobile_in_use`, `email_in_use` | The number or email belongs to another citizen account |
+| 409 | `mobile_in_use`, `email_in_use` | The number or email belongs to another citizen account. Not `duplicate` (section 1): the app answers these two with **Log in** and **Forgot password?** |
 | 409 | `not_enough_points` | An adjustment would take the balance below zero |
 | 429 | `code_cooldown` | A new code was asked for within 60 seconds; `retry_after_s` |
 | 429 | `code_limit` | Too many codes today for this account, address or phone |
@@ -1723,7 +1724,7 @@ The console's menu shows **Citizens & wallet** to holders of any of these permis
 
 ### Pushes and audit
 
-- Pushes to the account's phone (registered with `POST /devices/` and the citizen JWT): kind `WALLET`, data `{"type": "referral_joined" | "points_confirmed" | "points_not_confirmed", "referral_id"}`. Texts are notification templates (section 7), editable in the console.
+- Pushes to the account's phone (registered with `POST /devices/` and the citizen JWT), push only, with no inbox entry (the wallet history is the record): kind `WALLET`, data `{"type": "referral_joined" | "points_confirmed" | "points_not_confirmed", "referral_id"}`. Texts are notification templates (section 7), editable in the console.
 - Audit actions: `citizen.account_created`, `citizen.code_sent`, `citizen.password_reset`, `citizen.password_changed`, `citizen.email_changed`, `citizen.mobile_changed`, `citizen.village_changed`, `citizen.account_blocked`, `citizen.account_unblocked`, `citizen.account_deleted` (with `via`: `app`, `website`, `admin`), `citizen.account_found`, `citizen.email_set_by_admin`, `citizen.mobile_released`, `referral.created`, `referral.confirmed`, `referral.rejected`, `wallet.adjusted`, `wallet.mismatch`. Logins use `auth.login` with `via` `citizen_app`. Audit data holds a masked email and the last 4 digits of a number at most.
 
 ### Later stage (WhatsApp and SMS, before Bills & Recharges)
