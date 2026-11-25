@@ -15,13 +15,15 @@ pytestmark = pytest.mark.django_db
 
 LOGIN = "/api/v1/auth/login/"
 CHANGE = "/api/v1/auth/password/change/"
-#: The rule, written out: the same 12 for every role.
+#: The rule, written out: the same 12 for every official role. A citizen's wallet account (BVTGC-121) is not
+#: an official: its group asks no length (0), because citizens have their own rule (8 characters, D15).
 EXPECTED = {
     Role.SUPER_ADMIN: 12,
     Role.DISTRICT_ADMIN: 12,
     Role.MANDAL_ADMIN: 12,
     Role.VILLAGE_ADMIN: 12,
     Role.PANCHAYAT_MEMBER: 12,
+    Role.CITIZEN: 0,
 }
 ELEVEN = "Gram-Sabha1"     # 11 characters, passes every other rule
 TWELVE = "Gram-Sabha12"    # 12
