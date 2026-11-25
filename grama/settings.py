@@ -130,8 +130,11 @@ SQLITE_DATABASE = {
 }
  
 if _RUNNING_TESTS:
-    # Tests always run on SQLite, whatever DEBUG and DATABASE_URL say: never on a server's database.
-    DATABASES = {"default": SQLITE_DATABASE}
+    # Tests run on SQLite, whatever DEBUG and DATABASE_URL say: never on a server's database. CI also runs
+    # them on MariaDB and PostgreSQL (BVTGC-17) through TEST_DATABASE_URL, a variable of its own that no
+    # server's .env sets; Django then works in a throwaway "test_<name>" database and drops it afterwards.
+    _test_db_url = env.str("TEST_DATABASE_URL", default="")
+    DATABASES = {"default": database_config(_test_db_url) if _test_db_url else SQLITE_DATABASE}
 elif not DEBUG:
     DATABASES = {"default": database_config(env.str("DATABASE_URL"))}
 else:  # DEV

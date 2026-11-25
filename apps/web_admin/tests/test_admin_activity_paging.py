@@ -74,7 +74,9 @@ def test_a_page_reads_only_its_own_admins(api, world):
     """The old report read every admin and every decision into Python and then cut the page out."""
     with CaptureQueriesContext(connection) as ctx:
         assert api(world.users["super"]).get(f"{URL}?page_size=5").status_code == 200
-    admin_reads = [q["sql"] for q in ctx.captured_queries if 'FROM "accounts_user"' in q["sql"] and "reviewed" in q["sql"]]
+    # The table name as this database quotes it: "accounts_user" (SQLite, PostgreSQL) or `accounts_user` (MySQL).
+    users_table = "FROM " + connection.ops.quote_name("accounts_user")
+    admin_reads = [q["sql"] for q in ctx.captured_queries if users_table in q["sql"] and "reviewed" in q["sql"]]
     assert admin_reads and all("LIMIT 5" in sql for sql in admin_reads if "COUNT(" not in sql.split("FROM")[0])
 
 

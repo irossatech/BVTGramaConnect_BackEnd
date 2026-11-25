@@ -36,3 +36,49 @@ jobs:
         run: python manage.py makemigrations --check --dry-run
       - name: Test suite (SQLite)
         run: python -m pytest -q -p no:logging
+
+  # The same suite on the server databases (BVTGC-17): MariaDB as on the qa server, and PostgreSQL, the
+  # other choice open in BVTGC-38. Django creates and drops its own test_grama database in each container.
+  real-database:
+    name: pytest on ${{ matrix.db }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - db: MariaDB 11.4
+            url: mysql://root:ci@127.0.0.1:3306/grama
+          - db: PostgreSQL 17
+            url: postgres://postgres:ci@127.0.0.1:5432/grama
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci
+          MARIADB_DATABASE: grama
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: grama
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      TEST_DATABASE_URL: ${{ matrix.url }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: sudo apt-get update && sudo apt-get install -y pkg-config default-libmysqlclient-dev
+      - run: python -m pip install -r requirements.txt
+      - name: Test suite (${{ matrix.db }})
+        run: python -m pytest -q -p no:logging
