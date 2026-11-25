@@ -1,6 +1,7 @@
 """Shapes from docs/api-contract.md, section 15."""
 
 
+from django.conf import settings
 from django.utils.translation import gettext_lazy as _
 from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
@@ -210,6 +211,12 @@ class CitizenPostWriteSerializer(serializers.Serializer):
     # through, to the phone's village.
     #: The app's random UUID for this post, the same on a repeat after a lost answer (MOB-ERR-004).
     client_ref = serializers.UUIDField(required=False)
+
+    def validate_category(self, value):
+        # Officials-only categories such as Announcements (BVTGC-101): the app hides them, the server refuses them.
+        if value.key in settings.CITIZEN_EXCLUDED_CATEGORIES:
+            raise serializers.ValidationError(_("Citizens cannot post in this category."))
+        return value
 
     def validate_title(self, value):
         value = " ".join(value.split())
