@@ -73,10 +73,12 @@ def test_refresh_rotates_and_blacklists_the_old_token(world):
     assert first.status_code == 200
     assert set(first.json()) == {"access", "refresh"}
     assert bearer(first.json()["access"]).get(ME).status_code == 200
+    assert APIClient().post(REFRESH, {"refresh": first.json()["refresh"]}, format="json").status_code == 200
+    # The old token is refused once its replacement has been used (the lost-answer grace, BVTGC-93,
+    # covers only a replacement nobody used: test_refresh_grace.py).
     replay = APIClient().post(REFRESH, {"refresh": tokens["refresh"]}, format="json")
     assert replay.status_code == 401
     assert error_code(replay) == "session_revoked"
-    assert APIClient().post(REFRESH, {"refresh": first.json()["refresh"]}, format="json").status_code == 200
 
 
 def test_logout_this_device(world):

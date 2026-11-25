@@ -302,3 +302,17 @@ class RoleAssignment(models.Model):
             )
         if self.area_level and self.area_id and not area_exists(self.area):
             raise ValidationError({"area_id": _("No such area.")})
+
+
+class RefreshRotation(models.Model):
+    """Which refresh token replaced which, for JWT_REFRESH_GRACE_SECONDS (BVTGC-93).
+
+    Only the token IDs (jti), never the tokens. When the answer to a refresh is lost on a weak network,
+    the app sends the old token again; inside the window the server ends the lost replacement and gives
+    a new pair, so the official stays logged in and only one usable chain exists. Housekeeping removes
+    rows older than a day.
+    """
+
+    old_jti = models.CharField(max_length=255, unique=True)
+    new_jti = models.CharField(max_length=255)
+    at = models.DateTimeField(default=timezone.now, db_index=True)

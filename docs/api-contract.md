@@ -375,7 +375,7 @@ Lean on purpose, for 2G.
 | Method and path | Auth | Request | Response |
 |---|---|---|---|
 | `POST /auth/login/` | public | `{"username", "password"}` (any other key, such as an older app's `"client"`, is ignored) | `200 {"access", "refresh", "user": Me}`. Mobile app. |
-| `POST /auth/refresh/` | refresh token | `{"refresh": "…"}` | `200 {"access", "refresh"}`; `401 session_revoked` once the login is older than `JWT_ABSOLUTE_DAYS` (90) |
+| `POST /auth/refresh/` | refresh token | `{"refresh": "…"}` | `200 {"access", "refresh"}`; `401 session_revoked` once the login is older than `JWT_ABSOLUTE_DAYS` (90). Each refresh token works once, with one exception for a lost answer (BVTGC-93): sent again within `JWT_REFRESH_GRACE_SECONDS` (60) of its first use, while the refresh token that replaced it is still unused (never refreshed, not logged out), it gets `200` with a new pair, and the replacement it got the first time ends. So the app may retry a refresh whose answer never came with the same token. After a block, a reset, "log out everywhere", or outside the window: `401 session_revoked` as before. |
 | `POST /auth/logout/` | bearer | `{"refresh": "…", "all_devices"?: true}` | `204`. Blacklists the refresh token. `all_devices` also bumps `token_version` and unlinks every push device of the user (BVTGC-94); the app registers its phone again at the next login. |
 | `GET /auth/csrf/` | public | — | `200 {"detail": "ok"}` and the `csrftoken` cookie. Console. |
 | `POST /auth/session/login/` | public, `X-CSRFToken` | `{"username", "password"}` | `200 {"user": Me}` and the `sessionid` cookie. Console; needs `web_admin.access_web_console`. |
