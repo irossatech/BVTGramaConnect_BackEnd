@@ -589,6 +589,8 @@ CITIZEN_INTEGRITY_VERIFIER = env.str(
 )
 CITIZEN_CHALLENGE_SECONDS = env.int("CITIZEN_CHALLENGE_SECONDS", default=300)
 CITIZEN_POSTS_PER_DAY = env.int("CITIZEN_POSTS_PER_DAY", default=5)
+# Category keys only officials may post in; a citizen post in one answers 400 (BVTGC-101). The app hides them too.
+CITIZEN_EXCLUDED_CATEGORIES = env.list("CITIZEN_EXCLUDED_CATEGORIES", default=["announce"])
 CITIZEN_REGISTRATIONS_PER_IP_PER_DAY = env.int("CITIZEN_REGISTRATIONS_PER_IP_PER_DAY", default=0)
  
 SERVICE_REQUESTS_PER_DAY = env.int("SERVICE_REQUESTS_PER_DAY", default=10)

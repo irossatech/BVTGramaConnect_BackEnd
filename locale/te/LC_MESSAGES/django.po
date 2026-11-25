@@ -41,7 +41,7 @@ msgstr "మీ పాస్‌వర్డ్ సరైనది కాదు."
 msgid "The password needs at least %(n)d characters."
 msgstr "పాస్‌వర్డ్‌లో కనీసం %(n)d అక్షరాలు ఉండాలి."
 
-#: apps/accounts/credentials.py:111
+#: apps/accounts/credentials.py:111 apps/accounts/lockout.py:188
 #, python-format
 msgid "Too many failed logins. Try again in %(m)d minute(s)."
 msgstr "చాలాసార్లు లాగిన్ విఫలమైంది. %(m)d నిమిషాల తర్వాత మళ్ళీ ప్రయత్నించండి."
@@ -251,39 +251,39 @@ msgstr "మీ పాత్ర యూజర్లను నిర్వహిం
 msgid "Only Super Admins can read the API documentation here."
 msgstr "ఇక్కడ API డాక్యుమెంటేషన్‌ను సూపర్ అడ్మిన్లు మాత్రమే చదవగలరు."
 
-#: apps/accounts/serializers.py:42 apps/accounts/views_users.py:218 apps/accounts/views_users.py:218
+#: apps/accounts/serializers.py:43 apps/accounts/views_users.py:224 apps/accounts/views_users.py:224
 msgid "Unknown role."
 msgstr "తెలియని పాత్ర."
 
-#: apps/accounts/serializers.py:289
+#: apps/accounts/serializers.py:294
 msgid "Username; case does not matter."
 msgstr "యూజర్ పేరు; పెద్ద, చిన్న అక్షరాల తేడా లేదు."
 
-#: apps/accounts/serializers.py:397
+#: apps/accounts/serializers.py:425
 msgid "Login name; stored in lower case."
 msgstr "లాగిన్ పేరు; చిన్న అక్షరాల్లో భద్రపరుస్తాం."
 
-#: apps/accounts/serializers.py:405
+#: apps/accounts/serializers.py:433
 msgid "Temporary password. Leave out to have one generated and shown once."
 msgstr "తాత్కాలిక పాస్‌వర్డ్. ఇవ్వకపోతే ఒకటి తయారుచేసి ఒక్కసారి చూపిస్తాం."
 
-#: apps/accounts/serializers.py:410 apps/accounts/serializers.py:476
+#: apps/accounts/serializers.py:438 apps/accounts/serializers.py:504
 msgid "Your own password. Required only when the role is SUPER_ADMIN."
 msgstr "మీ సొంత పాస్‌వర్డ్. పాత్ర SUPER_ADMIN అయినప్పుడు మాత్రమే అవసరం."
 
-#: apps/accounts/serializers.py:462
+#: apps/accounts/serializers.py:490
 msgid "New temporary password. Leave out to have one generated and shown once."
 msgstr "కొత్త తాత్కాలిక పాస్‌వర్డ్. ఇవ్వకపోతే ఒకటి తయారుచేసి ఒక్కసారి చూపిస్తాం."
 
-#: apps/accounts/serializers.py:416 apps/contacts/services.py:84 apps/geography/serializers_admin.py:20
+#: apps/accounts/serializers.py:444 apps/contacts/services.py:84 apps/geography/serializers_admin.py:20
 msgid "Enter a name."
 msgstr "పేరు ఇవ్వండి."
 
-#: apps/accounts/serializers.py:486
+#: apps/accounts/serializers.py:514
 msgid "Give a new area or is_active."
 msgstr "కొత్త ప్రాంతం లేదా is_active ఇవ్వండి."
 
-#: apps/accounts/tokens.py:35
+#: apps/accounts/tokens.py:56
 msgid "Your session has ended. Log in again."
 msgstr "మీ సెషన్ ముగిసింది. మళ్ళీ లాగిన్ అవ్వండి."
 
@@ -314,69 +314,69 @@ msgstr "పాస్‌వర్డ్‌లో కనీసం %(parts)s ఉం
 msgid "a special character such as %(examples)s"
 msgstr "%(examples)s వంటి ఒక ప్రత్యేక గుర్తు"
 
-#: apps/accounts/views_auth.py:188
+#: apps/accounts/views_auth.py:193
 msgid "Choose a password different from the current one."
 msgstr "ప్రస్తుత పాస్‌వర్డ్‌కు భిన్నమైన పాస్‌వర్డ్ ఎంచుకోండి."
 
-#: apps/accounts/views_users.py:77 apps/accounts/views_users.py:78 apps/ads/services.py:137 apps/contacts/services.py:78
+#: apps/accounts/views_users.py:78 apps/accounts/views_users.py:79 apps/ads/services.py:137 apps/contacts/services.py:78
 msgid "No such active area."
 msgstr "ఇలాంటి యాక్టివ్ ప్రాంతం లేదు."
 
-#: apps/accounts/views_users.py:81
+#: apps/accounts/views_users.py:82
 msgid "Your role cannot give this role."
 msgstr "మీ పాత్ర ఈ పాత్రను ఇవ్వలేదు."
 
-#: apps/accounts/views_users.py:359
+#: apps/accounts/views_users.py:367
 msgid "Your role cannot block this user."
 msgstr "మీ పాత్ర ఈ యూజర్‌ను బ్లాక్ చేయలేదు."
 
-#: apps/accounts/views_users.py:382
+#: apps/accounts/views_users.py:390
 msgid "Your role cannot unblock this user."
 msgstr "మీ పాత్ర ఈ యూజర్‌ను అన్‌బ్లాక్ చేయలేదు."
 
-#: apps/accounts/views_users.py:404
+#: apps/accounts/views_users.py:412
 msgid "Your role cannot reset this password."
 msgstr "మీ పాత్ర ఈ పాస్‌వర్డ్‌ను రీసెట్ చేయలేదు."
 
-#: apps/accounts/views_users.py:423
+#: apps/accounts/views_users.py:431
 msgid "Your role cannot unlock this user."
 msgstr "మీ పాత్ర ఈ యూజర్‌ను అన్‌లాక్ చేయలేదు."
 
-#: apps/accounts/views_users.py:71
+#: apps/accounts/views_users.py:72
 #, python-format
 msgid "This role is assigned to a %(level)s."
 msgstr "ఈ పాత్రను %(level)s స్థాయిలో మాత్రమే ఇస్తారు."
 
-#: apps/accounts/views_users.py:283 apps/accounts/views_users.py:331 apps/accounts/views_users.py:122 apps/accounts/views_users.py:318
+#: apps/accounts/views_users.py:291 apps/accounts/views_users.py:339 apps/accounts/views_users.py:123 apps/accounts/views_users.py:326
 msgid "This username is taken."
 msgstr "ఈ యూజర్ పేరు ఇప్పటికే వాడుకలో ఉంది."
 
-#: apps/accounts/views_users.py:285 apps/accounts/views_users.py:319 apps/accounts/views_users.py:125
+#: apps/accounts/views_users.py:293 apps/accounts/views_users.py:327 apps/accounts/views_users.py:126
 msgid "This mobile number already belongs to an official."
 msgstr "ఈ మొబైల్ నంబర్ ఇప్పటికే ఒక అధికారిది."
 
-#: apps/accounts/views_users.py:491
+#: apps/accounts/views_users.py:499
 msgid "Your role cannot move this user."
 msgstr "మీ పాత్ర ఈ యూజర్‌ను వేరే ప్రాంతానికి మార్చలేదు."
 
-#: apps/accounts/views_users.py:197 apps/contacts/views_admin.py:85 apps/posts/views.py:182 apps/posts/views.py:481
+#: apps/accounts/views_users.py:203 apps/contacts/views_admin.py:85 apps/posts/views.py:243 apps/posts/views.py:553
 msgid "Give both level and area_id."
 msgstr "level, area_id రెండూ ఇవ్వండి."
 
-#: apps/accounts/views_users.py:223 apps/accounts/views_users.py:223 apps/posts/views.py:253 apps/service_requests/views.py:169
+#: apps/accounts/views_users.py:229 apps/accounts/views_users.py:229 apps/posts/views.py:314 apps/service_requests/views.py:169
 msgid "Unknown status."
 msgstr "తెలియని స్థితి."
 
-#: apps/accounts/views_users.py:472 apps/accounts/views_users.py:520
+#: apps/accounts/views_users.py:480 apps/accounts/views_users.py:528
 msgid "The user already has this role in this area."
 msgstr "ఈ యూజర్‌కు ఈ ప్రాంతంలో ఇప్పటికే ఈ పాత్ర ఉంది."
 
-#: apps/accounts/views_users.py:72
+#: apps/accounts/views_users.py:73
 #, python-format
 msgid "Must be a %(level)s."
 msgstr "%(level)s అయి ఉండాలి."
 
-#: apps/accounts/views_users.py:198
+#: apps/accounts/views_users.py:204
 msgid "Give a level and a numeric area_id."
 msgstr "level, అంకెల్లో area_id ఇవ్వండి."
 
@@ -384,7 +384,7 @@ msgstr "level, అంకెల్లో area_id ఇవ్వండి."
 msgid "Give an https:// link."
 msgstr "https:// లింక్ ఇవ్వండి."
 
-#: apps/ads/services.py:62 grama/logos.py:38
+#: apps/ads/services.py:62 grama/logos.py:40
 msgid "Upload a JPEG, PNG or WebP image."
 msgstr "JPEG, PNG లేదా WebP చిత్రం అప్‌లోడ్ చేయండి."
 
@@ -392,7 +392,7 @@ msgstr "JPEG, PNG లేదా WebP చిత్రం అప్‌లోడ్ 
 msgid "Send a picture or a video, not both."
 msgstr "చిత్రం లేదా వీడియో పంపండి, రెండూ కాదు."
 
-#: apps/ads/services.py:140 apps/posts/serializers.py:124
+#: apps/ads/services.py:140 apps/posts/serializers.py:158
 msgid "The end date cannot be before the start date."
 msgstr "ముగింపు తేదీ ప్రారంభ తేదీకి ముందు ఉండకూడదు."
 
@@ -414,11 +414,7 @@ msgstr "చిత్రం వెడల్పు కనీసం %(px)d పి�
 msgid "Give a village id."
 msgstr "గ్రామం ఐడి ఇవ్వండి."
 
-#: apps/ads/views.py:38 apps/contacts/services.py:457 apps/contacts/views_public.py:40 apps/feed/views.py:89
-msgid "No such village."
-msgstr "ఈ గ్రామం లేదు."
-
-#: apps/ads/views.py:60 apps/bills/views.py:25 apps/contacts/views_admin.py:144 apps/contacts/views_admin.py:174 apps/geography/views_admin.py:51 apps/posts/views.py:105 apps/posts/views.py:519 apps/service_requests/views.py:228 apps/web_admin/api.py:189 apps/web_admin/api.py:193 apps/web_public/api.py:188
+#: apps/ads/views.py:60 apps/bills/views.py:25 apps/contacts/views_admin.py:144 apps/contacts/views_admin.py:174 apps/geography/views_admin.py:51 apps/posts/views.py:149 apps/posts/views.py:592 apps/service_requests/views.py:228 apps/web_admin/api.py:213 apps/web_admin/api.py:217 apps/web_public/api.py:188
 msgid "Only Super Admins can do this."
 msgstr "దీనిని సూపర్ అడ్మిన్లు మాత్రమే చేయగలరు."
 
@@ -467,7 +463,7 @@ msgstr "%(n)d కంటే ఎక్కువ ఎంట్రీలు సరి
 msgid "Use a date like 2026-10-14."
 msgstr "2026-10-14 లాంటి తేదీ ఇవ్వండి."
 
-#: apps/audit/views.py:124 apps/posts/views.py:228
+#: apps/audit/views.py:124 apps/posts/views.py:289
 msgid "Give a user id."
 msgstr "యూజర్ ఐడి ఇవ్వండి."
 
@@ -479,7 +475,7 @@ msgstr "ఆడిట్ లాగ్‌ను సూపర్ అడ్మిన
 msgid "Only Super Admins can download the audit log."
 msgstr "ఆడిట్ లాగ్‌ను సూపర్ అడ్మిన్లు మాత్రమే డౌన్‌లోడ్ చేయగలరు."
 
-#: apps/audit/views.py:231 apps/web_admin/api.py:514
+#: apps/audit/views.py:231 apps/web_admin/api.py:539
 msgid "Only CSV export is available."
 msgstr "CSV ఎగుమతి మాత్రమే అందుబాటులో ఉంది."
 
@@ -487,7 +483,7 @@ msgstr "CSV ఎగుమతి మాత్రమే అందుబాటుల
 msgid "Invalid date."
 msgstr "తేదీ సరైనది కాదు."
 
-#: apps/audit/views.py:124 apps/posts/views.py:228
+#: apps/audit/views.py:124 apps/posts/views.py:289
 msgid "Not a user id."
 msgstr "ఇది యూజర్ ఐడి కాదు."
 
@@ -503,7 +499,11 @@ msgstr "ఈ పేరుతో బిల్ ఇప్పటికే ఉంద�
 msgid "Send every bill's key exactly once."
 msgstr "ప్రతి బిల్ కీని ఒక్కసారి మాత్రమే పంపండి."
 
-#: apps/citizens/serializers.py:218 apps/citizens/serializers.py:224 grama/i18n.py (library message)
+#: apps/citizens/serializers.py:218
+msgid "Citizens cannot post in this category."
+msgstr "పౌరులు ఈ విభాగంలో పోస్ట్ చేయలేరు."
+
+#: apps/citizens/serializers.py:224 apps/citizens/serializers.py:230 grama/i18n.py (library message)
 msgid "This field may not be blank."
 msgstr "ఈ ఫీల్డ్ ఖాళీగా ఉండకూడదు."
 
@@ -544,7 +544,7 @@ msgstr "పోస్ట్‌లో ఒక వీడియో మాత్రమ
 msgid "Video posts are switched off."
 msgstr "వీడియో పోస్టులు ఆపివేయబడ్డాయి."
 
-#: apps/citizens/services.py:435 apps/posts/services.py:746
+#: apps/citizens/services.py:435 apps/posts/services.py:773
 msgid "This is not a citizen post."
 msgstr "ఇది పౌరుడి పోస్ట్ కాదు."
 
@@ -566,7 +566,7 @@ msgstr "మీరు రోజుకు గరిష్టం %(n)d పోస్
 msgid "At most %(n)d photos."
 msgstr "గరిష్టం %(n)d ఫోటోలు."
 
-#: apps/citizens/services.py:439 apps/posts/services.py:734 apps/posts/services.py:836
+#: apps/citizens/services.py:439 apps/posts/services.py:761 apps/posts/services.py:863
 msgid "This post is outside your area."
 msgstr "ఈ పోస్ట్ మీ ప్రాంతం బయట ఉంది."
 
@@ -578,7 +578,7 @@ msgstr "ఈ యాప్‌ను నిర్ధారించలేకపో�
 msgid "The phone check is not available right now. Try again in a few minutes."
 msgstr "ఫోన్ తనిఖీ ఇప్పుడు అందుబాటులో లేదు. కొన్ని నిమిషాల తర్వాత మళ్ళీ ప్రయత్నించండి."
 
-#: apps/citizens/services.py:435 apps/posts/services.py:746
+#: apps/citizens/services.py:435 apps/posts/services.py:773
 msgid "Not a citizen post."
 msgstr "ఇది పౌరుడి పోస్ట్ కాదు."
 
@@ -811,6 +811,10 @@ msgstr "ఈ జిల్లా లేదు."
 msgid "No such mandal."
 msgstr "ఈ మండలం లేదు."
 
+#: apps/contacts/services.py:457 grama/exceptions.py:52
+msgid "No such village."
+msgstr "ఈ గ్రామం లేదు."
+
 #: apps/contacts/services.py:477
 #, python-format
 msgid "Missing columns: %s"
@@ -872,7 +876,7 @@ msgstr "ఫైల్‌ను UTF-8 CSVగా సేవ్ చేయండి."
 msgid "Required."
 msgstr "తప్పనిసరి."
 
-#: apps/contacts/views_admin.py:85 apps/posts/views.py:182
+#: apps/contacts/views_admin.py:85 apps/posts/views.py:243
 msgid "Required with level."
 msgstr "level ఇచ్చినప్పుడు తప్పనిసరి."
 
@@ -1344,237 +1348,237 @@ msgstr "చాలా పొడవు."
 msgid "Required when the server cannot make a poster."
 msgstr "సర్వర్ కవర్ ఫోటో తయారు చేయలేనప్పుడు తప్పనిసరి."
 
-#: apps/posts/models.py:35
+#: apps/posts/models.py:42
 msgid "categories"
 msgstr "వర్గాలు"
 
-#: apps/posts/models.py:53
+#: apps/posts/models.py:60
 msgid "Deadline"
 msgstr "చివరి తేదీ"
 
-#: apps/posts/models.py:54
+#: apps/posts/models.py:61
 msgid "Camp"
 msgstr "శిబిరం"
 
-#: apps/posts/models.py:55
+#: apps/posts/models.py:62
 msgid "Distribution"
 msgstr "పంపిణీ"
 
-#: apps/posts/models.py:56
+#: apps/posts/models.py:63
 msgid "Closure"
 msgstr "మూసివేత"
 
-#: apps/posts/models.py:57
+#: apps/posts/models.py:64
 msgid "Meeting"
 msgstr "సమావేశం"
 
-#: apps/posts/models.py:61
+#: apps/posts/models.py:68
 msgid "Draft"
 msgstr "డ్రాఫ్ట్"
 
-#: apps/posts/models.py:62
+#: apps/posts/models.py:69
 msgid "Pending"
 msgstr "పెండింగ్"
 
-#: apps/posts/models.py:63
+#: apps/posts/models.py:70
 msgid "Published"
 msgstr "ప్రచురితం"
 
-#: apps/posts/models.py:64
+#: apps/posts/models.py:71
 msgid "Recheck"
 msgstr "మళ్ళీ తనిఖీ"
 
-#: apps/posts/models.py:65
+#: apps/posts/models.py:72
 msgid "Discarded"
 msgstr "తిరస్కరించారు"
 
-#: apps/posts/models.py:66
+#: apps/posts/models.py:73
 msgid "Taken down"
 msgstr "తొలగించారు"
 
-#: apps/posts/models.py:69
+#: apps/posts/models.py:76
 msgid "Blocked"
 msgstr "బ్లాక్ అయింది"
 
-#: apps/posts/models.py:203
+#: apps/posts/models.py:210
 msgid "Photo"
 msgstr "ఫోటో"
 
-#: apps/posts/models.py:204
+#: apps/posts/models.py:211
 msgid "Video"
 msgstr "వీడియో"
 
-#: apps/posts/models.py:264
+#: apps/posts/models.py:271
 msgid "Empty means the system acted."
 msgstr "ఖాళీగా ఉంటే సిస్టమ్ చేసిందని అర్థం."
 
-#: apps/posts/serializers.py:312 apps/posts/services.py:404
+#: apps/posts/serializers.py:346 apps/posts/services.py:406
 msgid "Choose who will see the post."
 msgstr "పోస్ట్‌ను ఎవరు చూడాలో ఎంచుకోండి."
 
-#: apps/posts/serializers.py:319
+#: apps/posts/serializers.py:353
 msgid "Enter a title."
 msgstr "శీర్షిక ఇవ్వండి."
 
-#: apps/posts/serializers.py:324
+#: apps/posts/serializers.py:358
 msgid "Enter the post text."
 msgstr "పోస్ట్ వివరాలు రాయండి."
 
-#: apps/posts/services.py:145
+#: apps/posts/services.py:147
 #, python-format
 msgid "A %(status)s post cannot be changed."
 msgstr "ఈ పోస్ట్ '%(status)s' స్థితిలో ఉంది; దీన్ని మార్చలేరు."
 
-#: apps/posts/services.py:146
+#: apps/posts/services.py:148
 #, python-format
 msgid "A %(status)s post cannot be edited."
 msgstr "ఈ పోస్ట్ '%(status)s' స్థితిలో ఉంది; దీన్ని సవరించలేరు."
 
-#: apps/posts/services.py:147
+#: apps/posts/services.py:149
 #, python-format
 msgid "A %(status)s post cannot be submitted."
 msgstr "ఈ పోస్ట్ '%(status)s' స్థితిలో ఉంది; దీన్ని సమీక్షకు పంపలేరు."
 
-#: apps/posts/services.py:148
+#: apps/posts/services.py:150
 #, python-format
 msgid "A %(status)s post cannot be deleted."
 msgstr "ఈ పోస్ట్ '%(status)s' స్థితిలో ఉంది; దీన్ని తొలగించలేరు."
 
-#: apps/posts/services.py:149
+#: apps/posts/services.py:151
 #, python-format
 msgid "A %(status)s post cannot be reversed."
 msgstr "ఈ పోస్ట్ '%(status)s' స్థితిలో ఉంది; దీనిపై నిర్ణయాన్ని మార్చలేరు."
 
-#: apps/posts/services.py:150
+#: apps/posts/services.py:152
 #, python-format
 msgid "A %(status)s post cannot be marked urgent."
 msgstr "ఈ పోస్ట్ '%(status)s' స్థితిలో ఉంది; దీన్ని అత్యవసరంగా గుర్తించలేరు."
 
-#: apps/posts/services.py:151
+#: apps/posts/services.py:153
 #, python-format
 msgid "A %(status)s post cannot be published."
 msgstr "ఈ పోస్ట్ '%(status)s' స్థితిలో ఉంది; దీన్ని ప్రచురించలేరు."
 
-#: apps/posts/services.py:152
+#: apps/posts/services.py:154
 #, python-format
 msgid "A %(status)s post cannot be sent for recheck."
 msgstr "ఈ పోస్ట్ '%(status)s' స్థితిలో ఉంది; దీన్ని మళ్ళీ తనిఖీకి పంపలేరు."
 
-#: apps/posts/services.py:153
+#: apps/posts/services.py:155
 #, python-format
 msgid "A %(status)s post cannot be discarded."
 msgstr "ఈ పోస్ట్ '%(status)s' స్థితిలో ఉంది; దీన్ని తిరస్కరించలేరు."
 
-#: apps/posts/services.py:154
+#: apps/posts/services.py:156
 #, python-format
 msgid "A %(status)s post cannot be taken down."
 msgstr "ఈ పోస్ట్ '%(status)s' స్థితిలో ఉంది; దీన్ని పౌరులకు కనిపించకుండా తొలగించలేరు."
 
-#: apps/posts/services.py:155
+#: apps/posts/services.py:157
 #, python-format
 msgid "A %(status)s post cannot be blocked."
 msgstr "ఈ పోస్ట్ '%(status)s' స్థితిలో ఉంది; దీన్ని బ్లాక్ చేయలేరు."
 
-#: apps/posts/services.py:172
+#: apps/posts/services.py:174
 msgid "A citizen cannot edit a post, so it cannot be sent for recheck. Publish or discard it."
 msgstr "పౌరుడు పోస్ట్‌ను సవరించలేరు, కాబట్టి దాన్ని మళ్ళీ తనిఖీకి పంపలేరు. ప్రచురించండి లేదా తిరస్కరించండి."
 
-#: apps/posts/services.py:181
+#: apps/posts/services.py:183
 msgid "A comment is required for this action."
 msgstr "ఈ చర్యకు వ్యాఖ్య తప్పనిసరి."
 
-#: apps/posts/services.py:408
+#: apps/posts/services.py:410
 msgid "Choose districts, mandals or villages; posting to everyone is not allowed."
 msgstr "జిల్లాలు, మండలాలు లేదా గ్రామాలు ఎంచుకోండి; అందరికీ పోస్ట్ చేయడానికి అనుమతి లేదు."
 
-#: apps/posts/services.py:438
+#: apps/posts/services.py:440
 msgid "Your role cannot post."
 msgstr "మీ పాత్ర పోస్ట్ చేయలేదు."
 
-#: apps/posts/services.py:531 apps/posts/services.py:837
+#: apps/posts/services.py:558 apps/posts/services.py:864
 msgid "Only admins can mark a post as urgent."
 msgstr "పోస్ట్‌ను అత్యవసరంగా అడ్మిన్లు మాత్రమే గుర్తించగలరు."
 
-#: apps/posts/services.py:644
+#: apps/posts/services.py:671
 msgid "Only the author can change this post."
 msgstr "ఈ పోస్ట్‌ను రచయిత మాత్రమే మార్చగలరు."
 
-#: apps/posts/services.py:692
+#: apps/posts/services.py:719
 msgid "Only the author can delete this post."
 msgstr "ఈ పోస్ట్‌ను రచయిత మాత్రమే తొలగించగలరు."
 
-#: apps/posts/services.py:735 apps/posts/views.py:428
+#: apps/posts/services.py:762 apps/posts/views.py:500
 msgid "Your role cannot review posts."
 msgstr "మీ పాత్ర పోస్టులను సమీక్షించలేదు."
 
-#: apps/posts/services.py:740 apps/posts/services.py:740
+#: apps/posts/services.py:767 apps/posts/services.py:767
 msgid "Unknown action."
 msgstr "తెలియని చర్య."
 
-#: apps/posts/services.py:750
+#: apps/posts/services.py:777
 msgid "You cannot review your own post."
 msgstr "మీ సొంత పోస్ట్‌ను మీరు సమీక్షించలేరు."
 
-#: apps/posts/services.py:752
+#: apps/posts/services.py:779
 msgid "You cannot take down this post."
 msgstr "మీరు ఈ పోస్ట్‌ను తొలగించలేరు."
 
-#: apps/posts/services.py:788
+#: apps/posts/services.py:815
 msgid "Pick a different status to move the post to."
 msgstr "పోస్ట్‌ను మార్చడానికి వేరే స్థితి ఎంచుకోండి."
 
-#: apps/posts/services.py:796
+#: apps/posts/services.py:823
 msgid "Only a higher level can reverse this decision."
 msgstr "ఈ నిర్ణయాన్ని పై స్థాయి వారు మాత్రమే మార్చగలరు."
 
-#: apps/posts/services.py:406
+#: apps/posts/services.py:408
 #, python-format
 msgid "Choose at most %(n)d areas, or a wider area."
 msgstr "గరిష్టం %(n)d ప్రాంతాలు ఎంచుకోండి, లేదా పెద్ద ప్రాంతం ఎంచుకోండి."
 
-#: apps/posts/services.py:420
+#: apps/posts/services.py:422
 #, python-format
 msgid "No such active area: %(areas)s."
 msgstr "ఇలాంటి యాక్టివ్ ప్రాంతం లేదు: %(areas)s."
 
-#: apps/posts/services.py:182 grama/i18n.py (library message)
+#: apps/posts/services.py:184 grama/i18n.py (library message)
 msgid "This field is required."
 msgstr "ఈ ఫీల్డ్ తప్పనిసరి."
 
-#: apps/posts/services.py:789
+#: apps/posts/services.py:816
 #, python-format
 msgid "One of %(s)s, not the current one."
 msgstr "%(s)s లో ఒకటి, ప్రస్తుతది కాకుండా."
 
-#: apps/posts/views.py:64
+#: apps/posts/views.py:68
 msgid "Another reviewer already acted on this post."
 msgstr "ఈ పోస్ట్‌పై మరో సమీక్షకులు ఇప్పటికే నిర్ణయం తీసుకున్నారు."
 
-#: apps/posts/views.py:163
+#: apps/posts/views.py:224
 msgid "Unknown source."
 msgstr "తెలియని మూలం."
 
-#: apps/posts/views.py:194
+#: apps/posts/views.py:255
 msgid "Only the Super Admin can list a citizen's posts."
 msgstr "పౌరుడి పోస్టుల జాబితాను సూపర్ అడ్మిన్ మాత్రమే చూడగలరు."
 
-#: apps/posts/views.py:197
+#: apps/posts/views.py:258
 msgid "Give a citizen id."
 msgstr "పౌరుడి ఐడి ఇవ్వండి."
 
-#: apps/posts/views.py:542
+#: apps/posts/views.py:617
 msgid "Telugu cannot be switched off."
 msgstr "తెలుగును ఆపివేయలేరు."
 
-#: apps/posts/views.py:163
+#: apps/posts/views.py:224
 msgid "official or citizen"
 msgstr "official లేదా citizen"
 
-#: apps/posts/views.py:197
+#: apps/posts/views.py:258
 msgid "Not a citizen id."
 msgstr "ఇది పౌరుడి ఐడి కాదు."
 
-#: apps/posts/views.py:542
+#: apps/posts/views.py:617
 msgid "Telugu is required."
 msgstr "తెలుగు తప్పనిసరి."
 
@@ -1684,19 +1688,19 @@ msgstr "ఈ అభ్యర్థన ఇప్పటికే '%(status)s' స�
 msgid "Your role cannot see service requests."
 msgstr "మీ పాత్ర సేవా అభ్యర్థనలను చూడలేదు."
 
-#: apps/web_admin/api.py:93
+#: apps/web_admin/api.py:117
 msgid "days must be between 1 and 366."
 msgstr "days విలువ 1 నుండి 366 మధ్య ఉండాలి."
 
-#: apps/web_admin/api.py:512
+#: apps/web_admin/api.py:537
 msgid "No such report."
 msgstr "ఈ నివేదిక లేదు."
 
-#: apps/web_admin/api.py:93
+#: apps/web_admin/api.py:117
 msgid "1 to 366."
 msgstr "1 నుండి 366."
 
-#: apps/web_admin/api.py:514
+#: apps/web_admin/api.py:539
 msgid "Use csv."
 msgstr "csv వాడండి."
 
@@ -1752,20 +1756,20 @@ msgstr "సంప్రదింపు సందేశం"
 msgid "contact messages"
 msgstr "సంప్రదింపు సందేశాలు"
 
-#: grama/exceptions.py:49
+#: grama/exceptions.py:58
 msgid "That area is outside your area."
 msgstr "ఆ ప్రాంతం మీ ప్రాంతం బయట ఉంది."
 
-#: grama/exceptions.py:112 grama/i18n.py (library message)
+#: grama/exceptions.py:121 grama/i18n.py (library message)
 msgid "Invalid input."
 msgstr "ఇచ్చిన సమాచారం సరైనది కాదు."
 
-#: grama/logos.py:37
+#: grama/logos.py:39
 #, python-format
 msgid "The logo can be at most %(mb)d MB."
 msgstr "లోగో గరిష్టం %(mb)d MB ఉండవచ్చు."
 
-#: grama/logos.py:51
+#: grama/logos.py:53
 #, python-format
 msgid "The logo must be at least %(px)d pixels on each side."
 msgstr "లోగో ప్రతి వైపు కనీసం %(px)d పిక్సెల్స్ ఉండాలి."
