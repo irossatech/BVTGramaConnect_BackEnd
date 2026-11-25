@@ -14,12 +14,20 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.accounts.permissions import HasPerm
 from apps.accounts.tokens import issue_tokens
 from apps.audit.services import record
 
 from . import services_account as accounts
+from .models import CitizenAccount
 from .serializers_account import (
     AccountSerializer,
+    AccountUpdateSerializer,
+    CitizenPasswordChangeSerializer,
+    CodeOnlySerializer,
+    EmailChangeSerializer,
+    MobileChangeSerializer,
+    TokenPairOnlySerializer,
     CodeSentSerializer,
     CitizenForgotSerializer,
     CitizenLoginSerializer,
@@ -126,3 +134,79 @@ class ResetPasswordView(WalletPublicView):
             data.validated_data["login"], data.validated_data["code"], data.validated_data["new_password"]
         )
         return Response(signed_in(account, request))
+
+
+# --- The citizen's own account (BVTGC-125) ---------------------------------------------------------------
+
+
+class CitizenAccountView(APIView):
+    """A logged-in citizen's wallet account (citizen JWT, wallet.use_wallet). The wallet switch is checked
+    first, so a switched-off wallet answers 404 even before the login."""
+
+    permission_classes = [HasPerm("wallet.use_wallet")]
+
+    def initial(self, request, *args, **kwargs):
+        accounts.require_wallet()
+        super().initial(request, *args, **kwargs)
+
+    def account(self) -> CitizenAccount:
+        return CitizenAccount.objects.select_related("user").get(user=self.request.user)
+
+    def answer(self, account, status_code=status.HTTP_200_OK):
+        return Response(AccountSerializer(account, context={"request": self.request}).data, status=status_code)
+
+
+class AccountView(CitizenAccountView):
+    @extend_schema(summary="The citizen's own wallet account; records today for the active rule", responses=AccountSerializer)
+    def get(self, request):
+        account = self.account()
+        accounts.record_active_day(account)
+        return self.answer(account)
+
+    @extend_schema(summary="Change the village or the language", request=AccountUpdateSerializer, responses=AccountSerializer)
+    def patch(self, request):
+        data = AccountUpdateSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        return self.answer(accounts.update_account(self.account(), **data.validated_data))
+
+
+class AccountPasswordView(CitizenAccountView):
+    @extend_schema(
+        summary="Change the password; every other login ends and this phone gets new tokens",
+        request=CitizenPasswordChangeSerializer,
+        responses=TokenPairOnlySerializer,
+    )
+    def post(self, request):
+        data = CitizenPasswordChangeSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        tokens = accounts.change_password(
+            self.account(), data.validated_data["current_password"], data.validated_data["new_password"]
+        )
+        return Response({"access": tokens["access"], "refresh": tokens["refresh"]})
+
+
+class AccountEmailView(CitizenAccountView):
+    @extend_schema(summary="Send a code to a new email, after the password", request=EmailChangeSerializer, responses=CodeSentSerializer)
+    def post(self, request):
+        data = EmailChangeSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        sent = accounts.start_email_change(self.account(), data.validated_data["email"], data.validated_data["password"])
+        return Response(sent.as_dict(with_hint=True))
+
+
+class AccountEmailVerifyView(CitizenAccountView):
+    @extend_schema(summary="Move the account to the new email with its code", request=CodeOnlySerializer, responses=AccountSerializer)
+    def post(self, request):
+        data = CodeOnlySerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        return self.answer(accounts.finish_email_change(self.account(), data.validated_data["code"]))
+
+
+class AccountMobileView(CitizenAccountView):
+    @extend_schema(summary="Change the mobile number, after the password", request=MobileChangeSerializer, responses=AccountSerializer)
+    def post(self, request):
+        data = MobileChangeSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        return self.answer(
+            accounts.change_mobile(self.account(), data.validated_data["mobile"], data.validated_data["password"])
+        )

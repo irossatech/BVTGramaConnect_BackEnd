@@ -16,6 +16,11 @@ urlpatterns = [
     path("citizen/auth/login/", views_account.LoginView.as_view(), name="login"),
     path("citizen/auth/password/forgot/", views_account.ForgotPasswordView.as_view(), name="password-forgot"),
     path("citizen/auth/password/reset/", views_account.ResetPasswordView.as_view(), name="password-reset"),
+    path("citizen/account/", views_account.AccountView.as_view(), name="account"),
+    path("citizen/account/password/", views_account.AccountPasswordView.as_view(), name="account-password"),
+    path("citizen/account/email/", views_account.AccountEmailView.as_view(), name="account-email"),
+    path("citizen/account/email/verify/", views_account.AccountEmailVerifyView.as_view(), name="account-email-verify"),
+    path("citizen/account/mobile/", views_account.AccountMobileView.as_view(), name="account-mobile"),
     # The Super Admin's blocked citizens (owner's request of 2026-11-21).
     path("admin/citizens/blocked/", views_admin.BlockedCitizensView.as_view(), name="admin-blocked"),
     path("admin/citizens/<uuid:pk>/blocks/", views_admin.CitizenBlocksView.as_view(), name="admin-blocks"),

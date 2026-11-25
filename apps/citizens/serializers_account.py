@@ -39,6 +39,35 @@ class CitizenResetSerializer(CitizenForgotSerializer):
     new_password = serializers.CharField(max_length=128, trim_whitespace=False)
 
 
+class AccountUpdateSerializer(serializers.Serializer):
+    village_id = serializers.IntegerField(min_value=1, required=False)
+    language = serializers.ChoiceField(choices=["te", "en"], required=False)
+
+
+class CitizenPasswordChangeSerializer(serializers.Serializer):
+    current_password = serializers.CharField(max_length=128, trim_whitespace=False)
+    new_password = serializers.CharField(max_length=128, trim_whitespace=False)
+
+
+class EmailChangeSerializer(serializers.Serializer):
+    email = serializers.EmailField(max_length=254, help_text="The new email")
+    password = serializers.CharField(max_length=128, trim_whitespace=False)
+
+
+class CodeOnlySerializer(serializers.Serializer):
+    code = serializers.CharField(max_length=10)
+
+
+class MobileChangeSerializer(serializers.Serializer):
+    mobile = serializers.CharField(max_length=20, help_text="The new 10-digit number")
+    password = serializers.CharField(max_length=128, trim_whitespace=False)
+
+
+class TokenPairOnlySerializer(serializers.Serializer):
+    access = serializers.CharField()
+    refresh = serializers.CharField()
+
+
 class SignupTokenSerializer(serializers.Serializer):
     signup_token = serializers.CharField(max_length=500)
 

@@ -109,6 +109,10 @@ ACTION_LABELS = {
     "citizen.code_sent": _("sent a wallet code by email"),
     "citizen.account_created": _("created a citizen wallet account"),
     "citizen.password_reset": _("reset a forgotten wallet password with an email code"),
+    "citizen.password_changed": _("changed their wallet password"),
+    "citizen.email_changed": _("changed their wallet account’s email"),
+    "citizen.mobile_changed": _("changed their wallet account’s mobile number"),
+    "citizen.village_changed": _("moved their wallet account to another village"),
     # Reports and delivery
     "report.exported": _("exported a report"),
     "email.failed": _("email not delivered"),
