@@ -85,6 +85,7 @@
         "apps/accounts/tests/test_users_contact_masking.py",
         "apps/audit/tests/test_audit.py",
         "apps/audit/tests/test_audit_atomic.py",
+        "apps/posts/tests/test_category_audit_via.py",
         "apps/audit/tests/test_audit_window.py",
         "apps/audit/tests/test_mask_migration.py",
         "apps/audit/tests/test_record_limits.py",

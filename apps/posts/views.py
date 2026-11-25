@@ -19,6 +19,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts import authz
+from apps.accounts.authentication import client_via
 from apps.accounts.models import RoleAssignment, User
 from apps.accounts.permissions import PLATFORM, HasPerm
 from apps.audit.services import record
@@ -164,7 +165,7 @@ class AdminCategoryViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, mixin
             logos.store_logo(category.icon, category.key, icon)
             category.save(update_fields=["icon"])
         record("category.created", actor=self.request.user, target=category, target_label=category.name_en,
-               via="console", data={"key": category.key, "icon": icon is not None})
+               via=client_via(self.request), data={"key": category.key, "icon": icon is not None})
 
     @transaction.atomic
     def perform_update(self, serializer):
@@ -183,7 +184,7 @@ class AdminCategoryViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, mixin
             changes["icon"] = "replaced" if icon is not None else "removed"
         record(
             "category.updated", actor=self.request.user, target=category, target_label=category.name_en,
-            via="console", data=changes,
+            via=client_via(self.request), data=changes,
         )
 
 
@@ -623,5 +624,5 @@ class AdminSettingsView(APIView):
                 SettingOverride.objects.update_or_create(key=key, defaults={"value": value, "updated_by": request.user})
             after = current_settings()
             if changes:
-                record("setting.changed", actor=request.user, via="console", data={"before": before, "after": after})
+                record("setting.changed", actor=request.user, via=client_via(request), data={"before": before, "after": after})
         return Response(after)
