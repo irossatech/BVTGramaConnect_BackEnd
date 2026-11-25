@@ -181,6 +181,7 @@
       "about": "Error shape, 400/404 instead of 500, contract and schema, languages, request id, console and website API, the suite's own categories",
       "files": [
         "apps/geography/tests/test_schema.py",
+        "apps/audit/tests/test_action_labels.py",
         "apps/posts/tests/test_app_update_versions.py",
         "apps/web_admin/tests/test_console_api.py",
         "apps/web_admin/tests/test_translations_command.py",

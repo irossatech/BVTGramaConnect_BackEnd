@@ -401,8 +401,9 @@ Lean on purpose, for 2G.
 
 ### AuditEntry
 ```json
-{"id": "…", "at": "…", "actor": {"id": "…", "name": "Suresh Babu", "role": "VILLAGE_ADMIN"}, "action": "post.published", "type": "posts", "target_label": "గ్రామ సభ సమావేశం – అక్టోబర్ 20", "target": {"type": "post", "id": "c2d4…"}, "area": Area, "via": "app"}
+{"id": "…", "at": "…", "actor": {"id": "…", "name": "Suresh Babu", "role": "VILLAGE_ADMIN"}, "action": "post.published", "action_label": "పోస్ట్‌ను ప్రచురించారు", "type": "posts", "target_label": "గ్రామ సభ సమావేశం – అక్టోబర్ 20", "target": {"type": "post", "id": "c2d4…"}, "area": Area, "via": "app"}
 ```
+- `action_label` (BVTGC-100, 2026-11-25): the action in words, a phrase that reads after the person's name ("Suresh Babu published a post" / "సురేష్ బాబు పోస్ట్‌ను ప్రచురించారు"), in the request's language (`Accept-Language`, Telugu by default). Clients show it instead of keeping their own list of actions; an action unknown to the server reads "other activity" / "ఇతర చర్య", never its code. `action` stays the code, for filters and logic. The same field is in the dashboard's `recent_activity` (section 8). Additive: older clients ignore it.
 - `type` values: `posts`, `users`, `areas`, `logins`, `settings`, `system`.
 - `via` values: `app`, `console`, `system`.
 - `action` keys, localised by the client: `auth.login`, `post.submitted`, `post.resubmitted`, `post.published`, `post.auto_published`, `post.recheck`, `post.discarded`, `post.unpublished`, `post.reversed`, `post.escalated`, `post.created`, `post.updated`, `post.deleted`, `user.updated`, `user.username_changed`, `user.created`, `user.blocked`, `user.unblocked`, `user.reassigned`, `user.assignment_added`, `user.assignment_removed`, `area.created`, `area.updated`, `area.deactivated`, `area.reactivated`, `category.created`, `category.updated`, `setting.changed`, `template.updated`, `report.exported`, `post.blocked`, `citizen.blocked`, `citizen.unblocked`, `citizen.block_ended` (actor System: the block's time was up; added 2026-11-21), `citizen.posts_discarded`.

@@ -30,6 +30,7 @@ from apps.accounts import authz
 from apps.accounts.authentication import client_via
 from apps.accounts.permissions import HasPerm
 
+from .labels import action_label
 from .models import AuditLog, AuditType
 from .services import record
 
@@ -48,10 +49,15 @@ class AuditEntrySerializer(serializers.ModelSerializer):
     actor = serializers.SerializerMethodField()
     target = serializers.SerializerMethodField()
     area = serializers.SerializerMethodField()
+    action_label = serializers.SerializerMethodField()
 
     class Meta:
         model = AuditLog
-        fields = ["id", "at", "actor", "action", "type", "target_label", "target", "area", "via", "data"]
+        fields = ["id", "at", "actor", "action", "action_label", "type", "target_label", "target", "area", "via", "data"]
+
+    def get_action_label(self, obj) -> str:
+        """The action in words, in the request's language (BVTGC-100)."""
+        return action_label(obj.action)
 
     def get_actor(self, obj) -> dict:
         if obj.actor_id is None and not obj.actor_name:
