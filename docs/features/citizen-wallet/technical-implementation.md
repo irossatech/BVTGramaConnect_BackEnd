@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| Status | Draft design, 2026-11-25. Nothing is built yet. |
-| Requirements | [requirements.md](requirements.md) (decisions D1–D7, rules in section 7) |
+| Status | Draft design, 2026-11-25 (v3: login by mobile number and a one-time code replaces Google sign-in). Nothing is built yet. |
+| Requirements | [requirements.md](requirements.md) (decisions D1–D9, rules in section 7) |
 | Code read for this design | BackEnd `dev` `70b0f19`, Web `dev` `241cf1b`, Mobile `dev` `b3b7eff` |
 | Owners | Backend (Basam Bhargavi), Mobile and web (Mohit), QA (Anvesh Kolli) |
 
@@ -14,23 +14,23 @@ The design follows the backend's own rules (`.claude/conventions.md`): roles and
 ```mermaid
 sequenceDiagram
     participant App as Mobile app
-    participant G as Google
     participant API as Backend
-    participant WA as WhatsApp Cloud API
-    App->>G: Google sign-in (serverClientId = web client id)
-    G-->>App: ID token
-    App->>API: POST citizen/account/google/ {id_token, village_id, age_confirmed, consent_version, referral_code?}
-    API->>G: verify the ID token (google-auth, cached keys)
-    API-->>App: JWT pair + account (Citizen role in the village)
-    App->>API: POST citizen/account/mobile/ {mobile}
-    API->>WA: send the authentication template with a 6-digit code
-    WA-->>App: code on WhatsApp
-    App->>API: POST citizen/account/mobile/verify/ {code}
-    API-->>App: account (mobile verified); a waiting referral becomes PENDING
+    participant MSG as WhatsApp Cloud API or SMS provider
+    App->>API: POST citizen/auth/code/ {mobile, channel, android_id?}
+    API->>MSG: a 6-digit code (WhatsApp template, or DLT-registered SMS)
+    MSG-->>App: the code on WhatsApp or by SMS
+    App->>API: POST citizen/auth/verify/ {mobile, code}
+    alt the number has an account
+        API-->>App: JWT pair + account (or "Is this your account?" when unused for long)
+    else a new number
+        API-->>App: signup_token (15 minutes, used once)
+        App->>API: POST citizen/auth/signup/ {signup_token, name, village_id, age_confirmed, consent_version, language, referral_code?, android_id?}
+        API-->>App: JWT pair + account (Citizen role in the village); a referral starts PENDING
+    end
     Note over API: Hourly job: PENDING referrals past their hold date are CONFIRMED or REJECTED
 ```
 
-Three things are new: a **citizen account** (a Django user with the new Citizen role), **mobile verification** by WhatsApp, and a **wallet** with **referrals**. Device posting tokens (`apps.citizens`, `X-Citizen-Token`) stay as they are: posting and service requests do not need the account (D2).
+Three things are new: a **citizen account** (a Django user with the new Citizen role), **sign-in by mobile number** with a one-time code (WhatsApp, or SMS as the backup), and a **wallet** with **referrals**. Device posting tokens (`apps.citizens`, `X-Citizen-Token`) stay as they are: posting and service requests do not need the account (D2).
 
 ## 2. Data model
 
@@ -43,31 +43,35 @@ Three things are new: a **citizen account** (a Django user with the new Citizen 
 | Field | Type | Notes |
 |---|---|---|
 | `user` | OneToOne `accounts.User`, primary key | The Django user. `set_unusable_password()`: a citizen never logs in with a password. |
-| `google_sub` | Char(255), unique, null | Google's stable account id (`sub`). Null after deletion. |
 | `village_id` | PositiveInteger | Also the area of the Citizen role assignment. |
 | `age_confirmed_at` | DateTime | 18+ confirmation (D5). |
 | `consent_version`, `consent_at` | Char(20), DateTime | Which consent notice was agreed, and when. |
-| `mobile_hash` | Char(64), unique, null | Keyed hash of the verified 10-digit number (same keying as `citizens.services._keyed_hash`). Not `User.mobile`: that column is unique across officials (`accounts/models.py:101-108`), so an official's number would clash. |
+| `mobile_hash` | Char(64), unique, null | Keyed hash of the account's 10-digit number, which is the login (same keying as `citizens.services._keyed_hash`). Null only after deletion. Not `User.mobile`: that column is unique across officials (`accounts/models.py:101-108`), so an official's number would clash. |
 | `mobile_last4` | Char(4) | For display and for the Super Admin's search. |
-| `mobile_verified_at` | DateTime, null | Points need this (D6). |
+| `mobile_verified_at` | DateTime | When the current number was last proven with a code (sign-up or number change). |
+| `last_active_at` | DateTime | The last day the app opened with the account (section 3.6). The unused account check reads it (FR-12a). |
 | `referral_code` | Char(8), unique | Generated, no look-alike characters (the alphabet of `accounts/credentials.py:32`). |
 | `signup_android_id_hash` | Char(64), indexed | From the phone used at sign-up; one welcome bonus per phone. |
 | `deleted_at` | DateTime, null | Set when the citizen deletes the account (section 3.8). |
-| `deleted_google_hash`, `deleted_mobile_hash` | Char(64), indexed | Kept after deletion to stop repeat welcome bonuses (requirements Q9, pending legal review). |
+| `deleted_mobile_hash` | Char(64), indexed | Kept after deletion to stop repeat welcome bonuses (requirements Q9, pending legal review). |
 | `created_at` | DateTime | |
 
 **MobileCode** (one row per code sent; never holds the full number)
 
 | Field | Notes |
 |---|---|
-| `account` | FK CitizenAccount |
+| `account` | FK CitizenAccount, null: a sign-in code for a number without an account has none |
+| `purpose` | `LOGIN` or `CHANGE_NUMBER` |
+| `channel` | `WHATSAPP` or `SMS` |
 | `mobile_hash`, `mobile_last4` | The number the code was sent to |
+| `android_id_hash` | The phone that asked, for the per-phone limit; may be empty |
 | `code_hash` | HMAC of the code with the row id and `SECRET_KEY`; the code itself is never stored or logged |
 | `expires_at` | Sent + 10 minutes |
 | `attempts` | Wrong tries, at most 5 |
-| `verified_at` | Null until used |
-| `provider_message_id` | WhatsApp message id, for support |
-| `created_at` | Counts the daily limits |
+| `verified_at` | Null until the right code is entered |
+| `consumed_at` | Set when a sign-up, an "Is this your account?" answer or a number change uses the code; each code is used once |
+| `provider_message_id` | WhatsApp or SMS provider's message id, for support |
+| `created_at` | Counts the limits |
 
 **CitizenActiveDay**: `account`, `day` (DateField, India date), unique together. One row per day the app opened with the account (section 3.6). Rows older than 60 days are deleted by housekeeping; they are not records under the "data is kept permanently" decision, only a counter.
 
@@ -99,7 +103,7 @@ Create it as `.claude/conventions.md` says (`startapp wallet apps/wallet`, label
 | `id` | UUID |
 | `referrer` | FK CitizenAccount |
 | `referee` | OneToOne CitizenAccount (a citizen is referred at most once, FR-16) |
-| `status` | `WAITING` (code given, mobile not verified), `PENDING` (held), `CONFIRMED`, `REJECTED` |
+| `status` | `PENDING` (held), `CONFIRMED`, `REJECTED`. Version 2 also had `WAITING` for accounts without a verified number; since v3 every account has one from sign-up. |
 | `reject_reason` | One of the keys in section 3.4 |
 | `pending_at`, `confirm_after`, `decided_at` | |
 | `decided_by` | FK User, null (Super Admin) |
@@ -155,51 +159,93 @@ Today every user with a role is an official, and some code relies on that. A Cit
 
 Before merging, grep for `IsAuthenticated]` and `authz.grants(` and confirm each place. Every endpoint officials use must answer a citizen account with 403, with a test per endpoint.
 
-### 3.3 Google sign-in
+### 3.3 Sign-in with a one-time code
 
-- `google-auth` is already installed (`requirements.txt`, used for FCM). Verify the token with `google.oauth2.id_token.verify_oauth2_token(token, google.auth.transport.requests.Request())`, then check `aud` against `GOOGLE_OAUTH_CLIENT_IDS` (the Web client id the app uses as `serverClientId`), `iss` (`accounts.google.com`) and expiry. Cache Google's keys (the library fetches them over HTTPS).
-- Find the account by `sub`. If none, sign-up needs `age_confirmed: true`, `consent_version`, an active `village_id`, and the Wallet on setting.
-- Create the user with a generated username that passes `username_validator` (never shown, never used to log in), `name` from the token, `preferred_language` from the request, an unusable password, the Citizen assignment, the account, its referral code and the wallet, in one transaction.
-- Issue tokens with `accounts.tokens.issue_tokens(user)`, so the token version, blocking and the 90-day limit (`JWT_ABSOLUTE_DAYS`) work as for officials. Refresh and logout use the existing `auth/refresh/` and `auth/logout/`.
-- The email from Google is not stored (requirements Q5).
-- A blocked account (`is_active` false) answers 403 `account_blocked`, the existing code.
+Four public endpoints, throttled per internet address like the other public citizen endpoints. No email and no Google account are asked for or stored (D1).
 
-### 3.4 Mobile verification by WhatsApp
+**`POST citizen/auth/code/`** `{mobile, channel, android_id?}`
+- Checks the number with `mobile_validator` (`apps/accounts/models.py:14`), the channel against the gateways that are on, and the limits (3.4).
+- Creates a MobileCode (`purpose` LOGIN, `account` set when the number already has one) and sends the code in the request (3.4).
+- Answers the same `{expires_in, resend_after, channel}` whether or not the number has an account, so it never tells who is registered (FR-11).
 
-**Gateway.** Pluggable, like `apps/notifications/push.py`: setting `WHATSAPP_GATEWAY` names `apps.citizens.whatsapp.MetaCloudGateway` (production) or `LocmemWhatsAppGateway` (tests). Without `WHATSAPP_ACCESS_TOKEN` the gateway is off and `mobile/` answers 503 `whatsapp_unavailable`.
+**`POST citizen/auth/verify/`** `{mobile, code}`
+- Finds the newest live LOGIN code for the number's hash. A wrong code is a conditional UPDATE on `attempts < 5` (`code_wrong` with `attempts_left`).
+- The right code sets `verified_at`. Then:
+  - an active account with this `mobile_hash`, used within `CITIZEN_STALE_DAYS`: `{status: "signed_in", access, refresh, account}`;
+  - an active account unused for longer: `{status: "confirm", masked_name, confirm_token}` (FR-12a). `masked_name` keeps the first letter of each word of the name and replaces the rest with `***`;
+  - a blocked account (`is_active` false): 403 `account_blocked`, the existing code;
+  - no account: `{status: "new", signup_token}`.
 
-**Sending.** `POST https://graph.facebook.com/<version>/<WHATSAPP_PHONE_NUMBER_ID>/messages` with the approved authentication template (`WHATSAPP_OTP_TEMPLATE`), in the account's language (`te` or `en`), the code as the body parameter and the copy-code button parameter.
-- The send happens **in the request**, with a 10-second timeout, not in a django-q job: the conventions forbid full mobile numbers in task arguments, and this way the number is never stored.
-- Start with the **copy-code** button. One-tap autofill needs the package name `com.bvt.app`, each signing key's hash, and a native Android handshake in the app; add it later.
+**`POST citizen/auth/signup/`** `{signup_token, name, village_id, age_confirmed, consent_version, language, referral_code?, android_id?}`
+- Needs `age_confirmed: true`, the current `consent_version`, an active village, a name of 1 to 100 characters, and the Wallet on setting.
+- Creates, in one transaction:
+  - the user, with a generated username that passes `username_validator` (never shown, never used to log in), the name, `preferred_language` and an unusable password;
+  - the Citizen assignment;
+  - the account (`mobile_hash`, `mobile_last4`, `mobile_verified_at`), its referral code and the wallet;
+  - the referral, if a code was given (3.5).
+- A bad referral code refuses the whole sign-up with its error code, so the app can let the citizen fix or clear it.
+- Two sign-ups racing for one number: the unique `mobile_hash` lets one win, and the other gets 409 `mobile_in_use`.
+
+**`POST citizen/auth/confirm/`** `{confirm_token, is_mine}`
+- `true`: signs in, as above.
+- `false`: closes the old account as in 3.8, audited as `citizen.account_released`, then answers `{status: "new", signup_token}`.
+
+**Tokens and sessions**
+- `signup_token` and `confirm_token` are signed with `django.core.signing` (a salt for each purpose). They are valid for 15 minutes and carry only the MobileCode id.
+- Using a token sets the code's `consumed_at` with a conditional UPDATE (`consumed_at IS NULL`), so each token works once (401 `signup_token_invalid` after that). The full number is never in a token, a row, a log or a task argument.
+- Sessions are issued with `accounts.tokens.issue_tokens(user)`, so the token version, blocking and the 90-day limit (`JWT_ABSOLUTE_DAYS`) work as for officials.
+- Refresh and logout use the existing `auth/refresh/` and `auth/logout/`.
+
+### 3.4 Sending codes: WhatsApp and SMS
+
+**Gateways.** Pluggable, like `apps/notifications/push.py`.
+- `WHATSAPP_GATEWAY` names `apps.citizens.whatsapp.MetaCloudGateway` (production) or `LocmemWhatsAppGateway` (tests). It is off without `WHATSAPP_ACCESS_TOKEN`.
+- `SMS_GATEWAY` names a class for the Indian SMS provider the client picks (C3), or `LocmemSmsGateway` (tests). It is off without `SMS_API_KEY`.
+- `GET app-config/` lists the channels that are on (`citizen_code_channels`), so the app shows only buttons that work. A channel that is off answers 503 `channel_unavailable`.
+
+**WhatsApp.** `POST https://graph.facebook.com/<version>/<WHATSAPP_PHONE_NUMBER_ID>/messages` with the approved authentication template (`WHATSAPP_OTP_TEMPLATE`), in the citizen's language (`te` or `en`), the code as the body parameter and the copy-code button parameter. Start with the **copy-code** button. One-tap autofill needs the package name `com.bvt.app`, each signing key's hash and a native Android handshake in the app, so it comes later (Q-T2).
+
+**SMS.**
+- The provider sends the DLT-registered template for the language (`SMS_DLT_TEMPLATE_IDS`) from the sender name `SMS_SENDER_ID`, with `SMS_DLT_ENTITY_ID`. For example: "<code> is your Grama Connect code. Do not share it with anyone."
+- The app reads it with Android's **SMS User Consent API**: when the SMS arrives, Android asks once "Allow Grama Connect to read this message?" and fills the code in. Unlike the SMS Retriever API, it needs no app hash in the message, so it works the same for every signing key, and the message can be in Telugu.
+- A Telugu SMS is Unicode (70 characters per part) and costs more than English. Check the provider's price for the Telugu text.
+
+**Sending in the request.** Both channels send **in the request**, with a 10-second timeout, not in a django-q job: the conventions forbid full mobile numbers in task arguments, and this way the number is never stored.
 
 **Rules** (FR-10, FR-11)
 - 6 digits from `secrets.randbelow`, valid 10 minutes, 5 wrong tries.
-- A new code after 60 seconds (429 `code_cooldown` with `retry_after_s`), at most 5 codes a day per number and 10 per account (429 `code_limit`).
+- A new code after 60 seconds (429 `code_cooldown` with `retry_after_s`).
+- At most 5 codes a day per number over both channels, and 10 a day per phone (`android_id_hash`), on top of the per-address throttle (429 `code_limit`).
 - Wrong tries go through a conditional UPDATE (`attempts < 5`), so parallel tries cannot exceed the limit on any database.
-- On a correct code, setting `mobile_hash` hits the unique constraint if another account holds the number: 409 `mobile_in_use`, told only to the person who entered that number's code.
 
-**Delivery.** WhatsApp may accept a message for a number without WhatsApp and report the failure later by webhook. **Check this during implementation.** The app always offers "Didn't get the code?" with the resend timer; a status webhook can come later.
+**Delivery.** WhatsApp may accept a message for a number without WhatsApp and report the failure only later, by webhook. So the app offers **Send by SMS instead** when the resend timer ends. A status webhook can come later if support needs it.
 
-**Audit.** `citizen.code_sent` (last 4 digits only) and `citizen.mobile_verified`. Never the code or the full number.
+**Audit.** `citizen.code_sent` (channel, purpose, last 4 digits only). Never the code or the full number.
+
+### 3.4a Changing the number
+
+- `POST citizen/account/mobile/` `{mobile, channel}` (citizen JWT) sends a CHANGE_NUMBER code to the new number, with the same rules. It does not say whether another account holds the number.
+- `POST citizen/account/mobile/verify/` `{code}`: the right code sets the account's `mobile_hash`, `mobile_last4` and `mobile_verified_at` in one UPDATE.
+  - If another account holds the number, the unique constraint answers 409 `mobile_in_use`, told only to the person who proved that number.
+  - The citizen's other sessions end (token version bump) and this phone gets new tokens.
+  - Audit `citizen.mobile_changed` with the old and the new last 4 digits.
+- No Super Admin endpoint moves an account to another number (D8).
 
 ### 3.5 Referrals and the wallet
 
-**Giving a code** (at sign-up or `POST citizen/account/referral/`, until the mobile is verified; FR-14)
+**Giving a code** (only in `citizen/auth/signup/`; FR-14, D9)
 
-The code is refused with:
+The sign-up is refused with:
 
 | Error code | When |
 |---|---|
 | `referral_code_invalid` | No such code |
-| `referral_code_own` | The referrer is the same person: same account, or same mobile hash or Android id hash on either account |
-| `referral_not_open` | The referrer's mobile is not verified, or their account is blocked or deleted |
-| `referral_window_closed` | The mobile is already verified, or a referral already exists |
+| `referral_code_own` | The referrer is the same person: the same mobile hash, or the same Android id hash on either account |
+| `referral_not_open` | The referrer's account is blocked or deleted |
 
-Otherwise a Referral is created as WAITING.
-
-**Mobile verified** (in the same transaction as the verification): a WAITING referral becomes PENDING with `confirm_after = now + REFERRAL_HOLD_DAYS`. Two HELD entries are created, with idempotency keys `ref:<referral id>:referrer` and `ref:<referral id>:welcome`:
+Otherwise, in the sign-up's transaction, a Referral is created as PENDING with `confirm_after = now + REFERRAL_HOLD_DAYS`. Two HELD entries are created, with idempotency keys `ref:<referral id>:referrer` and `ref:<referral id>:welcome`:
 - the referrer's reward;
-- the referee's welcome bonus, unless an earlier account with the same `signup_android_id_hash`, or a deleted account with the same Google or mobile hash, already got one (the bonus is then skipped, with a note in the history).
+- the referee's welcome bonus, unless an earlier account with the same `signup_android_id_hash`, or a deleted account with the same mobile hash, already got one (the bonus is then skipped, with a note in the history).
 
 `held_points` goes up through `F()` updates. After commit, the referrer gets a push.
 
@@ -217,8 +263,6 @@ Otherwise the referral is CONFIRMED.
 - The entries move HELD → CONFIRMED (or CANCELLED) in the same transaction, and the wallet cache moves with them: `held_points = F('held_points') - n`, `confirmed_points = F('confirmed_points') + n`.
 - Pushes go out after commit. Audit `referral.confirmed` or `referral.rejected`.
 
-A WAITING referral whose referee has not verified within 30 days is rejected (`mobile_not_verified`) by the same job.
-
 **Super Admin**
 - Confirm or reject a PENDING referral early, with a comment.
 - Adjust a wallet with a reason: an ADJUSTMENT entry; a negative one uses `UPDATE … WHERE confirmed_points >= n`, else 409 `not_enough_points` (FR-23).
@@ -227,7 +271,7 @@ A WAITING referral whose referee has not verified within 30 days is rejected (`m
 
 ### 3.6 Active days
 
-`GET citizen/account/`, which the app calls when it opens, inserts today's CitizenActiveDay row if it is missing (`get_or_create` on the unique pair). That is one cheap write per account per day, and it gives the active rule (requirements section 7) without tracking anything else.
+`GET citizen/account/`, which the app calls when it opens, inserts today's CitizenActiveDay row if it is missing (`get_or_create` on the unique pair). That is one cheap write per account per day, and it gives the active rule (requirements section 7) without tracking anything else. The same write sets `last_active_at`, which the unused account check reads (3.3); the day rows are deleted after 60 days, so the check cannot use them.
 
 ### 3.7 Settings
 
@@ -241,13 +285,14 @@ Runtime settings, overridable from the console (`apps/posts/services.py` `RUNTIM
 | `REFERRAL_HOLD_DAYS` | 7 |
 | `REFERRAL_ACTIVE_DAYS` | 2 |
 | `REFERRALS_PER_MONTH` | 30 |
+| `CITIZEN_STALE_DAYS` | 180 (the unused account check, FR-12a; requirements Q10) |
 
 Env only (secrets and fixed values):
-- `GOOGLE_OAUTH_CLIENT_IDS`
 - `WHATSAPP_GATEWAY`, `WHATSAPP_ACCESS_TOKEN` (secret), `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_OTP_TEMPLATE`, `WHATSAPP_API_VERSION`
+- `SMS_GATEWAY`, `SMS_API_KEY` (secret), `SMS_SENDER_ID`, `SMS_DLT_ENTITY_ID`, `SMS_DLT_TEMPLATE_IDS` (one per language)
 - `CITIZEN_CONSENT_VERSION`
 
-`GET app-config/` adds `wallet_enabled`, so the app and the website hide the feature while it is off.
+`GET app-config/` adds `wallet_enabled`, so the app and the website hide the feature while it is off, and `citizen_code_channels` (3.4).
 
 ### 3.8 Account deletion
 
@@ -256,11 +301,11 @@ Env only (secrets and fixed values):
 - the name replaced with "Deleted citizen";
 - the username scrambled;
 - push devices unlinked;
-- `google_sub` and `mobile_hash` moved to the `deleted_*` hash columns (kept for 1 year if legal agrees, requirements Q9, then cleared by housekeeping);
+- `mobile_hash` moved to `deleted_mobile_hash` (kept for 1 year if legal agrees, requirements Q9, then cleared by housekeeping);
 - the role assignment deactivated;
 - HELD entries cancelled.
 
-Confirmed entries and referrals stay, with no personal details, for the audit trail. Audit `citizen.account_deleted`. This is the exception to "data is kept permanently" (requirements Q8, needs the owner's confirmation).
+Confirmed entries and referrals stay, with no personal details, for the audit trail. Audit `citizen.account_deleted`. A **No** to "Is this your account?" (3.3) closes the old account the same way, audited as `citizen.account_released`. This is the exception to "data is kept permanently" (requirements Q8, needs the owner's confirmation).
 
 ### 3.9 API (draft for `docs/api-contract.md`, new section 21)
 
@@ -268,12 +313,14 @@ All under `/api/v1/`. Citizen endpoints need a citizen JWT holding `wallet.use_w
 
 | Method and path | Who | Request | Response |
 |---|---|---|---|
-| `POST citizen/account/google/` | public | `{id_token, village_id, age_confirmed, consent_version, language, referral_code?, android_id?}` | `{access, refresh, account}`; 201 on sign-up, 200 on sign-in |
+| `POST citizen/auth/code/` | public | `{mobile, channel, android_id?}` | `{expires_in, resend_after, channel}`, the same for every number |
+| `POST citizen/auth/verify/` | public | `{mobile, code}` | `{status: "signed_in", access, refresh, account}`, `{status: "confirm", masked_name, confirm_token}` or `{status: "new", signup_token}` |
+| `POST citizen/auth/signup/` | public | `{signup_token, name, village_id, age_confirmed, consent_version, language, referral_code?, android_id?}` | 201 `{access, refresh, account}` |
+| `POST citizen/auth/confirm/` | public | `{confirm_token, is_mine}` | As `verify/`: `signed_in`, or `new` with a `signup_token` |
 | `GET citizen/account/` | citizen | — | `Account`: name, village, `mobile_verified`, `mobile_last4`, `referral_code`, `invite_url`, wallet summary, `referral` (own, if any). Records today's active day |
 | `PATCH citizen/account/` | citizen | `{village_id?, language?}` | `Account` |
-| `POST citizen/account/mobile/` | citizen | `{mobile}` | `{expires_in, resend_after}` |
-| `POST citizen/account/mobile/verify/` | citizen | `{code}` | `Account` |
-| `POST citizen/account/referral/` | citizen | `{code}` | `Account` |
+| `POST citizen/account/mobile/` | citizen | `{mobile, channel}` (the new number) | `{expires_in, resend_after, channel}` |
+| `POST citizen/account/mobile/verify/` | citizen | `{code}` | `{access, refresh, account}`; 409 `mobile_in_use` |
 | `POST citizen/account/delete/` | citizen | `{confirm: true}` | 204 |
 | `GET wallet/` | citizen | — | `{confirmed_points, held_points, next_release_at, entries}`; entries are a cursor list (`id, points, kind, status, reason, created_at, decided_at`) |
 | `GET admin/citizen-accounts/` | `accounts.manage_citizen_accounts` | `q` (name or last 4 digits), `village_id`, `status`, page | rows: name, village, `mobile_last4`, verified, balance, held, status, `created_at` |
@@ -282,13 +329,13 @@ All under `/api/v1/`. Citizen endpoints need a citizen JWT holding `wallet.use_w
 | `POST admin/referrals/{id}/confirm/`, `/reject/` | `wallet.review_referrals` | `{comment}` | row; 409 `already_decided` if the job got there first |
 | `POST admin/wallets/{account_id}/adjust/` | `wallet.adjust_points` | `{points, reason}` | wallet; 409 `not_enough_points` |
 | `GET admin/wallet/export/?type=referrals\|entries&format=csv` | `wallet.view_wallets` | filters | CSV with BOM, last 4 digits only |
-| `GET`/`PATCH admin/settings/` | `posts.manage_settings` (existing) | adds the six runtime settings above | settings |
-| `GET app-config/` | public | — | adds `wallet_enabled` |
+| `GET`/`PATCH admin/settings/` | `posts.manage_settings` (existing) | adds the seven runtime settings above | settings |
+| `GET app-config/` | public | — | adds `wallet_enabled` and `citizen_code_channels` |
 
 New error codes for section 1 of the contract:
-- `google_token_invalid`, `age_required`
-- `whatsapp_unavailable`, `code_cooldown`, `code_limit`, `code_wrong` (with `attempts_left`), `code_expired`, `mobile_invalid`, `mobile_in_use`
-- `referral_code_invalid`, `referral_code_own`, `referral_not_open`, `referral_window_closed`
+- `age_required`, `signup_token_invalid` (expired or already used)
+- `channel_unavailable`, `code_cooldown`, `code_limit`, `code_wrong` (with `attempts_left`), `code_expired`, `mobile_invalid`, `mobile_in_use`
+- `referral_code_invalid`, `referral_code_own`, `referral_not_open`
 - `not_enough_points`
 
 ### 3.10 Notifications
@@ -302,8 +349,8 @@ New error codes for section 1 of the contract:
 
 | Group | Actions |
 |---|---|
-| Accounts | `citizen.account_created`, `citizen.code_sent`, `citizen.mobile_verified`, `citizen.village_changed`, `citizen.account_blocked`, `citizen.account_unblocked`, `citizen.account_deleted` |
-| Referrals | `referral.created`, `referral.pending`, `referral.confirmed`, `referral.rejected` |
+| Accounts | `citizen.account_created`, `citizen.code_sent` (channel, purpose), `citizen.mobile_changed`, `citizen.village_changed`, `citizen.account_blocked`, `citizen.account_unblocked`, `citizen.account_deleted`, `citizen.account_released` |
+| Referrals | `referral.created`, `referral.confirmed`, `referral.rejected` |
 | Wallet | `wallet.adjusted`, `wallet.mismatch` |
 | Settings | `setting.changed` (existing) for the wallet settings |
 
@@ -312,8 +359,8 @@ Logins use the existing `auth.login` with `via="app"`. Audit `data` holds the la
 ### 3.12 Tests (all on SQLite, each new file in `grama/tests/suite.json`)
 
 - **Permissions:** extend `apps/accounts/tests/test_matrix.py` with the Citizen group. Test that a citizen account gets 403 on every officials' endpoint (one test per endpoint) and never appears in `users/` for any official.
-- **Auth:** valid and invalid Google tokens (wrong `aud`, expired, bad signature through a fake verifier); blocked account; 90-day limit; password change refused.
-- **Codes:** expiry, attempts, cooldown, daily limits, `mobile_in_use`, and that no code or full number appears in the audit log or logs.
+- **Auth:** sign-in for a new and a known number; the same answer from `auth/code/` for registered and unregistered numbers; sign-up and confirm tokens expire and work once; the unused account check (yes and no); two sign-ups racing for one number; blocked account; 90-day limit; password change refused.
+- **Codes:** expiry, attempts, cooldown, the limits per number (both channels together), per phone and per address, a channel that is off, number change with `mobile_in_use`, and that no code or full number appears in the audit log, logs or task arguments.
 - **Referrals:** each reject reason; self-referral by mobile and by phone; one welcome bonus per phone; the monthly limit; two parallel confirmations (one wins); the idempotency key against double rewards.
 - **Wallet:** the cache equals the sum of entries after every operation; a negative adjustment below zero is refused.
 - **Deletion:** personal fields cleared, entries kept, re-sign-up gets no second welcome bonus.
@@ -321,21 +368,21 @@ Logins use the existing `auth.login` with `via="app"`. Audit `data` holds the la
 
 ## 4. Mobile app (Flutter)
 
-- **Package:** `google_sign_in`, pinned in `pubspec.yaml`. Its setup changed in recent major versions; check the current documentation when implementing.
-- **Google project setup** (in the Firebase / Google Cloud project `bvt-grama-connect`):
-  - An Android OAuth client for `com.bvt.app` with the SHA-1 of **every** signing key: debug, the key that signs the website's APK, and later the Google Play app signing key.
-  - A Web OAuth client whose id is the app's `serverClientId` and the backend's `GOOGLE_OAUTH_CLIENT_IDS`.
+- **Package:** one for Android's Phone Number Hint and SMS User Consent APIs, such as `smart_auth`, pinned in `pubspec.yaml`; check its current version when implementing. Both APIs need Google Play services, but no Google account and no SMS permission. Nothing is registered per signing key, so the website's APK works as is.
+- **iPhone later:** iOS offers an SMS code above the keyboard by itself. With no Google login, Sign in with Apple is not needed either (App Store rule 4.8 covers third-party logins).
 - **One account at a time:** an official or a citizen account, never both. The existing `ApiClient` token handling (secure storage, refresh, `session_revoked`) is reused unchanged. Citizen mode without an account stays the default.
 - **Screens** (Telugu and English, existing widgets and colours):
-  - **Sign in to earn points:** consent notice with links to the privacy policy and terms, the 18+ tick, the referral code field (pre-filled from an invite link), the Google button.
-  - **Verify your mobile:** the number, "Send code on WhatsApp", the code field, the resend timer, "Didn't get it?".
+  - **Sign in to earn points:** the number (offered from the phone's SIMs), why it is needed with the privacy policy link, **Send code on WhatsApp** and **Send code by SMS** (only the channels `app-config/` lists).
+  - **Enter the code:** the code field (an SMS code fills in after **Allow**), the resend timer, then **Send by SMS instead**.
+  - **About you** (new numbers only): the name, the consent notice with links to the privacy policy and terms, the 18+ tick, the referral code field (pre-filled from an invite link).
+  - **Is this your account?** (unused accounts): the masked name, **Yes**, and **No** with a warning that the old account's points are lost.
   - **Wallet:** confirmed balance, points on hold with the expected date, history with each status and reason, "Points have no cash value".
   - **Invite friends:** the code, Copy, and Share (WhatsApp first, through the existing `share_plus`).
-  - **Profile:** Wallet, Invite, Sign out, Delete my account (with a confirmation).
+  - **Profile:** Wallet, Invite, Change my mobile number, Sign out, Delete my account (with a confirmation).
 - **Invite links:** add `android:pathPrefix="/app/"` next to the existing `/p/` App Link (`android/app/src/main/AndroidManifest.xml:44`). The server's `/.well-known/assetlinks.json` covers the domain, so no backend change is needed. The app stores `ref` until sign-up. Installs from the website get the code from the link or by typing it. Once the app is on Google Play, the Play Install Referrer can fill it too (it does not work for APKs installed outside Play).
 - **On open:** `GET citizen/account/` (records the active day), and `POST devices/` with the citizen's JWT so pushes reach the account.
 - **Feature switch:** everything hides while `app-config/` says `wallet_enabled: false`.
-- **Tests:** flows against the local fake server (as `test/app_flow_test.dart`): sign-up, code, wallet, invite link pre-fill, sign out, delete.
+- **Tests:** flows against the local fake server (as `test/app_flow_test.dart`): sign-up by WhatsApp and by SMS, signing in again, the unused account question, number change, wallet, invite link pre-fill, sign out, delete.
 
 ## 5. Web (BVTGramaConnect)
 
@@ -345,7 +392,7 @@ Logins use the existing `auth.login` with `via="app"`. Audit `data` holds the la
 - wallet adjustment with a reason;
 - CSV export.
 
-The Settings page gains the six wallet settings. The console is a port with "zero visual change" (`.claude/conventions.md` in the web repo), so a new page needs the owner's sign-off and must reuse existing styles (table, tabs, panels).
+The Settings page gains the seven wallet settings. The console is a port with "zero visual change" (`.claude/conventions.md` in the web repo), so a new page needs the owner's sign-off and must reuse existing styles (table, tabs, panels).
 
 **Website**
 - `/app/?ref=<code>` already redirects to the website's download section and keeps the query (`apps/share/views.py:138-144`). The website reads `ref` (8 characters from the code alphabet, anything else ignored) and shows "Your friend's referral code: **CODE**" with a **Copy** button in the download section (`src/website/sections/home/Download.tsx`).
@@ -360,11 +407,12 @@ The Settings page gains the six wallet settings. The console is a port with "zer
 | Meta Business verification, WhatsApp Business number, display name | Client (C1) | Can take days to weeks; start first |
 | Authentication template in Telugu and English, approved by Meta | Backend with the client (C2) | Copy-code button |
 | WhatsApp system-user access token | Client and DevOps | A secret: production `.env` only, never in git |
-| Google OAuth clients (Android SHA-1s, Web client) and consent screen | Mobile and DevOps (C3) | Needs access to the Firebase project (BVTGC-32) |
-| Production `.env` | DevOps | `GOOGLE_OAUTH_CLIENT_IDS`, `WHATSAPP_*`, `CITIZEN_CONSENT_VERSION`; `WALLET_ENABLED` stays off |
+| DLT registration: the business, a 6-letter sender name, the code message in Telugu and English; an account with an SMS provider | Client (C3) | A few days per approval; start together with the Meta steps |
+| SMS provider API key | Client and DevOps | A secret: production `.env` only, never in git |
+| Production `.env` | DevOps | `WHATSAPP_*`, `SMS_*`, `CITIZEN_CONSENT_VERSION`; `WALLET_ENABLED` stays off |
 | Per-IP limits on sign-up and codes | Backend | Depend on real visitor IPs (BVTGC-105, BVTGC-39) |
 
-**Cost.** WhatsApp authentication messages for an Indian business to Indian numbers are reported at about ₹0.115 each (2026 figures from third-party guides; check Meta's rate card). One verification normally needs one message.
+**Cost.** WhatsApp authentication messages for an Indian business to Indian numbers are reported at about ₹0.115 each (2026 figures from third-party guides; check Meta's rate card). One verification normally needs one message. SMS codes cost about ₹0.10 to ₹0.45 each, Telugu at the higher end (third-party 2026 figures; the provider's rate card decides). If a fifth of codes go by SMS, 10,000 sign-ins a month cost roughly ₹1,500 to ₹3,000 with tax.
 
 ## 7. Rollout
 
@@ -378,7 +426,7 @@ The Settings page gains the six wallet settings. The console is a port with "zer
 
 - `docs/api-contract.md`: new section 21, the error codes, the screen map and the `app-config` field.
 - `docs/authorization.md`: the Citizen group and the new permissions.
-- `.claude/project.md` in all three repos: the roles table (Citizen: an optional account for the wallet), and owner decision entries D1–D7 of 2026-11-25. They include WhatsApp codes for citizens, an exception to the 2026-10-21 rule "nothing is sent by text message or email for login", which stays true for officials.
+- `.claude/project.md` in all three repos: the roles table (Citizen: an optional account for the wallet), and owner decision entries D1–D7 of 2026-11-25. They include WhatsApp and SMS codes for citizens, an exception to the 2026-10-21 rule "nothing is sent by text message or email for login", which stays true for officials.
 - `docs/security-review.md`: new data, the WhatsApp secret, fraud controls.
 - `docs/uat.md`: a wallet and referrals section.
 
@@ -389,29 +437,29 @@ Rough estimates in working days for one developer each.
 | Team | Work | Days |
 |---|---|---|
 | Backend | Models and migrations (2.1, 2.2) | 1.5 |
-| Backend | Citizen role, permissions, the section 3.2 fixes, Google sign-in | 2.5 |
-| Backend | WhatsApp gateway and code rules | 2 |
+| Backend | Citizen role, permissions, the section 3.2 fixes, code sign-in and sign-up, number change, unused account check | 3.5 |
+| Backend | WhatsApp and SMS gateways and code rules | 2.5 |
 | Backend | Referrals, wallet, jobs, deletion | 3 |
 | Backend | Admin endpoints, settings, CSV | 2 |
 | Backend | Notifications, audit labels, contract and documents, Telugu | 1.5 |
 | Backend | Tests (section 3.12) | 2.5 |
-| **Backend total** | | **15** |
-| Mobile | Google sign-in setup and the account state | 2 |
-| Mobile | Five screens and the profile entries, Telugu and English | 4.5 |
+| **Backend total** | | **16.5** |
+| Mobile | Phone Number Hint, SMS code autofill and the account state | 2 |
+| Mobile | Seven screens and dialogs and the profile entries, Telugu and English | 5.5 |
 | Mobile | Invite links, pushes, feature switch | 1.5 |
 | Mobile | Tests | 2 |
-| **Mobile total** | | **10** |
+| **Mobile total** | | **11** |
 | Web | Console page and settings | 4 |
 | Web | Website code display, legal texts, delete section | 1 |
 | **Web total** | | **5** |
 | QA | Test plan and UAT on qa | 5 |
-| DevOps | Secrets, OAuth clients, template, `.env` | 1.5, plus Meta's review time |
+| DevOps | Secrets, WhatsApp template, SMS provider and DLT details, `.env` | 1.5, plus Meta's and DLT review time |
 
-With backend, app and web in parallel after the contract (section 3.9) is agreed: about **4 to 5 weeks**. Meta's verification and template approval are the likely critical path.
+With backend, app and web in parallel after the contract (section 3.9) is agreed: about **4 to 5 weeks**. Meta's verification and the DLT registration are the likely critical path.
 
 **Suggested Jira breakdown** (one epic, "Citizen wallet and referrals"):
-- Backend: models and the Citizen role; the "role means official" fixes; Google sign-in; WhatsApp codes; referrals and wallet; admin API and settings; deletion; tests and contract.
-- Mobile: sign-in and account; mobile verification; wallet and invite; invite links.
+- Backend: models and the Citizen role; the "role means official" fixes; mobile sign-in (codes, sign-up, number change); WhatsApp and SMS gateways; referrals and wallet; admin API and settings; deletion; tests and contract.
+- Mobile: sign-in and account; number change; wallet and invite; invite links.
 - Web: console page; website and legal texts.
 - Client inputs: C1 to C5.
 
@@ -419,21 +467,24 @@ With backend, app and web in parallel after the contract (section 3.9) is agreed
 
 | # | Risk or question | Mitigation or default |
 |---|---|---|
-| R1 | Fake referrals with several Google accounts and spare WhatsApp numbers (Play Integrity is off) | Holding period, active-days rule, one welcome bonus per phone, monthly limit, Super Admin review; require Play Integrity at sign-up once on Google Play |
-| R2 | WhatsApp may report a non-WhatsApp number only later (webhook) | Resend timer and "Didn't get it?"; add a status webhook if support needs it. Check during implementation. |
-| R3 | Google sign-in fails on the website's APK if its signing key's SHA-1 is not registered | Register every signing key before testing; keep the list in `.claude/operations.md` of the mobile repo |
+| R1 | Fake referrals with spare SIMs (Play Integrity is off) | Holding period, active-days rule, one welcome bonus per phone, monthly limit, Super Admin review; require Play Integrity at sign-up once on Google Play |
+| R2 | WhatsApp may report a non-WhatsApp number only later (webhook) | **Send by SMS instead** when the resend timer ends; a status webhook later if support needs it |
+| R3 | Recycled numbers: someone given an old number could open the previous owner's account | The unused account check (FR-12a, `CITIZEN_STALE_DAYS`). A new owner who falsely answers Yes gets the old points: accepted for small balances. Numbers can go to someone new after 90 days, so the client may lower the setting (requirements Q10) |
 | R4 | Per-IP limits on sign-up and codes depend on real visitor IPs | BVTGC-105 and the production team's confirmation (BVTGC-39) |
 | R5 | Account deletion conflicts with "data is kept permanently" | Owner's decision (requirements Q8) before production |
 | R6 | Officials' code paths assume "any role = official" (section 3.2) | Fix with the new permission; tests per endpoint |
 | R7 | iPhone: no Android id, so the one-bonus-per-phone rule is weaker | iPhone is not in Phase 1; revisit with App Attest (BVTGC-27) |
 | Q-T1 | Store the hashes of deleted accounts for 1 year? | Pending legal (requirements Q9) |
-| Q-T2 | One-tap code autofill on Android | After launch; copy-code first |
+| Q-T2 | One-tap autofill of WhatsApp codes on Android | After launch; copy-code first. SMS codes fill in from day one (SMS User Consent) |
 | Q-T3 | Should a citizen account also post (instead of the device token) later? | Out of scope (D2); the account and the device stay separate |
 | R8 | Points gain a rupee value when Bills & Recharges go live (D4) | Keep `WalletEntry` append-only and idempotent from day one; the bills design adds a SPENT kind and refunds ([../bills-recharges/technical-implementation.md](../bills-recharges/technical-implementation.md), section 3.6) |
+| R9 | Bots asking for many codes to run up the SMS bill | Indian 10-digit numbers only, limits per number, per phone and per address (3.4), and a daily spending cap at the SMS provider |
 
 ## References
 
-- Verify a Google ID token on the server: https://developers.google.com/identity/sign-in/web/backend-auth
+- Android Phone Number Hint: https://developer.android.com/identity/phone-number-hint
+- Android SMS Retriever and SMS User Consent APIs: https://developer.android.com/identity/sms-retriever
+- India's SMS rules and DLT registration (third-party guide): https://www.telerivet.com/blog/india-sms-compliance-trai-dlt-registration-and-tcccpr-guide
 - WhatsApp authentication templates: https://developers.facebook.com/docs/whatsapp/business-management-api/authentication-templates
 - WhatsApp Business Platform pricing: https://developers.facebook.com/docs/whatsapp/pricing
 - Google Play Install Referrer: https://developer.android.com/google/play/installreferrer
