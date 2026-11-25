@@ -4,7 +4,7 @@
 |---|---|
 | Status | Draft design, 2026-11-25. Nothing is built yet. |
 | Requirements | [requirements.md](requirements.md) (decisions D1–D13, rules in section 7) |
-| Builds on | [Citizen wallet and referrals](../citizen-wallet/technical-implementation.md): CitizenAccount, the Citizen role, Wallet and WalletEntry. The wallet goes live first (D13). |
+| Builds on | [Citizen wallet and referrals](../citizen-wallet/technical-implementation.md): CitizenAccount, the Citizen role, Wallet and WalletEntry, and its WhatsApp and SMS stage (its section 3.13), which sets `mobile_verified_at`. Both go live first (D13). |
 | Code read for this design | BackEnd `dev` `81de633`, Web `dev` `241cf1b`, Mobile `dev` `b3b7eff` (build 25) |
 | Owners | Backend (Basam Bhargavi), Mobile and web (Mohit), QA (Anvesh Kolli) |
 
@@ -135,7 +135,7 @@ Add to `apps/accounts/role_matrix.py`:
 | `billpay.handle_complaints` | Super Admin |
 | `billpay.manage_billpay` | Super Admin: category switches, points settings, pilot accounts, recheck a payment, resolve a reconciliation item |
 
-Every citizen endpoint uses `HasPerm("billpay.pay_bills")`. Every citizen account has a verified mobile number from sign-up (wallet v3, D1 and D6), so FR-1 needs no separate check. While the pilot list is not empty, accounts outside it get `404 not_found`, so the feature stays invisible to them. Officials hold none of these permissions. A test in the `test_matrix.py` style locks that in.
+Every citizen endpoint uses `HasPerm("billpay.pay_bills")`. A citizen whose `mobile_verified_at` is empty gets `403 mobile_not_verified` (FR-1), and the app opens the wallet's number check (wallet design, section 3.13). Since wallet v5, citizens sign up with email and password, and numbers are confirmed only in that stage, which goes live before this feature (wallet D17). While the pilot list is not empty, accounts outside it get `404 not_found`, so the feature stays invisible to them. Officials hold none of these permissions. A test in the `test_matrix.py` style locks that in.
 
 ### 3.2 The partner gateway
 
@@ -317,6 +317,7 @@ All under `/api/v1/`. Citizen endpoints need a citizen JWT with `billpay.pay_bil
 | `GET`, `PATCH admin/settings/` | `posts.manage_settings` (existing) | Adds the settings of 3.11 | Settings |
 
 New error codes for section 1 of the contract:
+- `mobile_not_verified` (403: the account's number is not confirmed yet, FR-1)
 - `billpay_unavailable`, `category_inactive`, `biller_inactive`, `no_bill_due`, `fetch_expired`
 - `amount_not_allowed`, `amount_limit`, `daily_limit`
 - `points_off`, `points_not_allowed` (with `max_points`), `not_enough_points` (already in the wallet section)
@@ -365,7 +366,7 @@ Settings changes are already audited by the settings screen.
 - **Entry points:**
   - the Bills row on Home (`citizen_home.dart`) and **View all**: `cBills`, `ServicesScreen(bills: true)` (`shell.dart:53`, `services_screen.dart:146-206`);
   - a tile whose `category` is set and active opens the flow; anything else keeps "Coming soon" (`svcSoon`), so with the switches off the app looks exactly as today.
-- **Sign-in gate:** tapping a tile without an account opens the wallet's sign-in screen, the mobile number and a code (wallet design, section 4). Every account has a verified number from sign-up.
+- **Sign-in gate:** tapping a tile without an account opens the wallet's log-in screen, email or mobile number and password (wallet design, section 4). A citizen whose number is not confirmed yet (`403 mobile_not_verified`) gets the wallet's number check first (wallet design, section 3.13).
 - **Screens**, in Telugu and English with existing widgets and colours, plus the Bharat Connect logo where NBBL's brand rules require it:
   - **categories**;
   - **biller list** with search and the citizen's state first;
