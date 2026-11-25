@@ -288,6 +288,24 @@ def test_remove_assignment(api, world, actor, status):
     assert world.users["pm_kolakaluru"].role_assignments.exists() == (status != 204)
 
 
+@pytest.mark.parametrize("actor, target", [(a, t) for a in ACTORS for t in ACTORS if a != t])
+def test_removing_a_role_follows_the_same_rule_as_giving_it(api, world, actor, target):
+    """Web audit WEB-SEC-016 (BVTGC-110): removing needs no permission of its own because each role's
+    manage permission is "give, move and remove" that role (accounts/models.py). So an actor removes a
+    role exactly where they could give it: a role below theirs, inside their area. Worked out from
+    CAN_MANAGE and the map, as above: no manage rights at all 403, an official out of reach 404."""
+    actor_role, _area = OFFICIALS[actor]
+    response = api(world.users[actor]).delete(assignment_url(world, target))
+    if not CAN_MANAGE[actor_role]:
+        expected = 403
+    elif may_manage(actor, target):
+        expected = 204
+    else:
+        expected = 404
+    assert response.status_code == expected, response.content
+    assert world.users[target].role_assignments.exists() == (expected != 204)
+
+
 def test_cannot_touch_an_assignment_of_another_user_through_this_one(api, world):
     other = world.users["pm_nandivelugu"].role_assignments.get()
     url = f"{assignments_url(world, 'pm_kolakaluru')}{other.id}/"
