@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| Status | Draft design, 2026-11-25 (v3: login by mobile number and a one-time code replaces Google sign-in). Nothing is built yet. |
-| Requirements | [requirements.md](requirements.md) (decisions D1–D9, rules in section 7) |
+| Status | Draft design, 2026-11-25 (v4: family phones, deletion on the website, pilot mandals; v3: login by mobile number and a one-time code replaces Google sign-in). Nothing is built yet. |
+| Requirements | [requirements.md](requirements.md) (decisions D1–D13, rules in section 7) |
 | Code read for this design | BackEnd `dev` `70b0f19`, Web `dev` `241cf1b`, Mobile `dev` `b3b7eff` |
 | Owners | Backend (Basam Bhargavi), Mobile and web (Mohit), QA (Anvesh Kolli) |
 
@@ -51,7 +51,7 @@ Three things are new: a **citizen account** (a Django user with the new Citizen 
 | `mobile_verified_at` | DateTime | When the current number was last proven with a code (sign-up or number change). |
 | `last_active_at` | DateTime | The last day the app opened with the account (section 3.6). The unused account check reads it (FR-12a). |
 | `referral_code` | Char(8), unique | Generated, no look-alike characters (the alphabet of `accounts/credentials.py:32`). |
-| `signup_android_id_hash` | Char(64), indexed | From the phone used at sign-up; one welcome bonus per phone. |
+| `signup_android_id_hash` | Char(64), indexed | From the phone used at sign-up. Limits the welcome bonuses per phone and skips the referrer's reward when both accounts signed up on the same phone (D10). |
 | `deleted_at` | DateTime, null | Set when the citizen deletes the account (section 3.8). |
 | `deleted_mobile_hash` | Char(64), indexed | Kept after deletion to stop repeat welcome bonuses (requirements Q9, pending legal review). |
 | `created_at` | DateTime | |
@@ -61,7 +61,7 @@ Three things are new: a **citizen account** (a Django user with the new Citizen 
 | Field | Notes |
 |---|---|
 | `account` | FK CitizenAccount, null: a sign-in code for a number without an account has none |
-| `purpose` | `LOGIN` or `CHANGE_NUMBER` |
+| `purpose` | `LOGIN`, `CHANGE_NUMBER` or `DELETE` (the website's deletion page) |
 | `channel` | `WHATSAPP` or `SMS` |
 | `mobile_hash`, `mobile_last4` | The number the code was sent to |
 | `android_id_hash` | The phone that asked, for the per-phone limit; may be empty |
@@ -163,7 +163,8 @@ Before merging, grep for `IsAuthenticated]` and `authz.grants(` and confirm each
 
 Four public endpoints, throttled per internet address like the other public citizen endpoints. No email and no Google account are asked for or stored (D1).
 
-**`POST citizen/auth/code/`** `{mobile, channel, android_id?}`
+**`POST citizen/auth/code/`** `{mobile, channel, purpose?, android_id?}`
+- `purpose` is `login` (the default) or `delete` (the website's deletion page, 3.8).
 - Checks the number with `mobile_validator` (`apps/accounts/models.py:14`), the channel against the gateways that are on, and the limits (3.4).
 - Creates a MobileCode (`purpose` LOGIN, `account` set when the number already has one) and sends the code in the request (3.4).
 - Answers the same `{expires_in, resend_after, channel}` whether or not the number has an account, so it never tells who is registered (FR-11).
@@ -177,7 +178,7 @@ Four public endpoints, throttled per internet address like the other public citi
   - no account: `{status: "new", signup_token}`.
 
 **`POST citizen/auth/signup/`** `{signup_token, name, village_id, age_confirmed, consent_version, language, referral_code?, android_id?}`
-- Needs `age_confirmed: true`, the current `consent_version`, an active village, a name of 1 to 100 characters, and the Wallet on setting.
+- Needs `age_confirmed: true`, the current `consent_version`, an active village, a name of 1 to 100 characters, and the Wallet on setting. While `WALLET_PILOT_MANDALS` is not empty, the village must be in one of those mandals (403 `wallet_not_in_area`, D13).
 - Creates, in one transaction:
   - the user, with a generated username that passes `username_validator` (never shown, never used to log in), the name, `preferred_language` and an unusable password;
   - the Citizen assignment;
@@ -240,12 +241,12 @@ The sign-up is refused with:
 | Error code | When |
 |---|---|
 | `referral_code_invalid` | No such code |
-| `referral_code_own` | The referrer is the same person: the same mobile hash, or the same Android id hash on either account |
+| `referral_code_own` | The referrer is the same person: the same mobile hash |
 | `referral_not_open` | The referrer's account is blocked or deleted |
 
-Otherwise, in the sign-up's transaction, a Referral is created as PENDING with `confirm_after = now + REFERRAL_HOLD_DAYS`. Two HELD entries are created, with idempotency keys `ref:<referral id>:referrer` and `ref:<referral id>:welcome`:
-- the referrer's reward;
-- the referee's welcome bonus, unless an earlier account with the same `signup_android_id_hash`, or a deleted account with the same mobile hash, already got one (the bonus is then skipped, with a note in the history).
+Otherwise, in the sign-up's transaction, a Referral is created as PENDING with `confirm_after = now + REFERRAL_HOLD_DAYS`. Up to two HELD entries are created, with idempotency keys `ref:<referral id>:referrer` and `ref:<referral id>:welcome`:
+- the referrer's reward, unless both accounts signed up on the same phone (equal `signup_android_id_hash`; D10, FR-15a). The history then notes `same_phone`;
+- the referee's welcome bonus, unless `WELCOME_BONUSES_PER_PHONE` accounts with the same `signup_android_id_hash` (deleted ones included) already got one, or a deleted account with the same mobile hash did, or the sign-up sent no Android id. A skipped bonus gets a note in the history.
 
 `held_points` goes up through `F()` updates. After commit, the referrer gets a push.
 
@@ -286,17 +287,24 @@ Runtime settings, overridable from the console (`apps/posts/services.py` `RUNTIM
 | `REFERRAL_ACTIVE_DAYS` | 2 |
 | `REFERRALS_PER_MONTH` | 30 |
 | `CITIZEN_STALE_DAYS` | 180 (the unused account check, FR-12a; requirements Q10) |
+| `WELCOME_BONUSES_PER_PHONE` | 3 (D10) |
+| `WALLET_PILOT_MANDALS` | Empty, meaning everywhere; a comma-separated list of mandal ids while the pilot runs (D13) |
 
 Env only (secrets and fixed values):
 - `WHATSAPP_GATEWAY`, `WHATSAPP_ACCESS_TOKEN` (secret), `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_OTP_TEMPLATE`, `WHATSAPP_API_VERSION`
 - `SMS_GATEWAY`, `SMS_API_KEY` (secret), `SMS_SENDER_ID`, `SMS_DLT_ENTITY_ID`, `SMS_DLT_TEMPLATE_IDS` (one per language)
 - `CITIZEN_CONSENT_VERSION`
 
-`GET app-config/` adds `wallet_enabled`, so the app and the website hide the feature while it is off, and `citizen_code_channels` (3.4).
+`GET app-config/` adds `wallet_enabled`, so the app and the website hide the feature while it is off, `wallet_pilot_mandals`, so the app hides it outside the pilot, and `citizen_code_channels` (3.4).
 
 ### 3.8 Account deletion
 
-`POST citizen/account/delete/` (the citizen) and `POST admin/citizen-accounts/{id}/delete/` (the Super Admin, for requests that arrive through the website contact form with the mobile number). In one transaction:
+Three ways in, all through one service function:
+- `POST citizen/account/delete/`: the citizen, in the app;
+- `POST citizen/auth/delete/` `{mobile, code}`: the website's deletion page, after `citizen/auth/code/` with `purpose: delete` (D12). Only the owner of the number can delete;
+- `POST admin/citizen-accounts/{id}/delete/`: the Super Admin, with a reason, for fraud or a legal request.
+
+In one transaction:
 - `is_active` false and `revoke_all_sessions`;
 - the name replaced with "Deleted citizen";
 - the username scrambled;
@@ -305,7 +313,7 @@ Env only (secrets and fixed values):
 - the role assignment deactivated;
 - HELD entries cancelled.
 
-Confirmed entries and referrals stay, with no personal details, for the audit trail. Audit `citizen.account_deleted`. A **No** to "Is this your account?" (3.3) closes the old account the same way, audited as `citizen.account_released`. This is the exception to "data is kept permanently" (requirements Q8, needs the owner's confirmation).
+Confirmed entries and referrals stay, with no personal details, for the audit trail. Audit `citizen.account_deleted` with `via` (`app`, `website` or `admin`). A **No** to "Is this your account?" (3.3) closes the old account the same way, audited as `citizen.account_released`. This is the exception to "data is kept permanently" (requirements Q8, needs the owner's confirmation).
 
 ### 3.9 API (draft for `docs/api-contract.md`, new section 21)
 
@@ -313,10 +321,11 @@ All under `/api/v1/`. Citizen endpoints need a citizen JWT holding `wallet.use_w
 
 | Method and path | Who | Request | Response |
 |---|---|---|---|
-| `POST citizen/auth/code/` | public | `{mobile, channel, android_id?}` | `{expires_in, resend_after, channel}`, the same for every number |
+| `POST citizen/auth/code/` | public | `{mobile, channel, purpose?, android_id?}` | `{expires_in, resend_after, channel}`, the same for every number |
 | `POST citizen/auth/verify/` | public | `{mobile, code}` | `{status: "signed_in", access, refresh, account}`, `{status: "confirm", masked_name, confirm_token}` or `{status: "new", signup_token}` |
 | `POST citizen/auth/signup/` | public | `{signup_token, name, village_id, age_confirmed, consent_version, language, referral_code?, android_id?}` | 201 `{access, refresh, account}` |
 | `POST citizen/auth/confirm/` | public | `{confirm_token, is_mine}` | As `verify/`: `signed_in`, or `new` with a `signup_token` |
+| `POST citizen/auth/delete/` | public (the website) | `{mobile, code}` (a `delete` code) | `{deleted: true}`, or `{deleted: false}` when the number has no account |
 | `GET citizen/account/` | citizen | — | `Account`: name, village, `mobile_verified`, `mobile_last4`, `referral_code`, `invite_url`, wallet summary, `referral` (own, if any). Records today's active day |
 | `PATCH citizen/account/` | citizen | `{village_id?, language?}` | `Account` |
 | `POST citizen/account/mobile/` | citizen | `{mobile, channel}` (the new number) | `{expires_in, resend_after, channel}` |
@@ -329,11 +338,11 @@ All under `/api/v1/`. Citizen endpoints need a citizen JWT holding `wallet.use_w
 | `POST admin/referrals/{id}/confirm/`, `/reject/` | `wallet.review_referrals` | `{comment}` | row; 409 `already_decided` if the job got there first |
 | `POST admin/wallets/{account_id}/adjust/` | `wallet.adjust_points` | `{points, reason}` | wallet; 409 `not_enough_points` |
 | `GET admin/wallet/export/?type=referrals\|entries&format=csv` | `wallet.view_wallets` | filters | CSV with BOM, last 4 digits only |
-| `GET`/`PATCH admin/settings/` | `posts.manage_settings` (existing) | adds the seven runtime settings above | settings |
-| `GET app-config/` | public | — | adds `wallet_enabled` and `citizen_code_channels` |
+| `GET`/`PATCH admin/settings/` | `posts.manage_settings` (existing) | adds the nine runtime settings above | settings |
+| `GET app-config/` | public | — | adds `wallet_enabled`, `wallet_pilot_mandals` and `citizen_code_channels` |
 
 New error codes for section 1 of the contract:
-- `age_required`, `signup_token_invalid` (expired or already used)
+- `age_required`, `signup_token_invalid` (expired or already used), `wallet_not_in_area`
 - `channel_unavailable`, `code_cooldown`, `code_limit`, `code_wrong` (with `attempts_left`), `code_expired`, `mobile_invalid`, `mobile_in_use`
 - `referral_code_invalid`, `referral_code_own`, `referral_not_open`
 - `not_enough_points`
@@ -361,9 +370,10 @@ Logins use the existing `auth.login` with `via="app"`. Audit `data` holds the la
 - **Permissions:** extend `apps/accounts/tests/test_matrix.py` with the Citizen group. Test that a citizen account gets 403 on every officials' endpoint (one test per endpoint) and never appears in `users/` for any official.
 - **Auth:** sign-in for a new and a known number; the same answer from `auth/code/` for registered and unregistered numbers; sign-up and confirm tokens expire and work once; the unused account check (yes and no); two sign-ups racing for one number; blocked account; 90-day limit; password change refused.
 - **Codes:** expiry, attempts, cooldown, the limits per number (both channels together), per phone and per address, a channel that is off, number change with `mobile_in_use`, and that no code or full number appears in the audit log, logs or task arguments.
-- **Referrals:** each reject reason; self-referral by mobile and by phone; one welcome bonus per phone; the monthly limit; two parallel confirmations (one wins); the idempotency key against double rewards.
+- **Referrals:** each reject reason; self-referral by mobile; a same-phone referral pays only the welcome bonus; the welcome limit per phone (deleted accounts included); no welcome bonus without an Android id; the monthly limit; two parallel confirmations (one wins); the idempotency key against double rewards.
 - **Wallet:** the cache equals the sum of entries after every operation; a negative adjustment below zero is refused.
-- **Deletion:** personal fields cleared, entries kept, re-sign-up gets no second welcome bonus.
+- **Deletion:** personal fields cleared, entries kept, re-sign-up gets no second welcome bonus; the website's deletion needs that number's `delete` code, and a `login` code does not work for it.
+- **Pilot:** sign-up outside the pilot mandals is refused; an existing account whose village moves outside keeps working; an empty list means everywhere.
 - **Telugu:** every new message has its Telugu (`grama/tests/test_i18n.py`).
 
 ## 4. Mobile app (Flutter)
@@ -376,12 +386,12 @@ Logins use the existing `auth.login` with `via="app"`. Audit `data` holds the la
   - **Enter the code:** the code field (an SMS code fills in after **Allow**), the resend timer, then **Send by SMS instead**.
   - **About you** (new numbers only): the name, the consent notice with links to the privacy policy and terms, the 18+ tick, the referral code field (pre-filled from an invite link).
   - **Is this your account?** (unused accounts): the masked name, **Yes**, and **No** with a warning that the old account's points are lost.
-  - **Wallet:** confirmed balance, points on hold with the expected date, history with each status and reason, "Points have no cash value".
+  - **Wallet:** confirmed balance, points on hold with the expected date, history with each status and reason, "Points have no cash value", and **Questions about points?**, which opens the existing help-line numbers screen. The Super Admin lists the support number there as a statewide help line (D11, C6), so nothing new is needed on the server.
   - **Invite friends:** the code, Copy, and Share (WhatsApp first, through the existing `share_plus`).
   - **Profile:** Wallet, Invite, Change my mobile number, Sign out, Delete my account (with a confirmation).
 - **Invite links:** add `android:pathPrefix="/app/"` next to the existing `/p/` App Link (`android/app/src/main/AndroidManifest.xml:44`). The server's `/.well-known/assetlinks.json` covers the domain, so no backend change is needed. The app stores `ref` until sign-up. Installs from the website get the code from the link or by typing it. Once the app is on Google Play, the Play Install Referrer can fill it too (it does not work for APKs installed outside Play).
 - **On open:** `GET citizen/account/` (records the active day), and `POST devices/` with the citizen's JWT so pushes reach the account.
-- **Feature switch:** everything hides while `app-config/` says `wallet_enabled: false`.
+- **Feature switch:** everything hides while `app-config/` says `wallet_enabled: false`, and also while the village chosen in the app is outside `wallet_pilot_mandals` (when the list is not empty). There, an invite link opens the app with "The wallet is coming to your area soon". A signed-in account keeps its wallet wherever its village moves.
 - **Tests:** flows against the local fake server (as `test/app_flow_test.dart`): sign-up by WhatsApp and by SMS, signing in again, the unused account question, number change, wallet, invite link pre-fill, sign out, delete.
 
 ## 5. Web (BVTGramaConnect)
@@ -392,13 +402,13 @@ Logins use the existing `auth.login` with `via="app"`. Audit `data` holds the la
 - wallet adjustment with a reason;
 - CSV export.
 
-The Settings page gains the seven wallet settings. The console is a port with "zero visual change" (`.claude/conventions.md` in the web repo), so a new page needs the owner's sign-off and must reuse existing styles (table, tabs, panels).
+The Settings page gains the nine wallet settings, with a mandal picker for the pilot that reuses the console's existing area picker. The console is a port with "zero visual change" (`.claude/conventions.md` in the web repo), so a new page needs the owner's sign-off and must reuse existing styles (table, tabs, panels).
 
 **Website**
 - `/app/?ref=<code>` already redirects to the website's download section and keeps the query (`apps/share/views.py:138-144`). The website reads `ref` (8 characters from the code alphabet, anything else ignored) and shows "Your friend's referral code: **CODE**" with a **Copy** button in the download section (`src/website/sections/home/Download.tsx`).
 - New texts go in `locales/te.json` and `en.json`.
 - The privacy policy and terms (`legal` in the locale files) gain the account, the data, the 18+ rule, "points have no cash value", and how to delete the account.
-- A short "Delete my account" section points to the in-app option, and to the contact form (with the mobile number) for people without the app.
+- A **Delete my wallet account** page: the mobile number, **Send code** (WhatsApp or SMS), the code, then a confirmation. It calls `citizen/auth/code/` (`purpose: delete`) and `citizen/auth/delete/` on the same domain, so it needs no CORS. The privacy policy links to it, and its address is the deletion URL given to Google Play. Telugu and English, in the website's existing styles.
 
 ## 6. Setup and operations
 
@@ -419,7 +429,7 @@ The Settings page gains the seven wallet settings. The console is a port with "z
 1. Backend merged and deployed with `WALLET_ENABLED` off. Nothing visible changes.
 2. App build with the new screens, hidden while the switch is off. Released through the website as usual.
 3. On qa: switch on, run the UAT checklist (new section in `docs/uat.md`).
-4. Production: switch on in the console.
+4. Production: set the pilot mandals, then switch on in the console. Widen the list after the pilot (requirements Q11).
 5. Before switching on in production: the client's amounts (C4), the legal texts (C5) and the owner's answers to Q8 and Q9.
 
 ## 8. Documents to update with the code
@@ -439,46 +449,47 @@ Rough estimates in working days for one developer each.
 | Backend | Models and migrations (2.1, 2.2) | 1.5 |
 | Backend | Citizen role, permissions, the section 3.2 fixes, code sign-in and sign-up, number change, unused account check | 3.5 |
 | Backend | WhatsApp and SMS gateways and code rules | 2.5 |
-| Backend | Referrals, wallet, jobs, deletion | 3 |
-| Backend | Admin endpoints, settings, CSV | 2 |
+| Backend | Referrals (with the family rule), wallet, jobs, deletion (with the website's code) | 4 |
+| Backend | Admin endpoints, settings (with the pilot mandals), CSV | 2.5 |
 | Backend | Notifications, audit labels, contract and documents, Telugu | 1.5 |
 | Backend | Tests (section 3.12) | 2.5 |
-| **Backend total** | | **16.5** |
+| **Backend total** | | **18** |
 | Mobile | Phone Number Hint, SMS code autofill and the account state | 2 |
 | Mobile | Seven screens and dialogs and the profile entries, Telugu and English | 5.5 |
-| Mobile | Invite links, pushes, feature switch | 1.5 |
+| Mobile | Invite links, pushes, feature switch with the pilot | 2 |
 | Mobile | Tests | 2 |
-| **Mobile total** | | **11** |
-| Web | Console page and settings | 4 |
-| Web | Website code display, legal texts, delete section | 1 |
-| **Web total** | | **5** |
+| **Mobile total** | | **11.5** |
+| Web | Console page and settings (with the pilot mandal picker) | 4.5 |
+| Web | Website code display, legal texts, the deletion page with a code | 2 |
+| **Web total** | | **6.5** |
 | QA | Test plan and UAT on qa | 5 |
 | DevOps | Secrets, WhatsApp template, SMS provider and DLT details, `.env` | 1.5, plus Meta's and DLT review time |
 
-With backend, app and web in parallel after the contract (section 3.9) is agreed: about **4 to 5 weeks**. Meta's verification and the DLT registration are the likely critical path.
+With backend, app and web in parallel after the contract (section 3.9) is agreed: about **5 weeks**. Meta's verification and the DLT registration are the likely critical path.
 
 **Suggested Jira breakdown** (one epic, "Citizen wallet and referrals"):
 - Backend: models and the Citizen role; the "role means official" fixes; mobile sign-in (codes, sign-up, number change); WhatsApp and SMS gateways; referrals and wallet; admin API and settings; deletion; tests and contract.
 - Mobile: sign-in and account; number change; wallet and invite; invite links.
 - Web: console page; website and legal texts.
-- Client inputs: C1 to C5.
+- Client inputs: C1 to C6, and the pilot mandals (requirements Q11).
 
 ## 10. Risks and open technical questions
 
 | # | Risk or question | Mitigation or default |
 |---|---|---|
-| R1 | Fake referrals with spare SIMs (Play Integrity is off) | Holding period, active-days rule, one welcome bonus per phone, monthly limit, Super Admin review; require Play Integrity at sign-up once on Google Play |
+| R1 | Fake referrals with spare SIMs (Play Integrity is off) | Holding period, active-days rule, at most 3 welcome bonuses and no referrer reward on one phone, monthly limit, Super Admin review, the pilot; require Play Integrity at sign-up once on Google Play |
 | R2 | WhatsApp may report a non-WhatsApp number only later (webhook) | **Send by SMS instead** when the resend timer ends; a status webhook later if support needs it |
 | R3 | Recycled numbers: someone given an old number could open the previous owner's account | The unused account check (FR-12a, `CITIZEN_STALE_DAYS`). A new owner who falsely answers Yes gets the old points: accepted for small balances. Numbers can go to someone new after 90 days, so the client may lower the setting (requirements Q10) |
 | R4 | Per-IP limits on sign-up and codes depend on real visitor IPs | BVTGC-105 and the production team's confirmation (BVTGC-39) |
 | R5 | Account deletion conflicts with "data is kept permanently" | Owner's decision (requirements Q8) before production |
 | R6 | Officials' code paths assume "any role = official" (section 3.2) | Fix with the new permission; tests per endpoint |
-| R7 | iPhone: no Android id, so the one-bonus-per-phone rule is weaker | iPhone is not in Phase 1; revisit with App Attest (BVTGC-27) |
+| R7 | iPhone: no Android id, so the per-phone rules do not work there (a sign-up without an Android id gets no welcome bonus) | iPhone is not in Phase 1; revisit with App Attest (BVTGC-27) |
 | Q-T1 | Store the hashes of deleted accounts for 1 year? | Pending legal (requirements Q9) |
 | Q-T2 | One-tap autofill of WhatsApp codes on Android | After launch; copy-code first. SMS codes fill in from day one (SMS User Consent) |
 | Q-T3 | Should a citizen account also post (instead of the device token) later? | Out of scope (D2); the account and the device stay separate |
 | R8 | Points gain a rupee value when Bills & Recharges go live (D4) | Keep `WalletEntry` append-only and idempotent from day one; the bills design adds a SPENT kind and refunds ([../bills-recharges/technical-implementation.md](../bills-recharges/technical-implementation.md), section 3.6) |
 | R9 | Bots asking for many codes to run up the SMS bill | Indian 10-digit numbers only, limits per number, per phone and per address (3.4), and a daily spending cap at the SMS provider |
+| R10 | The pilot depends on the village chosen in the app, which anyone can change | Accepted: the pilot limits who sees the wallet, not who may join; every fraud rule applies everywhere |
 
 ## References
 

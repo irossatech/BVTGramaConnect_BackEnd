@@ -4,7 +4,7 @@
 |---|---|
 | Status | Draft for the client's review |
 | Date | 2026-11-25 |
-| Version | v3: citizens log in with their mobile number and a one-time code, with no Google account or email (D1, D6, D8, D9) |
+| Version | v4: family phones, deletion on the website with a code, support by the Super Admin only, a pilot in chosen mandals (D10 to D13). v3: login by mobile number and a one-time code, with no Google account or email (D1, D6, D8, D9) |
 | Decisions by | Admin (project lead), 2026-11-25 |
 | Technical design | [technical-implementation.md](technical-implementation.md) |
 | Applies to | Mobile app, backend API, Super Admin console, public website |
@@ -30,6 +30,10 @@ Citizens sign in with their **mobile number** and a **one-time code**, sent on W
 | D7 | How citizens get the Citizen role | Automatically at sign-up, for the village chosen in the app. |
 | D8 | A changed or lost mobile number | The citizen moves the account to a new number in the app, with a code sent to the new number. For a lost SIM, the operator gives a duplicate SIM with the same number. The Super Admin does not move accounts. An account unused for 6 months or more first asks **Is this your account?**, because a number can be given to someone new (FR-12a). |
 | D9 | When a friend's referral code can be entered | At sign-up only. Before 2026-11-25: until the mobile number was verified. |
+| D10 | Several accounts on one phone (families) | Up to 3 accounts per phone can get the welcome bonus. A referral between two accounts that signed up on the same phone is allowed: the new citizen gets the welcome bonus, the referrer gets no reward. From the 4th account on a phone, no welcome bonus. Before: one welcome bonus per phone, and such referrals were refused. |
+| D11 | Who helps citizens with their points | The Super Admin only. The wallet history shows the reason for every decision, and the app's help shows whom to contact. District, Mandal and Village Admins and Panchayat members see no citizen accounts or wallets. |
+| D12 | Deleting the account without the app | On the website: the citizen enters the mobile number, gets a code, and confirms. This replaces the request through the contact form, which proved nothing about who was asking. |
+| D13 | Launch | A pilot in mandals the Super Admin picks. Sign-up is open only for villages in those mandals; elsewhere the wallet does not show yet. The Super Admin widens the list, or opens it to everyone. |
 
 Officials keep their username and password login. Nothing changes for them. An official who also wants a wallet gets a separate citizen account, even with the same mobile number.
 
@@ -38,6 +42,9 @@ Officials keep their username and password login. Nothing changes for them. An o
 **In this version**
 - Citizen sign-up and login with the mobile number and a one-time code (WhatsApp or SMS), with the name, the 18+ confirmation and a consent notice.
 - Changing the account's mobile number in the app.
+- Up to 3 accounts per phone for families (D10).
+- Account deletion on the website with a code (D12).
+- A pilot in mandals the Super Admin picks (D13).
 - The Citizen role (Django group), given automatically.
 - A personal referral code and invite link for each citizen.
 - Referral points and a welcome bonus, held and then confirmed or not confirmed.
@@ -62,10 +69,10 @@ Officials keep their username and password login. Nothing changes for them. An o
 
 | Who | What changes |
 |---|---|
-| Citizen without an account | Nothing. Reads, posts and requests services as today. Sees "Sign in to earn points" and invite links. |
+| Citizen without an account | Nothing. Reads, posts and requests services as today. Sees "Sign in to earn points" and invite links, in the pilot mandals while the pilot runs (D13). |
 | Citizen with an account | Signs in with their mobile number and a code, invites friends, sees the wallet. Holds the new **Citizen** role for their village. |
 | Super Admin | Sets the reward amounts and rules, reviews referrals, corrects points, blocks or unblocks citizen accounts, exports CSV. |
-| District, Mandal and Village Admins, Panchayat members | No change. Citizen accounts never appear in their user lists. |
+| District, Mandal and Village Admins, Panchayat members | No change. Citizen accounts never appear in their user lists, and they cannot look up citizens' wallets (D11). |
 
 ## 5. User journeys
 
@@ -77,6 +84,10 @@ Officials keep their username and password login. Nothing changes for them. An o
 5. For a new number, the app asks for the citizen's name (Telugu or English) and shows the consent notice with links to the privacy policy and terms. The citizen ticks **I am 18 or older** and **I agree**.
 6. If the citizen came through a friend's invite link, the friend's code is already filled in; otherwise they may type one. This is the only time a code can be entered (D9).
 7. The account is created for the village already chosen in the app. The citizen now holds the Citizen role. If a referral code was used, the referral starts its holding period.
+
+While the pilot runs, **Sign in to earn points** shows only when the village chosen in the app is in a pilot mandal (D13). Elsewhere the wallet stays hidden, and a friend's invite link says the wallet is coming to that area soon.
+
+Family members can sign up on one shared phone, each with their own mobile number: they sign out and sign in with their own number and code (D10).
 
 ### J2. Sign in again
 On a new phone, after signing out, or when the 90-day login ends, the citizen enters the same number and a new code (J1 steps 2 to 4). The account opens with its wallet; the name and consent are not asked again.
@@ -94,18 +105,18 @@ If the account has not been used for 6 months or more, the app first shows **Is 
 3. If not, the points are **not confirmed** and both see why in the history.
 
 ### J5. Wallet
-The wallet shows the confirmed balance, the points on hold, and a history list (date, reason, points, status). Points have no cash value and cannot be transferred; the wallet says so. Once Bills & Recharges are live, the wallet also shows what the balance is worth as a discount.
+The wallet shows the confirmed balance, the points on hold, and a history list (date, reason, points, status). **Questions about points?** opens the app's help-line numbers, where the Super Admin lists the support number (D11, C6). Points have no cash value and cannot be transferred; the wallet says so. Once Bills & Recharges are live, the wallet also shows what the balance is worth as a discount.
 
 ### J6. Sign out, change the number, delete the account
 - **Sign out** returns the app to citizen mode without an account.
 - **Change my mobile number** (Profile): the citizen enters the new number and the code sent to it. The account, its wallet and its referral code move to the new number, and the old number is free. A citizen who lost their SIM gets a duplicate SIM with the same number from the operator, then signs in as usual.
-- **Delete my account** (in the app, and on a web page) closes the account: the citizen loses their points, and their personal data is removed as section 9 describes.
+- **Delete my account** (in the app, or on the website with the mobile number and a code, D12) closes the account: the citizen loses their points, and their personal data is removed as section 9 describes.
 
 ### J7. Super Admin
-1. Turns the feature on or off and sets the amounts and rules (section 7).
+1. Turns the feature on or off, picks the pilot mandals, and sets the amounts and rules (section 7).
 2. Sees all referrals with their status and reason, and can confirm or reject one, with a comment.
 3. Corrects a wallet with a reason (for example after fraud). Every correction is in the audit log.
-4. Finds citizen accounts (name, village, last 4 digits of the mobile), and blocks or unblocks them.
+4. Finds citizen accounts (name, village, last 4 digits of the mobile), and blocks or unblocks them. Answers citizens' questions about their points; local officials do not see wallets (D11).
 5. Exports referrals and wallet entries as CSV.
 
 ## 6. Functional requirements
@@ -118,7 +129,7 @@ The wallet shows the confirmed balance, the points on hold, and a history list (
 - **FR-5** A citizen account cannot use the officials' login, the Super Admin console, or any official screen or action. An official's account and a citizen account stay separate, even when they share a mobile number.
 - **FR-6** Blocking an account ends all its sessions at once, as for officials.
 - **FR-7** Logins last at most 90 days, as for officials; after that the citizen signs in again with a new code.
-- **FR-8** The citizen can delete their account in the app and through a web page.
+- **FR-8** The citizen can delete their account in the app, or on the website after entering the mobile number and a code sent to it (D12). The Super Admin can also delete an account, with a reason (for example fraud or a legal request); it is audited.
 
 ### Codes and the mobile number
 - **FR-9** The code is sent on WhatsApp, or by SMS when the citizen asks for it. On Android the app offers the phone's own SIM numbers, and an SMS code fills in after one tap on **Allow**.
@@ -130,7 +141,9 @@ The wallet shows the confirmed balance, the points on hold, and a history list (
 ### Referrals
 - **FR-13** Every account has a unique referral code (8 letters and digits, no look-alike characters) and an invite link.
 - **FR-14** A referral code can be entered only at sign-up, never later (D9).
-- **FR-15** A citizen cannot refer themselves: the same mobile number or phone is refused.
+- **FR-15** A citizen cannot refer themselves: the same mobile number is refused.
+- **FR-15a** A referral between two accounts that signed up on the same phone is allowed, but only the new citizen's welcome bonus is paid; the referrer gets no reward (D10).
+- **FR-15b** At most 3 accounts that signed up on one phone get the welcome bonus, deleted accounts included (a Super Admin setting, section 7).
 - **FR-16** A new citizen can be referred only once.
 - **FR-17** A referral is created when the new citizen signs up with the code. Its points are then held for the holding period.
 - **FR-18** At the end of the holding period the referral is confirmed if the new citizen was active and neither account is blocked or deleted; otherwise it is not confirmed, with a reason.
@@ -165,8 +178,10 @@ The Super Admin can change these at any time in the console. The values are star
 | Setting | Meaning | Suggested start |
 |---|---|---|
 | Wallet on or off | Hides the whole feature in the app and the website when off | Off until launch |
+| Pilot mandals | Mandals whose villages can sign up and see the wallet; empty means everywhere (D13) | The first pilot mandals *(client to choose, Q11)* |
 | Referral reward | Points for the referrer per confirmed referral | 50 *(client to confirm)* |
 | Welcome bonus | Points for the new citizen who used a code | 20 *(client to confirm)* |
+| Welcome bonuses per phone | How many accounts signed up on one phone can get the welcome bonus (D10) | 3 |
 | Holding period | Days the points are held | 7 |
 | Active rule | Days on which the new citizen must open the app during the holding period | 2 |
 | Monthly limit | Confirmed referrals one referrer can earn in a calendar month | 30 |
@@ -177,8 +192,10 @@ A referral code can be entered only at sign-up (D9); that is a fixed rule, not a
 ## 8. Fraud and abuse
 
 Referral rewards attract fake accounts. Play Integrity is off for now, so the following rules carry the weight:
-- One account per mobile number, and one welcome bonus per phone. A SIM needs KYC at the operator, so numbers are harder to make in bulk than email or Google accounts.
-- Self-referral refused across mobile number and phone.
+- One account per mobile number. A SIM needs KYC at the operator, so numbers are harder to make in bulk than email or Google accounts.
+- At most 3 welcome bonuses per phone, for families (D10), and no referrer reward between accounts that signed up on the same phone. A phone with many SIMs therefore earns little.
+- Self-referral with the same mobile number refused.
+- The pilot (D13) keeps early fraud, and its cost, to a few mandals.
 - Code requests limited per number, per phone and per internet address (FR-10).
 - Points held, and confirmed only after real use of the app (section 7).
 - A monthly limit per referrer.
@@ -191,7 +208,7 @@ Referral rewards attract fake accounts. Play Integrity is off for now, so the fo
 - **Personal data collected:** the name the citizen types, the mobile number (kept as a protected fingerprint plus the last 4 digits), the village, the 18+ confirmation and consent dates, and app-use days for the active rule and the unused account check. **No email address** is collected.
 - **Consent (DPDP):** India's Digital Personal Data Protection Rules were notified in November 2025, and their core duties (notice, consent, security, erasure) apply from about May 2027. The sign-up consent notice and account deletion are built now so the feature is ready. The number screen says why the number is needed, with a link to the privacy policy, before any code is sent.
 - **Children:** accounts are for 18 and over only (D5), so no parental-consent process is needed.
-- **Account deletion:** Google Play requires apps that let people create an account to let them delete it, in the app and from a web page. **This makes citizen accounts an exception to the "data is kept permanently" decision of 2026-11-14** (needs the owner's confirmation, Q8).
+- **Account deletion:** Google Play requires apps that let people create an account to let them delete it, in the app and from a web page. The web page asks for the mobile number and a code, so only the number's owner can delete the account (D12). **This makes citizen accounts an exception to the "data is kept permanently" decision of 2026-11-14** (needs the owner's confirmation, Q8).
 - **Money rules (RBI):** at the wallet's launch points are collect-only, with no cash value and no transfer, so they are not a payment instrument. With Bills & Recharges they become a **discount the client gives** on its own bill-payment service. The client pays the rest of the bill with its own money, and points never pay a biller and never become cash. A lawyer must confirm this before Bills & Recharges go live. Points that paid a third party directly would be a prepaid payment instrument, which needs an RBI licence.
 - **WhatsApp and SMS:** a code is sent only when the citizen asks for it in the app. Meta and the SMS provider receive the number and the code only to deliver it. Business SMS in India must come from a sender registered on DLT, the operators' register of business senders (C3).
 
@@ -213,6 +230,7 @@ Referral rewards attract fake accounts. Play Integrity is off for now, so the fo
 | C3 | DLT registration for SMS: the client's business on an operator's DLT portal, a 6-letter sender name (for example GRAMAC), the code message in Telugu and English approved there, and an account with an Indian SMS provider | To send codes by SMS. Each approval usually takes a few days; start together with C1 |
 | C4 | Reward amounts and the name of the points, in Telugu and English | Section 7 |
 | C5 | Updated privacy policy and terms (with legal review of the points wording: no cash value now, a discount on bills later) | Section 9 |
+| C6 | A support phone or WhatsApp number for citizens' questions about points, and who answers it | D11; listed as a statewide help line in the app |
 
 ## 12. Open questions for the client
 
@@ -228,6 +246,7 @@ Referral rewards attract fake accounts. Play Integrity is off for now, so the fo
 | Q8 | Citizen accounts can be deleted, as an exception to "data is kept permanently". Agreed? | Yes; wallet history is kept without the person's details |
 | Q9 | Keep a protected fingerprint of a deleted citizen's mobile number for a time, to stop repeat welcome bonuses? | Yes, for 1 year, subject to legal review |
 | Q10 | After how many months without use should signing in ask **Is this your account?** (FR-12a) | 6. Operators may give a number to someone new after 90 days, so 3 protects more, but asks returning citizens more often. |
+| Q11 | Which mandals for the pilot, and for how long? (D13) | 2 or 3 mandals the client's team can visit, for about a month, then widen |
 
 ## 13. Acceptance criteria
 
@@ -239,7 +258,9 @@ Referral rewards attract fake accounts. Play Integrity is off for now, so the fo
 - A citizen can move the account to a new number, and an account unused for the set time asks **Is this your account?** before it opens.
 - Officials never see citizen accounts in their user lists, and citizen accounts cannot open any official screen.
 - The Super Admin can change every setting in section 7, review referrals, correct points and block accounts; each action is in the audit log.
-- A citizen can delete their account from the app and from the web page.
+- A citizen can delete their account from the app, and from the web page with a code; nobody can delete it from the web page without the code.
+- Two family members can each sign up on one shared phone and get the welcome bonus; a 4th account on that phone gets none.
+- While the pilot runs, the wallet does not show for villages outside the pilot mandals, and sign-up there is refused by the server.
 
 ## 14. Phasing
 
@@ -248,7 +269,7 @@ Referral rewards attract fake accounts. Play Integrity is off for now, so the fo
 | 1 | Backend: accounts, Citizen role, mobile sign-in with WhatsApp and SMS codes, wallet and referrals, behind the on/off setting | C1, C3 |
 | 2 | App: sign-in, mobile verification, wallet, invite, delete account; console page; website code display and legal texts | Step 1, C2, C4, C5 |
 | 3 | Test on the qa server with the feature on; UAT | Steps 1–2 |
-| 4 | Production: release the app, then switch the feature on | Step 3 |
+| 4 | Production: release the app, then switch the feature on for the pilot mandals (D13); widen after the pilot | Step 3, Q11 |
 | 5 | Bills & Recharges, with points as a discount ([Bills and recharges](../bills-recharges/requirements.md)) | The wallet live in production |
 
 Effort and the work for each team are in [technical-implementation.md](technical-implementation.md), section 9.
