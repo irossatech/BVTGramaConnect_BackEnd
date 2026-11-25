@@ -19,5 +19,6 @@ urlpatterns = [
     ),
     path("admin/wallets/<uuid:account_id>/", views_admin.AdminWalletView.as_view(), name="admin-wallet"),
     path("admin/wallets/<uuid:account_id>/adjust/", views_admin.AdjustWalletView.as_view(), name="admin-wallet-adjust"),
+    path("admin/wallet/entries/", views_admin.WalletEntriesView.as_view(), name="admin-wallet-entries"),
     path("admin/wallet/export/", views_admin.WalletExportView.as_view(), name="admin-wallet-export"),
 ]
