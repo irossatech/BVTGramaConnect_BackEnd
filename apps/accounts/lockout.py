@@ -18,6 +18,15 @@ goes through login_key(). Changing SECRET_KEY only clears current lockouts.
 
 The IP-wide cap (50 failures from one IP, any usernames) was removed on 2026-11-20
 (lead's decision: not needed in this phase; docs/security-review.md).
+
+Ceiling per username (WEB-SEC-019, BVTGC-110, lead's decision of 2026-11-25): guesses spread over
+many addresses never reach the pair limit, so LOGIN_MAX_FAILURES_PER_USERNAME (20) failures for one
+username within LOGIN_USERNAME_WINDOW_MINUTES (60), from any addresses, lock that username from every
+address for LOGIN_LOCKOUT_MINUTES (15) after the last of them. They are counted in axes'
+AccessFailureLog, which holds only real tries (axes does not log tries it refused during a lockout),
+and tries refused by the ceiling are not counted either, so a lockout is never extended. A
+stranger can therefore keep an official out for 15 minutes at a time, never longer without trying
+again; an admin's unlock, a password reset or a successful login clears the count.
 """
 
 from __future__ import annotations
@@ -28,10 +37,11 @@ from datetime import timedelta
 
 from axes.handlers.proxy import AxesProxyHandler
 from axes.helpers import get_cool_off, get_failure_limit
-from axes.models import AccessAttempt
+from axes.models import AccessAttempt, AccessFailureLog
 from axes.signals import user_locked_out
 from django.conf import settings
 from django.contrib.auth.signals import user_logged_in, user_login_failed
+from django.db.models import Count, Max
 from django.dispatch import receiver
 from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
@@ -77,17 +87,46 @@ def _cool_off() -> timedelta:
 
 
 def seconds_left(username: str, ip: str | None) -> int:
-    """How long the (username, IP) pair stays locked, in whole seconds (at least 1)."""
+    """How long the username stays locked for this IP, by the pair lockout or the ceiling per
+    username, whichever ends later; in whole seconds (at least 1)."""
     latest = (
         AccessAttempt.objects.filter(username=login_key(username), ip_address=ip)
         .order_by("-attempt_time")
         .values_list("attempt_time", flat=True)
         .first()
     )
-    if latest is None:
-        return 1
-    remaining = latest + _cool_off() - timezone.now()
-    return max(1, int(remaining.total_seconds()) + 1)
+    pair = 0
+    if latest is not None:
+        pair = int((latest + _cool_off() - timezone.now()).total_seconds()) + 1
+    return max(1, pair, username_seconds_left(username))
+
+
+def _username_locks(keys) -> dict:
+    """{login_key: when its ceiling lockout ends} for the keys over the ceiling per username now."""
+    limit = settings.LOGIN_MAX_FAILURES_PER_USERNAME
+    keys = [key for key in keys if key]
+    if limit <= 0 or not keys:
+        return {}
+    now = timezone.now()
+    rows = (
+        AccessFailureLog.objects.filter(
+            username__in=keys, attempt_time__gte=now - timedelta(minutes=settings.LOGIN_USERNAME_WINDOW_MINUTES)
+        )
+        .order_by()
+        .values("username")
+        .annotate(failures=Count("id"), last=Max("attempt_time"))
+        .filter(failures__gte=limit, last__gt=now - _cool_off())
+    )
+    return {row["username"]: row["last"] + _cool_off() for row in rows}
+
+
+def username_seconds_left(username: str) -> int:
+    """How long the ceiling per username keeps this username locked from every address; 0 when it does not."""
+    key = login_key(username)
+    until = _username_locks([key]).get(key)
+    if until is None:
+        return 0
+    return max(1, int((until - timezone.now()).total_seconds()) + 1)
 
 
 def locked_usernames(usernames) -> set[str]:
@@ -95,15 +134,48 @@ def locked_usernames(usernames) -> set[str]:
     since = timezone.now() - _cool_off()
     limit = get_failure_limit(None, None)
     by_key = {login_key(name): name for name in usernames}
-    locked = AccessAttempt.objects.filter(
-        username__in=list(by_key), attempt_time__gte=since, failures_since_start__gte=limit
-    ).values_list("username", flat=True)
+    locked = set(
+        AccessAttempt.objects.filter(
+            username__in=list(by_key), attempt_time__gte=since, failures_since_start__gte=limit
+        ).values_list("username", flat=True)
+    )
+    locked |= set(_username_locks(list(by_key)))
     return {by_key[key] for key in locked}
 
 
+def _clear_username_failures(username: str) -> int:
+    key = login_key(username)
+    if not key:
+        return 0
+    deleted, _rows = AccessFailureLog.objects.filter(username=key).delete()
+    return deleted
+
+
 def unlock(user: User) -> int:
-    """Clear every failed attempt for this user's username, from any IP. Returns the rows removed."""
+    """Clear every failed attempt for this user's username, from any IP, and the count of the
+    ceiling per username. Returns the lockout rows removed (AccessAttempt; the failure log not counted)."""
+    _clear_username_failures(user.username)
     return AxesProxyHandler.reset_attempts(username=login_key(user.username))
+
+
+def audit_username_lockout(request, username: str) -> None:
+    """auth.locked_out for the ceiling per username, once: on the failure that reached it."""
+    from apps.audit.services import record
+
+    target = User.objects.filter(username=username).first() if username else None
+    shown = _username_for_audit(username, target)
+    record(
+        "auth.locked_out",
+        target=target,
+        target_label=shown,
+        via=_via(request),
+        data={"username": shown, "minutes": int(_cool_off().total_seconds() // 60), "scope": "username"},
+    )
+
+
+def audit_refused_try(request, username: str) -> None:
+    """auth.login_failed (locked) for a try the ceiling refused before the password was checked."""
+    _audit_failure(request, username, locked=True)
 
 
 def _via(request) -> str:
@@ -117,9 +189,12 @@ def _via(request) -> str:
 
 @receiver(user_login_failed, dispatch_uid="audit_failed_login")
 def audit_failed_login(sender, credentials=None, request=None, **kwargs):
+    _audit_failure(request, typed_username(request, credentials), locked=bool(getattr(request, "axes_locked_out", False)))
+
+
+def _audit_failure(request, username: str, *, locked: bool) -> None:
     from apps.audit.services import record
 
-    username = typed_username(request, credentials)
     target = User.objects.filter(username=username).first() if username else None
     shown = _username_for_audit(username, target)
     record(
@@ -127,7 +202,7 @@ def audit_failed_login(sender, credentials=None, request=None, **kwargs):
         target=target,
         target_label=shown,
         via=_via(request),
-        data={"username": shown, "locked": bool(getattr(request, "axes_locked_out", False))},
+        data={"username": shown, "locked": locked},
     )
 
 
@@ -169,6 +244,13 @@ def remember_token_version(sender, request=None, user=None, **kwargs):
     session = getattr(request, "session", None)
     if session is not None and user is not None and "_auth_user_id" in session:
         session[SESSION_TOKEN_VERSION] = user.token_version
+
+
+@receiver(user_logged_in, dispatch_uid="clear_username_failures")
+def clear_username_failures(sender, request=None, user=None, **kwargs):
+    """A successful login clears the count of the ceiling per username, as axes clears the pair's."""
+    if user is not None:
+        _clear_username_failures(user.username)
 
 
 def lockout_response(request, original_response=None, credentials=None):

@@ -334,6 +334,11 @@ AUTH_PASSWORD_VALIDATORS = [
 # Lockout (django-axes)
 AXES_FAILURE_LIMIT = env.int("LOGIN_MAX_FAILURES", default=5)
 AXES_COOLOFF_TIME = timedelta(minutes=env.int("LOGIN_LOCKOUT_MINUTES", default=15))
+# Ceiling per username across addresses (WEB-SEC-019, BVTGC-110, lead's decision of 2026-11-25): this many
+# failures for one username within LOGIN_USERNAME_WINDOW_MINUTES, from any addresses, lock the username
+# from every address for LOGIN_LOCKOUT_MINUTES. 0 turns the ceiling off. apps/accounts/lockout.py.
+LOGIN_MAX_FAILURES_PER_USERNAME = env.int("LOGIN_MAX_FAILURES_PER_USERNAME", default=20)
+LOGIN_USERNAME_WINDOW_MINUTES = env.int("LOGIN_USERNAME_WINDOW_MINUTES", default=60)
 AXES_LOCKOUT_PARAMETERS = [["username", "ip_address"]]
 AXES_RESET_ON_SUCCESS = True
 AXES_RESET_COOL_OFF_ON_FAILURE_DURING_LOCKOUT = False

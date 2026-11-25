@@ -106,12 +106,13 @@ The same rule applies to sessions and to tokens. Clients send the official strai
 django-axes counts failed logins per **username and IP address together**:
 
 - 5 failures (`LOGIN_MAX_FAILURES`) lock that username from that IP address for 15 minutes (`LOGIN_LOCKOUT_MINUTES`).
-- During the lockout every try answers `429 locked_out` with `retry_after_s`, even with the right password. Tries during the lockout do not extend it.
-- A successful login clears the count.
-- A lockout is audited as `auth.locked_out`, and each failure as `auth.login_failed`.
+- Ceiling per username (WEB-SEC-019, lead's decision of 2026-11-25): 20 failures (`LOGIN_MAX_FAILURES_PER_USERNAME`; 0 turns it off) for one username within 60 minutes (`LOGIN_USERNAME_WINDOW_MINUTES`), from any addresses, lock that username from every address for 15 minutes after the last of them. They are counted from axes' failure log (`apps/accounts/lockout.py`).
+- During either lockout every try answers `429 locked_out` with `retry_after_s`, even with the right password. Tries during a lockout are not counted and do not extend it.
+- A successful login clears both counts; so do an unlock and a password reset.
+- A lockout is audited as `auth.locked_out` (with `"scope": "username"` for the ceiling), each failure as `auth.login_failed`, and each try refused by the ceiling as `auth.login_failed` with `"locked": true`.
 - axes' tables store a keyed hash of the username (`lockout.login_key`, HMAC-SHA256 with `SECRET_KEY`), never what was typed: a password typed into the username box must not stay there for 30 days. So axes' own `axes_reset_username` command needs the hash; use the shell command below. Changing `SECRET_KEY` only clears current lockouts.
 
-**No per-IP login limits in this phase** (lead's decision of 2026-11-20): the IP-wide cap (50 failed logins an hour from one IP, any usernames) and the login throttle of security gap G1 (30 logins an hour per IP) were removed. The lockout above is the only login limit. `docs/security-review.md` records it as deferred, not accepted: the limits are to be put back before going live (open item 8).
+**No per-IP login limits in this phase** (lead's decision of 2026-11-20): the IP-wide cap (50 failed logins an hour from one IP, any usernames) and the login throttle of security gap G1 (30 logins an hour per IP) were removed. The lockouts above are the only login limits. `docs/security-review.md` records it as deferred, not accepted: the limits are to be put back before going live (open item 8).
 
 **Unlocking early:** an admin with `accounts.unlock_user` over the user's area, ranked above them, calls `POST /api/v1/users/{id}/unlock/`. This clears every lockout for that username and is audited as `user.unlocked`. A password reset (section 4) clears it too. User objects carry `"locked_out": true` and `unlock` in `allowed_actions` while a lockout is active. In the console the button is in the user panel.
 
@@ -371,7 +372,7 @@ python manage.py sync_role_permissions
 | `auth.login` | Successful login, with `via` app or console |
 | `auth.login_failed` | Wrong password or unknown username |
 | `auth.login_refused` | Right password, but blocked, no role, or not a console user |
-| `auth.locked_out` | A username and IP pair is locked |
+| `auth.locked_out` | A username and IP pair is locked, or (`"scope": "username"`) a username is locked from every address by the ceiling per username |
 | `auth.ip_locked_out` | No longer written (the IP-wide cap was removed on 2026-11-20); older entries stay. They held the limit and window, never the IP |
 | `user.unlocked` | An admin unlocked a user |
 | `user.password_changed` | An official changed their own password |
@@ -406,7 +407,9 @@ No audit entry holds a password. The console shows these under Audit Log, tab Lo
 | Setting (env var) | Default | Meaning |
 |---|---|---|
 | `LOGIN_MAX_FAILURES` | 5 | Failures before a username and IP pair is locked |
-| `LOGIN_LOCKOUT_MINUTES` | 15 | Lockout length |
+| `LOGIN_LOCKOUT_MINUTES` | 15 | Lockout length (both lockouts) |
+| `LOGIN_MAX_FAILURES_PER_USERNAME` | 20 | Failures for one username from any addresses before it is locked from every address; 0 turns the ceiling off |
+| `LOGIN_USERNAME_WINDOW_MINUTES` | 60 | The window those failures are counted in |
 | `CONSOLE_SESSION_IDLE_MINUTES` | 30 | Console idle timeout |
 | `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE` | on (off in dev) | Cookies only over HTTPS |
 | `CSRF_TRUSTED_ORIGINS` | none | The server's https origin, in the server's `.env` |
