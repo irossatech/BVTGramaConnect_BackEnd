@@ -12,8 +12,7 @@ Open work for the Backend team, most important first. Update this file as items 
 8. **Audit follow-ups** (`audit-reports/BE_0*_RESPONSE_*.md`, each ends with "What is still needed"): the
    items left open there, chiefly the decisions for the lead and owner (citizen identity, registration
    limits, files per citizen post) and the production team's checks of the hosting panel (nginx, backups).
-9. **Before going live: the caller's IP and the per-IP limits** (deferred by the lead's decision of
-   2026-11-20, not an accepted risk; `docs/security-review.md`, open item 8). Put back the BE-SEC-101 fix
-   (`6c2bcc4`, reverted by `8c351fd`: believe `X-Real-IP` only from the server's own network) and the
-   per-IP limits removed by `79aaca7` (login throttle, failed-login cap per address, contact form, Nginx
-   request limits), with their tests.
+9. **The login throttle per IP** (gap G1: 30 logins an hour per address; `docs/security-review.md`, open
+   item 8). Not decided whether it comes back: many officials can share one office network. The rest
+   of this item was done by BVTGC-105 (the BE-SEC-101 fix, the cap per address, the Nginx limits); the
+   contact form stays without a per-IP limit by the lead's final decision.

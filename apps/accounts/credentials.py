@@ -1,7 +1,7 @@
 """Passwords for officials: login checks, temporary passwords, validation.
 
-- Login (app and console) goes through Django's authenticate(): a username over the ceiling per username
-  is refused first (lockout.py), then django-axes refuses locked-out username + IP pairs, then
+- Login (app and console) goes through Django's authenticate(): an address over the cap per address and
+  a username over the ceiling per username are refused first (lockout.py), then django-axes refuses locked-out username + IP pairs, then
   OfficialBackend checks the password. Usernames are matched without case. Unknown usernames take as
   long as real ones (ModelBackend hashes a dummy password).
 - New accounts and resets get a temporary password, set by the admin or
@@ -104,9 +104,11 @@ def invalid_credentials() -> ApiError:
     return ApiError("invalid_credentials", _("Wrong username or password."))
 
 
-def locked_out(request, username: str) -> ApiError:
-    """429 locked_out, with how long the lockout still lasts (the username + IP pair or the ceiling per username)."""
-    seconds = lockout.seconds_left(username, client_ip(request))
+def locked_out(request, username: str, seconds: int | None = None) -> ApiError:
+    """429 locked_out, with how long the lockout still lasts. `seconds` is given for the cap per address;
+    else the username + IP pair or the ceiling per username is measured."""
+    if seconds is None:
+        seconds = lockout.seconds_left(username, client_ip(request))
     return ApiError(
         "locked_out",
         _("Too many failed logins. Try again in %(m)d minute(s).") % {"m": max(1, (seconds + 59) // 60)},
@@ -128,6 +130,12 @@ def authenticate_official(request, username: str, password: str, *, via: str, re
     the password check, so it tells nothing to someone without the password.
     """
     key = normalize_username(username)
+    ip = client_ip(request)
+    # The cap per address (BVTGC-105) is checked before the password, so a blocked address learns
+    # nothing and its tries are not counted (the block is not extended).
+    seconds = lockout.ip_seconds_left(ip)
+    if seconds:
+        raise locked_out(request, key, seconds)
     if key and lockout.username_seconds_left(key):
         # The ceiling per username (WEB-SEC-019): refused before the password is checked, and not
         # counted, so the lockout is not extended.
@@ -137,6 +145,15 @@ def authenticate_official(request, username: str, password: str, *, via: str, re
     if user is None:
         if getattr(request, "axes_locked_out", False):
             raise locked_out(request, key)
+        seconds = lockout.ip_seconds_left(ip)
+        if seconds:
+            # This failure reached the cap per address: audit it once (never the IP) and answer like a lockout.
+            record(
+                "auth.ip_locked_out",
+                via=via,
+                data={"failures": settings.LOGIN_IP_MAX_FAILURES, "minutes": settings.LOGIN_IP_WINDOW_MINUTES},
+            )
+            raise locked_out(request, key, seconds)
         if key and lockout.username_seconds_left(key):
             lockout.audit_username_lockout(request, key)  # this failure reached the ceiling
             raise locked_out(request, key)

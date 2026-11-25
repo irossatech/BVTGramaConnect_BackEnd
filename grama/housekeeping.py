@@ -66,7 +66,7 @@ def run_housekeeping(now=None) -> dict:
     # Which refresh token replaced which: needed only for JWT_REFRESH_GRACE_SECONDS (BVTGC-93).
     _delete_in_batches(RefreshRotation.objects.filter(at__lt=now - timedelta(days=1)))
     sessions = _delete_in_batches(Session.objects.filter(expire_date__lt=now))
-    keep = max(LOGIN_FAILURE_LOG_KEEP_MINUTES, settings.LOGIN_USERNAME_WINDOW_MINUTES)
+    keep = max(LOGIN_FAILURE_LOG_KEEP_MINUTES, settings.LOGIN_USERNAME_WINDOW_MINUTES, settings.LOGIN_IP_WINDOW_MINUTES)
     login_failures = _delete_in_batches(AccessFailureLog.objects.filter(attempt_time__lte=now - timedelta(minutes=keep)))
     return {
         "failed_tasks": failed_tasks,
