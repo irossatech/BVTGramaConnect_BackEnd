@@ -114,11 +114,17 @@ ACTION_LABELS = {
     "citizen.mobile_changed": _("changed their wallet account’s mobile number"),
     "citizen.village_changed": _("moved their wallet account to another village"),
     "citizen.account_deleted": _("deleted a citizen wallet account"),
+    "citizen.account_found": _("looked up a citizen wallet account by number or email"),
+    "citizen.email_set_by_admin": _("set a new email for a citizen wallet account"),
+    "citizen.mobile_released": _("removed the mobile number from a citizen wallet account"),
+    "citizen.account_blocked": _("blocked a citizen wallet account"),
+    "citizen.account_unblocked": _("unblocked a citizen wallet account"),
     # Referrals and wallets (BVTGC-126)
     "referral.created": _("started a referral (a friend signed up with a code)"),
     "referral.confirmed": _("confirmed a referral"),
     "referral.rejected": _("did not confirm a referral"),
     "wallet.mismatch": _("found a wallet whose balance differs from its history"),
+    "wallet.adjusted": _("corrected a citizen's points"),
     # Reports and delivery
     "report.exported": _("exported a report"),
     "email.failed": _("email not delivered"),

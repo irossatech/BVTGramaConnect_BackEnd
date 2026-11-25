@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from django.utils.translation import gettext_lazy
 from rest_framework import serializers
 
 from apps.audit.masking import mask_email
+from apps.geography.areas import AreaRef
+from apps.geography.models import AreaLevel
 from apps.posts.sharing import invite_url
 
 from .models import CitizenAccount
@@ -140,3 +143,86 @@ class SignedInSerializer(serializers.Serializer):
     access = serializers.CharField()
     refresh = serializers.CharField()
     account = AccountSerializer()
+
+
+# --- The Super Admin's citizen accounts (BVTGC-128) -----------------------------------------------------------
+
+class ReasonSerializer(serializers.Serializer):
+    """Every Super Admin action on an account gives a reason (FR-16, FR-9); it goes to the audit log."""
+
+    reason = serializers.CharField(max_length=500)
+
+
+class CalledBackSerializer(ReasonSerializer):
+    called_back = serializers.BooleanField(help_text="true once the Super Admin called the number back (D16)")
+
+    def validate_called_back(self, value):
+        if value is not True:
+            raise serializers.ValidationError(gettext_lazy("Call the citizen's number back first."))
+        return value
+
+
+class SetEmailSerializer(CalledBackSerializer):
+    email = serializers.EmailField(max_length=254)
+
+
+class FindAccountSerializer(serializers.Serializer):
+    mobile = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    email = serializers.EmailField(max_length=254, required=False, allow_blank=True)
+
+    def validate(self, data):
+        given = [name for name in ("mobile", "email") if (data.get(name) or "").strip()]
+        if len(given) != 1:
+            message = gettext_lazy("Give the mobile number or the email, not both.")
+            raise serializers.ValidationError({"mobile": [message], "email": [message]})
+        return data
+
+
+class CitizenAccountRowSerializer(serializers.Serializer):
+    """One account in the Super Admin's list: never the full email or number (contract section 21)."""
+
+    id = serializers.UUIDField()
+    name = serializers.CharField()
+    village = serializers.DictField()
+    mobile_last4 = serializers.CharField()
+    mobile_missing = serializers.BooleanField()
+    email_hint = serializers.CharField()
+    email_verified = serializers.BooleanField()
+    mobile_verified = serializers.BooleanField()
+    referral_code = serializers.CharField()
+    confirmed_points = serializers.IntegerField()
+    held_points = serializers.IntegerField()
+    status = serializers.ChoiceField(choices=["active", "blocked", "deleted"])
+    created_at = serializers.DateTimeField()
+    last_active_at = serializers.DateTimeField(allow_null=True)
+    deleted_at = serializers.DateTimeField(allow_null=True)
+    allowed_actions = serializers.ListField(child=serializers.CharField())
+
+    @staticmethod
+    def prime(accounts, context) -> None:
+        """The villages' names for a page of rows, in one query per level."""
+        _describer(context).prime([AreaRef(AreaLevel.VILLAGE, a.village_id) for a in accounts])
+
+    def to_representation(self, account: CitizenAccount) -> dict:
+        from .services_admin import allowed_actions, status_of
+
+        wallet = getattr(account, "wallet", None)
+        deleted = account.deleted_at is not None
+        return {
+            "id": account.pk,
+            "name": account.user.name,
+            "village": _village(_describer(self.context), account.village_id),
+            "mobile_last4": account.mobile_last4,
+            "mobile_missing": account.mobile_hash is None and not deleted,
+            "email_hint": mask_email(account.email) if account.email else "",
+            "email_verified": account.email_verified_at is not None,
+            "mobile_verified": account.mobile_verified_at is not None,
+            "referral_code": account.referral_code,
+            "confirmed_points": wallet.confirmed_points if wallet else 0,
+            "held_points": wallet.held_points if wallet else 0,
+            "status": status_of(account),
+            "created_at": account.created_at,
+            "last_active_at": account.last_active_at,
+            "deleted_at": account.deleted_at,
+            "allowed_actions": allowed_actions(account, can_adjust=self.context.get("can_adjust", False)),
+        }

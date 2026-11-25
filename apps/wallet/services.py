@@ -13,12 +13,17 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+import uuid
+
 from django.db import IntegrityError, transaction
 from django.db.models import F, Min, Q, Sum
 from django.utils import timezone
+from django.utils.translation import gettext as _
+from rest_framework import status as http
 
 from apps.audit.services import record
 from apps.posts.services import runtime
+from grama.exceptions import ApiError
 
 from .models import Referral, Wallet, WalletEntry
 
@@ -137,8 +142,10 @@ def decide(referral: Referral, *, confirm: bool, reason_key: str = "", by=None, 
                     held_points=F("held_points") - entry.points, confirmed_points=F("confirmed_points") + entry.points
                 )
             else:
+                # A Super Admin's comment is the entry's reason in both histories (contract section 21).
                 WalletEntry.objects.filter(pk=entry.pk).update(
-                    status=WalletEntry.Status.CANCELLED, decided_at=now, reason_key=reason_key
+                    status=WalletEntry.Status.CANCELLED, decided_at=now, reason_key=reason_key,
+                    reason=comment if by is not None else "",
                 )
                 Wallet.objects.filter(pk=entry.wallet_id).update(held_points=F("held_points") - entry.points)
         record(
@@ -210,3 +217,46 @@ def check_wallets() -> int:
                 data={"cache": [wallet.held_points, wallet.confirmed_points], "entries": [held, confirmed]},
             )
     return mismatches
+
+
+# --- The Super Admin's corrections (BVTGC-128, FR-29) -------------------------------------------------------
+
+#: The most points one adjustment may add or take away.
+MAX_ADJUSTMENT = 100_000
+
+
+def adjust(account, points: int, *, reason: str, by, via: str) -> dict:
+    """An ADJUSTMENT entry, CONFIRMED at once, with the Super Admin's reason shown in the citizen's history.
+    Taking points away is one conditional UPDATE (confirmed_points >= n), so the balance never goes below
+    zero, even with two corrections at once: 409 not_enough_points. Returns the wallet summary."""
+    if account.deleted_at is not None:
+        raise ApiError(
+            "invalid_transition", _("This account was deleted; it cannot be changed."), status=http.HTTP_409_CONFLICT
+        )
+    wallet = Wallet.objects.get(account=account)
+    user = account.user
+    with transaction.atomic():
+        if points < 0:
+            taken = Wallet.objects.filter(pk=wallet.pk, confirmed_points__gte=-points).update(
+                confirmed_points=F("confirmed_points") + points
+            )
+            if not taken:
+                wallet.refresh_from_db()
+                raise ApiError(
+                    "not_enough_points",
+                    _("Only %(n)d confirmed points: the balance cannot go below zero.") % {"n": wallet.confirmed_points},
+                    status=http.HTTP_409_CONFLICT,
+                    confirmed_points=wallet.confirmed_points,
+                )
+        WalletEntry.objects.create(
+            wallet=wallet, points=points, kind=WalletEntry.Kind.ADJUSTMENT, status=WalletEntry.Status.CONFIRMED,
+            reason_key="adjustment", reason=reason, created_by=by, idempotency_key=f"adj:{uuid.uuid4().hex}",
+            decided_at=timezone.now(),
+        )
+        if points > 0:
+            Wallet.objects.filter(pk=wallet.pk).update(confirmed_points=F("confirmed_points") + points)
+        record(
+            "wallet.adjusted", actor=by, target=user, target_label=user.name, via=via,
+            data={"points": points, "reason": reason},
+        )
+    return summary(wallet)
