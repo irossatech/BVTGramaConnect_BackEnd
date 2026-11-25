@@ -105,6 +105,8 @@ ACTION_LABELS = {
     "citizen.unblocked": _("unblocked a citizen’s phone"),
     "citizen.block_ended": _("ended a citizen’s block (its time was up)"),
     "citizen.posts_discarded": _("discarded a citizen’s waiting posts"),
+    # Citizen wallet accounts (BVTGC-106)
+    "citizen.code_sent": _("sent a wallet code by email"),
     # Reports and delivery
     "report.exported": _("exported a report"),
     "email.failed": _("email not delivered"),

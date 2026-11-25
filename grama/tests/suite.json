@@ -33,7 +33,8 @@
         "apps/accounts/tests/test_password_length.py",
         "apps/accounts/tests/test_refresh_grace.py",
         "apps/accounts/tests/test_tokens.py",
-        "apps/accounts/tests/test_username_spaces.py"
+        "apps/accounts/tests/test_username_spaces.py",
+        "apps/citizens/tests/test_email_codes.py"
       ]
     },
     "posts": {
