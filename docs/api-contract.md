@@ -32,6 +32,45 @@ Contents:
 - Field names are `snake_case`. Enum values are `UPPER_CASE`, except category keys and language codes.
 - **Links to uploaded files are absolute** in every endpoint: photos, videos, posters, thumbnails, ad images, service and bill logos, for example `https://<site>/media/posts/2026/10/<id>-0.webp` (BVTGC-68, 2026-11-23; before, the feed and the citizen's own posts sent the path `/media/...` only). Clients use the link as it is.
 
+### Versions and changes (BVTGC-96, 2026-11-25; proposed, to be agreed by the backend, web and mobile teams)
+
+Why: the website and the console are deployed together with the server, but app APKs downloaded from the website stay on phones for months. Every change is judged against the **oldest app build still in use**, not only the current one.
+
+**Safe changes** (additive; announce them, no waiting):
+- a new endpoint, or a new method on an existing one;
+- a new field in a response;
+- a new optional field in a request (leaving it out behaves as before);
+- a new error code on a new endpoint or field.
+
+Clients must make these safe: **ignore response fields they do not know**, show an unknown enum value (a new status, category or role) with a neutral fallback rather than crash, and show `error.message` for an error code they do not know (section 1, Errors).
+
+**Breaking changes** (need the steps below):
+- removing or renaming an endpoint, a field or an enum value;
+- changing a field's type, meaning, unit or format (for example a date's format, a path that becomes a full link);
+- making an optional request field required, or refusing a value that was accepted before;
+- changing an error code or status code that clients act on;
+- changing a default, the paging shape or the sort order clients rely on.
+
+**How a breaking change is made, within `/api/v1/`:**
+1. **Add the new way next to the old one** (a new field, value or endpoint) and mark the old one in this contract: "**Deprecated** since <date> (<ticket>), replaced by <new>; removed after <condition>". Announce it to the web developer and the mobile team before merging (`.claude/api.md`).
+2. **Web:** the console and the website switch in the same release as the server or the next one (one domain, deployed together).
+3. **App:** the old way stays until **both** are true: (a) `APP_MIN_VERSION` has been raised past the last build that uses the old way (below), and (b) at least **60 days** have passed since the first build without it was put on the website.
+4. Only then remove the old way: update this contract, refresh `docs/client-calls.json` (`python manage.py client_calls`, BVTGC-97); the contract test fails if a client still calls a removed route.
+
+**Raising `APP_MIN_VERSION`** (the blocking "Please update the app" screen, section 5, `GET /app-config`):
+- only for a reason: retiring a deprecated field or endpoint, a security fix, or a server change old builds cannot follow;
+- the new APK is on the website first, and `APP_LATEST_VERSION` has shown the "Update available" note for at least **14 days**;
+- the Super Admin dashboard's `app_versions` (section 8, phones seen in the last 30 days by build) shows the builds below the new minimum at **under 5%** of phones; the rest see the update screen;
+- the owner or lead agrees, since it blocks everyone on an older build until they update.
+
+**`/api/v2/`** is used only when a change cannot be made side by side in `/api/v1/` (for example a new login model or a whole resource redesigned). Then `/api/v1/` keeps working, unchanged, until `APP_MIN_VERSION` has moved past every build that calls it; the two are documented separately. No `/api/v2/` is planned.
+
+**Deprecated now:**
+
+| What | Since | Replaced by | Removed when |
+|---|---|---|---|
+| `capabilities` in `Me` (section 2) | 2026-10-21 | `permissions` | the app no longer reads it and `APP_MIN_VERSION` is past the last build that does (steps above) |
+
 ### Identifiers
 - Users, role assignments, posts, media, review actions, notifications, devices, audit entries: UUID strings.
 - States, districts, mandals, villages, categories: integers. Villages may also carry the government `lgd_code` used for master-data import.
