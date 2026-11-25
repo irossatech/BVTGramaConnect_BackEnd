@@ -71,3 +71,15 @@ Date: 2026-10-22, updated for the login and permissions rebuild of 2026-10-21 (`
 | G16 untracked files with tokens | Ignored by git 2026-10-31; deleting the copies is open item 6 |
 
 Closed by the 2026-10-21 rebuild: SMTP credentials (nothing is emailed) and default role passwords (removed). Password spraying from one IP address was closed on 2026-10-27 by the IP-wide cap, which was removed on 2026-11-20 (deferred until before going live, open item 8).
+
+## Web audit findings routed to the backend (checked 2026-11-25)
+
+The web audit (WEB_03 console security audit, 2026-11-09) sent five findings to the backend (Jira BVTGC-16).
+
+| Finding | Status |
+|---|---|
+| WEB-SEC-011 block or discard checked only a post's first area | No change needed: only the Super Admin blocks, with platform-wide reach, and since 2026-11-19 a citizen post is for one village only (BVTGC-112) |
+| WEB-SEC-014 admin endpoints also accept the app's login | Open: the lead decides whether to keep it for the Super Admin's app screens (BVTGC-110) |
+| WEB-SEC-016 removing a role needed no permission of its own | No gap: each role's manage permission is "give, move and remove" that role, and removal is checked against it for every assignment of the official; a matrix test proves it for every official (BVTGC-110) |
+| WEB-SEC-017 villages CSV import had no size limit | Fixed: files over 20 MB are refused (`GEO_IMPORT_MAX_BYTES`, BE-CFG-001) |
+| WEB-SEC-019 no failed-login limit per username across addresses | Open: the lead decides between a per-username ceiling and an accepted risk (BVTGC-110) |
