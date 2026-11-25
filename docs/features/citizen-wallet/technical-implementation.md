@@ -329,7 +329,7 @@ Logins use the existing `auth.login` with `via="app"`. Audit `data` holds the la
 - **Screens** (Telugu and English, existing widgets and colours):
   - **Sign in to earn points:** consent notice with links to the privacy policy and terms, the 18+ tick, the referral code field (pre-filled from an invite link), the Google button.
   - **Verify your mobile:** the number, "Send code on WhatsApp", the code field, the resend timer, "Didn't get it?".
-  - **Wallet:** confirmed balance, points on hold with the expected date, history with each status and reason, "Points have no money value".
+  - **Wallet:** confirmed balance, points on hold with the expected date, history with each status and reason, "Points have no cash value".
   - **Invite friends:** the code, Copy, and Share (WhatsApp first, through the existing `share_plus`).
   - **Profile:** Wallet, Invite, Sign out, Delete my account (with a confirmation).
 - **Invite links:** add `android:pathPrefix="/app/"` next to the existing `/p/` App Link (`android/app/src/main/AndroidManifest.xml:44`). The server's `/.well-known/assetlinks.json` covers the domain, so no backend change is needed. The app stores `ref` until sign-up. Installs from the website get the code from the link or by typing it. Once the app is on Google Play, the Play Install Referrer can fill it too (it does not work for APKs installed outside Play).
@@ -350,7 +350,7 @@ The Settings page gains the six wallet settings. The console is a port with "zer
 **Website**
 - `/app/?ref=<code>` already redirects to the website's download section and keeps the query (`apps/share/views.py:138-144`). The website reads `ref` (8 characters from the code alphabet, anything else ignored) and shows "Your friend's referral code: **CODE**" with a **Copy** button in the download section (`src/website/sections/home/Download.tsx`).
 - New texts go in `locales/te.json` and `en.json`.
-- The privacy policy and terms (`legal` in the locale files) gain the account, the data, the 18+ rule, "points have no money value", and how to delete the account.
+- The privacy policy and terms (`legal` in the locale files) gain the account, the data, the 18+ rule, "points have no cash value", and how to delete the account.
 - A short "Delete my account" section points to the in-app option, and to the contact form (with the mobile number) for people without the app.
 
 ## 6. Setup and operations
@@ -429,6 +429,7 @@ With backend, app and web in parallel after the contract (section 3.9) is agreed
 | Q-T1 | Store the hashes of deleted accounts for 1 year? | Pending legal (requirements Q9) |
 | Q-T2 | One-tap code autofill on Android | After launch; copy-code first |
 | Q-T3 | Should a citizen account also post (instead of the device token) later? | Out of scope (D2); the account and the device stay separate |
+| R8 | Points gain a rupee value when Bills & Recharges go live (D4) | Keep `WalletEntry` append-only and idempotent from day one; the bills design adds a SPENT kind and refunds ([../bills-recharges/technical-implementation.md](../bills-recharges/technical-implementation.md), section 3.6) |
 
 ## References
 
