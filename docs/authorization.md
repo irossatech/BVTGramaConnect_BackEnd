@@ -112,7 +112,7 @@ django-axes counts failed logins per **username and IP address together**:
 - A lockout is audited as `auth.locked_out` (with `"scope": "username"` for the ceiling), each failure as `auth.login_failed`, and each try refused by the ceiling as `auth.login_failed` with `"locked": true`.
 - axes' tables store a keyed hash of the username (`lockout.login_key`, HMAC-SHA256 with `SECRET_KEY`), never what was typed: a password typed into the username box must not stay there for 30 days. So axes' own `axes_reset_username` command needs the hash; use the shell command below. Changing `SECRET_KEY` only clears current lockouts.
 
-**No per-IP login limits in this phase** (lead's decision of 2026-11-20): the IP-wide cap (50 failed logins an hour from one IP, any usernames) and the login throttle of security gap G1 (30 logins an hour per IP) were removed. The lockouts above are the only login limits. `docs/security-review.md` records it as deferred, not accepted: the limits are to be put back before going live (open item 8).
+**Cap per address** (removed on 2026-11-20, back before going live, BVTGC-105): 50 failed logins (`LOGIN_IP_MAX_FAILURES`; 0 turns it off) from one IP address within 60 minutes (`LOGIN_IP_WINDOW_MINUTES`), for any usernames, block every app and console login from that address until the oldest of them leaves the window (`429 locked_out` with `retry_after_s`). Tries while blocked are not counted; a successful login or an unlock does not clear it, since it is about an address, not a user. Audited once as `auth.ip_locked_out`, never with the IP. The address is the one `grama.http.client_ip` gives, which believes `X-Real-IP` only from the server's own network (BE-SEC-101). The login throttle of security gap G1 (30 logins an hour per IP) is not back: not decided (`docs/security-review.md`, open item 8).
 
 **Unlocking early:** an admin with `accounts.unlock_user` over the user's area, ranked above them, calls `POST /api/v1/users/{id}/unlock/`. This clears every lockout for that username and is audited as `user.unlocked`. A password reset (section 4) clears it too. User objects carry `"locked_out": true` and `unlock` in `allowed_actions` while a lockout is active. In the console the button is in the user panel.
 
@@ -389,7 +389,7 @@ python manage.py sync_role_permissions
 | `auth.login_failed` | Wrong password or unknown username |
 | `auth.login_refused` | Right password, but blocked, no role, not a console user, or a citizen's wallet account at the officials' login (`"reason": "citizen_account"`, BVTGC-121) |
 | `auth.locked_out` | A username and IP pair is locked, or (`"scope": "username"`) a username is locked from every address by the ceiling per username |
-| `auth.ip_locked_out` | No longer written (the IP-wide cap was removed on 2026-11-20); older entries stay. They held the limit and window, never the IP |
+| `auth.ip_locked_out` | An IP address reached the cap per address (written again since BVTGC-105; not written from 2026-11-20 to 2026-11-25). It holds the limit and window, never the IP |
 | `user.unlocked` | An admin unlocked a user |
 | `citizen.code_sent` | A wallet code went by email to a citizen (BVTGC-122): the purpose, the channel and the masked address, never the code or the full address |
 | `user.password_changed` | An official changed their own password |

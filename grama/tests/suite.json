@@ -29,6 +29,7 @@
         "apps/accounts/tests/test_lockout_backup_answer.py",
         "apps/accounts/tests/test_lockout_hash.py",
         "apps/accounts/tests/test_lockout_username_ceiling.py",
+        "apps/accounts/tests/test_login_ip_cap.py",
         "apps/accounts/tests/test_login_age.py",
         "apps/accounts/tests/test_password_length.py",
         "apps/accounts/tests/test_refresh_grace.py",
@@ -212,6 +213,8 @@
       "files": [
         "apps/accounts/tests/test_server_guard.py",
         "grama/tests/test_django_admin_off.py",
+        "grama/tests/test_client_ip.py",
+        "apps/accounts/tests/test_real_ip_spoof.py",
         "grama/tests/test_security_gaps.py",
         "grama/tests/test_settings_safety.py"
       ]

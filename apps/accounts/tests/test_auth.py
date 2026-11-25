@@ -213,20 +213,9 @@ def test_lockout_is_audited_once(world):
     assert AuditLog.objects.filter(action="auth.login_failed").count() == 7
 
 
-# --- No per-IP login limits in this phase (lead's decision of 2026-11-20) ----------------------
-# The IP-wide cap (50 failures an hour) and the login throttle (30 logins an hour) were removed.
-# Only the lockouts remain: 5 failures for one username from one IP, and the ceiling per username
-# (20 an hour from any IPs, test_lockout_username_ceiling.py).
-
-
-def test_many_failures_on_other_usernames_do_not_block_the_address(world):
-    http = APIClient(REMOTE_ADDR="10.7.7.7")
-    for index in range(60):  # never 5 for one username
-        assert code(login(f"nobody{index}", "Gram@2026", http=http)) == "invalid_credentials"
-    assert login("va_kolakaluru", http=http).status_code == 200
-    _client, response = console_session("super", ip="10.7.7.7")
-    assert response.status_code == 200
-    assert not AuditLog.objects.filter(action="auth.ip_locked_out").exists()
+# --- Limits per address ------------------------------------------------------------------------
+# The cap per address (50 failures an hour, any usernames) is back since BVTGC-105:
+# test_login_ip_cap.py. The login throttle (30 logins an hour per IP) is not back (not decided).
 
 
 def test_many_logins_from_one_address_all_get_in(world):
@@ -238,8 +227,9 @@ def test_many_logins_from_one_address_all_get_in(world):
     assert response.status_code == 200
 
 
-def test_the_removed_ip_limit_settings_are_gone():
-    for name in ("LOGIN_IP_MAX_FAILURES", "LOGIN_IP_WINDOW_MINUTES", "LOGIN_THROTTLE_RATE"):
+def test_the_removed_limit_settings_stay_gone():
+    # The login throttle is not decided; the contact form has no per-IP limit (lead's final decision).
+    for name in ("LOGIN_THROTTLE_RATE", "CONTACT_MESSAGES_PER_IP_PER_HOUR"):
         assert not hasattr(settings, name), name
 
 

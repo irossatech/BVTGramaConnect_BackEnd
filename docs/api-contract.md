@@ -432,7 +432,8 @@ Login rules:
 - A wrong password and an unknown username give the same `400 invalid_credentials`.
 - **Lockout** (django-axes): 5 failures for one username from one IP address lock that pair for 15 minutes. Every try then answers `429 locked_out` with `retry_after_s`, even with the right password. A success clears the count. An admin can unlock early (`POST /users/{id}/unlock/`).
 - **Ceiling per username** (WEB-SEC-019, lead's decision of 2026-11-25): 20 failures for one username within an hour, from any addresses, lock that username from every address for 15 minutes after the last of them, with the same `429 locked_out` and `retry_after_s`. Tries during it are not counted. A success, an unlock or a password reset clears it, and `locked_out` on the user shows it too. No client change is needed.
-- **No per-IP login limits** (lead's decision of 2026-11-20, not needed in this phase): the IP-wide cap (50 failures an hour) and the login throttle (30 logins an hour) were removed, so the login endpoints no longer answer `429 throttled`. Clients may keep their `throttled` message; it is simply not sent for logins any more.
+- **Cap per address** (back since 2026-11-25, BVTGC-105): 50 failed logins from one IP address within an hour, for any usernames, block every login from that address with the same `429 locked_out` and `retry_after_s` until the oldest of them is an hour old. No client change is needed. The login throttle (30 logins an hour per IP) is not back, so the login endpoints do not answer `429 throttled`; clients may keep their `throttled` message.
+- On the server, Nginx also allows at most 10 login or password-change requests a minute per address (a few more in a burst); past that it answers `429` itself, with Nginx's own short page instead of the JSON error shape. Clients treat any `429` from these addresses as "too many tries, wait a minute".
 - After the password check: blocked → `403 account_blocked`; no active role → `403 permission_denied`; console login without `web_admin.access_web_console` → `403 not_console_user`, and no session.
 - A successful login updates `last_login_at` and writes `auth.login` with `via` (`app` or `console`). Failures write `auth.login_failed`, refusals `auth.login_refused`, lockouts `auth.locked_out` (`"scope": "username"` for the ceiling per username). (`auth.ip_locked_out` entries written before 2026-11-20 stay in the audit log.)
 
@@ -1019,8 +1020,8 @@ Kept on purpose (backend team's decision on audit CROSS-API-108): each checks it
 
 | Item | Limit |
 |---|---|
-| Failed logins | 5 per username and IP address, then locked for 15 minutes (django-axes; a success resets the count). No other per-IP limit since 2026-11-20 (lead's decision) |
-| Contact form | No per-IP limit since 2026-11-20 (lead's decision); the hidden honeypot field stays |
+| Failed logins | 5 per username and IP address, then locked for 15 minutes (django-axes; a success resets the count). 20 an hour per username from any addresses, then locked for 15 minutes (BVTGC-110). 50 an hour per IP address for any usernames, then that address is blocked until the oldest is an hour old (BVTGC-105). Nginx: 10 login or password-change requests a minute per address |
+| Contact form | No per-IP limit (lead's final decision); the hidden honeypot field stays |
 | Post title | 150 characters |
 | Post body | 5,000 characters |
 | Review comment | 500 characters |

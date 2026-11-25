@@ -16,8 +16,13 @@ compares it. What was typed may be a password typed into the wrong box, and
 AccessFailureLog keeps it for HOUSEKEEPING_KEEP_DAYS. Every lookup by username
 goes through login_key(). Changing SECRET_KEY only clears current lockouts.
 
-The IP-wide cap (50 failures from one IP, any usernames) was removed on 2026-11-20
-(lead's decision: not needed in this phase; docs/security-review.md).
+Cap per address against password spraying (one password tried on many usernames; removed on
+2026-11-20, put back before go-live by BVTGC-105): LOGIN_IP_MAX_FAILURES (50) failed logins from one
+IP within LOGIN_IP_WINDOW_MINUTES (60), for any usernames, block every app and console login from that
+IP until the oldest of them leaves the window. It counts axes' AccessFailureLog rows, by the address
+from grama.http.client_ip (which believes X-Real-IP only from the server's own network, BE-SEC-101).
+A successful login does not reset it, so an attacker's own account cannot clear it, and an admin's
+unlock does not either: it is about an address, not a user.
 
 Ceiling per username (WEB-SEC-019, BVTGC-110, lead's decision of 2026-11-25): guesses spread over
 many addresses never reach the pair limit, so LOGIN_MAX_FAILURES_PER_USERNAME (20) failures for one
@@ -99,6 +104,24 @@ def seconds_left(username: str, ip: str | None) -> int:
     if latest is not None:
         pair = int((latest + _cool_off() - timezone.now()).total_seconds()) + 1
     return max(1, pair, username_seconds_left(username))
+
+
+def ip_seconds_left(ip: str | None, now=None) -> int:
+    """0 while this IP is under the cap per address; else how long it stays blocked, in whole seconds (at least 1)."""
+    limit = settings.LOGIN_IP_MAX_FAILURES
+    if limit <= 0 or not ip:
+        return 0
+    now = now or timezone.now()
+    window = timedelta(minutes=settings.LOGIN_IP_WINDOW_MINUTES)
+    times = list(
+        AccessFailureLog.objects.filter(ip_address=ip, attempt_time__gt=now - window)
+        .order_by("-attempt_time")
+        .values_list("attempt_time", flat=True)[:limit]
+    )
+    if len(times) < limit:
+        return 0
+    # Blocked until the oldest of the newest `limit` failures leaves the window.
+    return max(1, int((times[-1] + window - now).total_seconds()) + 1)
 
 
 def _username_locks(keys) -> dict:
