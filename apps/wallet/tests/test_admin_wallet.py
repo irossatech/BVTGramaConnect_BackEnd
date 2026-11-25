@@ -32,6 +32,7 @@ pytestmark = pytest.mark.django_db
 K, S = WalletEntry.Kind, WalletEntry.Status
 REFERRALS = "/api/v1/admin/referrals/"
 EXPORT = "/api/v1/admin/wallet/export/"
+ENTRIES = "/api/v1/admin/wallet/entries/"
 OFFICIALS = [
     "da_guntur", "da_krishna", "ma_tenali", "ma_mangalagiri", "ma_gannavaram", "va_kolakaluru", "va_nandivelugu",
     "va_kaza", "va_nidamanuru", "pm_kolakaluru", "pm_nandivelugu", "pm_kaza", "pm_nidamanuru",
@@ -90,6 +91,7 @@ def routes(pair) -> list[tuple[str, str, dict | None]]:
         ("get", wallet, None),
         ("post", wallet + "adjust/", {"points": 10, "reason": "Help-line fix"}),
         ("get", EXPORT + "?type=referrals&format=csv", None),
+        ("get", ENTRIES, None),
     ]
 
 
@@ -105,7 +107,7 @@ def read_csv(response) -> list[list[str]]:
 
 # --- Who may call ------------------------------------------------------------------------------------------------
 
-@pytest.mark.parametrize("index", range(6))
+@pytest.mark.parametrize("index", range(7))
 @pytest.mark.parametrize("name", OFFICIALS)
 def test_no_other_official_may_call(api, world, pair, name, index):
     method, url, body = routes(pair)[index]
@@ -115,7 +117,7 @@ def test_no_other_official_may_call(api, world, pair, name, index):
     assert pair.status == Referral.Status.PENDING and cache(pair.referrer) == (50, 0)
 
 
-@pytest.mark.parametrize("index", range(6))
+@pytest.mark.parametrize("index", range(7))
 def test_a_citizen_and_an_anonymous_caller_are_refused(api, pair, index):
     method, url, body = routes(pair)[index]
     assert call(api(pair.referrer.user), method, url, body).status_code == 403
@@ -123,7 +125,7 @@ def test_a_citizen_and_an_anonymous_caller_are_refused(api, pair, index):
     assert cache(pair.referrer) == (50, 0)
 
 
-@pytest.mark.parametrize("index", range(6))
+@pytest.mark.parametrize("index", range(7))
 def test_the_super_admin_may_call_each_one(admin, pair, index):
     method, url, body = routes(pair)[index]
     assert call(admin, method, url, body).status_code == 200
@@ -296,3 +298,54 @@ def test_too_many_rows_is_refused_not_cut(admin, pair, monkeypatch):
     response = admin.get(EXPORT + "?type=entries&format=csv")
     assert (response.status_code, err(response)) == (400, "validation_error")
     assert not AuditLog.objects.filter(action="report.exported").exists()
+
+
+# --- Every entry, for the console's Wallet entries tab (BVTGC-151) ---------------------------------------------------
+
+def test_the_list_shows_every_entry_newest_first_without_full_details(admin, pair):
+    adjust(admin, pair.referrer, 5, "Fix")
+    body = admin.get(ENTRIES).json()
+    assert body["count"] == 3 and [row["kind"] for row in body["results"]][0] == "ADJUSTMENT"
+    newest = body["results"][0]
+    assert newest["citizen"] == {"id": str(pair.referrer_id), "name": "లక్ష్మి", "mobile_last4": "0001"}
+    assert newest["created_by"]["name"] and newest["reason"] == "Fix" and newest["points"] == 5
+    held = {row["kind"]: row for row in body["results"][1:]}
+    assert held["WELCOME_BONUS"]["citizen"]["name"] == "Ravi" and held["WELCOME_BONUS"]["referral_id"] == str(pair.id)
+    assert set(newest) == {
+        "id", "points", "kind", "status", "reason_key", "reason", "created_at", "decided_at", "created_by",
+        "referral_id", "citizen",
+    }
+    content = admin.get(ENTRIES).content.decode()
+    assert "person1@gmail.com" not in content and "9000000001" not in content
+
+
+@pytest.mark.parametrize("query, kinds", [
+    ("?kind=WELCOME_BONUS", ["WELCOME_BONUS"]),
+    ("?status=CONFIRMED", ["ADJUSTMENT"]),
+    ("?status=HELD&kind=REFERRAL_REWARD", ["REFERRAL_REWARD"]),
+])
+def test_the_filters_match_the_export(admin, pair, query, kinds):
+    adjust(admin, pair.referrer, 5, "Fix")
+    assert [row["kind"] for row in admin.get(ENTRIES + query).json()["results"]] == kinds
+
+
+def test_one_citizen_and_dates(admin, pair):
+    rows = admin.get(ENTRIES + f"?account_id={pair.referee_id}").json()["results"]
+    assert [row["kind"] for row in rows] == ["WELCOME_BONUS"]
+    today = timezone.localdate()
+    assert admin.get(ENTRIES + f"?from={today}&to={today}").json()["count"] == 2
+    assert admin.get(ENTRIES + f"?to={today - timedelta(days=1)}").json()["count"] == 0
+
+
+@pytest.mark.parametrize("query", ["?kind=GIFT", "?status=DONE", "?account_id=12", "?from=25-11-2026"])
+def test_a_bad_filter_is_400(admin, pair, query):
+    assert err(admin.get(ENTRIES + query)) == "validation_error"
+
+
+def test_pages_and_a_fixed_number_of_queries(admin, world, pair, django_assert_max_num_queries):
+    for n in range(3, 14):  # 11 more referrals: 22 more entries, 24 in all
+        services.start_referral(make_citizen(world, n + 20), make_citizen(world, n))
+    first = admin.get(ENTRIES + "?page_size=10").json()
+    assert first["count"] == 24 and len(first["results"]) == 10 and first["next"]
+    with django_assert_max_num_queries(12):
+        admin.get(ENTRIES + "?page_size=50")

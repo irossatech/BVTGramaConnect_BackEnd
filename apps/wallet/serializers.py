@@ -107,3 +107,16 @@ class AdjustSerializer(serializers.Serializer):
         if value == 0:
             raise serializers.ValidationError(_("Give a number of points other than 0."))
         return value
+
+
+class AdminEntryRowSerializer(AdminWalletEntrySerializer):
+    """A row of the Super Admin's list of every entry (BVTGC-151): the entry and whose wallet it is."""
+
+    citizen = serializers.SerializerMethodField()
+
+    class Meta(AdminWalletEntrySerializer.Meta):
+        fields = [*AdminWalletEntrySerializer.Meta.fields, "citizen"]
+
+    def get_citizen(self, entry) -> dict:
+        account = entry.wallet.account
+        return {"id": account.pk, "name": account.user.name, "mobile_last4": account.mobile_last4}

@@ -443,6 +443,7 @@ Citizens stay out of the officials' user lists without extra code: `authz.manage
   - one adjustment is at most 100,000 points either way;
   - the export stops at 50,000 rows with a 400, never a cut file;
   - these endpoints answer while `wallet_enabled` is off, so help, exports and deletions still work.
+- **Added in BVTGC-151 (the Admin's decision of 2026-11-25):** `GET /admin/wallet/entries/`, every wallet entry in pages with the export's filters, for the console's Wallet entries tab (FR-33; mockup frame 4d). The list and the CSV export share one filter function.
 
 ### 5.11 Settings, app-config, pushes, audit labels and Telugu (BVTGC-129, 2 days)
 

@@ -4,6 +4,7 @@ section 21, its Super Admin table).
 GET  /api/v1/admin/referrals/                       wallet.review_referrals: ?status, ?q, pages, status_counts
 POST /api/v1/admin/referrals/{id}/confirm/, /reject/   wallet.review_referrals: {comment}; 409 already_decided
 GET  /api/v1/admin/wallets/{account_id}/            wallet.view_wallets: one citizen's balance and history
+GET  /api/v1/admin/wallet/entries/                  wallet.view_wallets: every entry, with the export's filters (BVTGC-151)
 POST /api/v1/admin/wallets/{account_id}/adjust/     wallet.adjust_points: {points, reason}; 409 not_enough_points
 GET  /api/v1/admin/wallet/export/?type=referrals|entries&format=csv   wallet.view_wallets
 
@@ -46,6 +47,7 @@ from .models import Referral, WalletEntry
 from .serializers import (
     REASONS,
     AdjustSerializer,
+    AdminEntryRowSerializer,
     AdminWalletEntrySerializer,
     CommentSerializer,
     ReferralRowSerializer,
@@ -203,6 +205,30 @@ class AdjustWalletView(APIView):
         ))
 
 
+class WalletEntriesView(APIView):
+    """The console's Wallet entries tab (FR-33; the Admin's decision of 2026-11-25): every entry, in pages."""
+
+    permission_classes = only(VIEW, gettext_lazy("Only the Super Admin can see citizens' wallets."))
+
+    @extend_schema(
+        summary="Super Admin: every wallet entry, newest first, with the CSV export's filters",
+        parameters=[
+            OpenApiParameter("account_id", OpenApiTypes.UUID, description="One citizen's entries"),
+            OpenApiParameter("kind", OpenApiTypes.STR, enum=list(WalletEntry.Kind.values)),
+            OpenApiParameter("status", OpenApiTypes.STR, enum=list(WalletEntry.Status.values)),
+            OpenApiParameter("from", OpenApiTypes.DATE, description="From this India date"),
+            OpenApiParameter("to", OpenApiTypes.DATE, description="Up to and including this India date"),
+            OpenApiParameter("page", OpenApiTypes.INT),
+            OpenApiParameter("page_size", OpenApiTypes.INT),
+        ],
+        responses=AdminEntryRowSerializer(many=True),
+    )
+    def get(self, request):
+        paginator = PageNumberPagination()
+        page = paginator.paginate_queryset(filtered_entries(request.query_params), request, view=self)
+        return paginator.get_paginated_response(AdminEntryRowSerializer(page, many=True).data)
+
+
 # --- CSV export -----------------------------------------------------------------------------------------------
 
 def _time(value) -> str:
@@ -244,7 +270,8 @@ def referral_rows(params):
     return rows.order_by("-pending_at", "-pk"), header, lines
 
 
-def entry_rows(params):
+def filtered_entries(params):
+    """Every wallet entry, newest first, narrowed by the entries' filters; the list and the export share them."""
     rows = WalletEntry.objects.select_related("wallet__account__user", "created_by")
     account = params.get("account_id", "").strip()
     if account:
@@ -263,6 +290,11 @@ def entry_rows(params):
         rows = rows.filter(created_at__gte=timezone.make_aware(datetime.combine(start, time.min)))
     if end:
         rows = rows.filter(created_at__lt=timezone.make_aware(datetime.combine(end + timedelta(days=1), time.min)))
+    return rows.order_by("-created_at", "-pk")
+
+
+def entry_rows(params):
+    rows = filtered_entries(params)
     header = [
         "id", "time", "account_id", "name", "mobile_last4", "email", "kind", "points", "status", "reason_key",
         "reason", "referral_id", "decided_at", "created_by",
@@ -278,7 +310,7 @@ def entry_rows(params):
                 e.created_by.name if e.created_by else "",
             ]
 
-    return rows.order_by("-created_at", "-pk"), header, lines
+    return rows, header, lines
 
 
 EXPORTS = {"referrals": referral_rows, "entries": entry_rows}
