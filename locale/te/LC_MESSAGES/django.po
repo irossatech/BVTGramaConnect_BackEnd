@@ -410,7 +410,7 @@ msgstr "చిత్రం గరిష్టం %(mb)d MB ఉండవచ్చ
 msgid "The image must be at least %(px)d pixels wide."
 msgstr "చిత్రం వెడల్పు కనీసం %(px)d పిక్సెల్స్ ఉండాలి."
 
-#: apps/ads/views.py:35 apps/ads/views.py:35 apps/contacts/views_public.py:37 apps/contacts/views_public.py:37 apps/feed/views.py:90
+#: apps/ads/views.py:35 apps/ads/views.py:35 apps/citizens/views_admin.py:168 apps/contacts/views_public.py:37 apps/contacts/views_public.py:37 apps/feed/views.py:90
 msgid "Give a village id."
 msgstr "గ్రామం ఐడి ఇవ్వండి."
 
@@ -778,39 +778,63 @@ msgstr "తమ వాలెట్ ఖాతాను వేరే గ్రా�
 msgid "deleted a citizen wallet account"
 msgstr "పౌరుని వాలెట్ ఖాతా తొలగించారు"
 
+#: apps/audit/labels.py:117
+msgid "looked up a citizen wallet account by number or email"
+msgstr "నంబర్ లేదా ఈమెయిల్‌తో పౌరుని వాలెట్ ఖాతాను వెతికారు"
+
 #: apps/audit/labels.py:118
+msgid "set a new email for a citizen wallet account"
+msgstr "పౌరుని వాలెట్ ఖాతాకు కొత్త ఈమెయిల్ పెట్టారు"
+
+#: apps/audit/labels.py:119
+msgid "removed the mobile number from a citizen wallet account"
+msgstr "పౌరుని వాలెట్ ఖాతా నుండి మొబైల్ నంబర్ తొలగించారు"
+
+#: apps/audit/labels.py:120
+msgid "blocked a citizen wallet account"
+msgstr "పౌరుని వాలెట్ ఖాతాను బ్లాక్ చేశారు"
+
+#: apps/audit/labels.py:121
+msgid "unblocked a citizen wallet account"
+msgstr "పౌరుని వాలెట్ ఖాతాను అన్‌బ్లాక్ చేశారు"
+
+#: apps/audit/labels.py:123
 msgid "started a referral (a friend signed up with a code)"
 msgstr "రిఫరల్ ప్రారంభమైంది (స్నేహితుడు కోడ్‌తో నమోదయ్యారు)"
 
-#: apps/audit/labels.py:119
+#: apps/audit/labels.py:124
 msgid "confirmed a referral"
 msgstr "రిఫరల్‌ను నిర్ధారించారు"
 
-#: apps/audit/labels.py:120
+#: apps/audit/labels.py:125
 msgid "did not confirm a referral"
 msgstr "రిఫరల్‌ను నిర్ధారించలేదు"
 
-#: apps/audit/labels.py:121
+#: apps/audit/labels.py:126
 msgid "found a wallet whose balance differs from its history"
 msgstr "చరిత్రతో సరిపోలని నిల్వ ఉన్న వాలెట్‌ను గుర్తించారు"
 
-#: apps/audit/labels.py:123
+#: apps/audit/labels.py:127
+msgid "corrected a citizen's points"
+msgstr "పౌరుని పాయింట్లను సరిచేశారు"
+
+#: apps/audit/labels.py:129
 msgid "exported a report"
 msgstr "నివేదికను ఎగుమతి చేశారు"
 
-#: apps/audit/labels.py:124
+#: apps/audit/labels.py:130
 msgid "email not delivered"
 msgstr "ఈమెయిల్ చేరలేదు"
 
-#: apps/audit/labels.py:125
+#: apps/audit/labels.py:131
 msgid "email skipped"
 msgstr "ఈమెయిల్ పంపలేదు"
 
-#: apps/audit/labels.py:126
+#: apps/audit/labels.py:132
 msgid "notification not delivered"
 msgstr "నోటిఫికేషన్ చేరలేదు"
 
-#: apps/audit/labels.py:135
+#: apps/audit/labels.py:141
 #, python-format
 msgid "other action (%(code)s)"
 msgstr "ఇతర చర్య (%(code)s)"
@@ -872,7 +896,7 @@ msgstr "ఆడిట్ లాగ్‌ను సూపర్ అడ్మిన
 msgid "Only Super Admins can download the audit log."
 msgstr "ఆడిట్ లాగ్‌ను సూపర్ అడ్మిన్లు మాత్రమే డౌన్‌లోడ్ చేయగలరు."
 
-#: apps/audit/views.py:237 apps/web_admin/api.py:542
+#: apps/audit/views.py:237 apps/wallet/views_admin.py:317 apps/web_admin/api.py:542
 msgid "Only CSV export is available."
 msgstr "CSV ఎగుమతి మాత్రమే అందుబాటులో ఉంది."
 
@@ -930,6 +954,14 @@ msgstr "పౌరులు ఈ విభాగంలో పోస్ట్ చ�
 msgid "This field may not be blank."
 msgstr "ఈ ఫీల్డ్ ఖాళీగా ఉండకూడదు."
 
+#: apps/citizens/serializers_account.py:176
+msgid "Give the mobile number or the email, not both."
+msgstr "మొబైల్ నంబర్ లేదా ఈమెయిల్ ఇవ్వండి, రెండూ కాదు."
+
+#: apps/citizens/serializers_account.py:161
+msgid "Call the citizen's number back first."
+msgstr "ముందుగా పౌరుని నంబర్‌కు తిరిగి కాల్ చేయండి."
+
 #: apps/citizens/services.py:64
 msgid "This phone is not registered for posting. Register again."
 msgstr "ఈ ఫోన్ పోస్ట్ చేయడానికి నమోదు కాలేదు. మళ్ళీ నమోదు చేయండి."
@@ -971,7 +1003,7 @@ msgstr "వీడియో పోస్టులు ఆపివేయబడ్�
 msgid "This is not a citizen post."
 msgstr "ఇది పౌరుడి పోస్ట్ కాదు."
 
-#: apps/citizens/services.py:447 apps/citizens/services.py:543 apps/citizens/views_admin.py:32
+#: apps/citizens/services.py:447 apps/citizens/services.py:543 apps/citizens/views_admin.py:49
 msgid "Only the Super Admin can block citizens or discard all their posts."
 msgstr "పౌరులను బ్లాక్ చేయడం లేదా వారి పోస్టులన్నీ తిరస్కరించడం సూపర్ అడ్మిన్ మాత్రమే చేయగలరు."
 
@@ -1065,21 +1097,53 @@ msgstr "తాజా సమ్మతి ప్రకటనకు అంగీక
 msgid "Wrong password."
 msgstr "పాస్‌వర్డ్ తప్పు."
 
-#: apps/citizens/views_admin.py:58
+#: apps/citizens/services_admin.py:124
+msgid "This is already the account's email."
+msgstr "ఇది ఇప్పటికే ఈ ఖాతా ఈమెయిల్."
+
+#: apps/citizens/services_admin.py:127
+msgid "This email belongs to another citizen account."
+msgstr "ఈ ఈమెయిల్ మరో పౌరుని ఖాతాకు చెందినది."
+
+#: apps/citizens/services_admin.py:56 apps/wallet/views_admin.py:92
+msgid "No such citizen account."
+msgstr "అలాంటి పౌరుని ఖాతా లేదు."
+
+#: apps/citizens/services_admin.py:89 apps/wallet/services.py:234
+msgid "This account was deleted; it cannot be changed."
+msgstr "ఈ ఖాతా తొలగించబడింది; దీన్ని మార్చలేరు."
+
+#: apps/citizens/services_admin.py:158
+msgid "This account has no mobile number."
+msgstr "ఈ ఖాతాకు మొబైల్ నంబర్ లేదు."
+
+#: apps/citizens/views_admin.py:138
+msgid "Only the Super Admin can manage citizen wallet accounts."
+msgstr "పౌరుల వాలెట్ ఖాతాలను సూపర్ అడ్మిన్ మాత్రమే నిర్వహించగలరు."
+
+#: apps/citizens/views_admin.py:75
 msgid "active is 1 or 0."
 msgstr "active విలువ 1 లేదా 0."
 
-#: apps/citizens/views_admin.py:64
+#: apps/citizens/views_admin.py:173
+msgid "status is active, blocked or deleted."
+msgstr "status విలువ active, blocked లేదా deleted."
+
+#: apps/citizens/views_admin.py:81
 msgid "Give a district id."
 msgstr "జిల్లా ఐడి ఇవ్వండి."
 
-#: apps/citizens/views_admin.py:58
+#: apps/citizens/views_admin.py:75
 msgid "1 or 0"
 msgstr "1 లేదా 0"
 
-#: apps/citizens/views_admin.py:64
+#: apps/citizens/views_admin.py:81
 msgid "Not a district id."
 msgstr "ఇది జిల్లా ఐడి కాదు."
+
+#: apps/citizens/views_admin.py:168
+msgid "Not a village id."
+msgstr "ఇది గ్రామం ఐడి కాదు."
 
 #: apps/contacts/models.py:20
 msgid "Area number"
@@ -2171,37 +2235,92 @@ msgstr "ఈ అభ్యర్థన ఇప్పటికే '%(status)s' స�
 msgid "Your role cannot see service requests."
 msgstr "మీ పాత్ర సేవా అభ్యర్థనలను చూడలేదు."
 
-#: apps/wallet/serializers.py:13
+#: apps/wallet/serializers.py:14
 msgid "No reward: both accounts signed up on the same phone."
 msgstr "బహుమతి లేదు: రెండు ఖాతాలు ఒకే ఫోన్‌లో నమోదయ్యాయి."
 
-#: apps/wallet/serializers.py:14
+#: apps/wallet/serializers.py:15
 msgid "No welcome bonus: this phone or number already had one."
 msgstr "స్వాగత బోనస్ లేదు: ఈ ఫోన్ లేదా నంబర్‌కు ఇప్పటికే వచ్చింది."
 
-#: apps/wallet/serializers.py:15
+#: apps/wallet/serializers.py:16
 msgid "No welcome bonus: the phone could not be recognised."
 msgstr "స్వాగత బోనస్ లేదు: ఫోన్‌ను గుర్తించలేకపోయాము."
 
-#: apps/wallet/serializers.py:16
+#: apps/wallet/serializers.py:17
 msgid "Not confirmed: the new citizen did not use the app on enough days."
 msgstr "నిర్ధారించబడలేదు: కొత్త పౌరుడు తగినన్ని రోజులు యాప్ వాడలేదు."
 
-#: apps/wallet/serializers.py:17
+#: apps/wallet/serializers.py:18
 msgid "Not confirmed: the monthly limit of referrals was reached."
 msgstr "నిర్ధారించబడలేదు: నెలవారీ రిఫరల్ పరిమితి చేరింది."
 
-#: apps/wallet/serializers.py:18
+#: apps/wallet/serializers.py:19
 msgid "Not confirmed: an account was blocked."
 msgstr "నిర్ధారించబడలేదు: ఒక ఖాతా నిరోధించబడింది."
 
-#: apps/wallet/serializers.py:19
+#: apps/wallet/serializers.py:20
 msgid "Not confirmed: an account was deleted."
 msgstr "నిర్ధారించబడలేదు: ఒక ఖాతా తొలగించబడింది."
 
-#: apps/wallet/serializers.py:20
+#: apps/wallet/serializers.py:21
 msgid "Not confirmed by the Super Admin."
 msgstr "సూపర్ అడ్మిన్ నిర్ధారించలేదు."
+
+#: apps/wallet/serializers.py:108
+msgid "Give a number of points other than 0."
+msgstr "0 కాకుండా వేరే పాయింట్ల సంఖ్య ఇవ్వండి."
+
+#: apps/wallet/services.py:247
+#, python-format
+msgid "Only %(n)d confirmed points: the balance cannot go below zero."
+msgstr "నిర్ధారించిన పాయింట్లు %(n)d మాత్రమే: బ్యాలెన్స్ సున్నా కంటే తగ్గకూడదు."
+
+#: apps/wallet/views_admin.py:99 apps/wallet/views_admin.py:128
+msgid "Only the Super Admin can review referrals."
+msgstr "రిఫరల్‌లను సూపర్ అడ్మిన్ మాత్రమే సమీక్షించగలరు."
+
+#: apps/wallet/views_admin.py:153
+msgid "Only the Super Admin can see citizens' wallets."
+msgstr "పౌరుల వాలెట్లను సూపర్ అడ్మిన్ మాత్రమే చూడగలరు."
+
+#: apps/wallet/views_admin.py:182
+msgid "Only the Super Admin can correct points."
+msgstr "పాయింట్లను సూపర్ అడ్మిన్ మాత్రమే సరిచేయగలరు."
+
+#: apps/wallet/views_admin.py:218
+msgid "Give a date as YYYY-MM-DD."
+msgstr "తేదీని YYYY-MM-DD రూపంలో ఇవ్వండి."
+
+#: apps/wallet/views_admin.py:290
+msgid "Only the Super Admin can export wallets."
+msgstr "వాలెట్లను సూపర్ అడ్మిన్ మాత్రమే ఎగుమతి చేయగలరు."
+
+#: apps/wallet/views_admin.py:84
+#, python-format
+msgid "%(name)s is one of: %(values)s."
+msgstr "%(name)s వీటిలో ఒకటి అయి ఉండాలి: %(values)s."
+
+#: apps/wallet/views_admin.py:252
+msgid "Not an account id."
+msgstr "ఇది ఖాతా ఐడి కాదు."
+
+#: apps/wallet/views_admin.py:320
+msgid "type is referrals or entries."
+msgstr "type విలువ referrals లేదా entries."
+
+#: apps/wallet/views_admin.py:135
+msgid "No such referral."
+msgstr "అలాంటి రిఫరల్ లేదు."
+
+#: apps/wallet/views_admin.py:145
+msgid "This referral was already decided."
+msgstr "ఈ రిఫరల్‌పై ఇప్పటికే నిర్ణయం తీసుకున్నారు."
+
+#: apps/wallet/views_admin.py:324
+#, python-format
+msgid "More than %(n)d rows match. Narrow the filters."
+msgstr "%(n)d కంటే ఎక్కువ వరుసలు సరిపోలుతున్నాయి. ఫిల్టర్లను మరింత కుదించండి."
 
 #: apps/web_admin/api.py:118
 msgid "days must be between 1 and 366."

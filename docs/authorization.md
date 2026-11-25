@@ -395,6 +395,10 @@ python manage.py sync_role_permissions
 | `citizen.password_reset` | A citizen set a new wallet password with an email code (BVTGC-124); every other session and lock of the account ended |
 | `citizen.password_changed`, `citizen.email_changed`, `citizen.mobile_changed`, `citizen.village_changed` | A citizen changed their wallet account (BVTGC-125): the masked old and new email, the old and new last 4 digits, or the old and new village id |
 | `citizen.account_deleted` | A citizen wallet account was deleted (BVTGC-127): `via` app (the citizen), website (with an emailed code) or admin (the Super Admin, with a reason). The person's details are removed; confirmed points and referrals stay |
+| `citizen.account_found` | The Super Admin looked up an account by the full number or email a caller gave (BVTGC-128): whether by mobile (its last 4 digits) or email (masked), and how many were found |
+| `citizen.email_set_by_admin`, `citizen.mobile_released` | After calling the citizen back (D16), the Super Admin set a new email (masked old and new) or removed the number (its last 4 digits) from an account, with the reason (BVTGC-128) |
+| `citizen.account_blocked`, `citizen.account_unblocked` | The Super Admin blocked or unblocked a citizen wallet account, with the reason (BVTGC-128); a block ends every session |
+| `wallet.adjusted` | The Super Admin added or took away confirmed points, with the reason the citizen sees (BVTGC-128) |
 | `referral.created` | A friend signed up with a citizen's referral code (BVTGC-126): the referral, and whether both signed up on the same phone |
 | `referral.confirmed`, `referral.rejected` | The hourly job (`via` system) or a Super Admin decided a referral: the reason it was not confirmed |
 | `wallet.mismatch` | The daily check found a wallet whose cached balance differs from the sum of its entries |

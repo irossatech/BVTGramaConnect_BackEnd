@@ -73,6 +73,7 @@
         "apps/citizens/tests/test_blocked_posts.py",
         "apps/citizens/tests/test_citizen_account.py",
         "apps/citizens/tests/test_account_deletion.py",
+        "apps/citizens/tests/test_admin_accounts.py",
         "apps/citizens/tests/test_client_ref.py",
         "apps/citizens/tests/test_media_budget.py",
         "apps/citizens/tests/test_officials_only_categories.py",
@@ -87,6 +88,7 @@
         "apps/service_requests/tests/test_own_install.py",
         "apps/service_requests/tests/test_service_requests.py",
         "apps/service_requests/tests/test_services.py",
+        "apps/wallet/tests/test_admin_wallet.py",
         "apps/wallet/tests/test_referrals.py"
       ]
     },

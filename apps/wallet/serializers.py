@@ -6,6 +6,7 @@ from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
 from .models import WalletEntry
+from .services import MAX_ADJUSTMENT
 
 #: Words for each reason, in the request's language. An adjustment or a Super Admin's rejection shows the
 #: text they typed instead.
@@ -33,3 +34,76 @@ class WalletEntrySerializer(serializers.ModelSerializer):
             return entry.reason
         words = REASONS.get(entry.reason_key)
         return str(words) if words else None
+
+
+# --- The Super Admin (BVTGC-128) ---------------------------------------------------------------------------
+
+def person(user) -> dict | None:
+    return {"id": user.pk, "name": user.name} if user is not None else None
+
+
+def party(account) -> dict:
+    """One side of a referral: never the full number or email."""
+    return {
+        "id": account.pk, "name": account.user.name, "mobile_last4": account.mobile_last4,
+        "referral_code": account.referral_code,
+    }
+
+
+class AdminWalletEntrySerializer(WalletEntrySerializer):
+    """An entry in the Super Admin's view of one wallet: who made an adjustment, and its referral."""
+
+    created_by = serializers.SerializerMethodField()
+    referral_id = serializers.UUIDField(allow_null=True, read_only=True)
+
+    class Meta(WalletEntrySerializer.Meta):
+        fields = [*WalletEntrySerializer.Meta.fields, "created_by", "referral_id"]
+
+    def get_created_by(self, entry) -> dict | None:
+        return person(entry.created_by)
+
+
+class ReferralRowSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    referrer = serializers.DictField()
+    referee = serializers.DictField()
+    status = serializers.CharField()
+    reason_key = serializers.CharField(allow_null=True)
+    comment = serializers.CharField()
+    pending_at = serializers.DateTimeField()
+    confirm_after = serializers.DateTimeField()
+    decided_at = serializers.DateTimeField(allow_null=True)
+    decided_by = serializers.DictField(allow_null=True)
+    allowed_actions = serializers.ListField(child=serializers.CharField())
+
+    def to_representation(self, referral) -> dict:
+        pending = referral.status == referral.Status.PENDING
+        return {
+            "id": referral.id,
+            "referrer": party(referral.referrer),
+            "referee": party(referral.referee),
+            "status": referral.status,
+            "reason_key": referral.reason_key or None,
+            "comment": referral.comment,
+            "pending_at": referral.pending_at,
+            "confirm_after": referral.confirm_after,
+            "decided_at": referral.decided_at,
+            "decided_by": person(referral.decided_by),
+            "allowed_actions": ["confirm", "reject"] if pending else [],
+        }
+
+
+class CommentSerializer(serializers.Serializer):
+    """A rejection's comment is shown in both citizens' histories."""
+
+    comment = serializers.CharField(max_length=500)
+
+
+class AdjustSerializer(serializers.Serializer):
+    points = serializers.IntegerField(min_value=-MAX_ADJUSTMENT, max_value=MAX_ADJUSTMENT)
+    reason = serializers.CharField(max_length=500, help_text="Shown in the citizen's wallet history")
+
+    def validate_points(self, value):
+        if value == 0:
+            raise serializers.ValidationError(_("Give a number of points other than 0."))
+        return value

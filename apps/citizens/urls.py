@@ -28,4 +28,15 @@ urlpatterns = [
     path("admin/citizens/blocked/", views_admin.BlockedCitizensView.as_view(), name="admin-blocked"),
     path("admin/citizens/<uuid:pk>/blocks/", views_admin.CitizenBlocksView.as_view(), name="admin-blocks"),
     path("admin/citizens/<uuid:pk>/unblock/", views_admin.UnblockCitizenView.as_view(), name="admin-unblock"),
+    # The Super Admin's citizen wallet accounts (BVTGC-128, contract section 21).
+    path("admin/citizen-accounts/", views_admin.CitizenAccountsView.as_view(), name="admin-accounts"),
+    path("admin/citizen-accounts/find/", views_admin.FindCitizenAccountView.as_view(), name="admin-account-find"),
+    path("admin/citizen-accounts/<uuid:pk>/email/", views_admin.SetAccountEmailView.as_view(), name="admin-account-email"),
+    path(
+        "admin/citizen-accounts/<uuid:pk>/release-mobile/", views_admin.ReleaseAccountMobileView.as_view(),
+        name="admin-account-release-mobile",
+    ),
+    path("admin/citizen-accounts/<uuid:pk>/block/", views_admin.BlockAccountView.as_view(), name="admin-account-block"),
+    path("admin/citizen-accounts/<uuid:pk>/unblock/", views_admin.UnblockAccountView.as_view(), name="admin-account-unblock"),
+    path("admin/citizen-accounts/<uuid:pk>/delete/", views_admin.DeleteAccountView.as_view(), name="admin-account-delete"),
 ]

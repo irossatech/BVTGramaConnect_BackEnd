@@ -434,6 +434,15 @@ Citizens stay out of the officials' user lists without extra code: `authz.manage
   - **Confirm and reject** are conditional on `PENDING` (`409 already_decided`).
   - **CSV** files start with a UTF-8 BOM and carry the last 4 digits and masked emails only. Rows carry `allowed_actions`.
 - **Done when:** every endpoint has its permission test (Super Admin yes, every other group and a citizen no); the call-back rule; and every action audited.
+- **As built (BVTGC-128):**
+  - account ids are the user's UUID, as everywhere else;
+  - `GET /admin/wallets/{account_id}/` was added: one citizen's balance and history, so the console can answer questions about points (FR-33);
+  - every action on a deleted account answers `409 invalid_transition`; blocking a blocked account, or unblocking an active one, changes nothing (as for officials);
+  - setting an email sends the "email changed" notice to the old address; releasing a number sends no email (FR-32 lists the notices);
+  - a Super Admin's rejection comment is the cancelled entries' `reason` in both histories;
+  - one adjustment is at most 100,000 points either way;
+  - the export stops at 50,000 rows with a 400, never a cut file;
+  - these endpoints answer while `wallet_enabled` is off, so help, exports and deletions still work.
 
 ### 5.11 Settings, app-config, pushes, audit labels and Telugu (BVTGC-129, 2 days)
 
