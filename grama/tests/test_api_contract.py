@@ -6,6 +6,12 @@ The contract is the single source of truth the clients code against ("Contract f
   domain root for the few that live there (/p/<code>/, /app/, /.well-known/assetlinks.json,
   /api/schema/). A path ending in `*` stands for every address under it.
 
+A section whose heading says "(Planned" (section 21, the citizen wallet, BVTGC-106) describes addresses
+agreed before their code exists, so the clients can be built in parallel (lead's decision of
+2026-11-25). Its addresses, and lines elsewhere that say "(planned" (the screen map's rows for section 21), are not
+required to exist yet, except on a line marked **live**, which the contract adds when the code is
+merged; from then on they are checked like any other.
+
 The contract writes ids as `{id}` and often leaves out the trailing slash or adds `?query`; the
 server writes `<int:pk>`, `<uuid:pk>` or, in DRF routers, `(?P<pk>[^/.]+)`. Both sides are compared
 with every parameter as `{}`.
@@ -55,9 +61,36 @@ def test_every_api_address_is_in_the_contract():
     assert not missing, f"Not in docs/api-contract.md: {missing}"
 
 
+LIVE = "**live**"
+
+
+def built_part(contract: str) -> str:
+    """The contract without its planned lines that are not marked **live** yet: every line of a section
+    headed "(Planned", and any other line that says "(planned" (a screen map row pointing at section 21)."""
+    kept, in_planned_section = [], False
+    for line in contract.splitlines():
+        if line.startswith("## "):
+            in_planned_section = "(planned" in line.lower()
+            kept.append(line)
+        elif LIVE in line or not (in_planned_section or "(planned" in line.lower()):
+            kept.append(line)
+    return "\n".join(kept)
+
+
+def test_planned_sections_wait_until_live():
+    sample = "\n".join([
+        "## 5. posts", "`GET /posts/`",
+        "## 12. Screen map", "| Wallet (planned, section 21) | `GET /wallet/` |", "| Feed | `GET /feed/` |",
+        "## 21. Wallet (Planned, BVTGC-106)", "`GET /wallet/`", "| `POST /wallet/redeem/` | **live** |",
+        "## 22. More", "`GET /more/`",
+    ])
+    listed = {m.group(1) for m in LISTED.finditer(built_part(sample))}
+    assert listed == {"posts/", "feed/", "wallet/redeem/", "more/"}
+
+
 def test_every_address_in_the_contract_exists():
     routes = {bare(route) for route in server_routes()}
-    contract = CONTRACT.read_text(encoding="utf-8")
+    contract = built_part(CONTRACT.read_text(encoding="utf-8"))
     unknown = []
     for listed in sorted({bare(PARAM.sub("{}", m.group(1))) for m in LISTED.finditer(contract)}):
         path = listed[len(API):] if listed.startswith(API) else listed
