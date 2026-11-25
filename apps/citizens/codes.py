@@ -154,7 +154,8 @@ def send_code(
     return CodeSent(expires_in=int(CODE_TTL.total_seconds()), resend_after=int(RESEND_AFTER.total_seconds()), email_hint=hint)
 
 
-def _expired() -> ApiError:
+def expired_error() -> ApiError:
+    """400 code_expired: no live code. Also the answer for an unknown login, so it tells nothing."""
     return ApiError("code_expired", _("This code has expired or was already used. Ask for a new one."))
 
 
@@ -173,11 +174,11 @@ def check_code(*, purpose: str, code: str, account=None, pending_signup=None) ->
         .first()
     )
     if row is None or row.attempts >= MAX_ATTEMPTS:
-        raise _expired()
+        raise expired_error()
     typed = str(code or "").strip()
     if not (_SIX_DIGITS.match(typed) and hmac.compare_digest(row.code_hash, _code_hash(row.pk, typed))):
         if not VerificationCode.objects.filter(pk=row.pk, attempts__lt=MAX_ATTEMPTS).update(attempts=F("attempts") + 1):
-            raise _expired()
+            raise expired_error()
         left = MAX_ATTEMPTS - VerificationCode.objects.values_list("attempts", flat=True).get(pk=row.pk)
         raise ApiError(
             "code_wrong", _("Wrong code. Tries left: %(n)d.") % {"n": max(0, left)}, attempts_left=max(0, left)

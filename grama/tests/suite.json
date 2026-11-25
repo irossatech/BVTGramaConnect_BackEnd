@@ -29,12 +29,13 @@
         "apps/accounts/tests/test_lockout_backup_answer.py",
         "apps/accounts/tests/test_lockout_hash.py",
         "apps/accounts/tests/test_lockout_username_ceiling.py",
-        "apps/accounts/tests/test_login_ip_cap.py",
         "apps/accounts/tests/test_login_age.py",
+        "apps/accounts/tests/test_login_ip_cap.py",
         "apps/accounts/tests/test_password_length.py",
         "apps/accounts/tests/test_refresh_grace.py",
         "apps/accounts/tests/test_tokens.py",
         "apps/accounts/tests/test_username_spaces.py",
+        "apps/citizens/tests/test_citizen_login.py",
         "apps/citizens/tests/test_email_codes.py",
         "apps/citizens/tests/test_signup.py"
       ]

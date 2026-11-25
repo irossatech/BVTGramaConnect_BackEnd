@@ -108,6 +108,7 @@ ACTION_LABELS = {
     # Citizen wallet accounts (BVTGC-106)
     "citizen.code_sent": _("sent a wallet code by email"),
     "citizen.account_created": _("created a citizen wallet account"),
+    "citizen.password_reset": _("reset a forgotten wallet password with an email code"),
     # Reports and delivery
     "report.exported": _("exported a report"),
     "email.failed": _("email not delivered"),
