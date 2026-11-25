@@ -13,6 +13,10 @@
   so a longer LOGIN_USERNAME_WINDOW_MINUTES keeps them that long instead.
 - Officials' read notifications older than NOTIFICATION_KEEP_DAYS (90; 0 keeps
   them all). Unread ones stay until read (owner decision, audit finding BE-DB-018).
+- Citizen wallet accounts (BVTGC-127, apps.citizens.services_account.housekeeping):
+  unfinished sign-ups past 24 hours, email codes older than a week, app-use days
+  older than 60 days, and deleted accounts' fingerprints after CITIZEN_DELETED_KEEP_DAYS.
+  None of these are records: an unfinished form, a code, a counter, a fingerprint.
 
 Push devices, citizen phones, contact messages, posts, service requests and the
 audit log are never deleted here (owner decision).
@@ -74,7 +78,14 @@ def run_housekeeping(now=None) -> dict:
         "expired_sessions": sessions,
         "login_failures": login_failures,
         "read_notifications": _delete_old_read_notifications(now),
+        **_citizen_wallet(now),
     }
+
+
+def _citizen_wallet(now) -> dict:
+    from apps.citizens.services_account import housekeeping
+
+    return housekeeping(now)
 
 
 def _delete_old_read_notifications(now) -> int:

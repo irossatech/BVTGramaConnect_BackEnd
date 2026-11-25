@@ -414,9 +414,10 @@ Citizens stay out of the officials' user lists without extra code: `authz.manage
   - `mobile_hash` moved to `deleted_mobile_hash`;
   - push devices unlinked;
   - the role assignment deactivated;
-  - HELD entries cancelled.
+  - its referrals still PENDING rejected with `deleted` (FR-24), which cancels the HELD entries on both sides; any other HELD entry in its wallet cancelled;
+  - its VerificationCode rows deleted (they hold the address).
 
-  Confirmed entries and referrals stay, without personal details (owner's decision of 2026-11-25, Q8). The "account deleted" notice goes before the address is cleared. Audit `citizen.account_deleted` with `via` (`app`, `website`, `admin`). The website's code is a `DELETE` code; a `RESET_PASSWORD` code must not work there.
+  Confirmed entries and referrals stay, without personal details (owner's decision of 2026-11-25, Q8). The "account deleted" notice goes to the address read before it is cleared, once the transaction commits. Audit `citizen.account_deleted` with `via` (`app`, `website`, `admin`). The website's code is a `DELETE` code; a `RESET_PASSWORD` code must not work there.
 - **How (housekeeping, `grama/housekeeping.py`):** delete expired PendingSignups and VerificationCodes older than 7 days, CitizenActiveDay rows older than 60 days, and clear `deleted_*` fingerprints after `CITIZEN_DELETED_KEEP_DAYS` (365, requirements Q9).
 - **Done when:** tests cover personal fields cleared and entries kept; no second welcome bonus on re-sign-up; the website's deletion needing its own code; and the housekeeping steps.
 

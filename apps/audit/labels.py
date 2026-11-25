@@ -113,6 +113,7 @@ ACTION_LABELS = {
     "citizen.email_changed": _("changed their wallet account’s email"),
     "citizen.mobile_changed": _("changed their wallet account’s mobile number"),
     "citizen.village_changed": _("moved their wallet account to another village"),
+    "citizen.account_deleted": _("deleted a citizen wallet account"),
     # Referrals and wallets (BVTGC-126)
     "referral.created": _("started a referral (a friend signed up with a code)"),
     "referral.confirmed": _("confirmed a referral"),

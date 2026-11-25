@@ -736,6 +736,9 @@ WALLET_PILOT_MANDALS = env.list("WALLET_PILOT_MANDALS", cast=int, default=[])
 # Referral rewards and their rules (requirements section 7; suggested starts until the client answers Q2).
 # The hourly job (apps.wallet.tasks) confirms a referral after the hold when the friend opened the app on
 # enough days and the referrer is within the monthly limit (0 = no limit).
+# Deleted wallet accounts keep the fingerprints of their number and email this long, so a new sign-up gets no
+# second welcome bonus (requirements Q9, subject to legal review); then housekeeping clears them. 0 keeps them.
+CITIZEN_DELETED_KEEP_DAYS = env.int("CITIZEN_DELETED_KEEP_DAYS", default=365)
 REFERRAL_REWARD_POINTS = env.int("REFERRAL_REWARD_POINTS", default=50)
 WELCOME_BONUS_POINTS = env.int("WELCOME_BONUS_POINTS", default=20)
 REFERRAL_HOLD_DAYS = env.int("REFERRAL_HOLD_DAYS", default=7)

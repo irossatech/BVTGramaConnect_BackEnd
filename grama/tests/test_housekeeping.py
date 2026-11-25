@@ -92,9 +92,11 @@ def test_running_twice_is_safe(world):
 
     assert run_housekeeping() == {
         "failed_tasks": 1, "expired_tokens": 1, "expired_sessions": 1, "login_failures": 1, "read_notifications": 0,
+        "citizen_pending_signups": 0, "citizen_codes": 0, "citizen_active_days": 0, "citizen_deleted_fingerprints": 0,
     }
     assert run_housekeeping() == {
         "failed_tasks": 0, "expired_tokens": 0, "expired_sessions": 0, "login_failures": 0, "read_notifications": 0,
+        "citizen_pending_signups": 0, "citizen_codes": 0, "citizen_active_days": 0, "citizen_deleted_fingerprints": 0,
     }
 
 
