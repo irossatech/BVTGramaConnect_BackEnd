@@ -733,6 +733,15 @@ if AUDIT_EXPORT_MAX_ROWS < 1:
 # BVTGC-129 makes both runtime settings the Super Admin changes in the console.
 WALLET_ENABLED = env.bool("WALLET_ENABLED", default=False)
 WALLET_PILOT_MANDALS = env.list("WALLET_PILOT_MANDALS", cast=int, default=[])
+# Referral rewards and their rules (requirements section 7; suggested starts until the client answers Q2).
+# The hourly job (apps.wallet.tasks) confirms a referral after the hold when the friend opened the app on
+# enough days and the referrer is within the monthly limit (0 = no limit).
+REFERRAL_REWARD_POINTS = env.int("REFERRAL_REWARD_POINTS", default=50)
+WELCOME_BONUS_POINTS = env.int("WELCOME_BONUS_POINTS", default=20)
+REFERRAL_HOLD_DAYS = env.int("REFERRAL_HOLD_DAYS", default=7)
+REFERRAL_ACTIVE_DAYS = env.int("REFERRAL_ACTIVE_DAYS", default=2)
+REFERRALS_PER_MONTH = env.int("REFERRALS_PER_MONTH", default=30)
+WELCOME_BONUSES_PER_PHONE = env.int("WELCOME_BONUSES_PER_PHONE", default=3)
 # The consent notice a sign-up must name; change it with the privacy policy and terms (C5).
 CITIZEN_CONSENT_VERSION = env.str("CITIZEN_CONSENT_VERSION", default="2026-11-25")
  

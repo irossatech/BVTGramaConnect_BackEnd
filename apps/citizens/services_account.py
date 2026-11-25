@@ -303,8 +303,12 @@ def finish_signup(token: str, code: str, *, via: str = "app") -> CitizenAccount:
                 created_at=now,
             )
             from apps.wallet.models import Wallet
+            from apps.wallet.services import start_referral
 
             Wallet.objects.create(account=account)
+            if referrer is not None:
+                # The referral starts now, PENDING, with its held points (BVTGC-126).
+                start_referral(account, referrer, now=now)
             record(
                 "citizen.account_created",
                 target=user,

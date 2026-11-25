@@ -113,6 +113,11 @@ ACTION_LABELS = {
     "citizen.email_changed": _("changed their wallet account’s email"),
     "citizen.mobile_changed": _("changed their wallet account’s mobile number"),
     "citizen.village_changed": _("moved their wallet account to another village"),
+    # Referrals and wallets (BVTGC-126)
+    "referral.created": _("started a referral (a friend signed up with a code)"),
+    "referral.confirmed": _("confirmed a referral"),
+    "referral.rejected": _("did not confirm a referral"),
+    "wallet.mismatch": _("found a wallet whose balance differs from its history"),
     # Reports and delivery
     "report.exported": _("exported a report"),
     "email.failed": _("email not delivered"),

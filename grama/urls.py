@@ -40,6 +40,7 @@ api_v1 = [
     path("", include("apps.service_requests.urls")),
     path("", include("apps.ads.urls")),
     path("", include("apps.bills.urls")),
+    path("", include("apps.wallet.urls")),
 ]
 
 urlpatterns = [
