@@ -36,6 +36,7 @@ from rest_framework.views import APIView
 from apps.accounts import authz
 from apps.accounts.models import RoleAssignment, User
 from apps.accounts.permissions import PLATFORM, HasPerm
+from apps.audit.labels import action_label
 from apps.audit.models import AuditLog
 from apps.audit.services import record
 from apps.geography.areas import AreaDescriber, AreaRef
@@ -129,6 +130,7 @@ def audit_entry(row: AuditLog, describer: AreaDescriber) -> dict:
             "role": row.actor_role or "SYSTEM",
         },
         "action": row.action,
+        "action_label": action_label(row.action),  # as in GET /audit/ (BVTGC-100)
         "type": row.type,
         "target_label": row.target_label,
         "target": {"type": row.target_type, "id": row.target_id} if row.target_type else None,

@@ -101,6 +101,18 @@ def test_the_code_stays_for_filters_and_older_clients(api, world):
     assert row["action"] == "user.blocked"
 
 
+def test_the_dashboards_recent_activity_sends_the_words_too(api, world):
+    """The console's and the app's Recent activity rows show the same words as the audit list."""
+    record("area.created", actor=world.users["super"], via="console")
+    client = api(world.users["super"])
+    entry = client.get("/api/v1/admin/dashboard/", HTTP_ACCEPT_LANGUAGE="en").json()["recent_activity"][0]
+    assert entry["action"] == "area.created" and entry["action_label"] == "added an area"
+    entry = client.get("/api/v1/admin/dashboard/").json()["recent_activity"][0]
+    with translation.override("te"):
+        telugu = str(ACTION_LABELS["area.created"])
+    assert entry["action_label"] == telugu and re.search(r"[ఀ-౿]", telugu)
+
+
 def test_the_csv_export_has_the_words_last(api, world):
     record("post.published", actor=world.users["ma_tenali"], target_label="గ్రామ సభ")
     response = api(world.users["super"]).get("/api/v1/audit/export/?format=csv", HTTP_ACCEPT_LANGUAGE="en")
