@@ -652,7 +652,7 @@ Owner: Anvesh Kolli. Area: QA.
 
 Done now (2026-11-25, with this version):
 - `docs/api-contract.md`: section 21 (Planned), with the cross-references in sections 1, 5, 12 and 13.
-- `.claude/project.md`: the roles table and three owner decisions (the wallet account; email codes and a required email for citizens; deletable citizen accounts). They are in BackEnd and BVTGramaConnect. **BVTGramaConnect_Mobile still needs the same change**: its GitHub fetch asked for a sign-in, so it could not be updated safely.
+- `.claude/project.md`: the roles table and three owner decisions (the wallet account; email codes and a required email for citizens; deletable citizen accounts), the same in all three repos.
 
 With the code:
 - `docs/authorization.md` (BVTGC-121);
