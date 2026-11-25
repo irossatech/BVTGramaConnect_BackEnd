@@ -88,6 +88,7 @@
       "files": [
         "apps/accounts/tests/test_audit_privacy.py",
         "apps/accounts/tests/test_users_contact_masking.py",
+        "apps/audit/tests/test_action_labels.py",
         "apps/audit/tests/test_audit.py",
         "apps/audit/tests/test_audit_atomic.py",
         "apps/posts/tests/test_category_audit_via.py",

@@ -30,6 +30,7 @@ from apps.accounts import authz
 from apps.accounts.authentication import client_via
 from apps.accounts.permissions import HasPerm
 
+from .labels import action_label
 from .models import AuditLog, AuditType
 from .services import record
 
@@ -48,10 +49,15 @@ class AuditEntrySerializer(serializers.ModelSerializer):
     actor = serializers.SerializerMethodField()
     target = serializers.SerializerMethodField()
     area = serializers.SerializerMethodField()
+    action_label = serializers.SerializerMethodField()
 
     class Meta:
         model = AuditLog
-        fields = ["id", "at", "actor", "action", "type", "target_label", "target", "area", "via", "data"]
+        fields = ["id", "at", "actor", "action", "action_label", "type", "target_label", "target", "area", "via", "data"]
+
+    def get_action_label(self, obj) -> str:
+        """The action in words, in the request's language (BVTGC-100)."""
+        return action_label(obj.action)
 
     def get_actor(self, obj) -> dict:
         if obj.actor_id is None and not obj.actor_name:
@@ -238,12 +244,14 @@ class AuditExportView(APIView):
         rows = matching.values_list(*EXPORT_COLUMNS)[:limit].iterator(chunk_size=2000)
         buffer = io.StringIO()
         writer = safe_writer(buffer)  # names and titles never run as spreadsheet formulas
-        writer.writerow(["time", "user", "role", "action", "type", "target", "area_level", "area_id", "via"])
+        # "what_happened" (BVTGC-100) is the action in words, in the request's language; added last so
+        # the existing columns keep their places.
+        writer.writerow(["time", "user", "role", "action", "type", "target", "area_level", "area_id", "via", "what_happened"])
         for created_at, actor_name, actor_role, action, kind, target_label, area_level, area_id, via in rows:
             writer.writerow([
                 timezone.localtime(created_at).strftime("%Y-%m-%d %H:%M:%S"),
                 actor_name or "System", actor_role, action, kind,
-                target_label, area_level, area_id or "", via,
+                target_label, area_level, area_id or "", via, action_label(action),
             ])
         record("report.exported", actor=request.user, via=client_via(request),
                data={"report": "audit", "filters": export_filters(request.query_params)})
