@@ -1,0 +1,1372 @@
+{
+  "about": "Every API call of the web console and website (web) and the mobile app (app), read from their source by `python manage.py client_calls` (grama/clientcalls.py, BVTGC-97). grama/tests/test_client_calls.py checks each against the server's URLs. {} is any value.",
+  "calls": [
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/ads/",
+      "used_by": {
+        "web": [
+          "src/console/logic/ads.ts"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/ads/",
+      "used_by": {
+        "web": [
+          "src/console/logic/ads.ts"
+        ]
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/admin/ads/{}/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/ads.dart",
+          "lib/features/grama/state/bulk.dart"
+        ],
+        "web": [
+          "src/console/logic/ads.ts"
+        ]
+      }
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/ads/{}/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/ads.dart"
+        ],
+        "web": [
+          "src/console/logic/ads.ts"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/bills/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/service_catalog.dart"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/categories/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/settings.ts"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/categories/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/settings.ts"
+        ]
+      }
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/categories/{}/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/settings.ts"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/citizens/blocked/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/posts.ts"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/citizens/{}/blocks/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/posts.ts"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/citizens/{}/unblock/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/posts.ts"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/contact-messages/",
+      "used_by": {
+        "web": [
+          "src/console/logic/messages.ts"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/contact-messages/{}/",
+      "used_by": {
+        "web": [
+          "src/console/logic/messages.ts"
+        ]
+      }
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/contact-messages/{}/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/messages.ts"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/contact-types/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/numbers.ts"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/contact-types/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/numbers.ts"
+        ]
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/admin/contact-types/{}/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/numbers.ts"
+        ]
+      }
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/contact-types/{}/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/numbers.ts"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/contacts/",
+      "used_by": {
+        "web": [
+          "src/console/logic/numbers.ts"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/contacts/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/numbers.ts"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/contacts/import/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/numbers.ts"
+        ]
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/admin/contacts/{}/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/bulk.dart",
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/numbers.ts"
+        ]
+      }
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/contacts/{}/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/numbers.ts"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/dashboard/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/dashboard.ts"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/notification-templates/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/settings.ts"
+        ]
+      }
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/notification-templates/{}/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/settings.ts"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/reports/admin-activity/",
+      "used_by": {
+        "web": [
+          "src/console/logic/reports.ts"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/reports/posts-by-area/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/reports.ts"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/reports/review-time/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/reports.ts"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/reports/summary/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/reports.ts"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/reports/{}/export/",
+      "used_by": {
+        "web": [
+          "src/console/logic/reports.ts"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/services/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/service_catalog.dart"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/settings/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/settings.ts"
+        ]
+      }
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/settings/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/settings.ts"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/transliterate/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/app_state.dart"
+        ],
+        "web": [
+          "src/console/Console.tsx"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/{}/order/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/service_catalog.dart"
+        ]
+      }
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/{}/{}/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/service_catalog.dart"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ads/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/ads.dart"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/app-config/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/website/Site.tsx"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/audit/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/audit.ts"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/audit/export/",
+      "used_by": {
+        "web": [
+          "src/console/logic/audit.ts"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/csrf/",
+      "used_by": {
+        "web": [
+          "src/console/api.ts"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/login/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/logout/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/password/change/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/Console.tsx"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/refresh/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/data/api_client.dart"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/session/login/",
+      "used_by": {
+        "web": [
+          "src/console/api.ts"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/session/logout/",
+      "used_by": {
+        "web": [
+          "src/console/api.ts"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/categories/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/settings.ts",
+          "src/website/Site.tsx"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/citizen/challenge/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/citizen/me/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ]
+      }
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/citizen/me/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/push.dart",
+          "lib/features/grama/state/remote.dart"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/citizen/posts/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/citizen/posts/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/citizen/register/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/citizen/service-requests/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/service_requests.dart"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/citizen/service-requests/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/service_requests.dart"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/citizen/service-requests/{}/cancel/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/service_requests.dart"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/contact-types/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/numbers.ts"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/contacts/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/devices/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/push.dart"
+        ]
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/devices/{}/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/feed/posts/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/feed/posts/{}/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/feed/share/{}/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/push.dart"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/feed/upcoming/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/feed/urgent/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/geo/admin/villages/",
+      "used_by": {
+        "web": [
+          "src/console/Console.tsx"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/geo/districts/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/audience.dart"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/geo/districts/",
+      "used_by": {
+        "web": [
+          "src/console/logic/geography.ts"
+        ]
+      }
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/geo/districts/{}/",
+      "used_by": {
+        "web": [
+          "src/console/logic/geography.ts"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/geo/mandals/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/audience.dart"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/geo/mandals/",
+      "used_by": {
+        "web": [
+          "src/console/logic/geography.ts"
+        ]
+      }
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/geo/mandals/{}/",
+      "used_by": {
+        "web": [
+          "src/console/logic/geography.ts"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/geo/nearest/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/geo/states/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/audience.dart"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/geo/tree/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/Console.tsx"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/geo/villages/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/audience.dart",
+          "lib/features/grama/state/remote.dart"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/geo/villages/",
+      "used_by": {
+        "web": [
+          "src/console/logic/geography.ts"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/geo/villages/import/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/geography.ts"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/geo/villages/{}/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/push.dart",
+          "lib/features/grama/state/remote.dart"
+        ]
+      }
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/geo/villages/{}/",
+      "used_by": {
+        "web": [
+          "src/console/logic/geography.ts"
+        ]
+      }
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/geo/{}/{}/",
+      "used_by": {
+        "web": [
+          "src/console/logic/geography.ts"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/me/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/Console.tsx",
+          "src/console/api.ts"
+        ]
+      }
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/me/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/Console.tsx"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/notifications/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/notifications/read-all/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/notifications.ts"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/notifications/{}/read/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/notifications.ts"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/posts/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/posts.ts",
+          "src/console/logic/users.ts"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/posts/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/compose.ts"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/posts/targets/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/posts/targets/check/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/audience.dart"
+        ]
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/posts/{}/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/app_state.dart",
+          "lib/features/grama/state/remote.dart"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/posts/{}/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/push.dart",
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/notifications.ts",
+          "src/console/logic/posts.ts"
+        ]
+      }
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/posts/{}/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/posts/{}/block-citizen/",
+      "used_by": {
+        "web": [
+          "src/console/logic/posts.ts"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/posts/{}/discard-citizen-posts/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/posts.ts"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/posts/{}/history/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/posts.ts"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/posts/{}/media/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/compose.ts"
+        ]
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/posts/{}/media/{}/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/posts/{}/review/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/bulk.dart",
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/posts.ts"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/posts/{}/submit/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/compose.ts"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/posts/{}/unblock-citizen/",
+      "used_by": {
+        "web": [
+          "src/console/logic/posts.ts"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/posts/{}/urgent/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/posts.ts"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/posts/{}/{}-citizen/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/public/contact-messages/",
+      "used_by": {
+        "web": [
+          "src/website/Site.tsx"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/public/showcase/",
+      "used_by": {
+        "web": [
+          "src/website/Site.tsx"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/public/site-config/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/service-requests/{}/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/push.dart",
+          "lib/features/grama/state/service_requests.dart"
+        ],
+        "web": [
+          "src/console/logic/notifications.ts",
+          "src/console/logic/requests.ts"
+        ]
+      }
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/service-requests/{}/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/service_requests.dart"
+        ],
+        "web": [
+          "src/console/logic/requests.ts"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/stats/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/users/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/dashboard.ts",
+          "src/console/logic/requests.ts",
+          "src/console/logic/users.ts"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/users/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/users.ts"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/users/{}/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/users.ts"
+        ]
+      }
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/users/{}/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/users.ts"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/users/{}/reset-password/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/users.ts"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/users/{}/role-assignments/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/users.ts"
+        ]
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/users/{}/role-assignments/{}/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/users.ts"
+        ]
+      }
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/users/{}/role-assignments/{}/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/users.ts"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/users/{}/unlock/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/users.ts"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/users/{}/{}/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/bulk.dart",
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/users.ts"
+        ]
+      }
+    }
+  ],
+  "unchecked": [
+    {
+      "client": "app",
+      "file": "lib/features/grama/state/ads.dart",
+      "code": "patch(path"
+    },
+    {
+      "client": "app",
+      "file": "lib/features/grama/state/ads.dart",
+      "code": "uploadAll(path"
+    },
+    {
+      "client": "app",
+      "file": "lib/features/grama/state/remote.dart",
+      "code": "get(next"
+    },
+    {
+      "client": "app",
+      "file": "lib/features/grama/state/remote.dart",
+      "code": "get(path"
+    },
+    {
+      "client": "app",
+      "file": "lib/features/grama/state/remote.dart",
+      "code": "get(r['next'] as String"
+    },
+    {
+      "client": "app",
+      "file": "lib/features/grama/state/remote.dart",
+      "code": "post(path"
+    },
+    {
+      "client": "app",
+      "file": "lib/features/grama/state/service_catalog.dart",
+      "code": "get(path"
+    },
+    {
+      "client": "app",
+      "file": "lib/features/grama/state/service_catalog.dart",
+      "code": "patch(path"
+    },
+    {
+      "client": "app",
+      "file": "lib/features/grama/state/service_catalog.dart",
+      "code": "post(path"
+    },
+    {
+      "client": "app",
+      "file": "lib/features/grama/state/service_catalog.dart",
+      "code": "uploadAll(path"
+    },
+    {
+      "client": "web",
+      "file": "src/console/Console.tsx",
+      "code": "del(o.url(ids[i])"
+    },
+    {
+      "client": "web",
+      "file": "src/console/logic/services.ts",
+      "code": "get(c.path"
+    },
+    {
+      "client": "web",
+      "file": "src/console/logic/services.ts",
+      "code": "patch(c.path + g.key + '/'"
+    },
+    {
+      "client": "web",
+      "file": "src/console/logic/services.ts",
+      "code": "patch(path"
+    },
+    {
+      "client": "web",
+      "file": "src/console/logic/services.ts",
+      "code": "post(c.path + 'order/'"
+    },
+    {
+      "client": "web",
+      "file": "src/console/logic/services.ts",
+      "code": "post(path"
+    },
+    {
+      "client": "web",
+      "file": "src/console/logic/services.ts",
+      "code": "upload(path"
+    }
+  ]
+}
