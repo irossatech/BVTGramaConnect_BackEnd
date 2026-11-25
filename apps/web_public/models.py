@@ -16,7 +16,8 @@ class ContactMessage(models.Model):
     village_text = models.CharField(_("village / mandal"), max_length=200, blank=True)
     message = models.TextField(_("message"), max_length=2000)
     language = models.CharField(_("language"), max_length=2, default="te")
-    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    # No sender IP address: its only use, the per-hour limit, went on 2026-11-20, and messages are kept
+    # forever, so it is not stored at all (BVTGC-103).
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     handled = models.BooleanField(_("handled"), default=False)
     handled_note = models.TextField(_("note"), blank=True)
@@ -29,7 +30,6 @@ class ContactMessage(models.Model):
         verbose_name = _("contact message")
         verbose_name_plural = _("contact messages")
         ordering = ["-created_at"]
-        indexes = [models.Index(fields=["ip_address", "created_at"])]
         permissions = [("manage_contact_messages", "Read and close contact messages")]
 
     def __str__(self):

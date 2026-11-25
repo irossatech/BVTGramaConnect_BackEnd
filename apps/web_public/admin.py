@@ -12,7 +12,7 @@ class ContactMessageAdmin(admin.ModelAdmin):
     list_filter = ("handled", "language")
     search_fields = ("name", "mobile", "village_text", "message")
     readonly_fields = (
-        "name", "mobile", "village_text", "message", "language", "ip_address", "created_at",
+        "name", "mobile", "village_text", "message", "language", "created_at",
         "handled_at", "handled_by",
     )
     fields = readonly_fields + ("handled", "handled_note")
