@@ -387,6 +387,23 @@ AXES_DISABLE_ACCESS_LOG = True
 AXES_VERBOSE = False
 AXES_ENABLE_ACCESS_FAILURE_LOG = True
  
+# Citizens' wallet accounts have their own password rule (D15, BVTGC-123): at least 8 characters of any kind,
+# not a common password, not like the name or email, not the mobile number. The officials' rule above
+# (AUTH_PASSWORD_VALIDATORS: 12 characters with the composition) is never used for them, nor this one for officials.
+CITIZEN_PASSWORD_MIN_LENGTH = env.int("CITIZEN_PASSWORD_MIN_LENGTH", default=8)
+CITIZEN_PASSWORD_VALIDATORS = [
+    {
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
+        "OPTIONS": {"user_attributes": ("name", "email")},
+    },
+    {
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
+        "OPTIONS": {"min_length": CITIZEN_PASSWORD_MIN_LENGTH},
+    },
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+    {"NAME": "apps.citizens.passwords.NotTheMobileNumberValidator"},
+]
+
 PASSWORD_CHANGE_MAX_FAILURES = env.int("PASSWORD_CHANGE_MAX_FAILURES", default=5)
 PASSWORD_CHANGE_WINDOW_MINUTES = env.int("PASSWORD_CHANGE_WINDOW_MINUTES", default=15)
  
@@ -710,6 +727,14 @@ DELIVERY_RETRY_ATTEMPTS = env.int("DELIVERY_RETRY_ATTEMPTS", default=3)
 AUDIT_EXPORT_MAX_ROWS = env.int("AUDIT_EXPORT_MAX_ROWS", default=50000)
 if AUDIT_EXPORT_MAX_ROWS < 1:
     raise ImproperlyConfigured("AUDIT_EXPORT_MAX_ROWS must be at least 1.")
+
+# Citizen wallet (BVTGC-106; docs/api-contract.md, section 21). Off until launch: every wallet endpoint
+# answers 404. While WALLET_PILOT_MANDALS lists mandal ids, sign-up is open only in their villages (D13).
+# BVTGC-129 makes both runtime settings the Super Admin changes in the console.
+WALLET_ENABLED = env.bool("WALLET_ENABLED", default=False)
+WALLET_PILOT_MANDALS = env.list("WALLET_PILOT_MANDALS", cast=int, default=[])
+# The consent notice a sign-up must name; change it with the privacy policy and terms (C5).
+CITIZEN_CONSENT_VERSION = env.str("CITIZEN_CONSENT_VERSION", default="2026-11-25")
  
  
 # ==============================================================================
