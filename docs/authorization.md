@@ -205,7 +205,10 @@ Rank 0 is the highest.
 - the officials' login (`auth/login/`, `auth/session/login/`) refuses it with `400 invalid_credentials`, the same answer as a wrong password, even when it is blocked;
 - the officials' endpoints that need no particular permission (`GET /me/`, `POST /auth/password/change/`, the notification inbox, `/posts/`) answer it `403 permission_denied` (`IsOfficialAccount` in `apps/accounts/permissions.py`);
 - "any official role" means holding `accounts.use_official_api`, which every official group has and `CITIZEN` has not: the Telugu name suggestions and the published posts an official sees above their area (`authz.official_grants`);
-- nobody can give the group through `users/`, so citizen accounts never appear in an official's user list, and the dashboard counts officials only.
+- nobody can give the group through `users/`, so citizen accounts never appear in an official's user list, and the dashboard counts officials only;
+- every other officials' and Super Admin endpoint answers a citizen's token `403 permission_denied`: `grama/tests/test_citizen_token_scope.py` walks every API route, so a new one fails the test until it refuses citizens or is listed as public or citizen-facing (BVTGC-130).
+
+The citizen's own endpoints (`citizen/auth/`, `citizen/account/`, `wallet/`) need `wallet.use_wallet` or no login, and answer 404 while the wallet is off. The Super Admin's wallet tools (`admin/citizen-accounts/`, `admin/referrals/`, `admin/wallets/`, `admin/wallet/export/`) need `accounts.manage_citizen_accounts`, `wallet.review_referrals`, `wallet.adjust_points` or `wallet.view_wallets` over the whole platform; no other group holds them (D11: local officials see no wallets). The matrix test calls each of these through the API for every group.
 
 Code asks `authz.is_citizen_account(user)`, which looks for the account's `CitizenAccount` row, never the group's key. The groups, their levels, ranks and permissions are written in one place: `ROLE_GROUPS` in `apps/accounts/role_matrix.py`.
 

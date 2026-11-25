@@ -30,7 +30,6 @@ from django.test import Client
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from apps.accounts import authz
 from apps.accounts.lockout import login_key
 from apps.accounts.models import RoleAssignment, User
 from apps.accounts.role_matrix import ALL_PERMISSIONS, ROLE_GROUPS
@@ -38,6 +37,7 @@ from apps.accounts.sync import wanted_permissions
 from apps.citizens.models import CitizenAccount, CitizenDevice
 from apps.posts.models import CITIZEN_ROLE, Category, Post, PostStatus
 from apps.service_requests.models import ServiceRequest
+from apps.wallet.models import Wallet
 from conftest import MAP, PARENT, TEST_PASSWORD, inside, make_bare_post
 
 pytestmark = pytest.mark.django_db
@@ -100,19 +100,18 @@ PLATFORM_PROBES = {
     "ads.manage_ad": "/api/v1/admin/ads/",
     "service_requests.manage_services": "/api/v1/admin/services/",
     "bills.manage_bills": "/api/v1/admin/bills/",
-    # The Super Admin's wallet tools (contract section 21). Asked of authz until their endpoints exist;
-    # BVTGC-128 swaps in the HTTP probes.
-    "accounts.manage_citizen_accounts": "authz",
-    "wallet.view_wallets": "authz",
-    "wallet.adjust_points": "authz",
-    "wallet.review_referrals": "authz",
+    # The Super Admin's wallet tools (contract section 21, BVTGC-128), through the API since BVTGC-130.
+    "accounts.manage_citizen_accounts": "/api/v1/admin/citizen-accounts/",
+    "wallet.view_wallets": "/api/v1/admin/wallet/export/?type=referrals&format=csv",
+    "wallet.adjust_points": "adjust",
+    "wallet.review_referrals": "/api/v1/admin/referrals/",
 }
 #: Held means allowed, whatever the area (one case per group).
 HELD_PROBES = {
     # Every official: the Telugu name suggestions need any official role (BVTGC-121).
     "accounts.use_official_api": "/api/v1/admin/transliterate/?text=ravi",
-    # A citizen account's own wallet; asked of authz until BVTGC-125 adds GET /citizen/account/.
-    "wallet.use_wallet": "authz",
+    # A citizen account's own wallet (BVTGC-126), through the API since BVTGC-130.
+    "wallet.use_wallet": "/api/v1/wallet/",
 }
 
 
@@ -227,24 +226,31 @@ def review(client, post, action, **extra):
 
 def citizen_account_at(world, village_key: str) -> User:
     """A citizen's wallet account with the Citizen role in that village (BVTGC-121)."""
-    user = User.objects.create_user(username="citizen_kolakaluru", name="Citizen Probe", password=TEST_PASSWORD)
+    return citizen_account(world, village_key, "citizen_kolakaluru", "MATRIX01")
+
+
+def citizen_account(world, village_key: str, username: str, code: str) -> User:
+    user = User.objects.create_user(username=username, name="Citizen Probe", password=TEST_PASSWORD)
     now = timezone.now()
-    CitizenAccount.objects.create(
+    account = CitizenAccount.objects.create(
         user=user, village_id=world.ref(village_key).id, age_confirmed_at=now, consent_version="v1",
-        consent_at=now, referral_code="MATRIX01",
+        consent_at=now, referral_code=code,
     )
+    Wallet.objects.create(account=account)
     RoleAssignment.objects.assign(user, "CITIZEN", world.ref(village_key))
     return User.objects.get(pk=user.pk)
 
 
 def probe(world, client, actor: User, perm: str, area_key: str | None) -> bool:
     if perm in HELD_PROBES:
-        how = HELD_PROBES[perm]
-        return authz.can(actor, perm) if how == "authz" else outcome(client.get(how))
+        return outcome(client.get(HELD_PROBES[perm]))
     if perm in PLATFORM_PROBES:
         how = PLATFORM_PROBES[perm]
-        if how == "authz":
-            return authz.can(actor, perm, authz.PLATFORM)
+        if how == "adjust":
+            # Another citizen's wallet: a correction of one point, with a reason.
+            target = citizen_account(world, "nandivelugu", "citizen_probe_target", "MATRIX02")
+            body = {"points": 1, "reason": "probe"}
+            return outcome(client.post(f"/api/v1/admin/wallets/{target.pk}/adjust/", body, format="json"))
         if how == "session":
             response = APIClient().post(
                 "/api/v1/auth/session/login/", {"username": actor.username, "password": TEST_PASSWORD}, format="json"
@@ -365,7 +371,8 @@ def test_every_permission_has_a_probe_and_every_group_is_tried():
 
 
 @pytest.mark.parametrize("key, perm, position", CASES)
-def test_matrix(api, world, key, perm, position):
+def test_matrix(api, world, settings, key, perm, position):
+    settings.WALLET_ENABLED = True  # the citizen wallet's endpoints answer 404 while it is off
     name = ACTOR[key]
     home = HOME[name]
     area_key = None if position in ("platform", "held") else target_for(perm, position, home)

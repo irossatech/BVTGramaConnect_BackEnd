@@ -476,6 +476,11 @@ Citizens stay out of the officials' user lists without extra code: `authz.manage
   - update `docs/security-review.md` (new personal data, the SMTP secret, the shorter citizen password rule and its mitigations, fraud controls) and `docs/authorization.md`;
   - mark section 21 **live**, endpoint by endpoint, as code merges.
 - **Done when:** `python -m pytest -q -p no:logging` and `python -m grama.testsuite all` are green.
+- **As built (BVTGC-130):**
+  - the matrix calls every wallet permission through its endpoint, for every group (the Citizen group was already there since BVTGC-121);
+  - `grama/tests/test_citizen_token_scope.py` walks every API route with a citizen's token: all 104 officials' route-and-method pairs answer 403;
+  - `apps/citizens/tests/test_wallet_privacy.py` walks the whole wallet and checks the log, the audit log and the job queue for every email, number, password, code and token used; a planted log line of a number made it fail, so it does catch leaks;
+  - `docs/security-review.md` has the wallet's rows and two new open items: a per-address limit on the citizen login and code paths (lead), and names in earlier audit entries (legal review).
 
 ## 6. Mobile app (BVTGramaConnect_Mobile)
 

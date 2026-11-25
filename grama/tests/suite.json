@@ -7,6 +7,7 @@
       "files": [
         "apps/accounts/tests/test_authz.py",
         "apps/accounts/tests/test_citizen_role.py",
+        "grama/tests/test_citizen_token_scope.py",
         "apps/accounts/tests/test_escalation.py",
         "apps/accounts/tests/test_matrix.py",
         "apps/accounts/tests/test_me.py",
@@ -109,7 +110,8 @@
         "apps/audit/tests/test_record_safety_net.py",
         "apps/service_requests/tests/test_push_jobs_no_names.py",
         "apps/web_public/tests/test_message_label.py",
-        "grama/tests/test_log_leak.py"
+        "grama/tests/test_log_leak.py",
+        "apps/citizens/tests/test_wallet_privacy.py"
       ]
     },
     "notifications": {
