@@ -1,8 +1,9 @@
 """When every login of an official ends, their phones stop getting their alerts (BVTGC-94).
 
-A password reset, "log out everywhere", a block, and too many wrong current passwords end every session;
-they also remove the official's push links, as the app's own logout does. The official's own password
-change keeps them: the phone in their hand stays logged in. Other officials' phones are never touched.
+A password reset, "log out everywhere", a block, too many wrong current passwords and the official's own
+password change end every session; they also remove the official's push links, as the app's own logout
+does. After its own password change the app links the phone in hand again at once. Other officials' and
+citizens' phones are never touched.
 """
 
 import pytest
@@ -70,12 +71,36 @@ def test_too_many_wrong_current_passwords_unlink_the_phones(api, world, devices)
     assert others_untouched(devices, "va_kolakaluru")
 
 
-def test_the_officials_own_password_change_keeps_the_phones(api, world, devices):
-    response = api(world.users["va_kolakaluru"]).post(
+def test_an_own_password_change_on_the_console_unlinks_every_phone(world, devices, client):
+    user = world.users["super"]
+    client.get("/api/v1/auth/csrf/")
+    csrf = {"HTTP_X_CSRFTOKEN": client.cookies["csrftoken"].value}
+    login = client.post("/api/v1/auth/session/login/", {"username": "super", "password": TEST_PASSWORD},
+                        content_type="application/json", **csrf)
+    assert login.status_code == 200, login.json()
+    changed = client.post("/api/v1/auth/password/change/",
+                          {"current_password": TEST_PASSWORD, "new_password": NEW_PASSWORD},
+                          content_type="application/json", **csrf)
+    assert changed.status_code == 200, changed.json()
+    assert not Device.objects.filter(user=user).exists()
+    assert others_untouched(devices, "super")
+
+
+def test_an_own_password_change_in_the_app_keeps_only_the_phone_in_hand(api, world, devices):
+    user = world.users["va_kolakaluru"]
+    Device.objects.create(fcm_token="tok-other-phone", platform="android", user=user)
+    response = api(user).post(
         "/api/v1/auth/password/change/", {"current_password": TEST_PASSWORD, "new_password": NEW_PASSWORD}, format="json"
     )
     assert response.status_code == 200, response.json()
-    assert linked("va_kolakaluru")
+    assert not Device.objects.filter(user=user).exists()
+    # The app links the phone in hand again at once with its new token (mobile: syncPush after the change).
+    phone = api()
+    phone.credentials(HTTP_AUTHORIZATION=f"Bearer {response.json()['access']}")
+    again = phone.post("/api/v1/devices/", {"fcm_token": "tok-va_kolakaluru", "platform": "android"}, format="json")
+    assert again.status_code in (200, 201), again.json()
+    assert list(Device.objects.filter(user=user).values_list("fcm_token", flat=True)) == ["tok-va_kolakaluru"]
+    assert others_untouched(devices, "va_kolakaluru")
 
 
 def test_the_phone_links_again_at_the_next_login(api, world, devices):
