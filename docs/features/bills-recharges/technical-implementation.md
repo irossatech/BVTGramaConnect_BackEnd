@@ -135,7 +135,7 @@ Add to `apps/accounts/role_matrix.py`:
 | `billpay.handle_complaints` | Super Admin |
 | `billpay.manage_billpay` | Super Admin: category switches, points settings, pilot accounts, recheck a payment, resolve a reconciliation item |
 
-Every citizen endpoint uses `HasPerm("billpay.pay_bills")`, and a service check refuses with `403 mobile_not_verified` until the account's mobile is verified (FR-1). While the pilot list is not empty, accounts outside it get `404 not_found`, so the feature stays invisible to them. Officials hold none of these permissions. A test in the `test_matrix.py` style locks that in.
+Every citizen endpoint uses `HasPerm("billpay.pay_bills")`. Every citizen account has a verified mobile number from sign-up (wallet v3, D1 and D6), so FR-1 needs no separate check. While the pilot list is not empty, accounts outside it get `404 not_found`, so the feature stays invisible to them. Officials hold none of these permissions. A test in the `test_matrix.py` style locks that in.
 
 ### 3.2 The partner gateway
 
@@ -317,7 +317,7 @@ All under `/api/v1/`. Citizen endpoints need a citizen JWT with `billpay.pay_bil
 | `GET`, `PATCH admin/settings/` | `posts.manage_settings` (existing) | Adds the settings of 3.11 | Settings |
 
 New error codes for section 1 of the contract:
-- `billpay_unavailable`, `mobile_not_verified`, `category_inactive`, `biller_inactive`, `no_bill_due`, `fetch_expired`
+- `billpay_unavailable`, `category_inactive`, `biller_inactive`, `no_bill_due`, `fetch_expired`
 - `amount_not_allowed`, `amount_limit`, `daily_limit`
 - `points_off`, `points_not_allowed` (with `max_points`), `not_enough_points` (already in the wallet section)
 - `operator_unknown`, `plan_unavailable`, `complaint_open`
@@ -365,7 +365,7 @@ Settings changes are already audited by the settings screen.
 - **Entry points:**
   - the Bills row on Home (`citizen_home.dart`) and **View all**: `cBills`, `ServicesScreen(bills: true)` (`shell.dart:53`, `services_screen.dart:146-206`);
   - a tile whose `category` is set and active opens the flow; anything else keeps "Coming soon" (`svcSoon`), so with the switches off the app looks exactly as today.
-- **Sign-in gate:** tapping a tile without an account opens the wallet's sign-in screen, and an unverified mobile opens the verify screen (wallet design, section 4).
+- **Sign-in gate:** tapping a tile without an account opens the wallet's sign-in screen, the mobile number and a code (wallet design, section 4). Every account has a verified number from sign-up.
 - **Screens**, in Telugu and English with existing widgets and colours, plus the Bharat Connect logo where NBBL's brand rules require it:
   - **categories**;
   - **biller list** with search and the citizen's state first;

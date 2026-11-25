@@ -69,9 +69,8 @@ Citizens can use their **wallet points** as a discount on any bill or recharge w
 
 | Who | What changes |
 |---|---|
-| Citizen without an account | Sees the Bills & Recharges row. Tapping a tile asks them to sign in. |
-| Citizen with an account, mobile not verified | Asked to verify the mobile number with the WhatsApp code before the first payment. |
-| Citizen with a verified account | Pays bills and recharges, sees history, saved billers and receipts, raises complaints. |
+| Citizen without an account | Sees the Bills & Recharges row. Tapping a tile asks them to sign in with their mobile number and a code. |
+| Citizen with an account | Every account has a verified mobile number from sign-up (wallet D1, D6). Pays bills and recharges, sees history, saved billers and receipts, raises complaints. |
 | Super Admin | Sees payments and complaints, follows the daily reconciliation, changes the settings, exports CSV. Adds or hides Home tiles as today, and links each tile to a category. Switches each category active or inactive and points on or off. Sets the point value and the points limits, and sees what the points discounts cost the client. |
 | Officials | Nothing changes. |
 | Client's support person | Answers citizens' payment questions using the Super Admin console. Who this is, is open question Q2. |
@@ -121,7 +120,7 @@ Citizens can use their **wallet points** as a discount on any bill or recharge w
 ## 6. Functional requirements
 
 ### Access
-- **FR-1** Paying needs a signed-in citizen account whose mobile number is verified. Anyone else who taps a tile is asked to sign in or verify first.
+- **FR-1** Paying needs a signed-in citizen account whose mobile number is verified. Anyone else who taps a tile is asked to sign in first. Since wallet v3, signing in proves the number, so every account qualifies.
 - **FR-2** The whole feature hides when it is switched off. Bills and recharges switch separately. While switched off, the tiles show "coming soon" as today.
 
 ### Catalogue
