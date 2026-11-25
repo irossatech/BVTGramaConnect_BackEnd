@@ -66,11 +66,14 @@ def test_one_post_for_a_district_and_a_village_elsewhere(api, world):
     response = post_for(api, world, "va_kolakaluru", "krishna", "kaza")
     assert response.status_code == 201, response.json()
     data = response.json()
-    assert data["status"] == PostStatus.PUBLISHED  # an admin's post publishes at once, wherever it goes
+    # Outside the Village Admin's own village, so it waits for review (BVTGC-26, 2026-11-25).
+    assert data["status"] == PostStatus.PENDING
     assert [(row["level"], row["name"]) for row in data["targets"]] == [("DISTRICT", "కృష్ణా"), ("VILLAGE", "కాజా")]
     assert data["targets"][1]["path"] == "కాజా · మంగళగిరి · గుంటూరు"
     assert data["target_area"]["id"] == world.areas["krishna"].id  # the first, for older readers
     assert Post.objects.count() == 1 and PostTarget.objects.count() == 2
+    published = api(world.users["super"]).post(f"{POSTS}{data['id']}/review/", {"action": "publish"}, format="json")
+    assert published.status_code == 200, published.json()
 
     # Every village of Krishna, and Kaza; not Kaza's sibling, nor the poster's own village.
     assert seen_in(world, data["id"]) == {"kaza", "nidamanuru", "kesarapalli", "poranki", "kanuru"}
@@ -200,7 +203,8 @@ def test_a_post_to_everyone_alerts_the_super_admin(api, world, django_capture_on
 
 def test_one_job_pushes_to_each_areas_topic(api, world, django_capture_on_commit_callbacks):
     LocmemPushGateway.outbox.clear()
-    post_for(api, world, "da_guntur", "krishna", "kaza", "tenali", capture=django_capture_on_commit_callbacks)
+    # The Super Admin publishes anywhere at once (BVTGC-26), so the post goes out to every area's topic.
+    post_for(api, world, "super", "krishna", "kaza", "tenali", capture=django_capture_on_commit_callbacks)
     topics = [m.topic for m in LocmemPushGateway.outbox if m.topic]
     expected = [topic_for(*world.area_json(key).values()) for key in ("krishna", "kaza", "tenali")]
     assert topics == expected
@@ -209,10 +213,10 @@ def test_one_job_pushes_to_each_areas_topic(api, world, django_capture_on_commit
 # --- Cost stays the same however many areas ---------------------------------------------------------
 
 
-@pytest.mark.parametrize("author", ["pm_kolakaluru", "da_guntur"], ids=["pending: reviewer alert", "published: push"])
+@pytest.mark.parametrize("author", ["pm_kolakaluru", "super"], ids=["pending: reviewer alert", "published: push"])
 def test_the_queries_do_not_grow_with_the_areas(api, world, django_capture_on_commit_callbacks, author):
     """Villages without Village Admins, so both posts have the same reviewers (Mangalagiri, Gannavaram,
-    both District Admins)."""
+    both District Admins). The Super Admin's post goes live at once anywhere (BVTGC-26)."""
 
     def queries(*keys):
         with CaptureQueriesContext(connection) as captured:

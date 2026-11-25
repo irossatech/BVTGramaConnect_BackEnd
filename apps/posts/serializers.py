@@ -399,6 +399,18 @@ class TargetsSerializer(serializers.Serializer):
     levels = TargetLevelSerializer(many=True)
 
 
+class TargetsCheckSerializer(serializers.Serializer):
+    """POST /posts/targets/check/: the areas the official is about to send a post for (BVTGC-26)."""
+
+    targets = serializers.ListField(child=AreaInputSerializer(), allow_empty=False, max_length=1000)
+
+
+class TargetsCheckResultSerializer(serializers.Serializer):
+    #: True: the post goes live when sent. False: it goes to review (an area outside the author's own,
+    #: or Everyone), so the app says so before sending.
+    publishes_at_once = serializers.BooleanField()
+
+
 class SettingsSerializer(serializers.Serializer):
     review_escalation_hours = serializers.IntegerField(min_value=6, max_value=168)
     languages = serializers.DictField(child=serializers.BooleanField())

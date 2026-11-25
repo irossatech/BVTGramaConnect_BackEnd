@@ -448,11 +448,36 @@ def _update(queryset, new_status: str, values: dict) -> int:
     return queryset.update(**values)
 
 
+def publishes_at_once(user, targets: list[AreaRef]) -> bool:
+    """Does an official's post for these areas go live without review? (BVTGC-26, Admin's decision of
+    2026-11-25, replacing the 2026-10-28 rule.)
+
+    Only when ADMIN_POSTS_AUTO_PUBLISH is on and the author may publish in **every** one of the areas:
+    an admin's post inside their own area goes live at once; one area outside it, or Everyone (STATE),
+    and the whole post goes to review by the admins of those areas (Everyone: the Super Admin). The
+    Super Admin publishes anywhere, so nothing changes for them. Panchayat members never publish.
+    """
+    if not settings.ADMIN_POSTS_AUTO_PUBLISH or not targets:
+        return False
+    authz.prime(user, targets)
+    return all(authz.can(user, PUBLISH, ref) for ref in targets)
+
+
+def check_targets(user, refs) -> dict:
+    """POST /posts/targets/check/: what sending a post for these areas would do, before it is sent
+    (BVTGC-26, for the app's "this post will go to review" note, BVTGC-104). The same checks as a new
+    post: the areas are cleaned (400 as on create) and the user must be allowed to post (403)."""
+    targets = clean_targets(refs)
+    _posting_or_raise(user, targets)
+    return {"publishes_at_once": publishes_at_once(user, targets)}
+
+
 def _move_on_submit(post: Post, user, assignment: Grant, *, resubmit: bool) -> Post:
-    """DRAFT or RECHECK onward: published at once when the author may publish, else reviewed."""
+    """DRAFT or RECHECK onward: published at once when the author may publish in every one of the
+    post's areas (publishes_at_once), else reviewed."""
     now = timezone.now()
     from_status = post.status
-    auto = PUBLISH in assignment.permissions and settings.ADMIN_POSTS_AUTO_PUBLISH
+    auto = PUBLISH in assignment.permissions and publishes_at_once(user, post.target_refs)
     if auto:
         changed = publish_with_share_code(
             Post.objects.filter(pk=post.pk, status__in=EDITABLE),
