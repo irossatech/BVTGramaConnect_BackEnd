@@ -1,0 +1,6 @@
+{% autoescape off %}Subject: Your Grama Connect account was deleted
+Your wallet account and its points were deleted. We no longer keep your name, email or mobile number.
+
+You can keep reading news, and create a new account at any time.
+
+Please don't reply; this mailbox isn't read.{% endautoescape %}

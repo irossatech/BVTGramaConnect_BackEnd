@@ -241,12 +241,28 @@ else:
         "django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher",
         "django.contrib.auth.hashers.ScryptPasswordHasher",
     ]
-    EMAIL_BACKEND = env.str("EMAIL_BACKEND", default="django.core.mail.backends.smtp.EmailBackend")
+    # Citizens' wallet codes and notices (BVTGC-122): laptops print them in the terminal, servers send
+    # them through the client's email service by SMTP (C7, BVTGC-143).
+    EMAIL_BACKEND = env.str(
+        "EMAIL_BACKEND",
+        default="django.core.mail.backends.console.EmailBackend" if DEBUG else "django.core.mail.backends.smtp.EmailBackend",
+    )
     PUSH_GATEWAY = env.str("PUSH_GATEWAY", default="apps.notifications.push.FcmGateway")
     TRANSLITERATION_PROVIDER = env.str("TRANSLITERATION_PROVIDER", default="google_input_tools")
     DELIVERY_RETRY_BASE_SECONDS = env.float("DELIVERY_RETRY_BASE_SECONDS", default=1.0)
  
  
+# The client's email service (C7, BVTGC-143). The only email this server sends is to citizens' wallet
+# accounts: sign-up and password codes and account notices (apps/citizens/emails.py). The password is a
+# secret: each server's .env only. manage.py check warns (citizens.W002) while a server has no host set.
+EMAIL_HOST = env.str("EMAIL_HOST", default="localhost")
+EMAIL_PORT = env.int("EMAIL_PORT", default=587)
+EMAIL_HOST_USER = env.str("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env.str("EMAIL_HOST_PASSWORD", default="")
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
+EMAIL_TIMEOUT = env.int("EMAIL_TIMEOUT", default=10)  # seconds; codes are sent inside the request
+DEFAULT_FROM_EMAIL = env.str("DEFAULT_FROM_EMAIL", default="Grama Connect <no-reply@localhost>")
+
 # ==============================================================================
 # 7. APPLICATIONS & MIDDLEWARE (COMMON)
 # ==============================================================================

@@ -290,8 +290,18 @@ set_env "$GC_APP_ENV" WEB_ADMIN_DIR "$WWW_DIR/console"
 set_env "$GC_APP_ENV" TRUST_X_REAL_IP True
 set_env "$GC_APP_ENV" SECURE_SSL_REDIRECT False
 set_env "$GC_APP_ENV" LANG C.UTF-8
-# Console sessions: idle timeout. Nothing is emailed (no SMTP settings).
+# Console sessions: idle timeout.
 set_env "$GC_APP_ENV" CONSOLE_SESSION_IDLE_MINUTES "${CONSOLE_SESSION_IDLE_MINUTES:-30}"
+# Citizen wallet emails: sign-up and password codes and account notices (BVTGC-122). The client's email
+# service (C7, BVTGC-143); written only when config.env names a host, and kept once edited in .env.
+if [[ -n "${EMAIL_HOST:-}" ]]; then
+  set_env "$GC_APP_ENV" EMAIL_HOST "$EMAIL_HOST" --if-missing
+  set_env "$GC_APP_ENV" EMAIL_PORT "${EMAIL_PORT:-587}" --if-missing
+  set_env "$GC_APP_ENV" EMAIL_HOST_USER "${EMAIL_HOST_USER:-}" --if-missing
+  set_env "$GC_APP_ENV" EMAIL_HOST_PASSWORD "${EMAIL_HOST_PASSWORD:-}" --if-missing
+  set_env "$GC_APP_ENV" EMAIL_USE_TLS "${EMAIL_USE_TLS:-True}" --if-missing
+  set_env "$GC_APP_ENV" DEFAULT_FROM_EMAIL "${DEFAULT_FROM_EMAIL:-Grama Connect <no-reply@$DOMAIN>}" --if-missing
+fi
 # Link added to shared posts and invites (owner decision Q17).
 set_env "$GC_APP_ENV" SITE_WEBSITE_URL "https://$DOMAIN/" --if-missing
 # Shared post links and the invite link are built from it (apps.share).

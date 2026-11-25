@@ -1,0 +1,12 @@
+{% autoescape off %}Subject: Grama Connect code: {{ code }}
+{% if name %}Hello {{ name }},{% else %}Hello,{% endif %}
+
+{% if purpose == "SIGNUP" %}Enter this code to create your account:{% elif purpose == "RESET_PASSWORD" %}Enter this code to choose a new password:{% elif purpose == "CHANGE_EMAIL" %}Enter this code to add this email to your account:{% else %}Enter this code to delete your account. Deleting it loses all your points.{% endif %}
+
+{{ code }}
+
+The code works for {{ minutes }} minutes. Don't share it with anyone, not even Grama Connect staff.
+
+If you didn't ask for this code, you can ignore this email.
+
+Please don't reply; this mailbox isn't read. For help, call the help line number in the app.{% endautoescape %}

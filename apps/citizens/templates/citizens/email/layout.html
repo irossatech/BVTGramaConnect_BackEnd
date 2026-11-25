@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="{{ language }}">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{{ subject }}</title></head>
+<body style="margin:0;padding:0;background:#F6F8F3;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F6F8F3;padding:16px 0;">
+<tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#FFFFFF;border-radius:12px;overflow:hidden;font-family:'Noto Sans Telugu','Nunito Sans',Arial,sans-serif;color:#3B4A5C;">
+<tr><td style="background:#0D3B7A;color:#FFFFFF;padding:14px 20px;font-size:17px;font-weight:bold;">{% if language == "te" %}గ్రామ కనెక్ట్{% else %}Grama Connect{% endif %}</td></tr>
+<tr><td style="height:4px;line-height:4px;font-size:0;background:linear-gradient(90deg,#E9791E 33%,#FFFFFF 33%,#FFFFFF 66%,#1F8A3B 66%);">&nbsp;</td></tr>
+<tr><td style="padding:20px;font-size:15px;line-height:1.6;">
+{% for paragraph in paragraphs %}{% if code and paragraph == code %}<p style="margin:8px 0 14px;padding:14px;background:#F2F6FB;border-radius:12px;text-align:center;font-size:32px;font-weight:bold;letter-spacing:8px;color:#0A2550;">{{ code }}</p>{% else %}<p style="margin:0 0 12px;">{{ paragraph }}</p>{% endif %}
+{% endfor %}</td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>
