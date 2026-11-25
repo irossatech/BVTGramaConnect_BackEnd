@@ -264,15 +264,38 @@ def _check_can_add(user, post: Post) -> None:
         raise invalid_transition(post, "changed")
 
 
+def _check_room(post: Post, kind: str, *, written: bool = False) -> None:
+    """A post has up to MAX_PHOTOS_PER_POST photos, or one video, never both.
+
+    Checked before the upload is processed, and again inside the save's transaction once the new row
+    is written (written=True, the post row locked): an upload that passed the early check at the same
+    moment as another is refused there, and its row and files are undone (BE-DB-014, BVTGC-109).
+    """
+    media = post.media.all()
+    new = 1 if written else 0  # the row this upload just wrote
+    if kind == MediaKind.IMAGE:
+        if media.filter(kind=MediaKind.VIDEO).exists():
+            raise media_conflict(_("This post has a video. A post has either photos or one video."))
+        if media.count() - new >= settings.MAX_PHOTOS_PER_POST:
+            raise too_many_photos()
+    elif media.count() - new > 0:
+        raise media_conflict(_("A post has either photos or one video."))
+
+
+def _lock(post: Post) -> None:
+    """Serialise uploads to one post until the transaction ends (the recount after the write is the guard)."""
+    list(Post.objects.select_for_update().filter(pk=post.pk).values_list("pk", flat=True))
+
+
 def add_photo(user, post: Post, upload, focus_y=None) -> PostMedia:
     _check_can_add(user, post)
-    if post.media.filter(kind=MediaKind.VIDEO).exists():
-        raise media_conflict(_("This post has a video. A post has either photos or one video."))
-    if post.media.count() >= settings.MAX_PHOTOS_PER_POST:
-        raise too_many_photos()
+    _check_room(post, MediaKind.IMAGE)
     processed = process_image(upload)
     with files_removed_on_failure(), transaction.atomic():
-        return store_photo(post, processed, order=post.media.count())
+        _lock(post)
+        media = store_photo(post, processed, order=post.media.count())
+        _check_room(post, MediaKind.IMAGE, written=True)
+        return media
 
 
 def store_photo(post: Post, processed: tuple, order: int) -> PostMedia:
@@ -515,11 +538,13 @@ def add_video(user, post: Post, upload, *, duration_s=None, poster=None) -> Post
     if not settings.VIDEO_POSTS_ENABLED:
         raise permission_denied(_("Video posts are switched off."))
     _check_can_add(user, post)
-    if post.media.exists():
-        raise media_conflict(_("A post has either photos or one video."))
+    _check_room(post, MediaKind.VIDEO)
     prepared = prepare_video(upload, duration_s=duration_s, poster=poster)
     with files_removed_on_failure(), transaction.atomic():
-        return store_video(post, prepared, order=0)
+        _lock(post)
+        media = store_video(post, prepared, order=0)
+        _check_room(post, MediaKind.VIDEO, written=True)
+        return media
 
 
 def remove_photo(user, post: Post, media: PostMedia) -> None:
