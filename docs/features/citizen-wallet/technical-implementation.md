@@ -674,6 +674,8 @@ Owner: Admin. Decided during development (lead's decision of 2026-11-25); until 
 
 The later stage's inputs (C1 to C3) are in section 14.
 
+**For the client:** [client-inputs.md](client-inputs.md) asks these in plain words, with the defaults and a space for each answer (BVTGC-144). Admin records the answers in the requirements (section 12) and sets them in the console.
+
 ## 11. QA (BVTGC-145, BVTGC-146)
 
 Test plan: Admin writes it (BVTGC-145) and Anvesh Kolli reviews it. UAT: the testing team, Anvesh Kolli, runs it (BVTGC-146), assigned to them when the code is ready. Area: QA.
