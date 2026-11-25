@@ -2,11 +2,12 @@
 
 | | |
 |---|---|
-| Status | Draft for the client's review |
+| Status | **Final.** Approved for development by Admin (project lead) on 2026-11-25. The client's answers still open (section 12) are decided during development, with the suggestions below as defaults. |
 | Date | 2026-11-25 |
 | Version | v5: the client's sign-up form. Name, mobile number and email (both required) and a password; login with the email or the mobile number; a forgotten password reset with an email code; WhatsApp and SMS in a later stage, before Bills & Recharges (D1, D6, D8, D12, D14 to D17). v4: family phones, deletion on the website, support by the Super Admin only, a pilot in chosen mandals (D10 to D13) |
 | Decisions by | Admin (project lead), 2026-11-25 |
-| Technical design | [technical-implementation.md](technical-implementation.md) |
+| Technical design | [technical-implementation.md](technical-implementation.md); API: `docs/api-contract.md`, section 21 |
+| Jira | Epic BVTGC-106 and its tickets |
 | Applies to | Mobile app, backend API, Super Admin console, public website |
 
 ## 1. Summary
@@ -234,7 +235,7 @@ Referral rewards attract fake accounts. Play Integrity is off for now, so the fo
   - the village, the 18+ confirmation and consent dates, and app-use days for the active rule.
 - **Consent (DPDP):** India's Digital Personal Data Protection Rules were notified in November 2025, and their core duties (notice, consent, security, erasure) apply from about May 2027. The sign-up consent notice and account deletion are built now so the feature is ready. The sign-up form says why the mobile number and the email are needed, with a link to the privacy policy, before the account is created.
 - **Children:** accounts are for 18 and over only (D5), so no parental-consent process is needed.
-- **Account deletion:** Google Play requires apps that let people create an account to let them delete it, in the app and from a web page. The web page asks for the email or the mobile number and a code sent to the account's email, so only someone who can open that email can delete the account (D12). **This makes citizen accounts an exception to the "data is kept permanently" decision of 2026-11-14** (needs the owner's confirmation, Q8).
+- **Account deletion:** Google Play requires apps that let people create an account to let them delete it, in the app and from a web page. The web page asks for the email or the mobile number and a code sent to the account's email, so only someone who can open that email can delete the account (D12). **This makes citizen accounts an exception to the "data is kept permanently" decision of 2026-11-14**, confirmed on 2026-11-25 (Q8).
 - **Money rules (RBI):** at the wallet's launch points are collect-only, with no cash value and no transfer, so they are not a payment instrument. With Bills & Recharges they become a **discount the client gives** on its own bill-payment service. The client pays the rest of the bill with its own money, and points never pay a biller and never become cash. A lawyer must confirm this before Bills & Recharges go live. Points that paid a third party directly would be a prepaid payment instrument, which needs an RBI licence.
 - **Email, and later WhatsApp and SMS:** messages go only when the citizen asks for a code or changes the account. The email service receives the address and the message only to deliver it. In the later stage, Meta and the SMS provider receive the number and the code only to deliver them; business SMS in India must come from a sender registered on DLT, the operators' register of business senders (C3).
 
@@ -262,6 +263,8 @@ Referral rewards attract fake accounts. Play Integrity is off for now, so the fo
 
 ## 12. Open questions for the client
 
+Decided during development (lead's decision of 2026-11-25): until the client answers, the suggestion is the default, and each one is a setting or a text that can change without new code.
+
 | # | Question | Our suggestion |
 |---|---|---|
 | Q1 | What are the points called? | "Grama points" / "గ్రామ పాయింట్లు" |
@@ -271,7 +274,7 @@ Referral rewards attract fake accounts. Play Integrity is off for now, so the fo
 | Q5 | Do we collect the citizen's email? | Answered 2026-11-25 (v5): yes, it is required at sign-up and confirmed with a code, and used only for codes and account notices (D1, D14). In v3 no email was collected. |
 | Q6 | What will points buy later? | Answered 2026-11-25: a discount on bills and recharges, paid for by the client, after Bills & Recharges go live (D4; Bills and recharges D9 to D13). A lawyer confirms the model first. |
 | Q7 | Should officials have wallets? | No, in this version |
-| Q8 | Citizen accounts can be deleted, as an exception to "data is kept permanently". Agreed? | Yes; wallet history is kept without the person's details |
+| Q8 | Citizen accounts can be deleted, as an exception to "data is kept permanently". Agreed? | Answered 2026-11-25: yes. The person's details are removed; wallet history is kept without them. |
 | Q9 | Keep a protected fingerprint of a deleted citizen's mobile number and email for a time, to stop repeat welcome bonuses? | Yes, for 1 year, subject to legal review |
 | Q10 | After how many months without use should signing in ask **Is this your account?** | Withdrawn in v5: login needs the password, so someone given an old number cannot open the account. |
 | Q11 | Which mandals for the pilot, and for how long? (D13) | 2 or 3 mandals the client's team can visit, for about a month, then widen |
