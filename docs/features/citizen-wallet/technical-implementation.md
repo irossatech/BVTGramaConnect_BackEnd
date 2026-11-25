@@ -6,7 +6,7 @@
 | API | `docs/api-contract.md`, **section 21** (Planned). The contract is the source of truth for every path, field and error code; this document explains how to build it. |
 | Jira | Epic BVTGC-106; the tickets are listed per team below and together in section 15. Later stage: epic BVTGC-118. |
 | Code read for this design | BackEnd `dev` `2cc9d22`, Web `dev` `130e830`, Mobile `dev` `b3b7eff` |
-| Owners | Backend: Basam Bhargavi. Mobile and web: Mohit. QA: Anvesh Kolli. Design drafts: Claude, approved by Admin. Client, email setup and release: Admin, with the server team. |
+| Owners | **Code:** Admin, with Claude, for every ticket. **Review and basic testing:** Basam Bhargavi (backend), Mohit (mobile and web). **UAT:** the testing team, Anvesh Kolli. Design drafts: Claude, approved by Admin. Email setup: Admin, with the server team. (Decided 2026-11-25; section 3.2.) |
 
 Earlier versions: v5 (email and password, the client's plan), v4 (family phones, website deletion, pilot), v3 (login by code), v2 and v1 (Google sign-in). They are in the git history and attached to BVTGC-106.
 
@@ -53,18 +53,34 @@ Unchanged: reading news, posting and service requests stay without login, and th
 
 ### 3.1 Who does what
 
-| Team | Owner | Tickets | Days |
-|---|---|---|---|
-| Backend | Basam Bhargavi | BVTGC-119 to BVTGC-130 | 21 |
-| Design | Claude drafts; Admin approves | BVTGC-131 | 2, plus review |
-| Mobile | Mohit | BVTGC-132 to BVTGC-138 | 12 |
-| Web (console and website) | Mohit | BVTGC-139 to BVTGC-142 | 7 |
-| Infrastructure | Admin, with the server team | BVTGC-143 | 1, plus the email service's approval |
-| Client | Admin | BVTGC-144 | During development |
-| QA | Anvesh Kolli | BVTGC-145, BVTGC-146 | 5 |
-| Release | Admin | BVTGC-147 | 0.5 |
+Admin writes the code for every ticket, with Claude, and every ticket is assigned to Admin until its code is ready. The area's developer then reviews it and does the basic testing; the testing team runs UAT (Admin's decision of 2026-11-25).
 
-### 3.2 Order
+| Team | Code | Review and basic testing | Tickets | Days |
+|---|---|---|---|---|
+| Backend | Admin | Basam Bhargavi | BVTGC-119 to BVTGC-130 | 21 |
+| Design | Claude drafts | Admin approves | BVTGC-131 | 2, plus review |
+| Mobile | Admin | Mohit | BVTGC-132 to BVTGC-138 | 12 |
+| Web (console and website) | Admin | Mohit | BVTGC-139 to BVTGC-142 | 7 |
+| Infrastructure | Admin, with the server team | Admin | BVTGC-143 | 1, plus the email service's approval |
+| Client | Admin | Admin | BVTGC-144 | During development |
+| QA | Admin writes the test plan | Anvesh Kolli reviews it and runs UAT | BVTGC-145, BVTGC-146 | 5 |
+| Release | Admin | Admin | BVTGC-147 | 0.5 |
+
+### 3.2 How a ticket moves
+
+1. **To Do → In Progress:** Admin starts the ticket; Claude writes the code.
+2. **Code:**
+   - one branch per ticket from `dev`, named `feat/BVTGC-<n>-<short-name>`, as the repos already do;
+   - the unit tests the ticket lists are written in the same branch;
+   - the whole test suite passes before hand-off (`python -m pytest -q -p no:logging` in the backend; `flutter test` in the app; `npm run build` and the web's checks).
+3. **Pull request** into `dev`, **left unmerged**: the reviewer merges it.
+4. **In Review:** the ticket is assigned to the area's developer (backend: Basam Bhargavi; mobile and web: Mohit), with the pull request link and a short note of what changed and how to try it.
+5. **The developer** reviews, does the basic testing, merges, and moves the ticket to **QA / UAT**.
+6. **The testing team** (Anvesh Kolli) tests on qa; the ticket goes to **Ready for Production**, then **Done** after the release.
+
+Tickets without code (design, email setup, client inputs, release) skip the pull request. The contract test's merge order still applies: an app or web pull request is merged only after the backend pull request its calls need (section 5.1).
+
+### 3.3 Order
 
 ```mermaid
 flowchart LR
@@ -90,11 +106,11 @@ flowchart LR
     X[BVTGC-105 real visitor IPs] --> R1
 ```
 
-### 3.3 Timeline
+### 3.4 Timeline
 
-Working weeks from the start. Mohit does both the app and the web parts, 19 days in all, so his work sets the end date.
+**To be re-planned.** Since 2026-11-25 Admin writes the code for every ticket, so the weeks depend on the pace of coding and of the reviews. The order of section 3.3 still holds. The table below was the plan when Bhargavi and Mohit were to write the code; it is kept only as a guide to which tickets can run side by side.
 
-| Week | Backend (Bhargavi) | Mobile and web (Mohit) | Others |
+| Week | Backend | Mobile and web | Others |
 |---|---|---|---|
 | 1 | BVTGC-119 contract review, BVTGC-120 models, BVTGC-121 role and fixes, BVTGC-122 email and codes | BVTGC-132 account session; reads the contract | BVTGC-131 mockups drafted and approved; BVTGC-143 email service and DNS started; BVTGC-145 test plan |
 | 2 | BVTGC-123 sign-up, BVTGC-124 login and reset, BVTGC-125 account endpoints | BVTGC-133 create account, BVTGC-134 log in and reset | BVTGC-144 client inputs collected |
@@ -104,7 +120,7 @@ Working weeks from the start. Mohit does both the app and the web parts, 19 days
 | 6 | Fixes | BVTGC-141 and BVTGC-142 website | BVTGC-146 UAT starts |
 | 7 | Fixes | Fixes | BVTGC-146 UAT ends; BVTGC-147 release to the pilot mandals |
 
-**About 7 weeks.** If another developer takes the web tickets (BVTGC-139 to BVTGC-142), they can run in weeks 2 to 4, and the end moves to about week 5.
+That plan came to about 7 weeks.
 
 ## 4. Data model (shared)
 
@@ -207,7 +223,7 @@ Indexes: `(status, confirm_after)` for the job; `(referrer, status, decided_at)`
 
 ## 5. Backend (BVTGramaConnect_BackEnd)
 
-Owner: Basam Bhargavi. Area: Backend. One pull request per ticket into `dev`, each with its tests and, where it changes the API, the contract's status mark (Planned → live).
+Code: Admin. Review and basic testing: Basam Bhargavi. Area: Backend. One pull request per ticket into `dev`, left for the reviewer to merge (section 3.2), each with its tests and, where it changes the API, the contract's status mark (Planned → live).
 
 ### 5.1 Contract review and announcement (BVTGC-119, 0.5 day)
 
@@ -444,7 +460,7 @@ Citizens stay out of the officials' user lists without extra code: `authz.manage
 
 ## 6. Mobile app (BVTGramaConnect_Mobile)
 
-Owner: Mohit. Area: Mobile. Build against contract section 21 and the approved mockups (BVTGC-131). Test against the local fake server first (as `test/app_flow_test.dart`), then against qa when the backend is there. Merge into `dev` only after the backend endpoints a screen calls are merged (the contract test of BVTGC-97, section 5.1).
+Code: Admin. Review and basic testing: Mohit. Area: Mobile. One pull request per ticket, left for the reviewer to merge (section 3.2). Build against contract section 21 and the approved mockups (BVTGC-131). Test against the local fake server first (as `test/app_flow_test.dart`), then against qa when the backend is there. Merge into `dev` only after the backend endpoints a screen calls are merged (the contract test of BVTGC-97, section 5.1).
 
 ### 6.1 Where things live
 
@@ -530,7 +546,7 @@ Owner: Mohit. Area: Mobile. Build against contract section 21 and the approved m
 
 ## 7. Web: console and website (BVTGramaConnect)
 
-Owner: Mohit. Area: Web. The console is a port with "zero visual change", so new screens follow the approved mockups (BVTGC-131) and reuse existing styles (tables, tabs, panels, `ds.tsx`). Merge into `dev` only after the backend endpoints a page calls are merged (the contract test of BVTGC-97, section 5.1).
+Code: Admin. Review and basic testing: Mohit. Area: Web. One pull request per ticket, left for the reviewer to merge (section 3.2). The console is a port with "zero visual change", so new screens follow the approved mockups (BVTGC-131) and reuse existing styles (tables, tabs, panels, `ds.tsx`). Merge into `dev` only after the backend endpoints a page calls are merged (the contract test of BVTGC-97, section 5.1).
 
 ### 7.1 Console: Citizens & wallet, accounts and help (BVTGC-139, 2.5 days)
 
@@ -628,7 +644,7 @@ The later stage's inputs (C1 to C3) are in section 14.
 
 ## 11. QA (BVTGC-145, BVTGC-146)
 
-Owner: Anvesh Kolli. Area: QA.
+Test plan: Admin writes it (BVTGC-145) and Anvesh Kolli reviews it. UAT: the testing team, Anvesh Kolli, runs it (BVTGC-146), assigned to them when the code is ready. Area: QA.
 
 **BVTGC-145 Test plan and UAT checklist (1.5 days).** A wallet section in `docs/uat.md`, role by role:
 - a citizen without an account (nothing changes);
@@ -691,9 +707,9 @@ Must go live **before Bills & Recharges** (BVTGC-107, D17). For now there is one
 
 ## 15. Tickets
 
-All under epic BVTGC-106 unless noted, labelled `citizen-wallet` and the team.
+All under epic BVTGC-106 unless noted, labelled `citizen-wallet` and the team. Every ticket is assigned to Admin, who writes the code; the reviewer gets it at In Review (section 3.2).
 
-| Ticket | Title | Owner | Days | Depends on |
+| Ticket | Title | Reviewer | Days | Depends on |
 |---|---|---|---|---|
 | BVTGC-119 | Backend: review contract section 21 with the app and web, and announce it | Basam Bhargavi | 0.5 | — |
 | BVTGC-120 | Backend: wallet models and migrations | Basam Bhargavi | 1.5 | BVTGC-119 |
@@ -740,7 +756,7 @@ All under epic BVTGC-106 unless noted, labelled `citizen-wallet` and the team.
 | R8 | Many villagers do not use email | The app explains that the phone's Google account is already a Gmail address, and autofill offers it; the help line; later, a reset by WhatsApp or SMS |
 | R9 | 8-character passwords are easier to guess than officials' 12 | Lockout per account, the common-password list, small point values until Bills & Recharges; review again before then |
 | R10 | Sign-up tells whether a number or an email is registered (`409`) | Accepted so citizens know to log in or reset; per-IP limits after BVTGC-105 |
-| R11 | One developer for the app and the web sets the end date (about 7 weeks) | Another developer for the web tickets brings it to about 5 weeks (section 3.3) |
+| R11 | Admin writes every ticket's code, so the pace of coding and of reviews sets the end date | Re-plan the weeks (section 3.4); reviews by Bhargavi and Mohit run alongside the next ticket's coding |
 | R12 | The pilot depends on the village chosen in the app, which anyone can change | Accepted: the pilot limits who sees the wallet, not who may join; every fraud rule applies everywhere |
 
 ## References
