@@ -1569,7 +1569,7 @@ Built (`apps.share`, `apps.posts.sharing`). Not under `/api/v1/`: these are page
 
 ---
 
-## 21. Citizen accounts and the wallet (Planned, BVTGC-106)
+## 21. Citizen accounts and the wallet (live on `dev` since BVTGC-119 to BVTGC-130, behind `wallet_enabled`)
 
 **Planned, not built yet.** Agreed on 2026-11-25 so the app and the website can be built in parallel with the backend (lead's decision). Each endpoint is marked **live** here when its code is merged; until then the server answers `404`. Requirements and design: `docs/features/citizen-wallet/` (decisions D1 to D17).
 
