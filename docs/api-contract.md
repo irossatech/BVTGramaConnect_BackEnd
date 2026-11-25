@@ -32,7 +32,7 @@ Contents:
 - Field names are `snake_case`. Enum values are `UPPER_CASE`, except category keys and language codes.
 - **Links to uploaded files are absolute** in every endpoint: photos, videos, posters, thumbnails, ad images, service and bill logos, for example `https://<site>/media/posts/2026/10/<id>-0.webp` (BVTGC-68, 2026-11-23; before, the feed and the citizen's own posts sent the path `/media/...` only). Clients use the link as it is.
 
-### Versions and changes (BVTGC-96, 2026-11-25; proposed, to be agreed by the backend, web and mobile teams)
+### Versions and changes (BVTGC-96; agreed by the backend, web and mobile teams on 2026-11-25)
 
 Why: the website and the console are deployed together with the server, but app APKs downloaded from the website stay on phones for months. Every change is judged against the **oldest app build still in use**, not only the current one.
 
@@ -62,6 +62,8 @@ Clients must make these safe: **ignore response fields they do not know**, show 
 - the new APK is on the website first, and `APP_LATEST_VERSION` has shown the "Update available" note for at least **14 days**;
 - the Super Admin dashboard's `app_versions` (section 8, phones seen in the last 30 days by build) shows the builds below the new minimum at **under 5%** of phones; the rest see the update screen;
 - the owner or lead agrees, since it blocks everyone on an older build until they update.
+
+**Security fix (the one exception):** the lead may raise `APP_MIN_VERSION` at once for a security fix, without the 14-day and 5% waits. The app is installed from the website, not Google Play, so a forced update is the only way a security fix reaches every phone. The new APK must still be on the website first, so the update screen leads to a download that works.
 
 **`/api/v2/`** is used only when a change cannot be made side by side in `/api/v1/` (for example a new login model or a whole resource redesigned). Then `/api/v1/` keeps working, unchanged, until `APP_MIN_VERSION` has moved past every build that calls it; the two are documented separately. No `/api/v2/` is planned.
 
