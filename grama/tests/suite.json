@@ -176,6 +176,7 @@
         "apps/geography/tests/test_schema.py",
         "apps/posts/tests/test_app_update_versions.py",
         "apps/web_admin/tests/test_console_api.py",
+        "apps/web_admin/tests/test_translations_command.py",
         "apps/web_public/tests/test_contact_message_counts.py",
         "apps/web_public/tests/test_contact_messages_window.py",
         "apps/web_public/tests/test_public_api.py",
