@@ -10,7 +10,7 @@
 
 ## 1. Summary
 
-Citizens get an optional account with a **wallet** of points. A citizen who invites a friend earns points when the friend joins, and the friend gets a welcome bonus. Points are only collected in this first version: they cannot be spent, transferred or turned into money.
+Citizens get an optional account with a **wallet** of points. A citizen who invites a friend earns points when the friend joins, and the friend gets a welcome bonus. When the wallet goes live, points are only collected: they cannot be spent, transferred or turned into money. **Bills & Recharges go live after the wallet**; from then on, confirmed points give a discount on bills and recharges, paid for by the client ([Bills and recharges](../bills-recharges/requirements.md), D9 to D13). Points never become cash and cannot be transferred.
 
 Today citizens use the app without any account. Reading news, posting and service requests stay exactly as they are. The new account is needed only for the wallet and referrals.
 
@@ -23,7 +23,7 @@ Citizens sign in with their **Google account** and prove their mobile number wit
 | D1 | How citizens sign up and log in | Google account sign-in. The mobile number is verified with a one-time code sent on WhatsApp. |
 | D2 | What needs a login | Only the wallet and referrals. Reading news, posting and service requests stay without login. |
 | D3 | What earns points | The referrer, when a friend signs up; a welcome bonus for the new citizen who used a referral code. Both are **held** until the new citizen has been active for a while. |
-| D4 | What points can be used for | Nothing yet: collect only. What points buy is decided later. |
+| D4 | What points can be used for | Collect only when the wallet goes live. Once Bills & Recharges go live after it, confirmed points give a discount on bills and recharges, paid for by the client, within limits the Super Admin sets ([Bills and recharges](../bills-recharges/requirements.md), D9 to D13). Never cash, never transferred. Updated 2026-11-25; before that: "collect only, decided later". |
 | D5 | Who may have an account | 18 and over only. Sign-up asks the citizen to confirm their age. |
 | D6 | A citizen without WhatsApp on that number | Can sign in and see the wallet, but earns no points until the mobile number is verified. |
 | D7 | How citizens get the Citizen role | Automatically at sign-up, for the village chosen in the app. |
@@ -45,7 +45,8 @@ Officials keep their username and password login. Nothing changes for them.
 - Account deletion by the citizen.
 
 **Not in this version**
-- Spending, transferring or cashing points, recharges or vouchers.
+- Spending points. That comes with Bills & Recharges, which go live after the wallet.
+- Transferring points, cashing them or buying vouchers with them.
 - Points for posting, service requests or other activity.
 - Wallets for officials.
 - SMS codes (WhatsApp only).
@@ -91,7 +92,7 @@ A citizen without WhatsApp can skip this step. They keep the account but earn no
 3. If not, the points are **not confirmed** and both see why in the history.
 
 ### J5. Wallet
-The wallet shows the confirmed balance, the points on hold, and a history list (date, reason, points, status). Points have no money value; the wallet says so.
+The wallet shows the confirmed balance, the points on hold, and a history list (date, reason, points, status). Points have no cash value and cannot be transferred; the wallet says so. Once Bills & Recharges are live, the wallet also shows what the balance is worth as a discount.
 
 ### J6. Sign out and delete the account
 - **Sign out** returns the app to citizen mode without an account.
@@ -134,7 +135,7 @@ The wallet shows the confirmed balance, the points on hold, and a history list (
 ### Wallet and points
 - **FR-20** Points are whole numbers. Every change is an entry in the wallet's history; entries are never edited or deleted, only reversed by a new entry.
 - **FR-21** The wallet shows the confirmed balance, the points on hold and the history.
-- **FR-22** Points cannot be transferred, spent or exchanged for money, goods or services in this version. The wallet and the terms say so.
+- **FR-22** Points cannot be transferred or exchanged for cash. Until Bills & Recharges go live, they cannot be spent either. After that, confirmed points are used only as a discount on bills and recharges, within the Super Admin's limits (Bills and recharges, FR-23 to FR-29). The wallet and the terms say so.
 - **FR-23** The Super Admin can correct a balance with a reason. The balance cannot go below zero.
 
 ### Notifications
@@ -148,7 +149,7 @@ The wallet shows the confirmed balance, the points on hold, and a history list (
 
 ### Website
 - **FR-29** The invite link opens the website's download section and shows the friend's referral code with a **Copy** button.
-- **FR-30** The privacy policy and terms describe the account, the data collected, the 18+ rule and that points have no money value.
+- **FR-30** The privacy policy and terms describe the account, the data collected, the 18+ rule and that points have no cash value and cannot be transferred.
 
 ### Language
 - **FR-31** Every new screen, message, push and WhatsApp code message is available in Telugu (default) and English.
@@ -176,6 +177,7 @@ Referral rewards attract fake accounts. Play Integrity is off for now, so the fo
 - A monthly limit per referrer.
 - The Super Admin reviews and can reject referrals, correct wallets and block accounts.
 - Once the app is on Google Play, sign-up should also require the Play Integrity check.
+- **Points will gain a rupee value** when Bills & Recharges go live. Points earned by fake referrals during the wallet-only period would then be spendable, so the Super Admin should review referrals before that date. The bills limits (Bills and recharges, section 7) cap what points can cover.
 
 ## 9. Privacy and legal
 
@@ -183,7 +185,7 @@ Referral rewards attract fake accounts. Play Integrity is off for now, so the fo
 - **Consent (DPDP):** India's Digital Personal Data Protection Rules were notified in November 2025, and their core duties (notice, consent, security, erasure) apply from about May 2027. The sign-up consent notice and account deletion are built now so the feature is ready.
 - **Children:** accounts are for 18 and over only (D5), so no parental-consent process is needed.
 - **Account deletion:** Google Play requires apps that let people create an account to let them delete it, in the app and from a web page. **This makes citizen accounts an exception to the "data is kept permanently" decision of 2026-11-14** (needs the owner's confirmation, Q8).
-- **Money rules (RBI):** points are collect-only, with no cash value and no transfer, so they are not a payment instrument. If points later buy anything, legal must review it first: points usable only for BVT's own services are a "closed system" that needs no RBI licence; anything cash-like or usable with others likely does.
+- **Money rules (RBI):** at the wallet's launch points are collect-only, with no cash value and no transfer, so they are not a payment instrument. With Bills & Recharges they become a **discount the client gives** on its own bill-payment service. The client pays the rest of the bill with its own money, and points never pay a biller and never become cash. A lawyer must confirm this before Bills & Recharges go live. Points that paid a third party directly would be a prepaid payment instrument, which needs an RBI licence.
 - **WhatsApp:** the code is sent only when the citizen asks for it in the app.
 
 ## 10. Non-functional requirements
@@ -203,7 +205,7 @@ Referral rewards attract fake accounts. Play Integrity is off for now, so the fo
 | C2 | Approval of the WhatsApp code message (Telugu and English) | Meta approves the message before use |
 | C3 | Access to the Google Cloud / Firebase project (already asked in BVTGC-32) and the OAuth consent screen details | For Google sign-in |
 | C4 | Reward amounts and the name of the points, in Telugu and English | Section 7 |
-| C5 | Updated privacy policy and terms (with legal review of the "no money value" wording) | Section 9 |
+| C5 | Updated privacy policy and terms (with legal review of the points wording: no cash value now, a discount on bills later) | Section 9 |
 
 ## 12. Open questions for the client
 
@@ -212,9 +214,9 @@ Referral rewards attract fake accounts. Play Integrity is off for now, so the fo
 | Q1 | What are the points called? | "Grama points" / "గ్రామ పాయింట్లు" |
 | Q2 | Reward and welcome amounts | 50 and 20 |
 | Q3 | Is the welcome bonus also held until the new citizen is active? | Yes (assumed in this document) |
-| Q4 | Do points expire? | No, in this version |
+| Q4 | Do points expire? | No, in this version. Asked again for Bills & Recharges (its Q9), since points then have a value. |
 | Q5 | Should we store the citizen's email from Google? | No |
-| Q6 | What will points buy later? | Decide before any redemption work; legal review first |
+| Q6 | What will points buy later? | Answered 2026-11-25: a discount on bills and recharges, paid for by the client, after Bills & Recharges go live (D4; Bills and recharges D9 to D13). A lawyer confirms the model first. |
 | Q7 | Should officials have wallets? | No, in this version |
 | Q8 | Citizen accounts can be deleted, as an exception to "data is kept permanently". Agreed? | Yes; wallet history is kept without the person's details |
 | Q9 | Keep a protected fingerprint of a deleted citizen's Google account and mobile for a time, to stop repeat welcome bonuses? | Yes, for 1 year, subject to legal review |
@@ -238,6 +240,7 @@ Referral rewards attract fake accounts. Play Integrity is off for now, so the fo
 | 2 | App: sign-in, mobile verification, wallet, invite, delete account; console page; website code display and legal texts | Step 1, C2, C4, C5 |
 | 3 | Test on the qa server with the feature on; UAT | Steps 1–2 |
 | 4 | Production: release the app, then switch the feature on | Step 3 |
+| 5 | Bills & Recharges, with points as a discount ([Bills and recharges](../bills-recharges/requirements.md)) | The wallet live in production |
 
 Effort and the work for each team are in [technical-implementation.md](technical-implementation.md), section 9.
 
