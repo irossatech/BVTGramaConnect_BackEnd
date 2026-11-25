@@ -376,7 +376,7 @@ Lean on purpose, for 2G.
 |---|---|---|---|
 | `POST /auth/login/` | public | `{"username", "password"}` (any other key, such as an older app's `"client"`, is ignored) | `200 {"access", "refresh", "user": Me}`. Mobile app. |
 | `POST /auth/refresh/` | refresh token | `{"refresh": "…"}` | `200 {"access", "refresh"}`; `401 session_revoked` once the login is older than `JWT_ABSOLUTE_DAYS` (90) |
-| `POST /auth/logout/` | bearer | `{"refresh": "…", "all_devices"?: true}` | `204`. Blacklists the refresh token. `all_devices` also bumps `token_version`. |
+| `POST /auth/logout/` | bearer | `{"refresh": "…", "all_devices"?: true}` | `204`. Blacklists the refresh token. `all_devices` also bumps `token_version` and unlinks every push device of the user (BVTGC-94); the app registers its phone again at the next login. |
 | `GET /auth/csrf/` | public | — | `200 {"detail": "ok"}` and the `csrftoken` cookie. Console. |
 | `POST /auth/session/login/` | public, `X-CSRFToken` | `{"username", "password"}` | `200 {"user": Me}` and the `sessionid` cookie. Console; needs `web_admin.access_web_console`. |
 | `POST /auth/session/logout/` | session, `X-CSRFToken` | — | `204`. The session is flushed. |
@@ -407,9 +407,9 @@ Passwords:
 | `POST /users/` | the group's manage permission over the area | `{"name", "name_te"?, "username", "mobile"?, "email"?, "preferred_language"?, "role", "area": {"level", "id"}, "password"?, "current_password"?}` | `201 {"user": User, "temporary_password"?}`. Without `password`, the server generates one and returns it once as `temporary_password`. `must_change_password` is set. A taken username, email or mobile gives `409 duplicate` with the field. With `role: SUPER_ADMIN`, `current_password` (the actor's own) is required: see "Super Admins" below. |
 | `GET /users/{id}/` | managing the user | — | `User` |
 | `PATCH /users/{id}/` | managing the user | `{"username"?, "name"?, "name_te"?, "preferred_language"?, "email"?, "mobile"?}` | `User`. A new `username` (2026-11-17, the console's Edit details) follows the username rule above; taken by someone else, in any case: `409 duplicate` on `username`, as on create. Audited as `user.username_changed` with `{"from", "to"}`; the other fields as `user.updated`. Sessions and tokens stay valid; the person signs in with the new name next time (tell them in person). An active lockout under the old name does not carry over. A user cannot change their own username (`PATCH /me/` does not take it). |
-| `POST /users/{id}/reset-password/` | `accounts.reset_password` | `{"password"?}` | `200 {"user": User, "temporary_password"?}`. Generated when `password` is left out, shown once. Sets `must_change_password`, bumps `token_version`. Audited as `user.password_reset`. |
+| `POST /users/{id}/reset-password/` | `accounts.reset_password` | `{"password"?}` | `200 {"user": User, "temporary_password"?}`. Generated when `password` is left out, shown once. Sets `must_change_password`, bumps `token_version` and unlinks every push device of the user, so their phones get no more of their alerts (BVTGC-94). Audited as `user.password_reset`. |
 | `POST /users/{id}/unlock/` | `accounts.unlock_user` | — | `200 User`. Clears the lockout for that username. Audited as `user.unlocked`. |
-| `POST /users/{id}/block/` | `accounts.block_user` | `{"reason"?}` | `User`. `is_active` false and `token_version` bumped: every session ends at once. |
+| `POST /users/{id}/block/` | `accounts.block_user` | `{"reason"?}` | `User`. `is_active` false and `token_version` bumped: every session ends at once, and every push device of the user is unlinked. |
 | `POST /users/{id}/unblock/` | `accounts.block_user` | — | `User` |
 | `POST /users/{id}/role-assignments/` | the group's manage permission over the area | `{"role", "area": {"level", "id"}, "current_password"?}` | `201 RoleAssignment`. This is how a second role is added. With `role: SUPER_ADMIN`, `current_password` is required, as for `POST /users/`. |
 | `PATCH /users/{id}/role-assignments/{ra_id}/` | `accounts.reassign_user` | `{"area"?: {"level", "id"}, "is_active"?}` | `RoleAssignment`. "Reassign area". Pending reviews stay with the old area. |

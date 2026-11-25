@@ -198,7 +198,7 @@ class PasswordChangeView(APIView):
             user.must_change_password = False
             user.password_changed_at = timezone.now()
             user.save(update_fields=["password", "must_change_password", "password_changed_at", "updated_at"])
-            revoke_all_sessions(user)
+            revoke_all_sessions(user, keep_push_devices=True)  # the phone in their hand stays logged in
             record("user.password_changed", actor=user, target=user, target_label=user.name, via="console" if console else "app")
         if console:
             # This session stays; every other session and token has ended.

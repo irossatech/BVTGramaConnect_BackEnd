@@ -113,14 +113,24 @@ def blacklist_refresh(raw_refresh: str) -> None:
         pass
 
 
-def revoke_all_sessions(user: User) -> None:
-    """End every session of `user`: access tokens fail on their next use."""
+def revoke_all_sessions(user: User, *, keep_push_devices: bool = False) -> None:
+    """End every session of `user`: access tokens fail on their next use.
+
+    Their phones are unlinked from push as well, as the app's own logout does (BVTGC-94): a lost or
+    shared phone stops showing their alerts at once. The app links its phone again at the next login.
+    `keep_push_devices` is only for the official's own password change, where the phone in their hand
+    stays logged in.
+    """
+    from apps.notifications.models import Device
+
     with transaction.atomic():
         User.objects.filter(pk=user.pk).update(token_version=F("token_version") + 1)
         open_tokens = OutstandingToken.objects.filter(user=user, blacklistedtoken__isnull=True)
         BlacklistedToken.objects.bulk_create(
             [BlacklistedToken(token=token) for token in open_tokens], ignore_conflicts=True
         )
+        if not keep_push_devices:
+            Device.objects.filter(user=user).delete()
     user.refresh_from_db(fields=["token_version"])
 
 
