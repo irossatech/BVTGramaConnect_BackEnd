@@ -88,6 +88,16 @@ On MySQL each schema change is saved at once, so a migration that fails in the m
 
 Writing migrations so this stays rare: keep schema changes and data steps in separate migrations, and give data steps a reverse step (`.claude/conventions.md`, "Database").
 
+### The citizen wallet's first release
+
+The full checklist, with who does what and the daily watch during the pilot, is in the BackEnd repo's `docs/features/citizen-wallet/technical-implementation.md`, section 13. For the server team:
+
+1. Before: email works on this server ("Email for citizen wallet codes" below), and `CITIZEN_CONSENT_VERSION` in the environment file is the date of the published privacy policy and terms.
+2. Deploy as usual with `deploy.sh`. It runs `migrate` (the wallet's migrations are additive) and `ensure_schedules`. Leave `WALLET_ENABLED` out of the environment file: the Super Admin switches the wallet on in the console.
+3. Check: the health check answers `ok`; `gc check` shows no `citizens.W002`; `curl -s https://<domain>/api/v1/app-config/` says `"wallet_enabled": false` until the Super Admin switches it on.
+4. After the app build with the wallet screens is on the website, set `APP_LATEST_VERSION` to it and restart.
+5. To stop the wallet in an emergency, the Super Admin switches it off in the console; nothing is lost. Do not roll the code back past the wallet's migrations without the lead (see "Rolling back a release").
+
 ### Servers set up before the web repos were merged
 
 The website and the console used to be two repos, cloned to `/srv/gramaconnect/public` and `/srv/gramaconnect/admin`. They are now one repo, BVTGramaConnect, cloned to `/srv/gramaconnect/web`. Nginx and the server env (`WEB_PUBLIC_DIR`, `WEB_ADMIN_DIR`) do not change. On such a server, once:

@@ -715,17 +715,83 @@ With the code:
 
 ## 13. Release (BVTGC-147)
 
-Owner: Admin.
-1. The backend is merged and deployed with `WALLET_ENABLED` off; nothing visible changes. The app build with the new screens is released through the website as usual; it hides the wallet while the switch is off.
-2. Before switching on in production:
-   - UAT has passed (BVTGC-146);
-   - BVTGC-105 is deployed;
-   - email works on production (BVTGC-143);
-   - the amounts, legal texts and support number are in (BVTGC-144);
-   - the support number is listed as a statewide help line.
-3. Set the pilot mandals, then switch the wallet on in the console. Watch the referrals list, `wallet.mismatch` entries and email bounces daily during the pilot.
-4. Widen the mandals after the pilot (Q11).
-5. When the app goes on Google Play: give the website's deletion page as the account deletion URL, and add the Play Integrity check to sign-up (R1 in section 16).
+Owner: Admin. The pilot goes out in two steps: first the code, with the wallet **off** (nothing visible changes), then the switch, **on** for the pilot mandals only. Turning the switch off is the way back at any time.
+
+### 13.1 Before the release
+
+| # | Check | Who |
+|---|---|---|
+| B1 | UAT on qa has passed, or each failure has a ticket the lead accepts for later (BVTGC-146) | Testing team, lead |
+| B2 | BVTGC-105 (real visitor addresses for the per-IP limits) is deployed on production | Server team |
+| B3 | Email works on production: a test code reaches a Gmail inbox, not spam, in Telugu (`deploy/RUNBOOK.md`, "Email for citizen wallet codes") | Server team (BVTGC-143) |
+| B4 | The client's inputs are in, or their defaults accepted: the points' name, the amounts and limits, the pilot mandals, the legal texts, the support number (`client-inputs.md`, BVTGC-144) | Admin with the client |
+| B5 | The privacy policy and terms with the wallet are live on the website, and `CITIZEN_CONSENT_VERSION` in production's `.env` is their date | Web developer, server team |
+| B6 | The support person knows the call-back procedure (D16): find the caller's account by the number they give, call that number back, then set a new email or remove a number; never ask for or set a password | Admin, support person |
+| B7 | The open items of `docs/security-review.md` for the wallet (9: a per-address limit on the citizen login and code addresses; 10: names in earlier audit entries) are decided or accepted by the lead | Lead |
+
+### 13.2 Step 1: the code, with the wallet off
+
+1. **Merge in this order**, each into `dev`, then `dev` to `qa` and `qa` to `main` as usual:
+   1. the backend (BVTGC-119 to 130, 151, and these documents);
+   2. the web repo (console and website, BVTGC-139 to 142);
+   3. the mobile app (BVTGC-132 to 138).
+
+   The backend goes first, because the console, the website and the app call its new endpoints, and the contract test (`docs/client-calls.json`) checks the clients' calls against it.
+2. **Deploy** production with `deploy.sh` (it deploys the backend and the web repo together, `deploy/RUNBOOK.md`, "Deploying a release"). It runs `migrate` (the wallet's migrations: `citizens` 0005, `wallet` 0001 and 0002, `accounts` 0013, `posts` 0016, `notifications` 0015 and 0016; all additive) and `ensure_schedules` (the hourly referral decisions and the daily wallet check). Nobody runs `makemigrations` on a server.
+3. **Check** with the wallet still off:
+   - the health check answers `ok`, and `gc check` shows no `citizens.W002`;
+   - `GET /api/v1/app-config/` says `"wallet_enabled": false`;
+   - the console shows **Citizens & wallet** (empty) and the wallet card in Settings;
+   - every citizen wallet address answers 404 (for example `POST /api/v1/citizen/auth/login/`);
+   - a citizen without an account reads and posts as before.
+4. **Release the app build** with the wallet screens through the website, as every build (Mobile repo, `BUILD_APK.md`). Then set `APP_LATEST_VERSION` in production's `.env` to it, so older installs see "Update available". The app hides the wallet while the switch is off.
+5. **List the support number** as a statewide help line (console → Important numbers → Helplines), with its hours.
+
+### 13.3 Step 2: switching on for the pilot
+
+1. In the console, Settings → Citizen wallet:
+   - set the amounts and limits (BVTGC-144);
+   - add the pilot mandals;
+   - only then switch the wallet **on** and save.
+
+   The audit log records the change ("changed a setting"). Phones follow within about 5 minutes.
+2. **Smoke test in production**, by a team member in a pilot village, on a team phone and with a team email:
+   - sign up in Telugu, with the code from the email;
+   - log out, then log in with the mobile number;
+   - the wallet shows 0 points and the referral code;
+   - the invite link opens the website's download section with the code;
+   - the Super Admin finds the account in **Citizens & wallet**;
+   - finally, delete the account in the app, and check that the "account deleted" email arrives.
+
+   Use no referral code: then no points are paid, and the account does not count towards the welcome bonuses per phone.
+3. Tell the pilot mandals' officials and the support person that the wallet is live, with the date.
+
+### 13.4 During the pilot: daily for the first week, then weekly
+
+| Watch | Where | Act when |
+|---|---|---|
+| New accounts and referrals | Console, Citizens & wallet: Accounts, Referrals (status counts) | One citizen with many referrals in a day, or many from one village at once: review them, and reject or block with a reason |
+| Why referrals are not confirmed | Referrals → Rejected, reasons | Many `not_active` or `same_phone`: tell the client's team; it may be a misunderstanding in the field |
+| Wallet balances | Audit log, action "found a wallet whose balance differs from its history" (`wallet.mismatch`) | Any entry: tell the backend team at once; do not adjust by hand |
+| Email delivery | The email service's bounce and complaint figures and its alert; `journalctl -u gramaconnect-gunicorn \| grep "Citizen email"` | Bounces over 5 %, or "not sent" lines: `deploy/RUNBOOK.md`, "Email for citizen wallet codes", step 8 |
+| Codes refused for lack of email | Nginx access log: status 503 on `/api/v1/citizen/auth/` | Any: email is down; check the service |
+| Pushes | Audit log, `push.failed` | Many: check Firebase (`deploy/RUNBOOK.md`, "Push notifications") |
+| Support calls | The support person's notes | Repeated questions: improve the app's texts or the FAQ |
+
+**First-week review** (the ticket's "done when"): sign-ups, referrals confirmed and not confirmed with their reasons, codes not delivered, support calls, mismatches, and any fraud seen. Admin writes it in BVTGC-147 and decides with the client whether to widen.
+
+### 13.5 Widening and the way back
+
+- **Widen** after the pilot (Q11): add mandals in Settings, or empty the list to open the wallet everywhere. No deploy is needed.
+- **The way back is the switch:** Settings → Citizen wallet → off. Within about 5 minutes the app hides the wallet and every citizen wallet address answers 404. Nothing is lost: accounts, points and referrals stay as they are, and switching on again continues where it stopped. Pending referrals are still decided by the hourly job while it is off. The Super Admin's page, exports and deletions keep working.
+- **Do not roll the code back** to before the wallet unless the lead decides so: the wallet's migrations are applied, so `deploy.sh --rollback` stops ("the database is ahead") and a rollback would need the database backup from before the deploy, losing every account and point made since (`deploy/RUNBOOK.md`, "Rolling back a release").
+
+### 13.6 Later: Google Play
+
+When the app goes on Google Play:
+- give the website's **Delete my wallet account** page (BVTGC-142) as the account deletion URL in the Play Console;
+- add the Play Integrity check to sign-up (R1 in section 16);
+- set `PLAY_STORE_URL` and the Play signing key for App Links (`deploy/RUNBOOK.md`, "Shared links").
 
 ## 14. Later stage: WhatsApp and SMS (epic BVTGC-118)
 
