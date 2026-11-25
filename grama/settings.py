@@ -57,7 +57,22 @@ if not DEBUG and (
         "SECRET_KEY is an example value or too weak. Generate one with: "
         "python3 -c 'import secrets; print(secrets.token_urlsafe(50))'"
     )
- 
+
+# Key of the keyed hashes that recognise a citizen's phone across installs: its Android ID and its
+# registration IP (apps/citizens/services.py; BE-SEC-109, BVTGC-111). Empty means SECRET_KEY, as before,
+# so stored hashes stay valid. Before SECRET_KEY is ever changed, put its current value here
+# (deploy/RUNBOOK.md, "Rotating secrets"): phones then keep their daily limits and blocks.
+PHONE_HASH_KEY = env.str("PHONE_HASH_KEY", default="")
+if not DEBUG and PHONE_HASH_KEY and (
+    PHONE_HASH_KEY.startswith("django-insecure-")
+    or len(PHONE_HASH_KEY) < 50
+    or len(set(PHONE_HASH_KEY)) < 5
+    or "change-me" in PHONE_HASH_KEY
+):
+    raise ImproperlyConfigured(
+        "PHONE_HASH_KEY is an example value or too weak. Leave it empty, or set it to the previous SECRET_KEY."
+    )
+
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
 
 # DEBUG is on unless .env says otherwise, which is right for laptops and wrong for a server whose
