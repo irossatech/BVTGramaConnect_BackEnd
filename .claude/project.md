@@ -50,7 +50,7 @@ Only holders of the console permission, the Super Admin group, can use the web c
 
 States: DRAFT > PENDING > PUBLISHED, RECHECK or DISCARDED; RECHECK > PENDING; PUBLISHED > UNPUBLISHED (shown as "Taken down"). BLOCKED is kept only for citizen posts a block closed from 2026-11-20 to 2026-11-21; a block changes no post since.
 - Who will see it: every official picks Everyone, or any mix of districts, mandals and villages anywhere, in one post (1 to POST_MAX_TARGETS, 200 areas). A citizen's post is always for the phone's village.
-- Panchayat and citizen posts go to PENDING. District, Mandal and Village Admins' posts publish at once while ADMIN_POSTS_AUTO_PUBLISH is on, wherever they go.
+- Panchayat and citizen posts go to PENDING. District, Mandal and Village Admins' posts publish at once while ADMIN_POSTS_AUTO_PUBLISH is on, when every area they are for lies inside the admin's own area; one area outside it, or Everyone, and the post goes to review (2026-11-25).
 - A pending post is reviewed by the admins of every area it is for (and the areas above), and by the Super Admin. A post to Everyone is reviewed by Super Admins only.
 - The first reviewer's decision wins. A later reviewer gets 409 `already_decided` naming who decided.
 - Only a strictly higher level can reverse a decision, except that a Super Admin may reverse any decision, another Super Admin's and their own included.
@@ -66,7 +66,7 @@ ADMIN_POSTS_AUTO_PUBLISH=True, REVIEW_FIRST_DECISION_WINS=True, REVIEW_ESCALATIO
 
 ## Non-negotiables
 
-- Every permission check runs on the server: the role allows the action AND the target sits inside the actor's area. Clients only hide buttons.
+- Every permission check runs on the server: the role allows the action AND the target sits inside the actor's area. Clients only hide buttons. Posting is the one exception: officials may choose any area, and a post for any area outside their own is reviewed instead of going live at once (2026-11-25).
 - Blocking a user ends all their sessions at once.
 - Built for budget Android phones on 2G/3G: small paged responses, photos stored as WebP (1280 px and a 320 px thumbnail), cached feed in the app.
 - Telugu displays and stores correctly everywhere: API, database, emails, CSV exports, app, website.
@@ -100,7 +100,7 @@ ADMIN_POSTS_AUTO_PUBLISH=True, REVIEW_FIRST_DECISION_WINS=True, REVIEW_ESCALATIO
 - 2026-10-21 · ~~**/django-admin/** is reachable on the server only from office IP addresses.~~ Replaced on 2026-11-11, see below.
 - 2026-10-22 · **Web is React and Next.js; mobile is Flutter.** The website and the console are one Next.js app (React, Pages Router) in BVTGramaConnect, exported as static files and served by Nginx; the mobile app stays Flutter. The conversion kept the approved design pixel for pixel.
 - 2026-10-27 · **Citizens post from the app** without logging in. Each install gets a posting token after Google Play Integrity confirms the genuine app. Every citizen post goes to review; 5 posts per phone a day by default, which the Super Admin can change. BackEnd repo, `docs/api-contract.md`, section 15.
-- 2026-10-28 · **Who will see it:** every poster, ~~citizens included,~~ picks Everyone or any districts, mandals and villages anywhere, in any mix, in one post. Admins' posts still publish at once wherever they go; the admins of every chosen area review the others. This replaces the 2026-10-21 visibility rule. BackEnd repo, `docs/api-contract.md`, section 5. Citizens: replaced on 2026-11-19, see below.
+- 2026-10-28 · **Who will see it:** every poster, ~~citizens included,~~ picks Everyone or any districts, mandals and villages anywhere, in any mix, in one post. ~~Admins' posts still publish at once wherever they go;~~ (replaced on 2026-11-25, see below) the admins of every chosen area review the others. This replaces the 2026-10-21 visibility rule. BackEnd repo, `docs/api-contract.md`, section 5. Citizens: replaced on 2026-11-19, see below.
 - 2026-11-04 · **The Super Admin may post.** SUPER_ADMIN_CAN_POST is True by default; setting it to False removes "New post" again.
 - 2026-11-11 · ~~**No limit on photos or videos per post.**~~ Replaced on 2026-11-13, see below.
 - 2026-11-11 · **Django admin is off on every server** (lead's decision), qa included: `/django-admin/` answers 404 there. It stays on developers' laptops. Officials, roles and settings are managed in the console. This replaces the 2026-10-21 office-IP rule.
@@ -118,6 +118,7 @@ ADMIN_POSTS_AUTO_PUBLISH=True, REVIEW_FIRST_DECISION_WINS=True, REVIEW_ESCALATIO
 - 2026-11-20 · ~~**Blocked citizen posts have their own status** (owner's decision). When the Super Admin blocks a citizen from a post, every pending post of that phone becomes Blocked (BLOCKED), no longer Discarded, and the console and the Super Admin's app list them under a Blocked tab beside Rejected. Published posts of the phone stay published; "Discard all" still discards. The citizen's app still shows these posts as discarded, with the block comment as the reason.~~ Replaced on 2026-11-21, see below.
 - 2026-11-21 · **A block only stops new posts** (owner's decision). Blocking a citizen's phone stops its new posts until the block ends; it changes no post: waiting posts stay Pending and are reviewed as usual, published ones stay published. "Discard all" stays a separate action. The posts earlier blocks had closed (Blocked, or Discarded before 2026-11-20) went back to Pending once. The Blocked tab lists blocked phones, one row per phone, with every past block and how it ended (BackEnd repo, `docs/api-contract.md`, section 15). This replaces the 2026-11-20 decision.
 - 2026-11-21 · **A Super Admin may change any decision** (owner's decision), another Super Admin's and their own included; a comment is still required, and recheck is still refused for a citizen post. Everyone else keeps the rule that only a strictly higher level can reverse.
+- 2026-11-25 · **An admin's post outside their own area is reviewed** (Admin's decision, BVTGC-26). A District, Mandal or Village Admin's post still goes live at once when every area it is for lies inside the admin's own area. One area outside it, or Everyone, and the whole post goes to review: the admins of those areas (and above) review it, and the Super Admin reviews a post for Everyone. The Super Admin is not affected. The app tells the admin before sending (BVTGC-104; BackEnd `POST /posts/targets/check/`). This replaces "Admins' posts still publish at once wherever they go" of 2026-10-28.
 
 ## Working across repos
 

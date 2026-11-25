@@ -526,6 +526,7 @@ A disabled category disappears from the compose form and from feed filters. Its 
 | `POST /posts/{id}/submit` | author | — | `Post`. `DRAFT` to `PENDING` (action `SUBMIT`), or `RECHECK` to `PENDING` (action `RESUBMIT`). |
 | `GET /posts/{id}/history` | officials | — | `[ReviewAction]`, newest first |
 | `GET /posts/targets/` | posting roles | — | Suggested areas around this official's own (below). Since 2026-10-28 any area may be chosen; the app's picker reads `geo/*` instead. |
+| `POST /posts/targets/check/` | posting roles | `{"targets": [{"level", "id"}, …]}`, the areas the official is about to send a post for (the same as `targets` on `POST /posts/`) | `200 {"publishes_at_once": bool}`: `true` = the post goes live when sent; `false` = it goes to review (an area outside the official's own, or Everyone; or `ADMIN_POSTS_AUTO_PUBLISH` off; always for Panchayat members). Changes nothing. `400 validation_error` for the same area problems as `POST /posts/`; `403 permission_denied` for a role that cannot post (BVTGC-26, 2026-11-25). |
 | `POST /posts/{id}/urgent/` | reviewers whose area contains the post | `{"is_urgent": true\|false}` | `Post`. Panchayat members: `403 permission_denied`; outside the area: `404`. Audited as `post.urgent_set` or `post.urgent_cleared`. |
 
 What `POST /posts` does:
@@ -535,7 +536,8 @@ What `POST /posts` does:
   - The server drops duplicates and any area inside another chosen one (a village inside a chosen district adds nothing; Everyone with anything else is Everyone). It never merges children into their parent: two villages stay two villages, even when they are a whole mandal.
   - The order is kept; the first area is also `target_level` and `target_area`, for older readers.
 - Panchayat members' posts go to `PENDING`, wherever they go.
-- District, Mandal and Village Admins' posts go straight to `PUBLISHED` (action `AUTO_PUBLISH`) while `ADMIN_POSTS_AUTO_PUBLISH=True`, **wherever they go**: it depends on the poster's role, not the areas. So a Village Admin's post to Everyone is published statewide at once (the owner's choice). Otherwise it goes to `PENDING` and someone else must review it; nobody reviews their own post.
+- District, Mandal and Village Admins' posts go straight to `PUBLISHED` (action `AUTO_PUBLISH`) while `ADMIN_POSTS_AUTO_PUBLISH=True` **only when every area the post is for lies inside their own area** (Admin's decision of 2026-11-25, BVTGC-26). One area outside it, or Everyone, and the **whole post** goes to `PENDING`: the admins of those areas (and the levels above) review it, and a post for Everyone is reviewed by the Super Admin. The Super Admin's area is the whole state, so their posts go live at once anywhere (while `SUPER_ADMIN_CAN_POST`). Nobody reviews their own post. The same rule applies when an admin resubmits a post after a recheck. Before 2026-11-25 admins' posts went live at once wherever they went.
+- `POST /posts/targets/check/` tells the app before sending which of the two it will be, so it can say "This post will go to review" (BVTGC-104).
 - Super Admins may post only when `SUPER_ADMIN_CAN_POST=True`; otherwise `403 permission_denied`.
 - **Review:** a pending post is in the queue of, and may be decided by, every admin whose area contains **any** of its areas (the admins of that area and the areas above it), and the Super Admin. A post to Everyone is therefore reviewed by Super Admins only. The first decision counts for the whole post; a second reviewer gets `409 already_decided`.
 - **Alerts:** the admins over each area get one `REVIEW_PENDING` inbox item and push each. Super Admins are alerted only for a post to Everyone (otherwise they see the queue).
@@ -814,7 +816,7 @@ Built (web_admin app). `days` is 1 to 366, default 30, and counts posts created 
 |---|---|---|---|---|
 | (new) | `DRAFT` | — | any posting role, `submit: false` | — |
 | (new) or `DRAFT` | `PENDING` | `SUBMIT` | Panchayat member, or an admin when auto-publish is off | — |
-| (new) or `DRAFT` | `PUBLISHED` | `AUTO_PUBLISH` | District, Mandal or Village Admin when `ADMIN_POSTS_AUTO_PUBLISH=True`; Super Admin only when also `SUPER_ADMIN_CAN_POST=True` | — |
+| (new) or `DRAFT` | `PUBLISHED` | `AUTO_PUBLISH` | District, Mandal or Village Admin when `ADMIN_POSTS_AUTO_PUBLISH=True` and every area of the post is inside their own area (BVTGC-26); Super Admin only when also `SUPER_ADMIN_CAN_POST=True` | — |
 | (new) | `PENDING` | `SUBMIT` | a citizen's phone with a posting token (section 15); never `DRAFT` or published at once | — |
 | `PENDING` | `PUBLISHED` | `PUBLISH` | reviewer whose area contains the target, not the author | optional |
 | `PENDING` | `RECHECK` | `RECHECK` | same; never for a citizen post | required |

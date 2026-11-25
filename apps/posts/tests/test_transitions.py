@@ -81,13 +81,19 @@ def test_admin_posts_wait_for_review_when_auto_publish_is_off(settings, make_pos
     [
         ("pm_kolakaluru", "nandivelugu", PostStatus.PENDING),
         ("pm_kolakaluru", "tenali", PostStatus.PENDING),
-        ("va_kolakaluru", "nandivelugu", PostStatus.PUBLISHED),  # admins publish at once wherever the post goes
-        ("ma_tenali", "kaza", PostStatus.PUBLISHED),
-        ("da_guntur", "gannavaram", PostStatus.PUBLISHED),
+        # Admin's decision of 2026-11-25 (BVTGC-26): an admin's post outside their own area goes to review.
+        ("va_kolakaluru", "nandivelugu", PostStatus.PENDING),
+        ("ma_tenali", "kaza", PostStatus.PENDING),
+        ("da_guntur", "gannavaram", PostStatus.PENDING),
+        # Inside their own area it still goes live at once.
+        ("va_kolakaluru", "kolakaluru", PostStatus.PUBLISHED),
+        ("ma_tenali", "kolakaluru", PostStatus.PUBLISHED),
+        ("da_guntur", "tenali", PostStatus.PUBLISHED),
     ],
 )
 def test_posting_outside_your_area_is_allowed_and_review_does_not_change(api, world, author, target, status):
-    """Owner decision of 2026-10-28: any area; whether it waits depends on the poster, not the area."""
+    """Anyone who may post may post to any area (2026-10-28); an admin's post outside their own area is
+    reviewed instead of going live at once (BVTGC-26, 2026-11-25)."""
     response = api(world.users[author]).post(
         "/api/v1/posts/",
         {"category": "news", "title": "T", "body": "B", "target": world.area_json(target)},

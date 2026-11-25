@@ -46,6 +46,8 @@ from .serializers import (
     ReviewActionSerializer,
     ReviewSerializer,
     SettingsSerializer,
+    TargetsCheckResultSerializer,
+    TargetsCheckSerializer,
     TargetsSerializer,
     UrgentSerializer,
     prime_posts,
@@ -470,6 +472,17 @@ class PostViewSet(viewsets.GenericViewSet):
     @action(detail=False, methods=["get"], url_path="targets")
     def targets(self, request):
         return Response(services.posting_targets(request.user))
+
+    @extend_schema(
+        summary="Would a post for these areas go live at once, or to review? (BVTGC-26)",
+        request=TargetsCheckSerializer,
+        responses=TargetsCheckResultSerializer,
+    )
+    @action(detail=False, methods=["post"], url_path="targets/check")
+    def check_targets(self, request):
+        data = TargetsCheckSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        return Response(services.check_targets(request.user, data.validated_data["targets"]))
 
     @extend_schema(summary="Remove a photo or the video", responses={204: None})
     @action(detail=True, methods=["delete"], url_path=rf"media/(?P<media_id>{UUID_REGEX})")
