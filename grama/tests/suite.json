@@ -188,6 +188,7 @@
         "apps/web_public/tests/test_public_api.py",
         "apps/web_public/tests/test_showcase_and_console.py",
         "grama/tests/test_api_contract.py",
+        "grama/tests/test_client_calls.py",
         "grama/tests/test_bad_input.py",
         "grama/tests/test_cache_headers.py",
         "grama/tests/test_errors_and_races.py",

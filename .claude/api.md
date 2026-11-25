@@ -11,6 +11,13 @@ The live schema is at `/api/schema/` and Swagger UI at `/api/docs/`: open on lap
 3. Tell the teams that use the endpoint (table below) before merging into `dev`. Additive changes (a new optional field) are safe; renaming or removing a field needs a date agreed with each client team.
 4. Keep `/api/v1/` stable. A breaking change that clients cannot follow together goes under `/api/v2/`.
 
+## The contract test (BVTGC-97)
+
+`docs/client-calls.json` lists every call the web repo and the mobile repo make (method, address, the client file). `grama/tests/test_client_calls.py` checks each against this server's URLs and methods, so removing or renaming a route a client still calls, or dropping its method, fails CI and names the client file.
+- After the clients change (and before a release), refresh the list from their current `dev` and commit it: `python manage.py client_calls` (reads `../BVTGramaConnect/src` and `../BVTGramaConnect_Mobile/lib`; `--web` and `--app` take other folders). It also prints any client call this server does not answer.
+- A call whose address is built in a variable cannot be read; it is listed under `unchecked` with its file. `--check` only says whether the committed file is up to date.
+- When a route really goes away, the client calls must go first: change the clients, refresh the list, then remove the route.
+
 ## Who calls what
 
 | Client | Endpoints |
