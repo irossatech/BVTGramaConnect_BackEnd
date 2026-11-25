@@ -343,7 +343,7 @@ Citizens stay out of the officials' user lists without extra code: `authz.manage
   - then `authenticate(request, username=<the account's generated username>, password=…)`, so django-axes counts the email and the number as one account: 5 failures per account and IP give `429 locked_out` with `retry_after_s`. The ceiling per username of BVTGC-110 (20 failures within an hour from any addresses) applies too;
   - an unknown login is counted under the typed value's key, and the hasher still runs once, so the answer takes the same time;
   - wrong password, unknown login and deleted account: `400 invalid_credentials`. Blocked: `403 account_blocked`;
-  - success: `{access, refresh, account}`; audit `auth.login` with `via="citizen_app"`.
+  - success: `{access, refresh, account}`; audit `auth.login` with `via="citizen"` (the audit's `via` holds at most 10 characters).
 - **How (forgotten password):**
   - `forgot` creates a `RESET_PASSWORD` code only for an active account, and always answers the same;
   - `reset` checks the newest live code of that account (`400 code_expired` for an unknown login, like an expired code). The right code, in one transaction:

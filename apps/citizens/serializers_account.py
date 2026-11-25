@@ -25,6 +25,20 @@ class SignupSerializer(serializers.Serializer):
     android_id = serializers.CharField(max_length=64, required=False, allow_blank=True, default="")
 
 
+class CitizenLoginSerializer(serializers.Serializer):
+    login = serializers.CharField(max_length=254, help_text="The email, or the 10-digit mobile number")
+    password = serializers.CharField(max_length=128, trim_whitespace=False)
+
+
+class CitizenForgotSerializer(serializers.Serializer):
+    login = serializers.CharField(max_length=254, help_text="The email, or the 10-digit mobile number")
+
+
+class CitizenResetSerializer(CitizenForgotSerializer):
+    code = serializers.CharField(max_length=10)
+    new_password = serializers.CharField(max_length=128, trim_whitespace=False)
+
+
 class SignupTokenSerializer(serializers.Serializer):
     signup_token = serializers.CharField(max_length=500)
 

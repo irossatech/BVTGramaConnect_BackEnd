@@ -18,21 +18,40 @@ from grama.exceptions import ApiError
 
 
 class NotTheMobileNumberValidator:
-    """Refuses a password that contains the citizen's 10-digit mobile number."""
+    """Refuses a password that contains the citizen's 10-digit mobile number: the typed number at sign-up,
+    or, later, any 10 digits in a row whose keyed hash is the account's (the number itself is not stored)."""
 
     def validate(self, password, user=None):
+        password = password or ""
         mobile = getattr(user, "citizen_mobile", "") or ""
-        if mobile and mobile in (password or ""):
+        mobile_hash = getattr(user, "citizen_mobile_hash", "") or ""
+        found = bool(mobile) and mobile in password
+        if not found and mobile_hash:
+            from .services_account import hash_mobile
+
+            found = any(hash_mobile(run) == mobile_hash for run in _ten_digit_runs(password))
+        if found:
             raise ValidationError(_("The password cannot contain your mobile number."), code="password_is_mobile")
 
     def get_help_text(self):
         return _("The password cannot contain your mobile number.")
 
 
-def check_citizen_password(password: str, *, name: str = "", email: str = "", mobile: str = "", field: str = "password") -> None:
-    """Raise a validation_error ApiError on `field` unless the citizen rule accepts the password."""
+def _ten_digit_runs(password: str):
+    for start in range(len(password) - 9):
+        run = password[start:start + 10]
+        if run.isascii() and run.isdigit():
+            yield run
+
+
+def check_citizen_password(
+    password: str, *, name: str = "", email: str = "", mobile: str = "", mobile_hash: str = "", field: str = "password"
+) -> None:
+    """Raise a validation_error ApiError on `field` unless the citizen rule accepts the password.
+    Give `mobile` at sign-up (typed) and `mobile_hash` afterwards (the account's)."""
     probe = User(name=name or "", email=email or None)
     probe.citizen_mobile = mobile
+    probe.citizen_mobile_hash = mobile_hash
     try:
         validate_password(password, probe, password_validators=get_password_validators(settings.CITIZEN_PASSWORD_VALIDATORS))
     except ValidationError as exc:

@@ -385,13 +385,14 @@ python manage.py sync_role_permissions
 
 | Action | When |
 |---|---|
-| `auth.login` | Successful login, with `via` app or console |
+| `auth.login` | Successful login, with `via` app or console, or `citizen` for a citizen's wallet account (BVTGC-124) |
 | `auth.login_failed` | Wrong password or unknown username |
 | `auth.login_refused` | Right password, but blocked, no role, not a console user, or a citizen's wallet account at the officials' login (`"reason": "citizen_account"`, BVTGC-121) |
 | `auth.locked_out` | A username and IP pair is locked, or (`"scope": "username"`) a username is locked from every address by the ceiling per username |
 | `auth.ip_locked_out` | An IP address reached the cap per address (written again since BVTGC-105; not written from 2026-11-20 to 2026-11-25). It holds the limit and window, never the IP |
 | `user.unlocked` | An admin unlocked a user |
 | `citizen.account_created` | A citizen finished the wallet sign-up with the email code (BVTGC-123): the village and whether a referral code was used |
+| `citizen.password_reset` | A citizen set a new wallet password with an email code (BVTGC-124); every other session and lock of the account ended |
 | `citizen.code_sent` | A wallet code went by email to a citizen (BVTGC-122): the purpose, the channel and the masked address, never the code or the full address |
 | `user.password_changed` | An official changed their own password |
 | `user.password_reset` | An admin reset someone's password |

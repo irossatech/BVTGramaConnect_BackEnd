@@ -122,14 +122,13 @@ def refuse(user: User, code: str, message, via: str) -> ApiError:
     return ApiError(code, message, status=status.HTTP_403_FORBIDDEN)
 
 
-def authenticate_official(request, username: str, password: str, *, via: str, require=None) -> User:
-    """The official for this username and password, or raise the contract error.
-
-    `request` is Django's HttpRequest (DRF: request._request). `require(user)`
-    may refuse the login (the console needs access_web_console); it runs after
-    the password check, so it tells nothing to someone without the password.
+def authenticate_with_limits(request, key: str, password: str, *, via: str) -> User:
+    """The user for this login key and password, with every limit of the officials' login: the cap per
+    address (BVTGC-105), the ceiling per username (WEB-SEC-019) and the django-axes lockout per username
+    and address. Raises 429 locked_out or 400 invalid_credentials; an unknown key runs the password
+    hasher too (Django's ModelBackend), so it takes the same time. The caller then checks who the user is:
+    authenticate_official for officials, apps.citizens.services_account.log_in for citizens' wallet accounts.
     """
-    key = normalize_username(username)
     ip = client_ip(request)
     # The cap per address (BVTGC-105) is checked before the password, so a blocked address learns
     # nothing and its tries are not counted (the block is not extended).
@@ -158,6 +157,18 @@ def authenticate_official(request, username: str, password: str, *, via: str, re
             lockout.audit_username_lockout(request, key)  # this failure reached the ceiling
             raise locked_out(request, key)
         raise invalid_credentials()
+    return user
+
+
+def authenticate_official(request, username: str, password: str, *, via: str, require=None) -> User:
+    """The official for this username and password, or raise the contract error.
+
+    `request` is Django's HttpRequest (DRF: request._request). `require(user)`
+    may refuse the login (the console needs access_web_console); it runs after
+    the password check, so it tells nothing to someone without the password.
+    """
+    key = normalize_username(username)
+    user = authenticate_with_limits(request, key, password, via=via)
     if authz.is_citizen_account(user):
         # A citizen's wallet account never logs in here (BVTGC-121): the same answer as a wrong
         # password, given before the blocked check so the answer tells nothing about the account.

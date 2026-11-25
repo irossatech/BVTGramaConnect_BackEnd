@@ -6,11 +6,16 @@ the Django user (a generated username nobody sees), the Citizen role for the cho
 CitizenAccount and its Wallet are created. The unique email_key and mobile_hash are the real guard when
 two sign-ups race for one email or number.
 
+Login and the forgotten password (BVTGC-124): the email or the mobile number finds the account, and
+the officials' login limits apply as they are (accounts.credentials.authenticate_with_limits), keyed on
+the account's username, so the email and the number count as one account.
+
 The full mobile number is never stored: login and uniqueness use its keyed hash (PHONE_HASH_KEY).
 """
 
 from __future__ import annotations
 
+import hashlib
 import secrets
 import uuid
 from datetime import timedelta
@@ -25,7 +30,9 @@ from django.utils import timezone
 from django.utils.translation import gettext as _
 from rest_framework import status
 
+from apps.accounts import credentials, lockout
 from apps.accounts.models import RoleAssignment, User, mobile_validator
+from apps.accounts.tokens import revoke_all_sessions
 from apps.audit.services import record
 from apps.geography.areas import AreaRef
 from apps.geography.models import AreaLevel, Village
@@ -33,7 +40,7 @@ from apps.posts.models import CITIZEN_ROLE
 from apps.posts.services import runtime
 from grama.exceptions import ApiError
 
-from . import codes
+from . import codes, emails
 from .models import CitizenAccount, PendingSignup, VerificationCode
 from .passwords import check_citizen_password
 from .services import _active_village, _keyed_hash, _validation, hash_android_id
@@ -287,4 +294,111 @@ def finish_signup(token: str, code: str, *, via: str = "app") -> CitizenAccount:
         # Another sign-up took the email or the number between the check and the insert.
         _in_use(mobile_hash=pending.mobile_hash, email_key=pending.email_key)
         raise
+    return account
+
+
+# --- Login (BVTGC-124) ------------------------------------------------------------------------------------
+
+#: The login key of an email or number with no account: "~" is not allowed in usernames, so it never
+#: matches a real user, and its failures still count per login and address.
+UNKNOWN_LOGIN_PREFIX = "~citizen:"
+
+
+def citizen_invalid_credentials() -> ApiError:
+    return ApiError("invalid_credentials", _("Wrong email, mobile number or password."))
+
+
+def account_for_login(login: str) -> CitizenAccount | None:
+    """The account an email (contains @) or a 10-digit mobile number names, or None."""
+    value = (login or "").strip()
+    accounts = CitizenAccount.objects.select_related("user")
+    if "@" in value:
+        return accounts.filter(email_key=canonical_email(value)).first()
+    try:
+        mobile = clean_mobile(value)
+    except ApiError:
+        return None
+    return accounts.filter(mobile_hash=hash_mobile(mobile)).first()
+
+
+def _login_key(login: str, account: CitizenAccount | None) -> str:
+    if account is not None:
+        return account.user.username
+    return UNKNOWN_LOGIN_PREFIX + hashlib.sha256((login or "").strip().lower().encode()).hexdigest()[:24]
+
+
+def log_in(request, login: str, password: str, *, via: str = "citizen") -> CitizenAccount:
+    """The account for this email or number and password (contract section 21). `request` is Django's
+    HttpRequest. A wrong password, an unknown login and a deleted account get the same answer; a blocked
+    account 403 account_blocked. Lockouts as for officials: 429 locked_out with retry_after_s."""
+    require_wallet()
+    value = (login or "").strip()
+    account = account_for_login(value) if value else None
+    try:
+        user = credentials.authenticate_with_limits(request, _login_key(value, account), password or "", via=via)
+    except ApiError as exc:
+        if exc.error_code == "invalid_credentials":
+            raise citizen_invalid_credentials() from None
+        raise
+    if account is None or user.pk != account.user_id or account.deleted_at is not None:
+        raise citizen_invalid_credentials()
+    if not user.is_active:
+        raise credentials.refuse(user, "account_blocked", _("This account is blocked."), via)
+    return account
+
+
+# --- Forgotten password (BVTGC-124) --------------------------------------------------------------------
+
+def _open_account(login: str) -> CitizenAccount | None:
+    account = account_for_login(login)
+    if account is None or account.deleted_at is not None or not account.user.is_active or not account.email:
+        return None
+    return account
+
+
+def forgot_password(login: str, *, via: str = "citizen") -> dict:
+    """Email a RESET_PASSWORD code to the account's address. The same answer for every login (FR-14):
+    an unknown, deleted or blocked account gets no code."""
+    require_wallet()
+    account = _open_account(login)
+    if account is None:
+        return {"expires_in": int(codes.CODE_TTL.total_seconds()), "resend_after": int(codes.RESEND_AFTER.total_seconds())}
+    sent = codes.send_code(
+        purpose=VerificationCode.Purpose.RESET_PASSWORD,
+        to_email=account.email,
+        email_key=account.email_key or canonical_email(account.email),
+        language=account.user.preferred_language,
+        name=account.user.name,
+        account=account,
+        via=via,
+    )
+    return sent.as_dict()
+
+
+def reset_password(login: str, code: str, new_password: str, *, via: str = "citizen") -> CitizenAccount:
+    """The right code sets the new password, confirms the email if needed, ends every session and every
+    lock of the account, and emails a notice. An unknown login answers like an expired code."""
+    require_wallet()
+    account = _open_account(login)
+    if account is None:
+        raise codes.expired_error()
+    row = codes.check_code(purpose=VerificationCode.Purpose.RESET_PASSWORD, code=code, account=account)
+    user = account.user
+    check_citizen_password(
+        new_password, name=user.name, email=account.email, mobile_hash=account.mobile_hash or "", field="new_password"
+    )
+    now = timezone.now()
+    with transaction.atomic():
+        if not codes.consume(row):
+            raise codes.expired_error()
+        user.set_password(new_password)
+        user.password_changed_at = now
+        user.save(update_fields=["password", "password_changed_at"])
+        CitizenAccount.objects.filter(pk=account.pk, email_verified_at__isnull=True).update(email_verified_at=now)
+        record("citizen.password_reset", actor=user, target=user, target_label=user.name, via=via)
+    revoke_all_sessions(user)
+    lockout.unlock(user)
+    emails.notify("password_changed", account.email, language=user.preferred_language, name=user.name)
+    account.refresh_from_db()
+    account.user.refresh_from_db()
     return account

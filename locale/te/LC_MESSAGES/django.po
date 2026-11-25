@@ -28,11 +28,11 @@ msgstr "యాక్సెస్ టోకెన్ చెల్లదు."
 msgid "Wrong username or password."
 msgstr "యూజర్ పేరు లేదా పాస్‌వర్డ్ తప్పు."
 
-#: apps/accounts/credentials.py:203
+#: apps/accounts/credentials.py:231
 msgid "Enter your own password to confirm."
 msgstr "నిర్ధారించడానికి మీ పాస్‌వర్డ్ ఇవ్వండి."
 
-#: apps/accounts/credentials.py:211
+#: apps/accounts/credentials.py:239
 msgid "Your password is not correct."
 msgstr "మీ పాస్‌వర్డ్ సరైనది కాదు."
 
@@ -41,16 +41,16 @@ msgstr "మీ పాస్‌వర్డ్ సరైనది కాదు."
 msgid "The password needs at least %(n)d characters."
 msgstr "పాస్‌వర్డ్‌లో కనీసం %(n)d అక్షరాలు ఉండాలి."
 
-#: apps/accounts/credentials.py:112 apps/accounts/lockout.py:270
+#: apps/accounts/credentials.py:114 apps/accounts/lockout.py:293
 #, python-format
 msgid "Too many failed logins. Try again in %(m)d minute(s)."
 msgstr "చాలాసార్లు లాగిన్ విఫలమైంది. %(m)d నిమిషాల తర్వాత మళ్ళీ ప్రయత్నించండి."
 
-#: apps/accounts/credentials.py:150
+#: apps/accounts/credentials.py:178 apps/citizens/services_account.py:346
 msgid "This account is blocked."
 msgstr "ఈ ఖాతా బ్లాక్ చేయబడింది."
 
-#: apps/accounts/credentials.py:152
+#: apps/accounts/credentials.py:180
 msgid "This account has no role. Ask your admin to assign one."
 msgstr "ఈ ఖాతాకు ఏ పాత్రా లేదు. మీ అడ్మిన్‌ను పాత్ర ఇవ్వమని అడగండి."
 
@@ -754,23 +754,27 @@ msgstr "వాలెట్ కోడ్‌ను ఈమెయిల్‌లో 
 msgid "created a citizen wallet account"
 msgstr "పౌరుని వాలెట్ ఖాతా సృష్టించారు"
 
-#: apps/audit/labels.py:112
+#: apps/audit/labels.py:111
+msgid "reset a forgotten wallet password with an email code"
+msgstr "ఈమెయిల్ కోడ్‌తో మర్చిపోయిన వాలెట్ పాస్‌వర్డ్‌ను రీసెట్ చేశారు"
+
+#: apps/audit/labels.py:113
 msgid "exported a report"
 msgstr "నివేదికను ఎగుమతి చేశారు"
 
-#: apps/audit/labels.py:113
+#: apps/audit/labels.py:114
 msgid "email not delivered"
 msgstr "ఈమెయిల్ చేరలేదు"
 
-#: apps/audit/labels.py:114
+#: apps/audit/labels.py:115
 msgid "email skipped"
 msgstr "ఈమెయిల్ పంపలేదు"
 
-#: apps/audit/labels.py:115
+#: apps/audit/labels.py:116
 msgid "notification not delivered"
 msgstr "నోటిఫికేషన్ చేరలేదు"
 
-#: apps/audit/labels.py:124
+#: apps/audit/labels.py:125
 #, python-format
 msgid "other action (%(code)s)"
 msgstr "ఇతర చర్య (%(code)s)"
@@ -856,7 +860,7 @@ msgstr "ఈ పేరుతో బిల్ ఇప్పటికే ఉంద�
 msgid "Send every bill's key exactly once."
 msgstr "ప్రతి బిల్ కీని ఒక్కసారి మాత్రమే పంపండి."
 
-#: apps/citizens/codes.py:158
+#: apps/citizens/codes.py:159
 msgid "This code has expired or was already used. Ask for a new one."
 msgstr "ఈ కోడ్ గడువు ముగిసింది లేదా ఇప్పటికే వాడబడింది. కొత్త కోడ్ అడగండి."
 
@@ -873,12 +877,12 @@ msgstr "కొత్త కోడ్ అడగడానికి ముందు
 msgid "We could not send the email just now. Try again in a few minutes."
 msgstr "ఇప్పుడు ఈమెయిల్ పంపలేకపోయాము. కొన్ని నిమిషాల తర్వాత మళ్లీ ప్రయత్నించండి."
 
-#: apps/citizens/codes.py:183
+#: apps/citizens/codes.py:184
 #, python-format
 msgid "Wrong code. Tries left: %(n)d."
 msgstr "కోడ్ తప్పు. మిగిలిన ప్రయత్నాలు: %(n)d."
 
-#: apps/citizens/passwords.py:29 apps/citizens/passwords.py:26
+#: apps/citizens/passwords.py:37 apps/citizens/passwords.py:34
 msgid "The password cannot contain your mobile number."
 msgstr "పాస్‌వర్డ్‌లో మీ మొబైల్ నంబర్ ఉండకూడదు."
 
@@ -965,39 +969,43 @@ msgstr "ఫోన్ తనిఖీ ఇప్పుడు అందుబాట
 msgid "Not a citizen post."
 msgstr "ఇది పౌరుడి పోస్ట్ కాదు."
 
-#: apps/citizens/services_account.py:139
+#: apps/citizens/services_account.py:146
 msgid "This sign-up has expired or was already finished. Start again."
 msgstr "ఈ నమోదు గడువు ముగిసింది లేదా ఇప్పటికే పూర్తయింది. మళ్లీ మొదలుపెట్టండి."
 
-#: apps/citizens/services_account.py:107
+#: apps/citizens/services_account.py:308
+msgid "Wrong email, mobile number or password."
+msgstr "ఈమెయిల్, మొబైల్ నంబర్ లేదా పాస్‌వర్డ్ తప్పు."
+
+#: apps/citizens/services_account.py:114
 msgid "This mobile number already has an account. Log in or reset your password."
 msgstr "ఈ మొబైల్ నంబర్‌తో ఇప్పటికే ఖాతా ఉంది. లాగిన్ చేయండి లేదా పాస్‌వర్డ్ రీసెట్ చేయండి."
 
-#: apps/citizens/services_account.py:113
+#: apps/citizens/services_account.py:120
 msgid "This email already has an account. Log in or reset your password."
 msgstr "ఈ ఈమెయిల్‌తో ఇప్పటికే ఖాతా ఉంది. లాగిన్ చేయండి లేదా పాస్‌వర్డ్ రీసెట్ చేయండి."
 
-#: apps/citizens/services_account.py:126
+#: apps/citizens/services_account.py:133
 msgid "No such referral code."
 msgstr "ఈ రిఫరల్ కోడ్ లేదు."
 
-#: apps/citizens/services_account.py:128
+#: apps/citizens/services_account.py:135
 msgid "You cannot use your own referral code."
 msgstr "మీ స్వంత రిఫరల్ కోడ్‌ను వాడలేరు."
 
-#: apps/citizens/services_account.py:130
+#: apps/citizens/services_account.py:137
 msgid "This referral code can no longer be used."
 msgstr "ఈ రిఫరల్ కోడ్‌ను ఇక వాడలేరు."
 
-#: apps/citizens/services_account.py:181
+#: apps/citizens/services_account.py:188
 msgid "The wallet is not open in your area yet."
 msgstr "మీ ప్రాంతంలో వాలెట్ ఇంకా ప్రారంభం కాలేదు."
 
-#: apps/citizens/services_account.py:183
+#: apps/citizens/services_account.py:190
 msgid "Confirm that you are 18 or older."
 msgstr "మీ వయస్సు 18 సంవత్సరాలు లేదా అంతకంటే ఎక్కువ అని నిర్ధారించండి."
 
-#: apps/citizens/services_account.py:185
+#: apps/citizens/services_account.py:192
 msgid "Agree to the latest consent notice."
 msgstr "తాజా సమ్మతి ప్రకటనకు అంగీకరించండి."
 
