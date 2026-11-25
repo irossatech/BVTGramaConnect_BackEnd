@@ -106,6 +106,7 @@
         "apps/notifications/tests/test_scheduled_retry.py",
         "apps/notifications/tests/test_super_admin_added.py",
         "apps/notifications/tests/test_topic_job_budget.py",
+        "apps/notifications/tests/test_unlink_on_session_end.py",
         "apps/posts/tests/test_escalation_batches.py",
         "grama/tests/test_health_worker.py",
         "grama/tests/test_housekeeping.py",
