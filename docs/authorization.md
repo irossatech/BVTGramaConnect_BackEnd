@@ -394,6 +394,9 @@ python manage.py sync_role_permissions
 | `citizen.account_created` | A citizen finished the wallet sign-up with the email code (BVTGC-123): the village and whether a referral code was used |
 | `citizen.password_reset` | A citizen set a new wallet password with an email code (BVTGC-124); every other session and lock of the account ended |
 | `citizen.password_changed`, `citizen.email_changed`, `citizen.mobile_changed`, `citizen.village_changed` | A citizen changed their wallet account (BVTGC-125): the masked old and new email, the old and new last 4 digits, or the old and new village id |
+| `referral.created` | A friend signed up with a citizen's referral code (BVTGC-126): the referral, and whether both signed up on the same phone |
+| `referral.confirmed`, `referral.rejected` | The hourly job (`via` system) or a Super Admin decided a referral: the reason it was not confirmed |
+| `wallet.mismatch` | The daily check found a wallet whose cached balance differs from the sum of its entries |
 | `citizen.code_sent` | A wallet code went by email to a citizen (BVTGC-122): the purpose, the channel and the masked address, never the code or the full address |
 | `user.password_changed` | An official changed their own password |
 | `user.password_reset` | An admin reset someone's password |

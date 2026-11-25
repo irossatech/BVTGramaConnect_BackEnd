@@ -46,7 +46,7 @@ msgstr "పాస్‌వర్డ్‌లో కనీసం %(n)d అక్�
 msgid "Too many failed logins. Try again in %(m)d minute(s)."
 msgstr "చాలాసార్లు లాగిన్ విఫలమైంది. %(m)d నిమిషాల తర్వాత మళ్ళీ ప్రయత్నించండి."
 
-#: apps/accounts/credentials.py:178 apps/citizens/services_account.py:369
+#: apps/accounts/credentials.py:178 apps/citizens/services_account.py:373
 msgid "This account is blocked."
 msgstr "ఈ ఖాతా బ్లాక్ చేయబడింది."
 
@@ -314,7 +314,7 @@ msgstr "పాస్‌వర్డ్‌లో కనీసం %(parts)s ఉం
 msgid "a special character such as %(examples)s"
 msgstr "%(examples)s వంటి ఒక ప్రత్యేక గుర్తు"
 
-#: apps/accounts/views_auth.py:195 apps/citizens/services_account.py:482
+#: apps/accounts/views_auth.py:195 apps/citizens/services_account.py:486
 msgid "Choose a password different from the current one."
 msgstr "ప్రస్తుత పాస్‌వర్డ్‌కు భిన్నమైన పాస్‌వర్డ్ ఎంచుకోండి."
 
@@ -775,22 +775,38 @@ msgid "moved their wallet account to another village"
 msgstr "తమ వాలెట్ ఖాతాను వేరే గ్రామానికి మార్చారు"
 
 #: apps/audit/labels.py:117
+msgid "started a referral (a friend signed up with a code)"
+msgstr "రిఫరల్ ప్రారంభమైంది (స్నేహితుడు కోడ్‌తో నమోదయ్యారు)"
+
+#: apps/audit/labels.py:118
+msgid "confirmed a referral"
+msgstr "రిఫరల్‌ను నిర్ధారించారు"
+
+#: apps/audit/labels.py:119
+msgid "did not confirm a referral"
+msgstr "రిఫరల్‌ను నిర్ధారించలేదు"
+
+#: apps/audit/labels.py:120
+msgid "found a wallet whose balance differs from its history"
+msgstr "చరిత్రతో సరిపోలని నిల్వ ఉన్న వాలెట్‌ను గుర్తించారు"
+
+#: apps/audit/labels.py:122
 msgid "exported a report"
 msgstr "నివేదికను ఎగుమతి చేశారు"
 
-#: apps/audit/labels.py:118
+#: apps/audit/labels.py:123
 msgid "email not delivered"
 msgstr "ఈమెయిల్ చేరలేదు"
 
-#: apps/audit/labels.py:119
+#: apps/audit/labels.py:124
 msgid "email skipped"
 msgstr "ఈమెయిల్ పంపలేదు"
 
-#: apps/audit/labels.py:120
+#: apps/audit/labels.py:125
 msgid "notification not delivered"
 msgstr "నోటిఫికేషన్ చేరలేదు"
 
-#: apps/audit/labels.py:129
+#: apps/audit/labels.py:134
 #, python-format
 msgid "other action (%(code)s)"
 msgstr "ఇతర చర్య (%(code)s)"
@@ -989,15 +1005,15 @@ msgstr "ఇది పౌరుడి పోస్ట్ కాదు."
 msgid "This sign-up has expired or was already finished. Start again."
 msgstr "ఈ నమోదు గడువు ముగిసింది లేదా ఇప్పటికే పూర్తయింది. మళ్లీ మొదలుపెట్టండి."
 
-#: apps/citizens/services_account.py:331
+#: apps/citizens/services_account.py:335
 msgid "Wrong email, mobile number or password."
 msgstr "ఈమెయిల్, మొబైల్ నంబర్ లేదా పాస్‌వర్డ్ తప్పు."
 
-#: apps/citizens/services_account.py:501
+#: apps/citizens/services_account.py:505
 msgid "This is already your email."
 msgstr "ఇది ఇప్పటికే మీ ఈమెయిల్."
 
-#: apps/citizens/services_account.py:549
+#: apps/citizens/services_account.py:553
 msgid "This is already your mobile number."
 msgstr "ఇది ఇప్పటికే మీ మొబైల్ నంబర్."
 
@@ -1041,7 +1057,7 @@ msgstr "మీ వయస్సు 18 సంవత్సరాలు లేదా
 msgid "Agree to the latest consent notice."
 msgstr "తాజా సమ్మతి ప్రకటనకు అంగీకరించండి."
 
-#: apps/citizens/services_account.py:448
+#: apps/citizens/services_account.py:452
 msgid "Wrong password."
 msgstr "పాస్‌వర్డ్ తప్పు."
 
@@ -2150,6 +2166,38 @@ msgstr "ఈ అభ్యర్థన ఇప్పటికే '%(status)s' స�
 #: apps/service_requests/views.py:120
 msgid "Your role cannot see service requests."
 msgstr "మీ పాత్ర సేవా అభ్యర్థనలను చూడలేదు."
+
+#: apps/wallet/serializers.py:13
+msgid "No reward: both accounts signed up on the same phone."
+msgstr "బహుమతి లేదు: రెండు ఖాతాలు ఒకే ఫోన్‌లో నమోదయ్యాయి."
+
+#: apps/wallet/serializers.py:14
+msgid "No welcome bonus: this phone or number already had one."
+msgstr "స్వాగత బోనస్ లేదు: ఈ ఫోన్ లేదా నంబర్‌కు ఇప్పటికే వచ్చింది."
+
+#: apps/wallet/serializers.py:15
+msgid "No welcome bonus: the phone could not be recognised."
+msgstr "స్వాగత బోనస్ లేదు: ఫోన్‌ను గుర్తించలేకపోయాము."
+
+#: apps/wallet/serializers.py:16
+msgid "Not confirmed: the new citizen did not use the app on enough days."
+msgstr "నిర్ధారించబడలేదు: కొత్త పౌరుడు తగినన్ని రోజులు యాప్ వాడలేదు."
+
+#: apps/wallet/serializers.py:17
+msgid "Not confirmed: the monthly limit of referrals was reached."
+msgstr "నిర్ధారించబడలేదు: నెలవారీ రిఫరల్ పరిమితి చేరింది."
+
+#: apps/wallet/serializers.py:18
+msgid "Not confirmed: an account was blocked."
+msgstr "నిర్ధారించబడలేదు: ఒక ఖాతా నిరోధించబడింది."
+
+#: apps/wallet/serializers.py:19
+msgid "Not confirmed: an account was deleted."
+msgstr "నిర్ధారించబడలేదు: ఒక ఖాతా తొలగించబడింది."
+
+#: apps/wallet/serializers.py:20
+msgid "Not confirmed by the Super Admin."
+msgstr "సూపర్ అడ్మిన్ నిర్ధారించలేదు."
 
 #: apps/web_admin/api.py:118
 msgid "days must be between 1 and 366."

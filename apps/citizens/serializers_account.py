@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from django.db.models import Min
 from rest_framework import serializers
 
 from apps.audit.masking import mask_email
@@ -104,15 +103,11 @@ class AccountSerializer(serializers.Serializer):
     created_at = serializers.DateTimeField()
 
     def to_representation(self, account: CitizenAccount) -> dict:
-        from apps.wallet.models import Referral, WalletEntry
+        from apps.wallet.models import Referral
+        from apps.wallet.services import summary
 
         wallet = getattr(account, "wallet", None)
-        next_release = None
-        if wallet is not None:
-            next_release = (
-                WalletEntry.objects.filter(wallet=wallet, status=WalletEntry.Status.HELD, referral__isnull=False)
-                .aggregate(first=Min("referral__confirm_after"))["first"]
-            )
+        balance = summary(wallet) if wallet is not None else {"confirmed_points": 0, "held_points": 0, "next_release_at": None}
         own = Referral.objects.filter(referee=account).values("status", "confirm_after").first()
         base = invite_url()
         return {
@@ -126,11 +121,7 @@ class AccountSerializer(serializers.Serializer):
             "mobile_verified": account.mobile_verified_at is not None,
             "referral_code": account.referral_code,
             "invite_url": f"{base}?ref={account.referral_code}" if base else None,
-            "wallet": {
-                "confirmed_points": wallet.confirmed_points if wallet else 0,
-                "held_points": wallet.held_points if wallet else 0,
-                "next_release_at": next_release,
-            },
+            "wallet": balance,
             "referral": own,
             "created_at": account.created_at,
         }

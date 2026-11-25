@@ -18,6 +18,7 @@ REPO = Path(settings.BASE_DIR)
 PREFIXES = (
     "post", "user", "auth", "area", "setting", "service", "service_request", "bill", "ad", "contact",
     "contacts", "contact_type", "citizen", "category", "template", "report", "push", "email", "group",
+    "referral", "wallet",
 )
 ACTION_SHAPED = re.compile(r"""["'](""" + "|".join(PREFIXES) + r""")\.([a-z_]+)["']""")
 

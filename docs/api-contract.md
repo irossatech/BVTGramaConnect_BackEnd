@@ -1651,7 +1651,7 @@ An optional account for citizens, used **only for the wallet of points and refer
 | `POST /citizen/account/email/verify/` **live** (BVTGC-125) | `{code}` | `200 Account`: the email changed and the old address got a notice. `400 code_wrong`, `code_expired`; `409 email_in_use` |
 | `POST /citizen/account/mobile/` **live** (BVTGC-125) | `{mobile, password}` (the new number) | `200 Account` (`mobile_verified` becomes `false`). `409 mobile_in_use` (point the citizen to the help line); `400 invalid_credentials` |
 | `POST /citizen/account/delete/` | `{password}` | `204`. The account is closed at once (see "Deletion"). `400 invalid_credentials` |
-| `GET /wallet/` | `?cursor=` | The cursor list of section 1 with the summary as sibling keys: `{confirmed_points, held_points, next_release_at, next, previous, results: [WalletEntry]}`, newest first, 20 a page. Every page repeats the summary. |
+| `GET /wallet/` **live** (BVTGC-126) | `?cursor=` | The cursor list of section 1 with the summary as sibling keys: `{confirmed_points, held_points, next_release_at, next, previous, results: [WalletEntry]}`, newest first, 20 a page. Every page repeats the summary. |
 
 ### Deleting the account from the website (public, no login)
 
