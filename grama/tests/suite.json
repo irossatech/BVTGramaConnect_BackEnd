@@ -40,6 +40,7 @@
       "about": "Status changes, first decision wins, reverse, media, translation, the citizen feed, share links",
       "files": [
         "apps/feed/tests/test_feed.py",
+        "apps/feed/tests/test_feed_medium_url.py",
         "apps/feed/tests/test_feed_owner_decisions.py",
         "apps/posts/tests/test_app_config.py",
         "apps/posts/tests/test_backfill_medium.py",

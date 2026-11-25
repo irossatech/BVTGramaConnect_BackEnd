@@ -70,6 +70,7 @@ class FeedItemSerializer(serializers.Serializer):
     published_at = serializers.DateTimeField()
     thumbnail_url = serializers.SerializerMethodField()
     image_url = serializers.SerializerMethodField()
+    medium_url = serializers.SerializerMethodField()
     media_count = serializers.SerializerMethodField()
     source_role = serializers.CharField(source="posted_as_role")
     source_area = serializers.SerializerMethodField()
@@ -118,6 +119,12 @@ class FeedItemSerializer(serializers.Serializer):
     def get_image_url(self, obj) -> str | None:
         """First photo at full size (POST_IMAGE_MAX_PX, 1280 px); null without a photo or for a video post."""
         name = getattr(obj, "image_name", None)
+        return media_url(self.context, name) if name else None
+
+    def get_medium_url(self, obj) -> str | None:
+        """First photo at POST_MEDIUM_PX (640 px), for cards on slow networks (BVTGC-95); null without a
+        photo, for a video post, and for an older photo until backfill_medium_images made its copy."""
+        name = getattr(obj, "medium_name", None)
         return media_url(self.context, name) if name else None
 
     def get_media_count(self, obj) -> int:
