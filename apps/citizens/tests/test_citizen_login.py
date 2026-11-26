@@ -18,7 +18,7 @@ from django.utils import timezone
 from apps.accounts.models import RoleAssignment, User
 from apps.accounts.tokens import issue_tokens
 from apps.audit.models import AuditLog
-from apps.citizens.models import CitizenAccount
+from apps.citizens.models import CitizenAccount, VerificationCode
 from apps.citizens.services_account import canonical_email, hash_mobile
 from apps.geography.areas import AreaRef
 from apps.geography.models import AreaLevel
@@ -166,6 +166,43 @@ def test_forgot_answers_the_same_for_every_login(api, world, wallet_on, mailoutb
     assert {json.dumps(response.json(), sort_keys=True) for response in answers} == {'{"expires_in": 600, "resend_after": 60}'}
     assert len(mailoutbox) == 1 and mailoutbox[0].to == ["lakshmi.devi@gmail.com"]  # only the open account
     assert "మీ పాస్‌వర్డ్ మార్చడానికి" in mailoutbox[0].body  # its language: Telugu
+
+
+def test_every_step_answers_the_same_for_every_login(api, world, citizen, mailoutbox, code_journey, english):
+    """BVTGC-152: the wait for a new code, the day's limit and a wrong code no longer tell a registered
+    login from an unknown or blocked one; only the registered one gets emails."""
+    blocked = make_citizen(world, n=2, email="suresh@gmail.com", mobile="9876500002")
+    User.objects.filter(pk=blocked.user_id).update(is_active=False)
+    runs = {
+        login: code_journey(login, FORGOT, RESET, new_password="71935284")
+        for login in ["9876543210", "nobody@gmail.com", "9000000000", "suresh@gmail.com"]
+    }
+    assert len({tuple(run) for run in runs.values()}) == 1, runs
+    steps = runs["9876543210"]
+    assert [step[0] for step in steps] == [200, 429] + [400] * 6 + [200] * 4 + [429]
+    assert steps[1][1:] == ("code_cooldown", "Wait 60 seconds before asking for a new code.", None, 60)
+    assert [step[3] for step in steps[2:7]] == [4, 3, 2, 1, 0] and steps[2][2] == "Wrong code. Tries left: 4."
+    assert steps[7][1] == "code_expired" and steps[-1][1] == "code_limit"
+    assert {tuple(m.to) for m in mailoutbox} == {("lakshmi.devi@gmail.com",)}  # nothing to the others
+    assert not VerificationCode.objects.exclude(account=citizen).exists()
+
+
+def test_an_unknown_login_waits_across_its_spellings(api, wallet_on, english):
+    """BVTGC-152: like a registered account's codes, the wait counts the number or the email, however written."""
+    assert api().post(FORGOT, {"login": "9000000000"}, format="json").status_code == 200
+    again = api().post(FORGOT, {"login": "+91 90000-00000"}, format="json")
+    assert (again.status_code, err(again)) == (429, "code_cooldown")
+    assert api().post(FORGOT, {"login": "Nobody.Here@gmail.com"}, format="json").status_code == 200
+    again = api().post(FORGOT, {"login": "nobodyhere+x@googlemail.com"}, format="json")
+    assert (again.status_code, err(again)) == (429, "code_cooldown")
+
+
+def test_the_decoy_key_holds_no_email_or_number():
+    from apps.citizens.services_account import decoy_key
+
+    key = decoy_key("Nobody.Here@gmail.com")
+    assert key == decoy_key("nobodyhere@gmail.com") and "nobody" not in key and len(key) == 64
+    assert decoy_key("+91 90000 00000") == decoy_key("9000000000") and "9000000000" not in decoy_key("9000000000")
 
 
 def reset_code(api, mailoutbox, login="9876543210") -> str:

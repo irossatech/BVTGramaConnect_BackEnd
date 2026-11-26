@@ -396,13 +396,29 @@ def _open_account(login: str) -> CitizenAccount | None:
     return account
 
 
+def decoy_key(login: str) -> str:
+    """The key of a login's decoy codes (BVTGC-152): the canonical email or the cleaned number, so "Lakshmi@…"
+    and "lakshmi@…", or "+91 98765 43210" and "9876543210", share one wait and one day's limit as a real
+    account's would; keyed with the phone-hash key, so the cache never holds an email or a number."""
+    value = (login or "").strip()
+    if "@" in value:
+        value = canonical_email(value)
+    else:
+        try:
+            value = clean_mobile(value)
+        except ApiError:
+            value = value.lower()
+    return _keyed_hash(b"citizen-code-decoy", value or "-")
+
+
 def forgot_password(login: str, *, via: str = "citizen") -> dict:
-    """Email a RESET_PASSWORD code to the account's address. The same answer for every login (FR-14):
-    an unknown, deleted or blocked account gets no code."""
+    """Email a RESET_PASSWORD code to the account's address. The same answers for every login (FR-14,
+    BVTGC-152): an unknown, deleted or blocked account gets no code, but the same wait, daily limit and
+    wrong-code answers as a registered one (codes.decoy_send)."""
     require_wallet()
     account = _open_account(login)
     if account is None:
-        return {"expires_in": int(codes.CODE_TTL.total_seconds()), "resend_after": int(codes.RESEND_AFTER.total_seconds())}
+        return codes.decoy_send(purpose=VerificationCode.Purpose.RESET_PASSWORD, login_key=decoy_key(login)).as_dict()
     sent = codes.send_code(
         purpose=VerificationCode.Purpose.RESET_PASSWORD,
         to_email=account.email,
@@ -417,11 +433,12 @@ def forgot_password(login: str, *, via: str = "citizen") -> dict:
 
 def reset_password(login: str, code: str, new_password: str, *, via: str = "citizen") -> CitizenAccount:
     """The right code sets the new password, confirms the email if needed, ends every session and every
-    lock of the account, and emails a notice. An unknown login answers like an expired code."""
+    lock of the account, and emails a notice. A login with no open account answers as a registered one
+    whose code is typed wrong (BVTGC-152: code_wrong with the tries left, then code_expired)."""
     require_wallet()
     account = _open_account(login)
     if account is None:
-        raise codes.expired_error()
+        codes.decoy_check(purpose=VerificationCode.Purpose.RESET_PASSWORD, login_key=decoy_key(login))
     row = codes.check_code(purpose=VerificationCode.Purpose.RESET_PASSWORD, code=code, account=account)
     user = account.user
     check_citizen_password(
@@ -667,11 +684,12 @@ def delete_own_account(account: CitizenAccount, password: str, *, via: str = "ap
 
 
 def send_delete_code(login: str, *, via: str = "website") -> dict:
-    """POST /citizen/auth/delete/code/: a DELETE code to the account's email; the same answer for every login."""
+    """POST /citizen/auth/delete/code/: a DELETE code to the account's email; the same answers for every login
+    (BVTGC-152: an unknown, blocked or deleted login gets the same wait and daily limit, codes.decoy_send)."""
     require_wallet()
     account = _open_account(login)
     if account is None:
-        return {"expires_in": int(codes.CODE_TTL.total_seconds()), "resend_after": int(codes.RESEND_AFTER.total_seconds())}
+        return codes.decoy_send(purpose=VerificationCode.Purpose.DELETE, login_key=decoy_key(login)).as_dict()
     return codes.send_code(
         purpose=VerificationCode.Purpose.DELETE,
         to_email=account.email,
@@ -685,11 +703,12 @@ def send_delete_code(login: str, *, via: str = "website") -> dict:
 
 def delete_with_code(login: str, code: str, *, via: str = "website") -> None:
     """POST /citizen/auth/delete/: the website's deletion with a DELETE code (D12). Only someone who can open
-    the account's email can delete it; an unknown login reads as an expired code."""
+    the account's email can delete it. A login with no open account answers as a registered one whose code
+    is typed wrong (BVTGC-152: code_wrong with the tries left, then code_expired)."""
     require_wallet()
     account = _open_account(login)
     if account is None:
-        raise codes.expired_error()
+        codes.decoy_check(purpose=VerificationCode.Purpose.DELETE, login_key=decoy_key(login))
     row = codes.check_code(purpose=VerificationCode.Purpose.DELETE, code=code, account=account)
     if not codes.consume(row):
         raise codes.expired_error()

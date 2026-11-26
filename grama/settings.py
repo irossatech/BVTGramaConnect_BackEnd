@@ -212,17 +212,28 @@ DJANGO_ADMIN_ENABLED = env.bool("DJANGO_ADMIN_ENABLED", default=DEBUG)
 # 5. CACHE & THROTTLING (DEV vs PROD)
 # ==============================================================================
  
+# The shared "throttle" cache also holds the citizen code decoys (BVTGC-152, apps/citizens/codes.py), one
+# per unknown login for a day. Django's database cache deletes a third of its rows once it holds MAX_ENTRIES
+# (300 by default), so a flood of made-up logins could push a decoy out and its 60-second wait would vanish,
+# telling a registered login apart again. Kept high; each write counts the rows, which stays cheap here.
+THROTTLE_CACHE_MAX_ENTRIES = env.int("THROTTLE_CACHE_MAX_ENTRIES", default=200000)
+
 if not DEBUG:
     CACHES = {
         "default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"},
-        "throttle": {"BACKEND": "django.core.cache.backends.db.DatabaseCache", "LOCATION": "grama_throttle_cache"},
+        "throttle": {
+            "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+            "LOCATION": "grama_throttle_cache",
+            "OPTIONS": {"MAX_ENTRIES": THROTTLE_CACHE_MAX_ENTRIES},
+        },
     }
 else:  # DEV
     CACHES = {
         "default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"},
         "throttle": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache", "LOCATION": "throttle"},
     }
-# "throttle" counts the Telugu name suggestions' rate (TRANSLITERATION_RATE). The per-IP login throttle
+# "throttle" counts the Telugu name suggestions' rate (TRANSLITERATION_RATE) and holds the citizen code
+# decoys (BVTGC-152). The per-IP login throttle
 # (30 logins an hour) was removed on 2026-11-20 and is not decided yet; the contact form has no per-IP
 # limit (lead's final decision). The IP-wide failed-login cap is back (LOGIN_IP_MAX_FAILURES, BVTGC-105).
  
