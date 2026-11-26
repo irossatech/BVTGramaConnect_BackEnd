@@ -635,7 +635,7 @@ def _create_official_post(user, data: PostInput, targets, assignment: Grant, sen
     return _reload(post)
 
 
-def create_citizen_post(device, data: PostInput, attach=None, client_ref=None) -> Post:
+def create_citizen_post(device, data: PostInput, attach=None, client_ref=None, before=None) -> Post:
     """A citizen's post: straight to PENDING for every reviewer of its village (contract section 15).
 
     `device` is the citizens.CitizenDevice that wrote it; the caller has checked its token,
@@ -644,12 +644,15 @@ def create_citizen_post(device, data: PostInput, attach=None, client_ref=None) -
     The post is for the phone's village only, and is posted from it (owner's decision of
     2026-11-19: citizens no longer choose areas, so they cannot post into other villages). Any areas
     in `data` are ignored. `client_ref` is saved on the post; the caller (citizens.services) looks
-    for a repeat first.
+    for a repeat first. `before()` runs inside the transaction before the post is written (the caller
+    locks the phone there, ahead of the insert's foreign-key lock, so posts sent at once do not deadlock).
     """
     home = AreaRef(AreaLevel.VILLAGE, device.village_id)
     targets = clean_targets([home])
     now = timezone.now()
     with transaction.atomic():
+        if before is not None:
+            before()
         post = Post.objects.create(
             citizen=device,
             client_ref=client_ref,

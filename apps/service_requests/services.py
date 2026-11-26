@@ -327,15 +327,19 @@ def _create_request(device, *, service, name, phone, address, email, details, cl
         raise _validation("village_id", _("Your village is not available any more. Choose your village again."))
 
     with transaction.atomic():
+        if limit:
+            # The phone's installs are locked before the request is written: the insert's foreign-key
+            # check takes a shared lock on the phone's row, and two requests holding it while both waiting
+            # for this lock deadlock on MySQL.
+            citizens.hold_phone(device)
         assignee = village_admin_of(device.village_id)
         request = ServiceRequest.objects.create(
             service=chosen, name=name, phone=phone, email=email, address=address, details=details,
             village_id=device.village_id, device=device, assigned_to=assignee, client_ref=client_ref,
         )
         if limit:
-            # Again after the write, with the phone's installs locked: two requests sent at the same
-            # moment cannot both pass the limit (audit BE-DB-014). Raising rolls the request back.
-            citizens.hold_phone(device)
+            # Again after the write, still holding the lock: two requests sent at the same moment cannot
+            # both pass the limit (audit BE-DB-014). Raising rolls the request back.
             _within_daily_limit(device, limit, now, written=True)
         area = area_of(request)
         # No name, phone, email or address in the audit log: only the service and the phone's device id.
