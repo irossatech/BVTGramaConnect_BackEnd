@@ -407,11 +407,17 @@ def create_post(
         processed = [media.process_image(photo) for photo in photos]
         prepared = [media.prepare_video(video, lenient=True) for video in videos]
 
-    def attach(post):
-        # Inside the post's transaction, once the post is written: the daily limit again, with the phone's
-        # installs locked, so two posts sent at the same moment cannot both pass it (audit BE-DB-014).
+    def before():
+        # Inside the post's transaction, before the post is written: lock the phone's installs. Locking
+        # after the insert deadlocks on MySQL, whose foreign-key check already holds a shared lock on the
+        # phone's row in every request sent at the same moment.
         if limit:
             hold_phone(device)
+
+    def attach(post):
+        # Once the post is written, still holding the lock: the daily limit again, so two posts sent at
+        # the same moment cannot both pass it (audit BE-DB-014).
+        if limit:
             _within_daily_limit(posts_today(device, now), limit, now, written=True)
         for order, item in enumerate(processed):
             media.store_photo(post, item, order)
@@ -425,7 +431,9 @@ def create_post(
     # The files are written inside the post's transaction; if it fails, they are deleted again.
     try:
         with media.files_removed_on_failure():
-            return post_services.create_citizen_post(device, data, attach=attach, client_ref=client_ref)
+            return post_services.create_citizen_post(
+                device, data, attach=attach, client_ref=client_ref, before=before,
+            )
     except IntegrityError:
         # The same repeat arrived twice at the same moment: the first one's post is the answer.
         earlier = post_services.earlier_post(client_ref, citizen=device)
