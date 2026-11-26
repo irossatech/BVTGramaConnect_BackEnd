@@ -18,7 +18,7 @@ from django.utils import timezone
 from apps.accounts.models import RoleAssignment, User
 from apps.accounts.tokens import issue_tokens
 from apps.audit.models import AuditLog
-from apps.citizens.models import CitizenAccount
+from apps.citizens.models import CitizenAccount, VerificationCode
 from apps.citizens.services_account import canonical_email, hash_mobile
 from apps.geography.areas import AreaRef
 from apps.geography.models import AreaLevel
@@ -83,7 +83,9 @@ def test_hidden_while_the_wallet_is_off(api, world, url):
 # --- Login ------------------------------------------------------------------------------------------------
 
 @pytest.mark.parametrize(
-    "login", ["lakshmi.devi@gmail.com", "LAKSHMI.DEVI@gmail.com", "lakshmidevi+x@googlemail.com", "9876543210", "+91 98765-43210"]
+    "login",
+    ["lakshmi.devi@gmail.com", "LAKSHMI.DEVI@gmail.com", "lakshmidevi+x@googlemail.com", "9876543210", "+91 98765-43210",
+     "09876543210"],  # a leading 0 (BVTGC-153)
 )
 def test_a_citizen_logs_in_with_the_email_or_the_number(api, citizen, login):
     response = log_in(api, login)
@@ -166,6 +168,43 @@ def test_forgot_answers_the_same_for_every_login(api, world, wallet_on, mailoutb
     assert "మీ పాస్‌వర్డ్ మార్చడానికి" in mailoutbox[0].body  # its language: Telugu
 
 
+def test_every_step_answers_the_same_for_every_login(api, world, citizen, mailoutbox, code_journey, english):
+    """BVTGC-152: the wait for a new code, the day's limit and a wrong code no longer tell a registered
+    login from an unknown or blocked one; only the registered one gets emails."""
+    blocked = make_citizen(world, n=2, email="suresh@gmail.com", mobile="9876500002")
+    User.objects.filter(pk=blocked.user_id).update(is_active=False)
+    runs = {
+        login: code_journey(login, FORGOT, RESET, new_password="71935284")
+        for login in ["9876543210", "nobody@gmail.com", "9000000000", "suresh@gmail.com"]
+    }
+    assert len({tuple(run) for run in runs.values()}) == 1, runs
+    steps = runs["9876543210"]
+    assert [step[0] for step in steps] == [200, 429] + [400] * 6 + [200] * 4 + [429]
+    assert steps[1][1:] == ("code_cooldown", "Wait 60 seconds before asking for a new code.", None, 60)
+    assert [step[3] for step in steps[2:7]] == [4, 3, 2, 1, 0] and steps[2][2] == "Wrong code. Tries left: 4."
+    assert steps[7][1] == "code_expired" and steps[-1][1] == "code_limit"
+    assert {tuple(m.to) for m in mailoutbox} == {("lakshmi.devi@gmail.com",)}  # nothing to the others
+    assert not VerificationCode.objects.exclude(account=citizen).exists()
+
+
+def test_an_unknown_login_waits_across_its_spellings(api, wallet_on, english):
+    """BVTGC-152: like a registered account's codes, the wait counts the number or the email, however written."""
+    assert api().post(FORGOT, {"login": "9000000000"}, format="json").status_code == 200
+    again = api().post(FORGOT, {"login": "+91 90000-00000"}, format="json")
+    assert (again.status_code, err(again)) == (429, "code_cooldown")
+    assert api().post(FORGOT, {"login": "Nobody.Here@gmail.com"}, format="json").status_code == 200
+    again = api().post(FORGOT, {"login": "nobodyhere+x@googlemail.com"}, format="json")
+    assert (again.status_code, err(again)) == (429, "code_cooldown")
+
+
+def test_the_decoy_key_holds_no_email_or_number():
+    from apps.citizens.services_account import decoy_key
+
+    key = decoy_key("Nobody.Here@gmail.com")
+    assert key == decoy_key("nobodyhere@gmail.com") and "nobody" not in key and len(key) == 64
+    assert decoy_key("+91 90000 00000") == decoy_key("9000000000") and "9000000000" not in decoy_key("9000000000")
+
+
 def reset_code(api, mailoutbox, login="9876543210") -> str:
     assert api().post(FORGOT, {"login": login}, format="json").status_code == 200
     return code_in(mailoutbox[-1])
@@ -182,6 +221,26 @@ def test_a_reset_sets_the_new_password_and_ends_every_other_login(api, citizen, 
     assert (refreshed.status_code, err(refreshed)) == (401, "session_revoked")
     assert mailoutbox[-1].subject == "మీ గ్రామ కనెక్ట్ పాస్‌వర్డ్ మారింది"  # the notice
     assert AuditLog.objects.filter(action="citizen.password_reset", target_id=str(citizen.user_id)).exists()
+
+
+def test_a_login_counts_the_day_and_a_refused_one_does_not(api, world, citizen):
+    """BVTGC-154: a login is a day of using the app (the referral's active rule); a refused one is not."""
+    assert err(log_in(api, "9876543210", "wrong-pass")) == "invalid_credentials"
+    blocked = make_citizen(world, n=2, email="suresh@gmail.com", mobile="9876500002")
+    User.objects.filter(pk=blocked.user_id).update(is_active=False)
+    assert err(log_in(api, "suresh@gmail.com")) == "account_blocked"
+    assert not citizen.active_days.exists() and not blocked.active_days.exists()
+    assert log_in(api, "9876543210").status_code == 200
+    assert log_in(api, "lakshmi.devi@gmail.com").status_code == 200
+    assert list(citizen.active_days.values_list("day", flat=True)) == [timezone.localdate()]
+
+
+def test_a_reset_counts_the_day(api, citizen, mailoutbox):
+    """BVTGC-154: the reset signs the app in, so it is a day of using it."""
+    code = reset_code(api, mailoutbox)
+    response = api().post(RESET, {"login": "9876543210", "code": code, "new_password": "71935284"}, format="json")
+    assert response.status_code == 200
+    assert list(citizen.active_days.values_list("day", flat=True)) == [timezone.localdate()]
 
 
 def test_a_reset_ends_a_lockout(api, citizen, mailoutbox):

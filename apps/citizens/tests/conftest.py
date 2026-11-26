@@ -14,6 +14,50 @@ POSTS = "/api/v1/citizen/posts/"
 
 
 @pytest.fixture
+def clock(monkeypatch):
+    """A clock the test moves by hand (`clock[0] += timedelta(...)`), so two logins meet the same times."""
+    from django.utils import timezone
+
+    now = [timezone.now()]
+    monkeypatch.setattr("django.utils.timezone.now", lambda: now[0])
+    return now
+
+
+@pytest.fixture
+def code_journey(api, mailoutbox, clock):
+    """Everything a caller can see of one login in a code flow (BVTGC-152): a code, another at once, six
+    typed codes, then a code a minute until the day's limit. Returns one tuple per step, so the journeys
+    of a registered login and of an unknown, blocked or deleted one can be compared whole."""
+    import json
+    import re
+    from datetime import timedelta
+
+    def answer(response) -> tuple:
+        body = response.json()
+        error = body.get("error")
+        if error is None:
+            return (response.status_code, json.dumps(body, sort_keys=True))
+        return (response.status_code, error["code"], error["message"], error.get("attempts_left"), error.get("retry_after_s"))
+
+    def run(login: str, send_url: str, check_url: str, **extra) -> list[tuple]:
+        def send():
+            return answer(api().post(send_url, {"login": login}, format="json"))
+
+        seen = len(mailoutbox)
+        steps = [send(), send()]
+        real = re.search(r"\b(\d{6})\b", mailoutbox[-1].subject).group(1) if len(mailoutbox) > seen else None
+        wrong = "000000" if real != "000000" else "111111"
+        for _ in range(6):
+            steps.append(answer(api().post(check_url, {"login": login, "code": wrong, **extra}, format="json")))
+        for _ in range(5):
+            clock[0] += timedelta(seconds=61)
+            steps.append(send())
+        return steps
+
+    return run
+
+
+@pytest.fixture
 def media_root(settings, tmp_path):
     settings.MEDIA_ROOT = tmp_path / "media"
     return settings.MEDIA_ROOT

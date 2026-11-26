@@ -116,6 +116,13 @@ def test_a_citizen_signs_up_with_the_email_code(api, world, wallet_on, mailoutbo
     assert entry.data == {"village_id": world.ref("kolakaluru").id, "referral_code_used": False}
 
 
+def test_finishing_the_sign_up_counts_today_for_the_active_rule(api, world, wallet_on, mailoutbox):
+    """BVTGC-154: the sign-up day is a day of using the app (the referral's active rule)."""
+    signed_up(api, world, mailoutbox)
+    account = CitizenAccount.objects.get()
+    assert list(account.active_days.values_list("day", flat=True)) == [timezone.localdate()]
+
+
 def test_the_new_account_is_logged_in_with_a_citizen_token(api, world, wallet_on, mailoutbox):
     data = signed_up(api, world, mailoutbox)
     client = api()
@@ -167,6 +174,19 @@ def test_an_inactive_village_is_refused(api, world, wallet_on):
 def test_mobile_with_plus_91_and_spaces_is_accepted(api, world, wallet_on, mailoutbox):
     signed_up(api, world, mailoutbox, mobile="+91 98765-43210")
     assert CitizenAccount.objects.get().mobile_last4 == "3210"
+
+
+def test_mobile_with_a_leading_0_is_the_same_number(api, world, wallet_on, mailoutbox):
+    """BVTGC-153: the app and the website accept "0" + 10 digits; the server stores the 10 digits."""
+    signed_up(api, world, mailoutbox, mobile="098765 43210")
+    account = CitizenAccount.objects.get()
+    assert account.mobile_last4 == "3210" and account.mobile_hash == hash_mobile("9876543210")
+
+
+@pytest.mark.parametrize("mobile", ["05876543210", "0987654321", "009876543210", "+910987654321"])
+def test_a_leading_0_does_not_make_a_wrong_number_right(api, world, wallet_on, mobile):
+    response = api().post(SIGNUP, form(world, mobile=mobile), format="json")
+    assert err(response) == "validation_error" and "mobile" in response.json()["error"]["fields"]
 
 
 def test_the_officials_password_rule_is_unchanged():

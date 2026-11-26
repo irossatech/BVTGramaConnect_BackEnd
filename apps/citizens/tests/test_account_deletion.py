@@ -284,6 +284,12 @@ def test_the_same_answer_for_every_login(api, world, citizen, mailoutbox):
     assert [m.to for m in mailoutbox] == [["lakshmi.devi@gmail.com"]]  # only the open account
 
 
+def test_a_number_with_a_leading_0_gets_the_code(api, citizen, mailoutbox):
+    """BVTGC-153: the website accepts "0" + 10 digits, so the server must find the account by it."""
+    assert ask_code(api, "098765 43210").status_code == 200
+    assert [m.to for m in mailoutbox] == [["lakshmi.devi@gmail.com"]]
+
+
 def test_a_password_reset_code_does_not_delete(api, citizen, mailoutbox):
     api().post(FORGOT, {"login": "9876543210"}, format="json")
     reset_code = code_in(mailoutbox[-1])
@@ -302,6 +308,34 @@ def test_a_wrong_code_counts_its_tries(api, citizen, mailoutbox):
     assert response.json()["error"]["attempts_left"] == 4
     citizen.refresh_from_db()
     assert citizen.deleted_at is None
+
+
+def test_every_step_answers_the_same_for_every_login(api, world, citizen, mailoutbox, code_journey, english):
+    """BVTGC-152: the website's deletion page no longer tells a registered login apart by the wait for a
+    new code, the day's limit or a wrong code (TC-142-07); only the registered one gets emails."""
+    blocked = make_citizen(world, 2, email="blocked@gmail.com", mobile="9876500002")
+    User.objects.filter(pk=blocked.user_id).update(is_active=False)
+    gone = make_citizen(world, 3, email="gone@gmail.com", mobile="9876500003")
+    accounts.delete_account(gone, via="app")
+    mailoutbox.clear()
+    runs = {
+        login: code_journey(login, DELETE_CODE, DELETE_WITH_CODE)
+        for login in ["9876543210", "nobody@gmail.com", "blocked@gmail.com", "gone@gmail.com", "9876500003"]
+    }
+    assert len({tuple(run) for run in runs.values()}) == 1, runs
+    steps = runs["9876543210"]
+    assert [step[0] for step in steps] == [200, 429] + [400] * 6 + [200] * 4 + [429]
+    assert [step[3] for step in steps[2:7]] == [4, 3, 2, 1, 0] and steps[7][1] == "code_expired"
+    assert {tuple(m.to) for m in mailoutbox} == {("lakshmi.devi@gmail.com",)}
+    citizen.refresh_from_db()
+    assert citizen.deleted_at is None
+
+
+def test_the_forgotten_password_and_the_deletion_share_the_wait(api, wallet_on, english):
+    """As a registered account's codes do, an unknown login's codes share one 60-second wait (BVTGC-152)."""
+    assert ask_code(api, "nobody@gmail.com").status_code == 200
+    again = api().post(FORGOT, {"login": "nobody@gmail.com"}, format="json")
+    assert (again.status_code, err(again)) == (429, "code_cooldown")
 
 
 def test_an_unknown_login_reads_as_an_expired_code(api, citizen):

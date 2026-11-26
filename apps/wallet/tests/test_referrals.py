@@ -93,6 +93,30 @@ def test_a_friend_signing_up_with_a_code_starts_a_held_referral(api, world, wall
     assert AuditLog.objects.filter(action="referral.created").exists()
 
 
+def test_the_sign_up_day_counts_for_the_active_rule(api, world, wallet_on, mailoutbox):
+    """BVTGC-154: a friend who signs up and opens the app once more on another day has the 2 active days.
+    Before, only opening the app (GET citizen/account/) counted, so the sign-up day was often lost."""
+    referrer = make_citizen(world, 1, phone="phone-a")
+    body = {
+        "name": "లక్ష్మి", "mobile": "9876543210", "email": "lakshmi@gmail.com", "password": "48213957",
+        "village_id": world.ref("kolakaluru").id, "age_confirmed": True, "consent_version": "2026-11-25",
+        "referral_code": referrer.referral_code, "android_id": "phone-b",
+    }
+    token = api().post("/api/v1/citizen/auth/signup/", body, format="json").json()["signup_token"]
+    code = re.search(r"\b(\d{6})\b", mailoutbox[-1].subject).group(1)
+    assert api().post("/api/v1/citizen/auth/signup/verify/", {"signup_token": token, "code": code}, format="json").status_code == 201
+    referral = Referral.objects.get()
+    friend = referral.referee
+    assert list(friend.active_days.values_list("day", flat=True)) == [timezone.localdate()]
+
+    # The same, two days back: the sign-up day, then one open of the app the next day; the hold is over.
+    now = timezone.now()
+    CitizenActiveDay.objects.filter(account=friend).update(day=timezone.localdate(now - timedelta(days=2)))
+    CitizenActiveDay.objects.create(account=friend, day=timezone.localdate(now - timedelta(days=1)))
+    Referral.objects.filter(pk=referral.pk).update(pending_at=now - timedelta(days=2), confirm_after=now - timedelta(hours=1))
+    assert services.decide_due_referrals() == {"confirmed": 1, "rejected": 0}
+
+
 def test_two_accounts_of_one_phone_pay_only_the_welcome_bonus(world, wallet_on):
     referrer, friend = make_citizen(world, 1, phone="family"), make_citizen(world, 2, phone="family")
     services.start_referral(friend, referrer)
