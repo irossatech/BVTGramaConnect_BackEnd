@@ -6,6 +6,13 @@
    "204": {}
   }
  },
+ "DELETE /api/v1/admin/bills/{key}/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "204": {}
+  }
+ },
  "DELETE /api/v1/admin/categories/{id}/": {
   "request": {},
   "required": [],
@@ -21,6 +28,13 @@
   }
  },
  "DELETE /api/v1/admin/contacts/{id}/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "204": {}
+  }
+ },
+ "DELETE /api/v1/admin/services/{key}/": {
   "request": {},
   "required": [],
   "responses": {
