@@ -75,6 +75,7 @@ ACTION_LABELS = {
     # Services, bills and requests
     "service.created": _("added a service"),
     "service.updated": _("edited a service"),
+    "service.deleted": _("deleted a service"),
     "service.shown": _("showed a service on Home"),
     "service.hidden": _("hid a service from Home"),
     "service.reordered": _("changed the order of services"),

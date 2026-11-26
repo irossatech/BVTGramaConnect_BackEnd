@@ -88,6 +88,7 @@
         "apps/service_requests/tests/test_client_ref.py",
         "apps/service_requests/tests/test_old_requests_listed.py",
         "apps/service_requests/tests/test_own_install.py",
+        "apps/service_requests/tests/test_service_delete.py",
         "apps/service_requests/tests/test_service_requests.py",
         "apps/service_requests/tests/test_services.py",
         "apps/wallet/tests/test_admin_wallet.py",

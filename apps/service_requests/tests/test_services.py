@@ -23,6 +23,11 @@ def code(response):
     return response.json()["error"]["code"]
 
 
+def hide(*keys):
+    """A service is edited only while hidden from Home (2026-11-26)."""
+    Service.objects.filter(key__in=keys).update(is_active=False)
+
+
 @pytest.fixture
 def admin(api, world):
     return api(world.users["super"])
@@ -77,6 +82,7 @@ def test_a_taken_key_gets_a_number(admin, world):
 
 
 def test_the_key_never_changes(admin, world):
+    hide("aadhaar")
     response = admin.patch(f"{ADMIN}aadhaar/", {"name_en": "Aadhaar Seva", "key": "other"}, format="json")
     assert response.status_code == 200
     assert response.json()["key"] == "aadhaar" and response.json()["name_en"] == "Aadhaar Seva"
@@ -114,6 +120,7 @@ def test_without_an_example_both_are_empty(admin, world):
 
 
 def test_changing_only_the_telugu_example(admin, world):
+    hide("pan")
     admin.patch(f"{ADMIN}pan/", {"hint_en": "e.g. apply for a new PAN card"}, format="json")
     AuditLog.objects.all().delete()
     response = admin.patch(f"{ADMIN}pan/", {"hint_te": "ఉదా: కొత్త పాన్ కార్డు"}, format="json")
@@ -125,6 +132,7 @@ def test_changing_only_the_telugu_example(admin, world):
 def test_an_example_is_cleaned_of_extra_spaces_and_can_be_cleared(admin, world):
     data = admin.post(ADMIN, {**NEW, "hint_en": "  e.g.   new  card ", "hint_te": " ఉదా:   కొత్త  "}, format="json").json()
     assert (data["hint_en"], data["hint_te"]) == ("e.g. new card", "ఉదా: కొత్త")
+    hide("ration_card")
     cleared = admin.patch(f"{ADMIN}ration_card/", {"hint_en": ""}, format="json").json()
     assert cleared["hint_en"] == "" and cleared["hint_te"] == "ఉదా: కొత్త"
 
@@ -198,6 +206,7 @@ def test_a_multipart_create_with_a_logo_keeps_the_example(admin, world, media_ro
 
 
 def test_a_logo_is_added_replaced_and_removed(admin, world, media_root):
+    hide("pan")
     first = admin.patch(f"{ADMIN}pan/", {"logo": logo(fmt="JPEG", name="pan.jpg", mode="RGB")}, format="multipart")
     assert first.status_code == 200 and first.json()["logo"]
     old_file = Path(media_root) / first.json()["logo"].split("/media/", 1)[1]
@@ -215,6 +224,7 @@ def test_a_logo_is_added_replaced_and_removed(admin, world, media_root):
 
 
 def test_old_logo_files_are_deleted_after_the_change(admin, world, media_root, django_capture_on_commit_callbacks):
+    hide("pan")
     with django_capture_on_commit_callbacks(execute=True):
         first = admin.patch(f"{ADMIN}pan/", {"logo": logo()}, format="multipart").json()["logo"]
     old_file = Path(media_root) / first.split("/media/", 1)[1]
@@ -224,6 +234,7 @@ def test_old_logo_files_are_deleted_after_the_change(admin, world, media_root, d
 
 
 def test_a_wide_logo_keeps_its_shape(admin, world, media_root):
+    hide("pan")
     url = admin.patch(f"{ADMIN}pan/", {"logo": logo(size=(800, 400))}, format="multipart").json()["logo"]
     assert stored(media_root, url).size == (256, 128)
 

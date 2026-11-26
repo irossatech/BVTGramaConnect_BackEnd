@@ -35,6 +35,7 @@ def test_a_new_category_records_its_channel(api, console, world, channel):
 @pytest.mark.parametrize("channel", CHANNELS)
 def test_a_changed_category_records_its_channel(api, console, world, channel):
     news = Category.objects.get(key="news")
+    Category.objects.filter(pk=news.pk).update(is_active=False)  # names change only while off (2026-11-26)
     response = client_for(channel, api, console, world.users["super"]).patch(
         f"{ADMIN}{news.id}/", {"name_te": "వార్తలు"}, format="json"
     )
@@ -54,5 +55,6 @@ def test_a_settings_change_records_its_channel(api, console, world, channel):
 def test_a_client_header_cannot_claim_the_console(api, world):
     client = api(world.users["super"])
     news = Category.objects.get(key="news")
+    Category.objects.filter(pk=news.pk).update(is_active=False)  # names change only while off (2026-11-26)
     client.patch(f"{ADMIN}{news.id}/", {"name_te": "వార్తలు"}, format="json", HTTP_X_CLIENT="console")
     assert last("category.updated").via == "app"

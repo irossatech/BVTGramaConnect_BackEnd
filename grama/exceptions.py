@@ -35,6 +35,15 @@ class AuthError(exceptions.AuthenticationFailed):
         self.error_code = code
 
 
+def switch_off_first() -> ApiError:
+    """Post categories and services are edited and deleted only while switched off (2026-11-26)."""
+    return ApiError(
+        "switch_off_first",
+        _("Switch it off first. Only a switched-off item can be edited or deleted."),
+        status=status.HTTP_409_CONFLICT,
+    )
+
+
 def permission_denied(message=None) -> ApiError:
     return ApiError(
         "permission_denied",
