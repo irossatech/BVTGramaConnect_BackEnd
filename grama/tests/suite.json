@@ -222,7 +222,8 @@
         "grama/tests/test_limits_under_concurrency.py",
         "grama/tests/test_small_races.py",
         "grama/tests/test_concurrency_threads.py",
-        "grama/tests/test_migrations_both_ways.py"
+        "grama/tests/test_migrations_both_ways.py",
+        "apps/posts/tests/test_photo_limit_stale_count.py"
       ]
     },
     "api": {

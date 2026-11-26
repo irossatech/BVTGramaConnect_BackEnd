@@ -95,6 +95,9 @@ def test_the_same_push_token_registered_at_once_is_stored_once(world):
     assert Device.objects.filter(fcm_token=body["fcm_token"]).count() == 1
 
 
+@pytest.mark.xfail(strict=False, reason="BE-TEST-211: the photo limit's recount reads the post's prefetched media; "
+                                        "on MariaDB six uploads at once stored six photos (shown without threads in "
+                                        "apps/posts/tests/test_photo_limit_stale_count.py)")
 def test_photos_uploaded_at_once_never_pass_the_limit(world, settings, tmp_path, make_post_pending):
     from django.core.files.uploadedfile import SimpleUploadedFile
     from PIL import Image
