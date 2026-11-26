@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from django.utils.translation import gettext_lazy as _
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .models import WalletEntry
@@ -24,16 +25,26 @@ REASONS = {
 
 class WalletEntrySerializer(serializers.ModelSerializer):
     reason = serializers.SerializerMethodField()
+    release_at = serializers.SerializerMethodField()
 
     class Meta:
         model = WalletEntry
-        fields = ["id", "points", "kind", "status", "reason_key", "reason", "created_at", "decided_at"]
+        fields = ["id", "points", "kind", "status", "reason_key", "reason", "created_at", "decided_at", "release_at"]
 
     def get_reason(self, entry) -> str | None:
         if entry.reason:
             return entry.reason
         words = REASONS.get(entry.reason_key)
         return str(words) if words else None
+
+    @extend_schema_field(serializers.DateTimeField(allow_null=True))
+    def get_release_at(self, entry):
+        """When a held entry is decided: its referral's end of hold (the hourly job decides within the hour after).
+        Null when the entry is not on hold, or has no referral. Each row its own date (BVTGC-157): the summary's
+        next_release_at is only the earliest of them. Callers select_related("referral")."""
+        if entry.status != WalletEntry.Status.HELD or entry.referral_id is None:
+            return None
+        return serializers.DateTimeField().to_representation(entry.referral.confirm_after)
 
 
 # --- The Super Admin (BVTGC-128) ---------------------------------------------------------------------------

@@ -1608,7 +1608,11 @@ An optional account for citizens, used **only for the wallet of points and refer
  "status": "HELD",              // HELD, CONFIRMED, CANCELLED
  "reason_key": null,            // see "Reasons" below; null when there is nothing to explain
  "reason": null,                // text in the request's language; an adjustment's text as the Super Admin wrote it
- "created_at": "…", "decided_at": null}
+ "created_at": "…", "decided_at": null,
+ "release_at": "2026-12-02T10:00:00+05:30"}   // HELD only: when this entry is decided (its referral's end of hold;
+                                              // the hourly job decides within the hour after); null otherwise.
+                                              // Each row its own date (BVTGC-157); the summary's next_release_at is
+                                              // only the earliest. Also in the Super Admin's entry rows.
 
 // CodeSent: the answer to every request that sends a code
 {"expires_in": 600, "resend_after": 60, "email_hint": "r***@gmail.com"}   // email_hint only where noted
