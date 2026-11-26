@@ -47,7 +47,7 @@ stress, spike and soak have their own runner, `python -m grama.perftest`, becaus
 | File | What it is |
 |---|---|
 | `grama/tests/config/rbac-matrix.json` | The reviewable RBAC matrix: 8 roles, 8 expectation profiles, 85 endpoint rows, each with the contract section it comes from |
-| `grama/tests/config/openapi-snapshot.json` | The API's shape: 165 operations, request fields (type, required) and success-response fields (type), one level into lists and pages |
+| `grama/tests/config/openapi-snapshot.json` | The API's shape: 167 operations (the 2 DELETEs of #198, merged meanwhile, were reported as additive and added), request fields (type, required) and success-response fields (type), one level into lists and pages |
 | `grama/tests/test_rbac_matrix.py` (85 tests) | Every endpoint row x every role, with real logins (JWT, X-Citizen-Token); the config checked for consistency; every parameter-free list of the API must be in the matrix |
 | `grama/tests/test_token_edge_cases.py` (22) | No token, malformed tokens, a changed signature, a forged user id, an expired access token, a refresh token used as access and the other way round, a refresh token after logout, a blocked or deactivated official; console: no session, a write without CSRF, with CSRF, roles without the console permission |
 | `grama/tests/test_schema_snapshot.py` (9) | Today's schema against the snapshot: a gone address or method, a gone response field, a changed type or a newly required request field fails; additions only print. The comparison itself is tested on small made-up schemas |
