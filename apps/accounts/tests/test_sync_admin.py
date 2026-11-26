@@ -170,11 +170,31 @@ def test_group_edit_in_django_admin_is_audited_with_the_editor(world):
 
 
 def run_manage(db_path, *args):
-    env = {**os.environ, "SQLITE_PATH": str(db_path), "DJANGO_SETTINGS_MODULE": "grama.settings"}
-    return subprocess.run(
-        [sys.executable, "manage.py", *args],
-        cwd=settings.BASE_DIR, env=env, capture_output=True, text=True, encoding="utf-8", timeout=300,
-    )
+    """manage.py in a separate process, on the throwaway SQLite file `db_path` and nothing else.
+
+    The process is not under pytest, so the settings' test switch does not apply to it: on a server,
+    whose .env says DEBUG=False, it would use DATABASE_URL, the server's real database. On 2026-11-25 a
+    test run on the dev server did exactly that here and migrated its real accounts tables back to 0003
+    (sign-in crashed until they were migrated forward again). So DATABASE_URL is set explicitly to the
+    file, which both modes use, and the database the process will use is checked before anything runs.
+    """
+    url = "sqlite:///" + db_path.as_posix()
+    env = {**os.environ, "DATABASE_URL": url, "SQLITE_PATH": str(db_path), "DJANGO_SETTINGS_MODULE": "grama.settings"}
+    env.pop("TEST_DATABASE_URL", None)
+
+    def run(*command):
+        return subprocess.run(
+            [sys.executable, "manage.py", *command],
+            cwd=settings.BASE_DIR, env=env, capture_output=True, text=True, encoding="utf-8", timeout=300,
+        )
+
+    probe = run("shell", "-c", "from django.db import connection as c; print('DB=' + c.vendor + '|' + str(c.settings_dict['NAME']))")
+    used = next((line[3:] for line in probe.stdout.splitlines() if line.startswith("DB=")), "")
+    vendor, _, name = used.partition("|")
+    refusal = f"Refusing to run manage.py {' '.join(args)}: it would use {used or probe.stderr[-300:]!r}, not {db_path}"
+    assert vendor == "sqlite", refusal
+    assert os.path.normcase(os.path.abspath(name)) == os.path.normcase(os.path.abspath(db_path)), refusal
+    return run(*args)
 
 
 def test_migration_turns_role_strings_into_groups(tmp_path):
