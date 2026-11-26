@@ -47,7 +47,8 @@ class WalletView(APIView):
     def get(self, request):
         wallet = Wallet.objects.get(account__user=request.user)
         paginator = HistoryPagination()
-        page = paginator.paginate_queryset(WalletEntry.objects.filter(wallet=wallet), request, view=self)
+        entries = WalletEntry.objects.filter(wallet=wallet).select_related("referral")  # release_at, no query per row
+        page = paginator.paginate_queryset(entries, request, view=self)
         return Response(
             {
                 **services.summary(wallet),

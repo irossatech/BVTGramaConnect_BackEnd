@@ -268,6 +268,17 @@ def test_the_referrals_export_holds_no_full_email_or_number(admin, world, pair):
     assert {"report": "wallet_referrals", "filters": {"type": "referrals", "q": "(given)"}, "format": "csv"} in exported
 
 
+def test_the_super_admins_rows_carry_the_release_date_too(admin, pair):
+    """BVTGC-157: an entry row in the console says when a held entry is decided, as the citizen's wallet does."""
+    rows = admin.get(ENTRIES).json()["results"]
+    held = [row for row in rows if row["status"] == "HELD"]
+    assert held, rows  # at least the referrer's reward
+    assert all(row["release_at"] is not None for row in held)
+    assert all(row["release_at"] is None for row in rows if row["status"] != "HELD")
+    reward = next(r for r in admin.get(f"/api/v1/admin/wallets/{pair.referrer_id}/").json()["results"] if r["kind"] == "REFERRAL_REWARD")
+    assert reward["status"] == "HELD" and reward["release_at"] is not None
+
+
 def test_the_entries_export_filters(admin, pair, english):
     adjust(admin, pair.referrer, 5, "Fix")
     one = read_csv(admin.get(EXPORT + f"?type=entries&account_id={pair.referrer_id}&kind=ADJUSTMENT"))
@@ -312,7 +323,7 @@ def test_the_list_shows_every_entry_newest_first_without_full_details(admin, pai
     held = {row["kind"]: row for row in body["results"][1:]}
     assert held["WELCOME_BONUS"]["citizen"]["name"] == "Ravi" and held["WELCOME_BONUS"]["referral_id"] == str(pair.id)
     assert set(newest) == {
-        "id", "points", "kind", "status", "reason_key", "reason", "created_at", "decided_at", "created_by",
+        "id", "points", "kind", "status", "reason_key", "reason", "created_at", "decided_at", "release_at", "created_by",
         "referral_id", "citizen",
     }
     content = admin.get(ENTRIES).content.decode()

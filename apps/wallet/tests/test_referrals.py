@@ -8,7 +8,10 @@ import re
 from datetime import timedelta
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from django_q.models import Schedule
 
 from apps.accounts.models import RoleAssignment, User
@@ -280,6 +283,51 @@ def test_the_wallet_shows_the_balance_and_the_history_with_reasons(api, pair, en
         ("WELCOME_BONUS", 20, "CANCELLED", "not_active")
     ]
     assert body["results"][0]["reason"] == "Not confirmed: the new citizen did not use the app on enough days."
+
+
+def test_each_held_row_has_its_own_release_date(api, world, wallet_on):
+    """BVTGC-157: two friends who joined on different days. Each held row says when it is decided (its referral's
+    end of hold); the summary's next_release_at is the earliest; a decided row has none."""
+    referrer = make_citizen(world, 1, phone="a")
+    first = services.start_referral(make_citizen(world, 2, phone="b"), referrer)
+    second = services.start_referral(make_citizen(world, 3, phone="c"), referrer)
+    now = timezone.now()
+    Referral.objects.filter(pk=first.pk).update(confirm_after=now + timedelta(days=2))
+    Referral.objects.filter(pk=second.pk).update(confirm_after=now + timedelta(days=5))
+    first.refresh_from_db()
+    second.refresh_from_db()
+
+    def release_dates() -> tuple[dict, str | None]:
+        body = api(referrer.user).get(WALLET).json()
+        return {row["id"]: row["release_at"] for row in body["results"]}, body["next_release_at"]
+
+    rows, next_release = release_dates()
+    first_row = str(WalletEntry.objects.get(wallet_id=referrer.pk, referral=first).pk)
+    second_row = str(WalletEntry.objects.get(wallet_id=referrer.pk, referral=second).pk)
+    assert parse_datetime(rows[first_row]) == first.confirm_after
+    assert parse_datetime(rows[second_row]) == second.confirm_after
+    assert rows[first_row].endswith("+05:30")  # India time, as every time the API sends
+    assert parse_datetime(next_release) == first.confirm_after  # the earliest
+
+    assert services.decide(first, confirm=True) is True
+    rows, next_release = release_dates()
+    assert rows[first_row] is None  # decided: nothing left to wait for
+    assert parse_datetime(next_release) == second.confirm_after
+
+
+def test_the_history_takes_the_same_queries_however_many_rows(api, world, wallet_on):
+    """release_at reads each entry's referral: loaded with the entries, never one query per row (BVTGC-157)."""
+    referrer = make_citizen(world, 1, phone="a")
+    services.start_referral(make_citizen(world, 2, phone="b"), referrer)
+    client = api(referrer.user)
+    assert client.get(WALLET).status_code == 200  # warms the runtime settings' cache, as on a server
+    with CaptureQueriesContext(connection) as few:
+        assert client.get(WALLET).status_code == 200
+    for n in range(3, 7):
+        services.start_referral(make_citizen(world, n, phone=f"p{n}"), referrer)
+    with CaptureQueriesContext(connection) as many:
+        assert len(client.get(WALLET).json()["results"]) == 5
+    assert len(many.captured_queries) == len(few.captured_queries)
 
 
 def test_the_reasons_are_telugu_by_default(api, world, wallet_on):

@@ -172,7 +172,7 @@ class AdminWalletView(APIView):
     )
     def get(self, request, account_id):
         account = account_or_404(account_id)
-        entries = WalletEntry.objects.filter(wallet__account=account).select_related("created_by")
+        entries = WalletEntry.objects.filter(wallet__account=account).select_related("created_by", "referral")
         paginator = PageNumberPagination()
         page = paginator.paginate_queryset(entries.order_by("-created_at", "-pk"), request, view=self)
         response = paginator.get_paginated_response(AdminWalletEntrySerializer(page, many=True).data)
@@ -272,7 +272,7 @@ def referral_rows(params):
 
 def filtered_entries(params):
     """Every wallet entry, newest first, narrowed by the entries' filters; the list and the export share them."""
-    rows = WalletEntry.objects.select_related("wallet__account__user", "created_by")
+    rows = WalletEntry.objects.select_related("wallet__account__user", "created_by", "referral")
     account = params.get("account_id", "").strip()
     if account:
         if uuid_or_none(account) is None:
