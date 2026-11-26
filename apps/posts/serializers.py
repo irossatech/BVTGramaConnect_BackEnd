@@ -76,6 +76,12 @@ class AdminCategorySerializer(serializers.ModelSerializer):
     def get_icon_url(self, obj) -> str | None:
         return category_icon_url(self, obj)
 
+    def validate_key(self, value):
+        # The key never changes once added: the apps pick icons by it and cache it with their feeds.
+        if self.instance is not None and value != self.instance.key:
+            raise serializers.ValidationError(_("The key of a category cannot be changed."))
+        return value
+
     def to_internal_value(self, data):
         # Multipart: plain values, without the icon file (the view reads it). As a plain dict, a field
         # left out stays left out; DRF would otherwise read a missing is_active in a form as false.

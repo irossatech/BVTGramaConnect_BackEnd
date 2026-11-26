@@ -46,7 +46,7 @@ msgstr "పాస్‌వర్డ్‌లో కనీసం %(n)d అక్�
 msgid "Too many failed logins. Try again in %(m)d minute(s)."
 msgstr "చాలాసార్లు లాగిన్ విఫలమైంది. %(m)d నిమిషాల తర్వాత మళ్ళీ ప్రయత్నించండి."
 
-#: apps/accounts/credentials.py:178 apps/citizens/services_account.py:379
+#: apps/accounts/credentials.py:178 apps/citizens/services_account.py:385
 msgid "This account is blocked."
 msgstr "ఈ ఖాతా బ్లాక్ చేయబడింది."
 
@@ -314,7 +314,7 @@ msgstr "పాస్‌వర్డ్‌లో కనీసం %(parts)s ఉం
 msgid "a special character such as %(examples)s"
 msgstr "%(examples)s వంటి ఒక ప్రత్యేక గుర్తు"
 
-#: apps/accounts/views_auth.py:195 apps/citizens/services_account.py:492
+#: apps/accounts/views_auth.py:195 apps/citizens/services_account.py:518
 msgid "Choose a password different from the current one."
 msgstr "ప్రస్తుత పాస్‌వర్డ్‌కు భిన్నమైన పాస్‌వర్డ్ ఎంచుకోండి."
 
@@ -359,11 +359,11 @@ msgstr "ఈ మొబైల్ నంబర్ ఇప్పటికే ఒక �
 msgid "Your role cannot move this user."
 msgstr "మీ పాత్ర ఈ యూజర్‌ను వేరే ప్రాంతానికి మార్చలేదు."
 
-#: apps/accounts/views_users.py:203 apps/contacts/views_admin.py:85 apps/posts/views.py:252 apps/posts/views.py:562
+#: apps/accounts/views_users.py:203 apps/contacts/views_admin.py:85 apps/posts/views.py:300 apps/posts/views.py:610
 msgid "Give both level and area_id."
 msgstr "level, area_id రెండూ ఇవ్వండి."
 
-#: apps/accounts/views_users.py:229 apps/accounts/views_users.py:229 apps/posts/views.py:323 apps/service_requests/views.py:169
+#: apps/accounts/views_users.py:229 apps/accounts/views_users.py:229 apps/posts/views.py:371 apps/service_requests/views.py:169
 msgid "Unknown status."
 msgstr "తెలియని స్థితి."
 
@@ -392,7 +392,7 @@ msgstr "JPEG, PNG లేదా WebP చిత్రం అప్‌లోడ్ 
 msgid "Send a picture or a video, not both."
 msgstr "చిత్రం లేదా వీడియో పంపండి, రెండూ కాదు."
 
-#: apps/ads/services.py:140 apps/posts/serializers.py:158
+#: apps/ads/services.py:140 apps/posts/serializers.py:164
 msgid "The end date cannot be before the start date."
 msgstr "ముగింపు తేదీ ప్రారంభ తేదీకి ముందు ఉండకూడదు."
 
@@ -414,7 +414,7 @@ msgstr "చిత్రం వెడల్పు కనీసం %(px)d పి�
 msgid "Give a village id."
 msgstr "గ్రామం ఐడి ఇవ్వండి."
 
-#: apps/ads/views.py:60 apps/bills/views.py:25 apps/contacts/views_admin.py:144 apps/contacts/views_admin.py:174 apps/geography/views_admin.py:51 apps/posts/views.py:158 apps/posts/views.py:645 apps/service_requests/views.py:228 apps/web_admin/api.py:215 apps/web_admin/api.py:219 apps/web_public/api.py:185
+#: apps/ads/views.py:60 apps/bills/views.py:25 apps/contacts/views_admin.py:144 apps/contacts/views_admin.py:174 apps/geography/views_admin.py:51 apps/posts/views.py:181 apps/posts/views.py:693 apps/service_requests/views.py:228 apps/web_admin/api.py:215 apps/web_admin/api.py:219 apps/web_public/api.py:185
 msgid "Only Super Admins can do this."
 msgstr "దీనిని సూపర్ అడ్మిన్లు మాత్రమే చేయగలరు."
 
@@ -619,222 +619,226 @@ msgid "changed a post category"
 msgstr "పోస్ట్ వర్గాన్ని మార్చారు"
 
 #: apps/audit/labels.py:73
+msgid "deleted a post category"
+msgstr "పోస్ట్ వర్గాన్ని తొలగించారు"
+
+#: apps/audit/labels.py:74
 msgid "edited a notification text"
 msgstr "నోటిఫికేషన్ పాఠ్యాన్ని సవరించారు"
 
-#: apps/audit/labels.py:75
+#: apps/audit/labels.py:76
 msgid "added a service"
 msgstr "సేవను చేర్చారు"
 
-#: apps/audit/labels.py:76
+#: apps/audit/labels.py:77
 msgid "edited a service"
 msgstr "సేవను సవరించారు"
 
-#: apps/audit/labels.py:77
+#: apps/audit/labels.py:78
 msgid "showed a service on Home"
 msgstr "హోమ్‌లో సేవను చూపించారు"
 
-#: apps/audit/labels.py:78
+#: apps/audit/labels.py:79
 msgid "hid a service from Home"
 msgstr "హోమ్ నుండి సేవను దాచారు"
 
-#: apps/audit/labels.py:79
+#: apps/audit/labels.py:80
 msgid "changed the order of services"
 msgstr "సేవల క్రమాన్ని మార్చారు"
 
-#: apps/audit/labels.py:80
+#: apps/audit/labels.py:81
 msgid "added a bill / recharge"
 msgstr "బిల్లు / రీఛార్జ్‌ను చేర్చారు"
 
-#: apps/audit/labels.py:81
+#: apps/audit/labels.py:82
 msgid "edited a bill / recharge"
 msgstr "బిల్లు / రీఛార్జ్‌ను సవరించారు"
 
-#: apps/audit/labels.py:82
+#: apps/audit/labels.py:83
 msgid "showed a bill on Home"
 msgstr "హోమ్‌లో బిల్లును చూపించారు"
 
-#: apps/audit/labels.py:83
+#: apps/audit/labels.py:84
 msgid "hid a bill from Home"
 msgstr "హోమ్ నుండి బిల్లును దాచారు"
 
-#: apps/audit/labels.py:84
+#: apps/audit/labels.py:85
 msgid "changed the order of bills"
 msgstr "బిల్లుల క్రమాన్ని మార్చారు"
 
-#: apps/audit/labels.py:85
+#: apps/audit/labels.py:86
 msgid "sent a service request"
 msgstr "సేవా అభ్యర్థనను పంపారు"
 
-#: apps/audit/labels.py:86
+#: apps/audit/labels.py:87
 msgid "assigned a service request"
 msgstr "సేవా అభ్యర్థనను అప్పగించారు"
 
-#: apps/audit/labels.py:87
+#: apps/audit/labels.py:88
 msgid "changed a service request’s status"
 msgstr "సేవా అభ్యర్థన స్థితిని మార్చారు"
 
-#: apps/audit/labels.py:88
+#: apps/audit/labels.py:89
 msgid "cancelled their service request"
 msgstr "తమ సేవా అభ్యర్థనను రద్దు చేశారు"
 
-#: apps/audit/labels.py:90
+#: apps/audit/labels.py:91
 msgid "added a sponsored banner"
 msgstr "ప్రాయోజిత బ్యానర్‌ను చేర్చారు"
 
-#: apps/audit/labels.py:91
+#: apps/audit/labels.py:92
 msgid "edited a sponsored banner"
 msgstr "ప్రాయోజిత బ్యానర్‌ను సవరించారు"
 
-#: apps/audit/labels.py:92
+#: apps/audit/labels.py:93
 msgid "deleted a sponsored banner"
 msgstr "ప్రాయోజిత బ్యానర్‌ను తొలగించారు"
 
-#: apps/audit/labels.py:93
+#: apps/audit/labels.py:94
 msgid "added an important number"
 msgstr "ముఖ్యమైన నంబర్‌ను చేర్చారు"
 
-#: apps/audit/labels.py:94
+#: apps/audit/labels.py:95
 msgid "edited an important number"
 msgstr "ముఖ్యమైన నంబర్‌ను సవరించారు"
 
-#: apps/audit/labels.py:95
+#: apps/audit/labels.py:96
 msgid "removed an important number"
 msgstr "ముఖ్యమైన నంబర్‌ను తొలగించారు"
 
-#: apps/audit/labels.py:96
+#: apps/audit/labels.py:97
 msgid "imported important numbers"
 msgstr "ముఖ్యమైన నంబర్లను దిగుమతి చేశారు"
 
-#: apps/audit/labels.py:97
+#: apps/audit/labels.py:98
 msgid "added a number type"
 msgstr "నంబర్ రకాన్ని చేర్చారు"
 
-#: apps/audit/labels.py:98
+#: apps/audit/labels.py:99
 msgid "changed a number type"
 msgstr "నంబర్ రకాన్ని మార్చారు"
 
-#: apps/audit/labels.py:99
+#: apps/audit/labels.py:100
 msgid "deleted a number type"
 msgstr "నంబర్ రకాన్ని తొలగించారు"
 
-#: apps/audit/labels.py:100
+#: apps/audit/labels.py:101
 msgid "marked a contact message handled"
 msgstr "సంప్రదింపు సందేశాన్ని పరిష్కరించినట్లు గుర్తించారు"
 
-#: apps/audit/labels.py:101
+#: apps/audit/labels.py:102
 msgid "marked a contact message as new"
 msgstr "సంప్రదింపు సందేశాన్ని కొత్తదిగా గుర్తించారు"
 
-#: apps/audit/labels.py:103
+#: apps/audit/labels.py:104
 msgid "registered a citizen phone"
 msgstr "పౌరుని ఫోన్‌ను నమోదు చేశారు"
 
-#: apps/audit/labels.py:104
+#: apps/audit/labels.py:105
 msgid "blocked a citizen’s phone"
 msgstr "పౌరుని ఫోన్‌ను నిరోధించారు"
 
-#: apps/audit/labels.py:105
+#: apps/audit/labels.py:106
 msgid "unblocked a citizen’s phone"
 msgstr "పౌరుని ఫోన్‌పై నిరోధాన్ని తొలగించారు"
 
-#: apps/audit/labels.py:106
+#: apps/audit/labels.py:107
 msgid "ended a citizen’s block (its time was up)"
 msgstr "పౌరుని నిరోధాన్ని ముగించారు (సమయం పూర్తయింది)"
 
-#: apps/audit/labels.py:107
+#: apps/audit/labels.py:108
 msgid "discarded a citizen’s waiting posts"
 msgstr "పౌరుని వేచి ఉన్న పోస్ట్‌లను తిరస్కరించారు"
 
-#: apps/audit/labels.py:109
+#: apps/audit/labels.py:110
 msgid "sent a wallet code by email"
 msgstr "వాలెట్ కోడ్‌ను ఈమెయిల్‌లో పంపారు"
 
-#: apps/audit/labels.py:110
+#: apps/audit/labels.py:111
 msgid "created a citizen wallet account"
 msgstr "పౌరుని వాలెట్ ఖాతా సృష్టించారు"
 
-#: apps/audit/labels.py:111
+#: apps/audit/labels.py:112
 msgid "reset a forgotten wallet password with an email code"
 msgstr "ఈమెయిల్ కోడ్‌తో మర్చిపోయిన వాలెట్ పాస్‌వర్డ్‌ను రీసెట్ చేశారు"
 
-#: apps/audit/labels.py:112
+#: apps/audit/labels.py:113
 msgid "changed their wallet password"
 msgstr "తమ వాలెట్ పాస్‌వర్డ్ మార్చారు"
 
-#: apps/audit/labels.py:113
+#: apps/audit/labels.py:114
 msgid "changed their wallet account’s email"
 msgstr "తమ వాలెట్ ఖాతా ఈమెయిల్ మార్చారు"
 
-#: apps/audit/labels.py:114
+#: apps/audit/labels.py:115
 msgid "changed their wallet account’s mobile number"
 msgstr "తమ వాలెట్ ఖాతా మొబైల్ నంబర్ మార్చారు"
 
-#: apps/audit/labels.py:115
+#: apps/audit/labels.py:116
 msgid "moved their wallet account to another village"
 msgstr "తమ వాలెట్ ఖాతాను వేరే గ్రామానికి మార్చారు"
 
-#: apps/audit/labels.py:116
+#: apps/audit/labels.py:117
 msgid "deleted a citizen wallet account"
 msgstr "పౌరుని వాలెట్ ఖాతా తొలగించారు"
 
-#: apps/audit/labels.py:117
+#: apps/audit/labels.py:118
 msgid "looked up a citizen wallet account by number or email"
 msgstr "నంబర్ లేదా ఈమెయిల్‌తో పౌరుని వాలెట్ ఖాతాను వెతికారు"
 
-#: apps/audit/labels.py:118
+#: apps/audit/labels.py:119
 msgid "set a new email for a citizen wallet account"
 msgstr "పౌరుని వాలెట్ ఖాతాకు కొత్త ఈమెయిల్ పెట్టారు"
 
-#: apps/audit/labels.py:119
+#: apps/audit/labels.py:120
 msgid "removed the mobile number from a citizen wallet account"
 msgstr "పౌరుని వాలెట్ ఖాతా నుండి మొబైల్ నంబర్ తొలగించారు"
 
-#: apps/audit/labels.py:120
+#: apps/audit/labels.py:121
 msgid "blocked a citizen wallet account"
 msgstr "పౌరుని వాలెట్ ఖాతాను బ్లాక్ చేశారు"
 
-#: apps/audit/labels.py:121
+#: apps/audit/labels.py:122
 msgid "unblocked a citizen wallet account"
 msgstr "పౌరుని వాలెట్ ఖాతాను అన్‌బ్లాక్ చేశారు"
 
-#: apps/audit/labels.py:123
+#: apps/audit/labels.py:124
 msgid "started a referral (a friend signed up with a code)"
 msgstr "రిఫరల్ ప్రారంభమైంది (స్నేహితుడు కోడ్‌తో నమోదయ్యారు)"
 
-#: apps/audit/labels.py:124
+#: apps/audit/labels.py:125
 msgid "confirmed a referral"
 msgstr "రిఫరల్‌ను నిర్ధారించారు"
 
-#: apps/audit/labels.py:125
+#: apps/audit/labels.py:126
 msgid "did not confirm a referral"
 msgstr "రిఫరల్‌ను నిర్ధారించలేదు"
 
-#: apps/audit/labels.py:126
+#: apps/audit/labels.py:127
 msgid "found a wallet whose balance differs from its history"
 msgstr "చరిత్రతో సరిపోలని నిల్వ ఉన్న వాలెట్‌ను గుర్తించారు"
 
-#: apps/audit/labels.py:127
+#: apps/audit/labels.py:128
 msgid "corrected a citizen's points"
 msgstr "పౌరుని పాయింట్లను సరిచేశారు"
 
-#: apps/audit/labels.py:129
+#: apps/audit/labels.py:130
 msgid "exported a report"
 msgstr "నివేదికను ఎగుమతి చేశారు"
 
-#: apps/audit/labels.py:130
+#: apps/audit/labels.py:131
 msgid "email not delivered"
 msgstr "ఈమెయిల్ చేరలేదు"
 
-#: apps/audit/labels.py:131
+#: apps/audit/labels.py:132
 msgid "email skipped"
 msgstr "ఈమెయిల్ పంపలేదు"
 
-#: apps/audit/labels.py:132
+#: apps/audit/labels.py:133
 msgid "notification not delivered"
 msgstr "నోటిఫికేషన్ చేరలేదు"
 
-#: apps/audit/labels.py:141
+#: apps/audit/labels.py:142
 #, python-format
 msgid "other action (%(code)s)"
 msgstr "ఇతర చర్య (%(code)s)"
@@ -884,7 +888,7 @@ msgstr "%(n)d కంటే ఎక్కువ ఎంట్రీలు సరి
 msgid "Use a date like 2026-10-14."
 msgstr "2026-10-14 లాంటి తేదీ ఇవ్వండి."
 
-#: apps/audit/views.py:130 apps/posts/views.py:298
+#: apps/audit/views.py:130 apps/posts/views.py:346
 msgid "Give a user id."
 msgstr "యూజర్ ఐడి ఇవ్వండి."
 
@@ -896,7 +900,7 @@ msgstr "ఆడిట్ లాగ్‌ను సూపర్ అడ్మిన
 msgid "Only Super Admins can download the audit log."
 msgstr "ఆడిట్ లాగ్‌ను సూపర్ అడ్మిన్లు మాత్రమే డౌన్‌లోడ్ చేయగలరు."
 
-#: apps/audit/views.py:237 apps/wallet/views_admin.py:317 apps/web_admin/api.py:542
+#: apps/audit/views.py:237 apps/wallet/views_admin.py:349 apps/web_admin/api.py:542
 msgid "Only CSV export is available."
 msgstr "CSV ఎగుమతి మాత్రమే అందుబాటులో ఉంది."
 
@@ -904,7 +908,7 @@ msgstr "CSV ఎగుమతి మాత్రమే అందుబాటుల
 msgid "Invalid date."
 msgstr "తేదీ సరైనది కాదు."
 
-#: apps/audit/views.py:130 apps/posts/views.py:298
+#: apps/audit/views.py:130 apps/posts/views.py:346
 msgid "Not a user id."
 msgstr "ఇది యూజర్ ఐడి కాదు."
 
@@ -920,27 +924,27 @@ msgstr "ఈ పేరుతో బిల్ ఇప్పటికే ఉంద�
 msgid "Send every bill's key exactly once."
 msgstr "ప్రతి బిల్ కీని ఒక్కసారి మాత్రమే పంపండి."
 
-#: apps/citizens/codes.py:159
-msgid "This code has expired or was already used. Ask for a new one."
-msgstr "ఈ కోడ్ గడువు ముగిసింది లేదా ఇప్పటికే వాడబడింది. కొత్త కోడ్ అడగండి."
-
-#: apps/citizens/codes.py:97
+#: apps/citizens/codes.py:93
 msgid "Too many codes today. Try again tomorrow."
 msgstr "ఈ రోజు చాలా కోడ్‌లు అడిగారు. రేపు మళ్లీ ప్రయత్నించండి."
 
-#: apps/citizens/codes.py:83
+#: apps/citizens/codes.py:180
+msgid "This code has expired or was already used. Ask for a new one."
+msgstr "ఈ కోడ్ గడువు ముగిసింది లేదా ఇప్పటికే వాడబడింది. కొత్త కోడ్ అడగండి."
+
+#: apps/citizens/codes.py:86
 #, python-format
 msgid "Wait %(s)d seconds before asking for a new code."
 msgstr "కొత్త కోడ్ అడగడానికి ముందు %(s)d సెకన్లు ఆగండి."
 
-#: apps/citizens/codes.py:142
-msgid "We could not send the email just now. Try again in a few minutes."
-msgstr "ఇప్పుడు ఈమెయిల్ పంపలేకపోయాము. కొన్ని నిమిషాల తర్వాత మళ్లీ ప్రయత్నించండి."
-
-#: apps/citizens/codes.py:184
+#: apps/citizens/codes.py:98
 #, python-format
 msgid "Wrong code. Tries left: %(n)d."
 msgstr "కోడ్ తప్పు. మిగిలిన ప్రయత్నాలు: %(n)d."
+
+#: apps/citizens/codes.py:163
+msgid "We could not send the email just now. Try again in a few minutes."
+msgstr "ఇప్పుడు ఈమెయిల్ పంపలేకపోయాము. కొన్ని నిమిషాల తర్వాత మళ్లీ ప్రయత్నించండి."
 
 #: apps/citizens/passwords.py:37 apps/citizens/passwords.py:34
 msgid "The password cannot contain your mobile number."
@@ -1037,63 +1041,63 @@ msgstr "ఫోన్ తనిఖీ ఇప్పుడు అందుబాట
 msgid "Not a citizen post."
 msgstr "ఇది పౌరుడి పోస్ట్ కాదు."
 
-#: apps/citizens/services_account.py:175
+#: apps/citizens/services_account.py:179
 msgid "This sign-up has expired or was already finished. Start again."
 msgstr "ఈ నమోదు గడువు ముగిసింది లేదా ఇప్పటికే పూర్తయింది. మళ్లీ మొదలుపెట్టండి."
 
-#: apps/citizens/services_account.py:341
+#: apps/citizens/services_account.py:347
 msgid "Wrong email, mobile number or password."
 msgstr "ఈమెయిల్, మొబైల్ నంబర్ లేదా పాస్‌వర్డ్ తప్పు."
 
-#: apps/citizens/services_account.py:511
+#: apps/citizens/services_account.py:537
 msgid "This is already your email."
 msgstr "ఇది ఇప్పటికే మీ ఈమెయిల్."
 
-#: apps/citizens/services_account.py:559
+#: apps/citizens/services_account.py:585
 msgid "This is already your mobile number."
 msgstr "ఇది ఇప్పటికే మీ మొబైల్ నంబర్."
 
-#: apps/citizens/services_account.py:126
+#: apps/citizens/services_account.py:130
 msgid "This mobile number already has an account. Log in or reset your password."
 msgstr "ఈ మొబైల్ నంబర్‌తో ఇప్పటికే ఖాతా ఉంది. లాగిన్ చేయండి లేదా పాస్‌వర్డ్ రీసెట్ చేయండి."
 
-#: apps/citizens/services_account.py:132
+#: apps/citizens/services_account.py:136
 msgid "This email already has an account. Log in or reset your password."
 msgstr "ఈ ఈమెయిల్‌తో ఇప్పటికే ఖాతా ఉంది. లాగిన్ చేయండి లేదా పాస్‌వర్డ్ రీసెట్ చేయండి."
 
-#: apps/citizens/services_account.py:143
+#: apps/citizens/services_account.py:147
 msgid "This mobile number belongs to another account. If it is yours, call the help line."
 msgstr "ఈ మొబైల్ నంబర్ వేరే ఖాతాకు చెందినది. ఇది మీదే అయితే, హెల్ప్ లైన్‌కు కాల్ చేయండి."
 
-#: apps/citizens/services_account.py:149
+#: apps/citizens/services_account.py:153
 msgid "This email belongs to another account. If it is yours, call the help line."
 msgstr "ఈ ఈమెయిల్ వేరే ఖాతాకు చెందినది. ఇది మీదే అయితే, హెల్ప్ లైన్‌కు కాల్ చేయండి."
 
-#: apps/citizens/services_account.py:162
+#: apps/citizens/services_account.py:166
 msgid "No such referral code."
 msgstr "ఈ రిఫరల్ కోడ్ లేదు."
 
-#: apps/citizens/services_account.py:164
+#: apps/citizens/services_account.py:168
 msgid "You cannot use your own referral code."
 msgstr "మీ స్వంత రిఫరల్ కోడ్‌ను వాడలేరు."
 
-#: apps/citizens/services_account.py:166
+#: apps/citizens/services_account.py:170
 msgid "This referral code can no longer be used."
 msgstr "ఈ రిఫరల్ కోడ్‌ను ఇక వాడలేరు."
 
-#: apps/citizens/services_account.py:217
+#: apps/citizens/services_account.py:221
 msgid "The wallet is not open in your area yet."
 msgstr "మీ ప్రాంతంలో వాలెట్ ఇంకా ప్రారంభం కాలేదు."
 
-#: apps/citizens/services_account.py:219
+#: apps/citizens/services_account.py:223
 msgid "Confirm that you are 18 or older."
 msgstr "మీ వయస్సు 18 సంవత్సరాలు లేదా అంతకంటే ఎక్కువ అని నిర్ధారించండి."
 
-#: apps/citizens/services_account.py:221
+#: apps/citizens/services_account.py:225
 msgid "Agree to the latest consent notice."
 msgstr "తాజా సమ్మతి ప్రకటనకు అంగీకరించండి."
 
-#: apps/citizens/services_account.py:458
+#: apps/citizens/services_account.py:484
 msgid "Wrong password."
 msgstr "పాస్‌వర్డ్ తప్పు."
 
@@ -1105,7 +1109,7 @@ msgstr "ఇది ఇప్పటికే ఈ ఖాతా ఈమెయిల�
 msgid "This email belongs to another citizen account."
 msgstr "ఈ ఈమెయిల్ మరో పౌరుని ఖాతాకు చెందినది."
 
-#: apps/citizens/services_admin.py:58 apps/wallet/views_admin.py:92
+#: apps/citizens/services_admin.py:58 apps/wallet/views_admin.py:94
 msgid "No such citizen account."
 msgstr "అలాంటి పౌరుని ఖాతా లేదు."
 
@@ -1423,7 +1427,7 @@ msgstr "ఫైల్‌ను UTF-8 CSVగా సేవ్ చేయండి."
 msgid "Required."
 msgstr "తప్పనిసరి."
 
-#: apps/contacts/views_admin.py:85 apps/posts/views.py:252
+#: apps/contacts/views_admin.py:85 apps/posts/views.py:300
 msgid "Required with level."
 msgstr "level ఇచ్చినప్పుడు తప్పనిసరి."
 
@@ -1967,15 +1971,19 @@ msgstr "వీడియో"
 msgid "Empty means the system acted."
 msgstr "ఖాళీగా ఉంటే సిస్టమ్ చేసిందని అర్థం."
 
-#: apps/posts/serializers.py:346 apps/posts/services.py:417
+#: apps/posts/serializers.py:352 apps/posts/services.py:417
 msgid "Choose who will see the post."
 msgstr "పోస్ట్‌ను ఎవరు చూడాలో ఎంచుకోండి."
 
-#: apps/posts/serializers.py:353
+#: apps/posts/serializers.py:82
+msgid "The key of a category cannot be changed."
+msgstr "వర్గం కీని మార్చలేరు."
+
+#: apps/posts/serializers.py:359
 msgid "Enter a title."
 msgstr "శీర్షిక ఇవ్వండి."
 
-#: apps/posts/serializers.py:358
+#: apps/posts/serializers.py:364
 msgid "Enter the post text."
 msgstr "పోస్ట్ వివరాలు రాయండి."
 
@@ -2062,7 +2070,7 @@ msgstr "ఈ పోస్ట్‌ను రచయిత మాత్రమే �
 msgid "Only the author can delete this post."
 msgstr "ఈ పోస్ట్‌ను రచయిత మాత్రమే తొలగించగలరు."
 
-#: apps/posts/services.py:773 apps/posts/views.py:509
+#: apps/posts/services.py:773 apps/posts/views.py:557
 msgid "Your role cannot review posts."
 msgstr "మీ పాత్ర పోస్టులను సమీక్షించలేదు."
 
@@ -2105,45 +2113,50 @@ msgstr "ఈ ఫీల్డ్ తప్పనిసరి."
 msgid "One of %(s)s, not the current one."
 msgstr "%(s)s లో ఒకటి, ప్రస్తుతది కాకుండా."
 
-#: apps/posts/views.py:69
+#: apps/posts/views.py:70
 msgid "Another reviewer already acted on this post."
 msgstr "ఈ పోస్ట్‌పై మరో సమీక్షకులు ఇప్పటికే నిర్ణయం తీసుకున్నారు."
 
-#: apps/posts/views.py:233
+#: apps/posts/views.py:165
+#, python-format
+msgid "%(count)d posts use this category, and posts are never deleted. Switch the category off instead."
+msgstr "%(count)d పోస్టులు ఈ వర్గాన్ని వాడుతున్నాయి, పోస్టులు ఎప్పటికీ తొలగించబడవు. బదులుగా ఈ వర్గాన్ని ఆపివేయండి."
+
+#: apps/posts/views.py:281
 msgid "Unknown source."
 msgstr "తెలియని మూలం."
 
-#: apps/posts/views.py:264
+#: apps/posts/views.py:312
 msgid "Only the Super Admin can list a citizen's posts."
 msgstr "పౌరుడి పోస్టుల జాబితాను సూపర్ అడ్మిన్ మాత్రమే చూడగలరు."
 
-#: apps/posts/views.py:267
+#: apps/posts/views.py:315
 msgid "Give a citizen id."
 msgstr "పౌరుడి ఐడి ఇవ్వండి."
 
-#: apps/posts/views.py:623
+#: apps/posts/views.py:671
 #, python-format
 msgid "The active days cannot be more than the days points are held (%(n)d)."
 msgstr "యాక్టివ్ రోజులు పాయింట్లు నిలిపి ఉంచే రోజుల (%(n)d) కంటే ఎక్కువ ఉండకూడదు."
 
-#: apps/posts/views.py:617
+#: apps/posts/views.py:665
 #, python-format
 msgid "These are not active mandals: %(ids)s."
 msgstr "ఇవి యాక్టివ్ మండలాలు కావు: %(ids)s."
 
-#: apps/posts/views.py:671
+#: apps/posts/views.py:719
 msgid "Telugu cannot be switched off."
 msgstr "తెలుగును ఆపివేయలేరు."
 
-#: apps/posts/views.py:233
+#: apps/posts/views.py:281
 msgid "official or citizen"
 msgstr "official లేదా citizen"
 
-#: apps/posts/views.py:267
+#: apps/posts/views.py:315
 msgid "Not a citizen id."
 msgstr "ఇది పౌరుడి ఐడి కాదు."
 
-#: apps/posts/views.py:671
+#: apps/posts/views.py:719
 msgid "Telugu is required."
 msgstr "తెలుగు తప్పనిసరి."
 
@@ -2294,48 +2307,48 @@ msgstr "0 కాకుండా వేరే పాయింట్ల సంఖ�
 msgid "Only %(n)d confirmed points: the balance cannot go below zero."
 msgstr "నిర్ధారించిన పాయింట్లు %(n)d మాత్రమే: బ్యాలెన్స్ సున్నా కంటే తగ్గకూడదు."
 
-#: apps/wallet/views_admin.py:99 apps/wallet/views_admin.py:128
+#: apps/wallet/views_admin.py:101 apps/wallet/views_admin.py:130
 msgid "Only the Super Admin can review referrals."
 msgstr "రిఫరల్‌లను సూపర్ అడ్మిన్ మాత్రమే సమీక్షించగలరు."
 
-#: apps/wallet/views_admin.py:153
+#: apps/wallet/views_admin.py:155 apps/wallet/views_admin.py:211
 msgid "Only the Super Admin can see citizens' wallets."
 msgstr "పౌరుల వాలెట్లను సూపర్ అడ్మిన్ మాత్రమే చూడగలరు."
 
-#: apps/wallet/views_admin.py:182
+#: apps/wallet/views_admin.py:184
 msgid "Only the Super Admin can correct points."
 msgstr "పాయింట్లను సూపర్ అడ్మిన్ మాత్రమే సరిచేయగలరు."
 
-#: apps/wallet/views_admin.py:218
+#: apps/wallet/views_admin.py:244
 msgid "Give a date as YYYY-MM-DD."
 msgstr "తేదీని YYYY-MM-DD రూపంలో ఇవ్వండి."
 
-#: apps/wallet/views_admin.py:290
+#: apps/wallet/views_admin.py:322
 msgid "Only the Super Admin can export wallets."
 msgstr "వాలెట్లను సూపర్ అడ్మిన్ మాత్రమే ఎగుమతి చేయగలరు."
 
-#: apps/wallet/views_admin.py:84
+#: apps/wallet/views_admin.py:86
 #, python-format
 msgid "%(name)s is one of: %(values)s."
 msgstr "%(name)s వీటిలో ఒకటి అయి ఉండాలి: %(values)s."
 
-#: apps/wallet/views_admin.py:252
+#: apps/wallet/views_admin.py:279
 msgid "Not an account id."
 msgstr "ఇది ఖాతా ఐడి కాదు."
 
-#: apps/wallet/views_admin.py:320
+#: apps/wallet/views_admin.py:352
 msgid "type is referrals or entries."
 msgstr "type విలువ referrals లేదా entries."
 
-#: apps/wallet/views_admin.py:135
+#: apps/wallet/views_admin.py:137
 msgid "No such referral."
 msgstr "అలాంటి రిఫరల్ లేదు."
 
-#: apps/wallet/views_admin.py:145
+#: apps/wallet/views_admin.py:147
 msgid "This referral was already decided."
 msgstr "ఈ రిఫరల్‌పై ఇప్పటికే నిర్ణయం తీసుకున్నారు."
 
-#: apps/wallet/views_admin.py:324
+#: apps/wallet/views_admin.py:356
 #, python-format
 msgid "More than %(n)d rows match. Narrow the filters."
 msgstr "%(n)d కంటే ఎక్కువ వరుసలు సరిపోలుతున్నాయి. ఫిల్టర్లను మరింత కుదించండి."

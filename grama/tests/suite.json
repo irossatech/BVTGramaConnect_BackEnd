@@ -50,6 +50,7 @@
         "apps/feed/tests/test_feed_owner_decisions.py",
         "apps/posts/tests/test_app_config.py",
         "apps/posts/tests/test_backfill_medium.py",
+        "apps/posts/tests/test_category_edit_delete.py",
         "apps/posts/tests/test_category_icons.py",
         "apps/posts/tests/test_client_ref.py",
         "apps/posts/tests/test_first_decision_race.py",
