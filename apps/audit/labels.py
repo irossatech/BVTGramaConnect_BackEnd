@@ -70,6 +70,7 @@ ACTION_LABELS = {
     "setting.role_password_changed": _("changed a default password"),
     "category.created": _("added a post category"),
     "category.updated": _("changed a post category"),
+    "category.deleted": _("deleted a post category"),
     "template.updated": _("edited a notification text"),
     # Services, bills and requests
     "service.created": _("added a service"),

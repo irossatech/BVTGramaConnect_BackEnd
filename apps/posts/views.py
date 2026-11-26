@@ -1,7 +1,8 @@
 """Posts API: docs/api-contract.md, sections 5 and 10."""
 
 from django.conf import settings
-from django.db import transaction
+from django.db import IntegrityError, transaction
+from django.db.models import ProtectedError
 from django.db.models import BooleanField, Case, Count, Prefetch, Q, Value, When
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -158,16 +159,30 @@ def _new_icon(request) -> bytes | None:
     return logos.process_logo(upload, field="icon") if upload is not None else None
 
 
-class AdminCategoryViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, mixins.UpdateModelMixin, viewsets.GenericViewSet):
+def _category_in_use(count: int) -> ApiError:
+    return ApiError(
+        "category_in_use",
+        _("%(count)d posts use this category, and posts are never deleted. Switch the category off instead.")
+        % {"count": count},
+        status=status.HTTP_409_CONFLICT,
+        count=count,
+    )
+
+
+class AdminCategoryViewSet(
+    mixins.ListModelMixin, mixins.CreateModelMixin, mixins.UpdateModelMixin, mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
+):
     """Super Admin categories. JSON, or multipart with an `icon` image (BVTGC-91): POST adds the icon,
     PATCH replaces it, and `"icon": null` on PATCH removes it. A replaced or removed file is deleted
-    only after the change is saved."""
+    only after the change is saved. DELETE removes a category no post uses, such as one added by
+    mistake; with posts it answers 409 category_in_use (posts are kept permanently)."""
 
     permission_classes = [IsAuthenticated, HasPerm("posts.manage_categories", PLATFORM, gettext_lazy("Only Super Admins can do this."))]
     serializer_class = AdminCategorySerializer
     parser_classes = [JSONParser, MultiPartParser, FormParser]
     pagination_class = None
-    http_method_names = ["get", "post", "patch", "head", "options"]
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
     def get_queryset(self):
         return Category.objects.annotate(post_count=Count("posts")).order_by("order", "id")
@@ -202,6 +217,31 @@ class AdminCategoryViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, mixin
             "category.updated", actor=self.request.user, target=category, target_label=category.name_en,
             via=client_via(self.request), data=changes,
         )
+
+    @extend_schema(summary="Delete a category no post uses (409 category_in_use otherwise)")
+    def destroy(self, request, *args, **kwargs):
+        category = self.get_object()
+        self.perform_destroy(category)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @transaction.atomic
+    def perform_destroy(self, category):
+        count = Post.objects.filter(category=category).count()
+        if count:
+            raise _category_in_use(count)
+        record(
+            "category.deleted", actor=self.request.user, target=category, target_label=category.name_en,
+            via=client_via(self.request),
+            data={"key": category.key, "name_en": category.name_en, "name_te": category.name_te},
+        )
+        icon_name = category.icon.name
+        try:
+            # Post.category is PROTECT: a post saved in this category a moment ago stops the delete here.
+            with transaction.atomic():
+                category.delete()
+        except (ProtectedError, IntegrityError):
+            raise _category_in_use(Post.objects.filter(category=category).count() or 1) from None
+        logos.delete_after_commit(icon_name, Category._meta.get_field("icon").storage)
 
 
 # --- Posts ----------------------------------------------------------------------------------
