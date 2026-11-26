@@ -285,8 +285,17 @@ def _check_room(post: Post, kind: str, *, written: bool = False) -> None:
 
 
 def _lock(post: Post) -> None:
-    """Serialise uploads to one post until the transaction ends (the recount after the write is the guard)."""
-    list(Post.objects.select_for_update().filter(pk=post.pk).values_list("pk", flat=True))
+    """Serialise uploads to one post until the transaction ends (the recount after the write is the guard).
+
+    The status is read again under the lock: the upload was processed after the first check, and the post
+    may have been submitted or published meanwhile; media are added only while it is a draft or in
+    recheck (finding BE-QUA-201).
+    """
+    status = Post.objects.select_for_update().filter(pk=post.pk).values_list("status", flat=True).first()
+    if status not in EDITABLE:
+        if status is not None:
+            post.status = status
+        raise invalid_transition(post, "changed")
 
 
 def add_photo(user, post: Post, upload, focus_y=None) -> PostMedia:

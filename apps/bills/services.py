@@ -90,10 +90,11 @@ def update_bill(user, bill: Bill, changes: dict, logo=None, remove_logo: bool = 
     drop_logo = remove_logo and data is None and bool(bill.logo)
     if not changed and data is None and not drop_logo:
         return bill
-    # Shown on Home: only the switch works. Names, icon, colour and logo only while hidden (2026-11-26).
-    if bill.is_active and ([name for name in changed if name != "is_active"] or data is not None or drop_logo):
-        raise switch_off_first()
     with transaction.atomic():
+        # Shown on Home: only the switch works. Names, icon, colour and logo only while hidden (2026-11-26).
+        # Read under a row lock, so a "show" sent at the same moment cannot let an edit through (BE-QUA-203).
+        if _shown_now(bill) and ([name for name in changed if name != "is_active"] or data is not None or drop_logo):
+            raise switch_off_first()
         for name in changed:
             setattr(bill, name, changes[name])
         if data is not None or drop_logo:
@@ -114,12 +115,17 @@ def update_bill(user, bill: Bill, changes: dict, logo=None, remove_logo: bool = 
     return bill
 
 
+def _shown_now(bill: Bill) -> bool:
+    """Inside a transaction: lock the bill's row and read its switch as saved now."""
+    return bool(Bill.objects.select_for_update().filter(pk=bill.pk).values_list("is_active", flat=True).first())
+
+
 def delete_bill(user, bill: Bill) -> None:
     """Delete a hidden bill, such as one added by mistake (2026-11-26). Nothing refers to a bill yet (no payment
     or request behind it), so any hidden bill may go; shown on Home: 409 switch_off_first."""
-    if bill.is_active:
-        raise switch_off_first()
     with transaction.atomic():
+        if _shown_now(bill):  # under a row lock (BE-QUA-203)
+            raise switch_off_first()
         record("bill.deleted", actor=user, target=bill, target_label=bill.name_en,
                data={"key": bill.key, "name_en": bill.name_en, "name_te": bill.name_te})
         logo = bill.logo.name

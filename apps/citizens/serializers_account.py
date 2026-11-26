@@ -9,6 +9,7 @@ from apps.audit.masking import mask_email
 from apps.geography.areas import AreaRef
 from apps.geography.models import AreaLevel
 from apps.posts.sharing import invite_url
+from grama.params import DbIdField
 
 from .models import CitizenAccount
 from .serializers import _describer, _village
@@ -19,7 +20,7 @@ class SignupSerializer(serializers.Serializer):
     mobile = serializers.CharField(max_length=20)
     email = serializers.EmailField(max_length=254)
     password = serializers.CharField(max_length=128, trim_whitespace=False)
-    village_id = serializers.IntegerField(min_value=1)
+    village_id = DbIdField()
     age_confirmed = serializers.BooleanField()
     consent_version = serializers.CharField(max_length=20)
     language = serializers.ChoiceField(choices=["te", "en"], default="te")
@@ -42,7 +43,7 @@ class CitizenResetSerializer(CitizenForgotSerializer):
 
 
 class AccountUpdateSerializer(serializers.Serializer):
-    village_id = serializers.IntegerField(min_value=1, required=False)
+    village_id = DbIdField(required=False)
     language = serializers.ChoiceField(choices=["te", "en"], required=False)
 
 

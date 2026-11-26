@@ -273,6 +273,32 @@ def test_a_refusal_from_google_keeps_its_reply_out_of_the_log(settings, monkeypa
     assert "SECRET" not in str(failure.value)
 
 
+@pytest.mark.parametrize("google_status", [429, 500, 503])
+def test_google_failing_is_unavailable_not_a_verdict_about_the_phone(settings, monkeypatch, google_status):
+    # BE-ERR-203: Google's own trouble is 503 integrity_unavailable ("try again"), not 403 ("not genuine").
+    from google.auth.transport import requests as google_requests
+    from google.oauth2 import service_account
+
+    class Failing:
+        status_code = google_status
+        text = "busy"
+
+    class Session:
+        def __init__(self, credentials):
+            pass
+
+        def post(self, *args, **kwargs):
+            return Failing()
+
+    settings.PLAY_INTEGRITY_PACKAGE = "com.bvt.app"
+    settings.PLAY_INTEGRITY_CREDENTIALS_FILE = "unused.json"
+    monkeypatch.setattr(service_account.Credentials, "from_service_account_file", lambda *a, **k: object())
+    monkeypatch.setattr(google_requests, "AuthorizedSession", Session)
+    with pytest.raises(integrity.IntegrityUnavailable):
+        integrity.PlayIntegrityVerifier().decode("tok")
+    assert not issubclass(integrity.IntegrityUnavailable, integrity.IntegrityFailed)  # so register answers 503
+
+
 def test_unconfigured_play_integrity_fails_closed(settings):
     settings.PLAY_INTEGRITY_PACKAGE = ""
     with pytest.raises(integrity.IntegrityFailed, match="not configured"):

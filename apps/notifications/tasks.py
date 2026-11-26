@@ -30,6 +30,9 @@ TOPIC_TASK = "apps.notifications.tasks.send_push_to_topic"
 DEVICE_TASK = "apps.notifications.tasks.send_push_to_device"
 CITIZEN_TASK = "apps.notifications.tasks.send_push_to_citizen"
 SERVICE_REQUEST_DEVICE_TASK = "apps.notifications.tasks.send_service_request_push_to_device"
+SERVICE_REQUEST_UPDATE_TASK = "apps.notifications.tasks.send_service_request_update"
+#: The longest Retry-After from FCM a retry honours.
+MAX_RETRY_AFTER_SECONDS = 3600
 
 
 def _audit_failure(target: str, error: Exception) -> None:
@@ -77,6 +80,9 @@ def _deliver(gateway, message: PushMessage, target: str, func: str, args: tuple,
                 _audit_failure(target, exc)
                 return False
             wait = delays[attempt - 1]
+            if wait > 0:
+                # FCM's Retry-After (429, 503): wait at least that long, at most an hour (BE-INT-203).
+                wait = max(wait, min(getattr(exc, "retry_after", 0) or 0, MAX_RETRY_AFTER_SECONDS))
             attempt += 1
             if wait > 0:
                 logger.info("Push to %s failed (%s); trying again in %s s.", target, type(exc).__name__, wait)
@@ -233,6 +239,30 @@ def send_service_request_push_to_device(device_id: str, request_id, template_key
         return False
     parts = services.service_request_push(request, template_key, device.user.preferred_language)
     return _service_request_to_device(gateway, device, request.pk, template_key, parts, attempt)
+
+
+def send_service_request_update(request_id, status: str, attempt: int = 1) -> bool:
+    """The citizen's push about their service request's new status. The text, with the official's note,
+    is written here from the request, so it is never an argument of this job or its retries (BE-JOB-201).
+    An unregistered token is forgotten."""
+    from apps.service_requests.models import ServiceRequest
+
+    from . import services
+
+    gateway = get_push_gateway()
+    request = ServiceRequest.objects.select_related("service", "device").filter(pk=request_id).first()
+    if not gateway.enabled or request is None or not request.device.fcm_token:
+        return False
+    device = request.device
+    title, body, data = services.service_request_update_push(request, status, device.language)
+    message = PushMessage(title=title, body=body, data=data, token=device.fcm_token)
+    try:
+        return _deliver(
+            gateway, message, f"citizen phone {device.pk}", SERVICE_REQUEST_UPDATE_TASK, (request.pk, status), attempt,
+        )
+    except InvalidDeviceToken:
+        type(device).objects.filter(pk=device.pk).update(fcm_token="")
+        return False
 
 
 def send_push_to_users(messages: list[list[str]], body: str, data: dict) -> int:

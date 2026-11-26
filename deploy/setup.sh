@@ -310,8 +310,9 @@ set_env "$GC_APP_ENV" PUBLIC_BASE_URL "https://$DOMAIN/" --if-missing
 #   FCM_CREDENTIALS_FILE: Firebase service-account JSON. Missing file = pushes off.
 set_env "$GC_APP_ENV" FCM_CREDENTIALS_FILE "$GC_ETC/fcm-service-account.json" --if-missing
 set_env "$GC_APP_ENV" FCM_PROJECT_ID "" --if-missing
-#   PLAY_INTEGRITY_PACKAGE: production (DEBUG=False) turns the citizen phone check on; without the package
-#   every citizen registration would fail with "Play Integrity is not configured".
+#   PLAY_INTEGRITY_PACKAGE: used once CITIZEN_INTEGRITY_REQUIRED=True turns the citizen phone check on (off by
+#   default until the app is on Google Play); with the check on and no package, every citizen registration
+#   fails with "Play Integrity is not configured".
 set_env "$GC_APP_ENV" PLAY_INTEGRITY_PACKAGE com.bvt.app --if-missing
 set_env "$GC_APP_ENV" LOG_LEVEL INFO --if-missing
 chown root:"$APP_USER" "$GC_APP_ENV"

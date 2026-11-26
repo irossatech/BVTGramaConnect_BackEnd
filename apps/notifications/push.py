@@ -102,6 +102,20 @@ class InvalidDeviceToken(PermanentDeliveryError):
     """The device token is unknown to FCM; the device should be forgotten."""
 
 
+class RetryLater(RuntimeError):
+    """A passing failure (FCM 429 or 5xx). `retry_after`: the seconds FCM asked to wait, 0 when it did not say."""
+
+    def __init__(self, message: str, retry_after: int = 0):
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
+def _retry_after(response) -> int:
+    """Retry-After in seconds; the HTTP-date form and anything unreadable count as not given."""
+    value = str(getattr(response, "headers", {}).get("Retry-After", "") or "").strip()
+    return int(value) if value.isdecimal() and len(value) <= 6 else 0
+
+
 class PushGateway(ABC):
     enabled = True
 
@@ -161,8 +175,18 @@ class FcmGateway(PushGateway):
             raise InvalidDeviceToken(detail)
         if response.status_code in (400, 401, 403):
             raise PermanentDeliveryError(f"FCM {response.status_code}: {detail}")
-        raise RuntimeError(f"FCM {response.status_code}: {detail}")
+        raise RetryLater(f"FCM {response.status_code}: {detail}", retry_after=_retry_after(response))
+
+
+_gateways: dict[tuple, PushGateway] = {}
 
 
 def get_push_gateway() -> PushGateway:
-    return import_string(settings.PUSH_GATEWAY)()
+    """One gateway per worker process for the configured class and credentials file: the FCM gateway
+    keeps its authorised session (credentials and OAuth token, refreshed by google-auth when it expires),
+    so a post for 200 areas no longer reads the key file and fetches a token 200 times (BE-INT-201)."""
+    key = (settings.PUSH_GATEWAY, getattr(settings, "FCM_CREDENTIALS_FILE", ""))
+    gateway = _gateways.get(key)
+    if gateway is None:
+        gateway = _gateways[key] = import_string(settings.PUSH_GATEWAY)()
+    return gateway

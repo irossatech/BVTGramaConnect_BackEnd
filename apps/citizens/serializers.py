@@ -11,6 +11,7 @@ from apps.geography.areas import AreaDescriber, AreaRef
 from apps.geography.models import AreaLevel
 from apps.posts.models import Category, MediaKind, PostStatus, ReviewAction
 from apps.posts.serializers import PersonSerializer, TranslationSerializer, describe_targets, translation_of
+from grama.params import DbIdField
 
 from .models import CitizenBlock, CitizenDevice
 
@@ -40,7 +41,7 @@ class RegisterSerializer(serializers.Serializer):
     nonce = serializers.CharField(max_length=200)
     integrity_token = serializers.CharField(max_length=20000, required=False, allow_blank=True, default="")
     platform = serializers.ChoiceField(choices=["android", "ios"])
-    village_id = serializers.IntegerField(min_value=1)
+    village_id = DbIdField()
     app_version = serializers.CharField(max_length=20, required=False, allow_blank=True, default="")
     #: Android's Settings.Secure.ANDROID_ID: links reinstalls, so a block survives them. Stored only hashed.
     android_id = serializers.CharField(max_length=100, required=False, allow_blank=True, default="")
@@ -51,7 +52,7 @@ class RegisterSerializer(serializers.Serializer):
 
 @extend_schema_serializer(component_name="CitizenDeviceUpdate")
 class DeviceUpdateSerializer(serializers.Serializer):
-    village_id = serializers.IntegerField(min_value=1, required=False)
+    village_id = DbIdField(required=False)
     fcm_token = serializers.CharField(max_length=255, required=False, allow_blank=True)
     language = serializers.ChoiceField(choices=LANGUAGES, required=False)
 

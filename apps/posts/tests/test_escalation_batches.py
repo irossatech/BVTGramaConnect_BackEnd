@@ -20,13 +20,13 @@ from conftest import make_bare_post
 pytestmark = pytest.mark.django_db
 
 
-def overdue(world, hours, status=PostStatus.PENDING):
-    ref = world.ref("kolakaluru")
+def overdue(world, hours, status=PostStatus.PENDING, area="kolakaluru", **extra):
+    ref = world.ref(area)
     return make_bare_post(
         author=world.users["pm_kolakaluru"], posted_as_role="PANCHAYAT_MEMBER", posted_as_level=ref.level,
         posted_as_area_id=ref.id, category=Category.objects.get(key="announce"), title=f"{hours} h",
         body="b", target_level=ref.level, target_area_id=ref.id, status=status,
-        submitted_at=timezone.now() - timedelta(hours=hours),
+        submitted_at=timezone.now() - timedelta(hours=hours), **extra,
     )
 
 
@@ -49,6 +49,32 @@ def test_a_run_takes_at_most_the_batch_oldest_first(world, settings, django_capt
     assert len(escalated_titles()) == 5
     with django_capture_on_commit_callbacks(execute=True):
         assert escalate_overdue() == 0  # each climbed once; the next level waits another period
+
+
+def test_posts_with_no_level_left_never_fill_the_batch(world, settings, django_capture_on_commit_callbacks):
+    # BE-DB-201: posts for Everyone, and posts already escalated to the state, have no level above them.
+    # Older than every village post, they used to take the whole batch on every run, so nothing climbed.
+    settings.ESCALATION_BATCH_SIZE = 2
+    for hours in (100, 90, 80):
+        overdue(world, hours, area="ap")  # for Everyone
+    overdue(world, 95, escalation_level="STATE", escalated_at=timezone.now() - timedelta(hours=70))
+    overdue(world, 30)
+    with django_capture_on_commit_callbacks(execute=True):
+        assert escalate_overdue() == 1
+    assert Post.objects.get(title="30 h").escalation_level == "MANDAL"
+    assert not Post.objects.filter(title__in=["100 h", "90 h", "80 h"], escalated_at__isnull=False).exists()
+    assert Post.objects.get(title="95 h").escalation_level == "STATE"
+
+
+def test_an_older_post_without_target_rows_climbs_from_its_first_area(world, django_capture_on_commit_callbacks):
+    from apps.posts.models import PostTarget
+
+    post = overdue(world, 30)
+    PostTarget.objects.filter(post=post).delete()  # as posts written before targets existed
+    with django_capture_on_commit_callbacks(execute=True):
+        assert escalate_overdue() == 1
+    post.refresh_from_db()
+    assert post.escalation_level == "MANDAL"
 
 
 def test_each_escalated_post_queues_its_own_alert_job(world, django_capture_on_commit_callbacks):

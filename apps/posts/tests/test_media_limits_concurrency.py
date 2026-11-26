@@ -70,6 +70,27 @@ def test_a_fourth_photo_that_slipped_past_the_early_check_is_refused_and_undone(
     assert files_on_disk(media_root) == before  # the fourth photo's three files are gone
 
 
+def test_a_photo_for_a_post_submitted_while_it_was_processed_is_refused(world, make_post, media_root):
+    # BE-QUA-201: the status is checked before processing; the post may be submitted while the photo is
+    # re-encoded, and media are added only to a draft or a post in recheck.
+    from apps.posts.models import Post, PostStatus
+
+    user, post = world.users[AUTHOR], make_post(AUTHOR, "kolakaluru", submit=False)
+    real = media.process_image
+
+    def processed_while_submitted(upload):
+        result = real(upload)
+        Post.objects.filter(pk=post.pk).update(status=PostStatus.PENDING)  # submitted from another phone
+        return result
+
+    with mock.patch.object(media, "process_image", side_effect=processed_while_submitted), \
+            pytest.raises(ApiError) as refused:
+        media.add_photo(user, post, jpeg())
+    assert refused.value.error_code == "invalid_transition"
+    assert not PostMedia.objects.filter(post_id=post.pk).exists()
+    assert files_on_disk(media_root) == []
+
+
 def test_a_photo_next_to_a_video_that_arrived_at_the_same_moment_is_refused(world, make_post, media_root, no_ffmpeg):
     user, post = world.users[AUTHOR], make_post(AUTHOR, "kolakaluru", submit=False)
     media.add_video(user, post, mp4(), duration_s=30, poster=jpeg())

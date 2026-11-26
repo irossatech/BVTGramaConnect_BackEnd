@@ -75,6 +75,9 @@ class Notification(models.Model):
         indexes = [
             models.Index(fields=["user", "created_at"]),
             models.Index(fields=["user", "read_at"]),
+            # The daily prune of read items older than NOTIFICATION_KEEP_DAYS, across every user
+            # (grama/housekeeping.py; finding BE-DB-203).
+            models.Index(fields=["created_at", "read_at"]),
         ]
 
     def __str__(self):

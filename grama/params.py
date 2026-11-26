@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import uuid
 
+from rest_framework import serializers
+
 #: A UUID as Django's <uuid:> path converter accepts it, in either case. For router lookup_value_regex.
 UUID_REGEX = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 
@@ -21,6 +23,16 @@ def is_number(value) -> bool:
     digits too), never "²" or "-1", and at most MAX_DB_ID. A larger number would reach the database and
     fail there with a 500 (SQLite OverflowError, PostgreSQL "out of range"; finding BE-TEST-208)."""
     return isinstance(value, str) and value.isdecimal() and len(value) <= 19 and int(value) <= MAX_DB_ID
+
+
+class DbIdField(serializers.IntegerField):
+    """An id sent in a request body: 1 to MAX_DB_ID, so a larger number is a 400, not a 500 from the
+    database (the body half of BE-TEST-208, finding BE-TEST-301)."""
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("min_value", 1)
+        kwargs.setdefault("max_value", MAX_DB_ID)
+        super().__init__(**kwargs)
 
 
 def uuid_or_none(value) -> uuid.UUID | None:

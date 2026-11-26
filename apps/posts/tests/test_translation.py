@@ -264,6 +264,51 @@ def test_bhashini_asks_the_pipeline_once_then_translates(settings, monkeypatch):
     translation.BhashiniTranslator._endpoints.clear()
 
 
+def bhashini_pipeline(settings, monkeypatch, callback, inference_status=200):
+    """Bhashini whose pipeline reply names `callback`; returns the addresses the server posted to."""
+    settings.TRANSLATION_PROVIDER = "bhashini"
+    settings.BHASHINI_USER_ID, settings.BHASHINI_API_KEY, settings.BHASHINI_PIPELINE_ID = "user", "key", "pipe"
+    translation.BhashiniTranslator._endpoints.clear()
+    sent = []
+
+    def post(url, **kwargs):
+        sent.append(url)
+        if url == translation.BhashiniTranslator.CONFIG_URL:
+            return Reply({
+                "pipelineResponseConfig": [{"config": [{"serviceId": "s"}]}],
+                "pipelineInferenceAPIEndPoint": {"callbackUrl": callback,
+                                                 "inferenceApiKey": {"name": "Authorization", "value": "k"}},
+            })
+        return Reply({"pipelineResponse": [{"output": [{"target": "ok"}]}]}, status=inference_status)
+
+    monkeypatch.setattr(translation.requests, "post", post)
+    return sent
+
+
+@pytest.mark.parametrize("callback", [
+    "http://dhruva.example/infer", "https://127.0.0.1/infer", "https://10.0.0.5/infer", "https://[::1]/infer",
+    "https://169.254.169.254/latest/meta-data", "https://localhost:8000/infer", "file:///etc/passwd", "",
+])
+def test_bhashini_never_sends_the_text_to_an_unsafe_address(settings, monkeypatch, callback):
+    # BE-SEC-206: the inference address comes from a third party's reply; the post's text and a key go there.
+    sent = bhashini_pipeline(settings, monkeypatch, callback)
+    with pytest.raises(RuntimeError):
+        translation.get_translator().translate(["గ్రామ సభ"], "te", "en")
+    assert sent == [translation.BhashiniTranslator.CONFIG_URL]  # nothing went to the unsafe address
+    translation.BhashiniTranslator._endpoints.clear()
+
+
+def test_a_refused_bhashini_key_is_asked_for_again(settings, monkeypatch):
+    # BE-INT-202: a rotated inference key no longer fails until the worker restarts.
+    sent = bhashini_pipeline(settings, monkeypatch, "https://dhruva.example/infer", inference_status=401)
+    translator = translation.get_translator()
+    for _ in range(2):
+        with pytest.raises(RuntimeError):
+            translator.translate(["గ్రామ సభ"], "te", "en")
+    assert sent.count(translation.BhashiniTranslator.CONFIG_URL) == 2
+    translation.BhashiniTranslator._endpoints.clear()
+
+
 def test_a_provider_error_never_carries_the_text(settings, monkeypatch):
     settings.TRANSLATION_PROVIDER, settings.GOOGLE_TRANSLATE_KEY = "google", "k"
     monkeypatch.setattr(translation.requests, "post", lambda url, **kw: Reply({"error": "గ్రామ సభ"}, status=403))

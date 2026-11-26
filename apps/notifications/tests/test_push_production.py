@@ -201,3 +201,47 @@ def test_switched_off_only_urgent_posts_go_out_high(
     publish(world, django_capture_on_commit_callbacks, urgent=urgent)
     [message] = [m for m in push_outbox if m.topic]
     assert message.priority == priority
+
+
+# --- One gateway per worker process (BE-INT-201) ---------------------------------------------------
+
+
+def test_the_gateway_and_its_session_are_built_once_per_process(settings, tmp_path, monkeypatch):
+    from apps.notifications import push
+
+    key_file = tmp_path / "fcm.json"
+    key_file.write_text("{}", encoding="utf-8")
+    settings.PUSH_GATEWAY = "apps.notifications.push.FcmGateway"
+    settings.FCM_CREDENTIALS_FILE = str(key_file)
+    monkeypatch.setattr(push, "_gateways", {})
+    built = []
+    monkeypatch.setattr(push.FcmGateway, "__init__", lambda self: built.append(self) or None)
+    first = push.get_push_gateway()
+    assert push.get_push_gateway() is first and len(built) == 1  # 200 topics: one key read, one token
+    settings.FCM_CREDENTIALS_FILE = str(tmp_path / "other.json")
+    assert push.get_push_gateway() is not first  # another key file is another gateway
+
+
+@pytest.mark.django_db
+def test_a_retry_waits_as_long_as_fcm_asked(settings):
+    # BE-INT-203: FCM's Retry-After (429, 503) is honoured, up to an hour; without it the backoff stands.
+    from datetime import timedelta
+
+    from django.utils import timezone
+    from django_q.models import Schedule
+
+    from apps.notifications import tasks
+    from apps.notifications.push import LocmemPushGateway, RetryLater, _retry_after
+
+    settings.DELIVERY_RETRY_BASE_SECONDS = 1.0
+    LocmemPushGateway.failures.clear()
+    LocmemPushGateway.failures.append(RetryLater("FCM 429", retry_after=120))
+    assert tasks.send_push_to_topic("village_1", "t", "b", {}) is False
+    retry = Schedule.objects.get(func=tasks.TOPIC_TASK)
+    assert retry.next_run >= timezone.now() + timedelta(seconds=100)
+
+    class Answer:
+        def __init__(self, value):
+            self.headers = {"Retry-After": value}
+
+    assert [_retry_after(Answer(v)) for v in ("30", "Wed, 21 Oct 2026 07:28:00 GMT", "", "-5", "9" * 9)] == [30, 0, 0, 0, 0]

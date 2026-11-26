@@ -10,4 +10,5 @@ enabled  = true
 port     = @SSH_PORT@
 backend  = systemd
 
-# No Nginx jail: the Nginx rate limits it acted on were removed on 2026-11-20 (lead's decision).
+# No Nginx jail: Nginx's own limit_req zones (gramaconnect-locations.conf, put back by BVTGC-105) answer
+# 429 themselves, and Django locks out failed logins (django-axes). fail2ban watches SSH only.
