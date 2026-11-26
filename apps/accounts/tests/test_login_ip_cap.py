@@ -1,7 +1,8 @@
 """The cap per address against password spraying (BVTGC-105, put back before go-live).
 
-LOGIN_IP_MAX_FAILURES (50) failed logins from one IP within LOGIN_IP_WINDOW_MINUTES (60), for any
+LOGIN_IP_MAX_FAILURES failed logins from one IP within LOGIN_IP_WINDOW_MINUTES (60), for any
 usernames, block every app and console login from that IP until the oldest of them leaves the window.
+The cap ships switched off (0) until production confirms real visitor addresses (BVTGC-39).
 These tests were removed with the cap on 2026-11-20 (79aaca7) and are back with it.
 """
 
@@ -101,6 +102,16 @@ def test_many_good_logins_from_one_office_are_not_limited(world):
         assert login("va_kolakaluru", ip="10.7.7.8").status_code == 200
 
 
-def test_default_ip_cap_is_fifty_failures_an_hour():
-    assert django_settings.LOGIN_IP_MAX_FAILURES == 50 and django_settings.LOGIN_IP_WINDOW_MINUTES == 60
+def test_ip_cap_is_off_by_default():
+    assert django_settings.LOGIN_IP_MAX_FAILURES == 0 and django_settings.LOGIN_IP_WINDOW_MINUTES == 60
     assert django_settings.AXES_ENABLE_ACCESS_FAILURE_LOG is True
+
+
+def test_with_the_default_many_failures_from_one_address_block_no_one_else(world):
+    """The shipped default: one shared address (a mobile network) with many wrong passwords on
+    many usernames still lets every other user in. The per-username limits stay on."""
+    spray(80)
+    assert login("va_kolakaluru").status_code == 200
+    for _ in range(5):
+        login("ma_tenali", "wrong")
+    assert code(login("ma_tenali")) == "locked_out"
