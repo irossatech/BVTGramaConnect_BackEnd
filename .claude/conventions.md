@@ -48,6 +48,7 @@
 ## Tests
 
 - pytest on SQLite: `python -m pytest -q -p no:logging`. Every pull request keeps the whole suite green.
+- Tests run on laptops and in CI only, never on a server: the suite refuses to start in a checkout whose `.env` says `DEBUG=False`. A test that starts `manage.py` in a subprocess must give it its own SQLite file and check it before running (`run_manage` in `apps/accounts/tests/test_sync_admin.py`).
 - Every permission rule gets a test, including the "outside the area" case. Follow the matrix style in `apps/accounts/tests/test_matrix.py` (every group × every permission × the same area, the parent, a sibling and another district) and `apps/posts/tests/test_access.py`: work out the expected answer in the test from the rules, not by calling the code under test.
 - Shared fixtures are in the root `conftest.py`: a small map (2 districts, 4 mandals, 8 villages) and one official per role and area (`world`, `api`). Put app-only fixtures in that app's `tests/conftest.py`.
 - Push is checked with the `push_outbox` fixture in `apps/notifications/tests/conftest.py`.
