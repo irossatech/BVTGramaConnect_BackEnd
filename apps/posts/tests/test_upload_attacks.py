@@ -112,10 +112,9 @@ def test_an_empty_file_is_refused(api, world, make_post):
     assert not PostMedia.objects.filter(post=post).exists()
 
 
-@pytest.mark.xfail(strict=True, reason="BE-TEST-209: the contract accepts HEIC photos, the server refuses them (415)")
 def test_the_photo_formats_in_the_contract_are_the_ones_the_server_takes():
-    """docs/api-contract.md, section 5: "Images: JPEG, PNG, WebP or HEIC". apps/posts/media.py takes
-    JPEG, PNG and WebP (MPO is a JPEG variant), and no HEIC decoder is installed."""
+    """docs/api-contract.md, section 5, "Images: …" names exactly what apps/posts/media.py takes (MPO is a
+    JPEG variant). It once promised HEIC, which the server refuses (finding BE-TEST-209, contract corrected)."""
     import re
     from pathlib import Path
 
@@ -124,6 +123,6 @@ def test_the_photo_formats_in_the_contract_are_the_ones_the_server_takes():
     from apps.posts.media import ALLOWED_FORMATS
 
     contract = (Path(settings.BASE_DIR) / "docs" / "api-contract.md").read_text(encoding="utf-8")
-    line = re.search(r"^- Images: ([^,]+(?:, [^,]+)*?) or (\w+), at most", contract, re.M)
+    line = re.search(r"^- Images: (.+?) or (\w+)[ ,(]", contract, re.M)
     promised = {name.strip().upper() for name in line.group(1).split(",")} | {line.group(2).upper()}
     assert promised <= ALLOWED_FORMATS | {"JPG"}, f"promised {sorted(promised)}, taken {sorted(ALLOWED_FORMATS)}"

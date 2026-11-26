@@ -1,15 +1,14 @@
-"""Finding BE-TEST-211 (Stage 6, 2026-11-26): the photo limit's recount reads a prefetched list.
+"""The photo limit counts from the database, not a prefetched list (finding BE-TEST-211, fixed 2026-11-26).
 
 apps/posts/media.py add_photo() checks the room twice: before processing the photo, and again inside the
-transaction after the new row is written, with the post row locked (BE-DB-014, BVTGC-109). Both checks
-call post.media.all().count(). The API's post views load the post with prefetch_related("media")
-(apps/posts/views.py, post_queryset), so count() answers from the list loaded with the post, not from
-the database. Uploads sent at the same moment all loaded the post before any of them finished, so each
-recount sees only itself and all of them pass the limit of 3: on MariaDB, six uploads at once stored six
-photos (grama/tests/test_concurrency_threads.py). The same count guards "photos or one video, never both".
+transaction after the new row is written, with the post row locked (BE-DB-014, BVTGC-109). The API's post
+views load the post with prefetch_related("media"), and both checks used to call post.media.all().count(),
+which answered from that list: uploads sent at the same moment all passed the limit of 3 (on MariaDB six
+uploads at once stored six photos, grama/tests/test_concurrency_threads.py). The checks now count
+PostMedia rows in the database. The same count guards "photos or one video, never both".
 
-This test shows it without threads, on any database: the post as the view loaded it, while three other
-uploads finish meanwhile. Not fixed in this stage, by the stage's rule; strict, so it reports once fixed.
+This test replays it without threads, on any database: the post as the view loaded it, while three
+other uploads finish meanwhile.
 """
 
 from __future__ import annotations
@@ -33,7 +32,6 @@ def jpeg() -> SimpleUploadedFile:
     return SimpleUploadedFile("photo.jpg", buffer.getvalue(), content_type="image/jpeg")
 
 
-@pytest.mark.xfail(strict=True, reason="BE-TEST-211: the photo limit's recount reads the post's prefetched media")
 def test_an_upload_that_loaded_the_post_before_others_finished_is_still_refused(world, make_post, settings):
     author = world.users["pm_kolakaluru"]
     post = make_post("pm_kolakaluru", "kolakaluru", submit=False)

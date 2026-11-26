@@ -136,30 +136,21 @@ def test_attack_strings_in_every_query_parameter(world, make_published_posts, pa
     assert not problems, f"{path}: " + "; ".join(problems[:10])
 
 
-HUGE = "99999999999999999999999999"  # larger than any database integer
-
-#: Lists whose area filter answers 500 to HUGE instead of 400 (finding BE-TEST-208, Stage 6 of 2026-11-26):
-#: the filter passes the number to the database, which cannot hold it (SQLite raises OverflowError,
-#: PostgreSQL "integer out of range"). Not fixed in this stage, by the stage's rule; strict, so the
-#: test reports it once it is fixed and the mark can go.
-BE_TEST_208 = {
-    "/api/v1/admin/citizens/blocked/", "/api/v1/geo/admin/villages/", "/api/v1/geo/districts/",
-    "/api/v1/geo/mandals/", "/api/v1/geo/villages/", "/api/v1/posts/", "/api/v1/users/",
-}
+#: Larger than any database integer. Seven lists' area filters once handed it to the database and answered
+#: 500 (SQLite OverflowError, PostgreSQL "out of range"; finding BE-TEST-208, fixed 2026-11-26 in
+#: grama/params.py is_number, so they answer 400 like any other bad id).
+HUGE = "99999999999999999999999999"
 
 
-def huge_number_cases():
-    from django.db import connection
+def test_an_id_is_a_number_the_database_can_hold():
+    from grama.params import MAX_DB_ID, is_number
 
-    # MySQL and MariaDB may compare the number and find nothing instead of failing: strict on SQLite only.
-    strict = connection.vendor == "sqlite"
-    reason = "BE-TEST-208: an area id too large for the database answers 500, not 400"
-    for path, params in LISTS:
-        marks = [pytest.mark.xfail(strict=strict, reason=reason)] if path in BE_TEST_208 else []
-        yield pytest.param(path, params, marks=marks, id=path)
+    assert is_number(str(MAX_DB_ID)) and is_number("1") and is_number("౧౨")  # Telugu digits still count
+    assert not is_number(str(MAX_DB_ID + 1)) and not is_number(HUGE) and not is_number("0" * 40 + "1")
+    assert not is_number("-1") and not is_number("²") and not is_number("") and not is_number(None)
 
 
-@pytest.mark.parametrize("path, params", list(huge_number_cases()))
+@pytest.mark.parametrize("path, params", LISTS, ids=[path for path, _ in LISTS])
 def test_a_number_too_large_for_the_database_in_every_query_parameter(world, path, params):
     phone = register(world).json()["token"]
     client = client_for_path(world, path, phone)

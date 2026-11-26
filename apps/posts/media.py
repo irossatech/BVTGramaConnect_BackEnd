@@ -270,8 +270,10 @@ def _check_room(post: Post, kind: str, *, written: bool = False) -> None:
     Checked before the upload is processed, and again inside the save's transaction once the new row
     is written (written=True, the post row locked): an upload that passed the early check at the same
     moment as another is refused there, and its row and files are undone (BE-DB-014, BVTGC-109).
+    Counted from the database, never from post.media: the post views prefetch it, and a list loaded
+    before another upload finished would let both pass (finding BE-TEST-211).
     """
-    media = post.media.all()
+    media = PostMedia.objects.filter(post_id=post.pk)
     new = 1 if written else 0  # the row this upload just wrote
     if kind == MediaKind.IMAGE:
         if media.filter(kind=MediaKind.VIDEO).exists():
@@ -293,7 +295,7 @@ def add_photo(user, post: Post, upload, focus_y=None) -> PostMedia:
     processed = process_image(upload)
     with files_removed_on_failure(), transaction.atomic():
         _lock(post)
-        media = store_photo(post, processed, order=post.media.count())
+        media = store_photo(post, processed, order=PostMedia.objects.filter(post_id=post.pk).count())
         _check_room(post, MediaKind.IMAGE, written=True)
         return media
 

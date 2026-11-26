@@ -10,19 +10,19 @@
 | Input reports | `BE_01_DISCOVERY_INVENTORY_V1_2026-11-09_05-34-09.md` (the endpoint inventory), `BE_02_TECH_AUDIT_V1_2026-11-09_11-25-02.md`, `BE_03_DATABASE_QUERY_AUDIT_V1_2026-11-09_11-44-26.md`, the three responses (`BE_01/02/03_RESPONSE_*`), `BE_06_TEST_SUITE_REPORT_V1_2026-11-23_22-28-30.md` |
 | Scope covered | The stage 6 prompt (config-driven backend suite): unit, integration, RBAC matrix, object-level access, contract snapshot, security attacks, throttling and lockout, database (query budgets, rollback, migrations both ways), concurrency on a real database, background jobs, error handling, and the load, stress, spike and soak runner with its dashboard |
 | Scope not covered | Load, stress, spike and soak **runs at real size**: the runner is built and was tried on a laptop server, but the runs wait for the staging server (BVTGC-38) and the expected users (BVTGC-37). Real Firebase, real Play Integrity and real ffmpeg (staging, BVTGC-32 and 33). The mobile app and the website (their own repos) |
-| Application code changed | **None.** Only tests, test tooling (`grama/testsuite*.py`, `grama/testdashboard.py`, `grama/perftest.py`), test config, `pytest.ini`, `.gitignore`, `.env.test.example`, the locustfile and docs |
+| Application code changed | **For the suite: none.** Only tests, test tooling (`grama/testsuite*.py`, `grama/testdashboard.py`, `grama/perftest.py`), test config, `pytest.ini`, `.gitignore`, `.env.test.example`, the locustfile and docs. **Then, by the backend owner's decision of 2026-11-26, the three findings were fixed on the same branch** (section "Fixes after the findings"): `apps/posts/media.py`, `grama/params.py`, `docs/api-contract.md` |
 
 ## In short
 
 | | |
 |---|---|
-| Result | Laptop (SQLite): **5,060 passed, 0 failed, 8 known bugs (xfail), 14 skipped** (each skip explained below). CI on MariaDB 11.4 ran the real-thread tests and found BE-TEST-211 (below); with it marked, every database is green |
+| Result | Laptop (SQLite): **5,060 passed, 0 failed, 8 known bugs (xfail), 14 skipped** (each skip explained below). CI on MariaDB 11.4 ran the real-thread tests and found BE-TEST-211 (below). All three findings are fixed since (no known bugs left) |
 | Health score | **94.9 / 100, risk LOW** (dashboard; the score is an estimate until stage 7 confirms it) |
 | Line coverage | **96.3%** of `apps/` and `grama/` (tests, migrations and the test tooling not counted) |
 | API coverage | **100%**: all 167 API methods are called by at least one test |
 | RBAC matrix | **80 of 167 API methods (47.9%)** checked for **every one of 8 roles** in one reviewable config file; the 87 others (ids in the path) are checked per object by the area tests (outside the area answers 404) |
 | New in V2 | RBAC matrix config, token and session edge cases, API schema snapshot, attack inputs in every query parameter, hostile uploads, real-thread concurrency tests, migrations both ways, pytest markers, HTML dashboard with health score, the load-test runner and its profiles |
-| Bugs found | **3**: **BE-TEST-211 (Medium)**, uploads sent at the same moment pass the photo limit of 3 (the BE-DB-014 guard recounts a prefetched list); BE-TEST-208 (Low), a number too large for the database in an area filter answers 500 on 7 lists (SQLite and PostgreSQL; MariaDB answers 400); BE-TEST-209 (Low), the contract promises HEIC photos, the server refuses them. All linked to xfail tests; not fixed in this stage, by the stage's rule |
+| Bugs found | **3**: **BE-TEST-211 (Medium)**, uploads sent at the same moment pass the photo limit of 3 (the BE-DB-014 guard recounts a prefetched list); BE-TEST-208 (Low), a number too large for the database in an area filter answers 500 on 7 lists (SQLite and PostgreSQL; MariaDB answers 400); BE-TEST-209 (Low), the contract promises HEIC photos, the server refuses them. First marked xfail with their finding, as the stage asks; then **all three fixed** on the owner's decision (below), and their tests now pass as regression tests |
 | Time | 11 to 19 minutes for everything with coverage (the laptop varies), 7 minutes without |
 
 ## How to run it
@@ -53,7 +53,7 @@ stress, spike and soak have their own runner, `python -m grama.perftest`, becaus
 | `grama/tests/test_schema_snapshot.py` (9) | Today's schema against the snapshot: a gone address or method, a gone response field, a changed type or a newly required request field fails; additions only print. The comparison itself is tested on small made-up schemas |
 | `grama/tests/test_attack_inputs.py` (65) | 16 attack strings (SQL injection, template, path and script strings, Telugu with a quote) in every query parameter of all 29 lists in the schema; a search must not find more; tables intact afterwards; a number too large for the database; mass assignment on posts, users, a citizen phone and website messages |
 | `apps/posts/tests/test_upload_attacks.py` (13) | Pictures claiming huge dimensions, polyglots (JPEG with HTML, ZIP or PHP appended), a PNG sent as JPEG, HTML, SVG with a script, GIF, a broken JPEG, an empty file, and the contract's photo formats |
-| `apps/posts/tests/test_photo_limit_stale_count.py` (2) | BE-TEST-211 shown without threads on any database (xfail), and the same order of events with a fresh post refused |
+| `apps/posts/tests/test_photo_limit_stale_count.py` (2) BE-TEST-211 replayed without threads on any database, and the same order of events with a fresh post (both pass since the fix) |
 | `grama/tests/test_concurrency_threads.py` (4) | Real threads on MariaDB or PostgreSQL: four reviewers publishing one post at once, eight posts from one phone against a limit of 3, one push token sent six times at once, six photos at once against the limit of 3. Skipped on SQLite with the reason |
 | `grama/tests/test_migrations_both_ways.py` (4) | Each app's newest migration back and forward on an empty database; every data step has a reverse; on request (`RUN_MIGRATION_ROUND_TRIP=1`) every app to zero and back |
 | `grama/tests/test_perftest.py` (17) | The load runner: production and qa refused, missing settings stop it, Locust's CSV becomes the figures, SLA per endpoint, stress breaking point, spike recovery, soak drift, no host or password in the locustfile |
@@ -125,8 +125,8 @@ Final full run with coverage, 2026-11-26 21:08 IST (`test-reports/BE_TESTS_all_2
 | Security settings and server safety | 167 | 159 | 0 | 8 | 0 |
 | **Total** | **5,082** | **5,060** | **0** | **8** | **14** |
 
-After this run, CI's MariaDB job found BE-TEST-211; its two tests were added then (1 passed, 1 xfail), so there
-are 9 known bugs on SQLite. The branch was also brought up to date with `dev` (#198 added its own tests), so
+After this run, CI's MariaDB job found BE-TEST-211 and its two tests were added; then all three findings were
+fixed, so the later runs have no known bugs (see "Fixes after the findings"). The branch was also brought up to date with `dev` (#198 added its own tests), so
 later runs count more tests than this table.
 
 The 14 skips: 7 by design (one parametrised test applies only to some officials), 1 needs ffmpeg (staging),
@@ -150,9 +150,9 @@ The 14 skips: 7 by design (one parametrised test applies only to some officials)
 
 | ID | Severity | Finding | Test | Status |
 |---|---|---|---|---|
-| BE-TEST-211 | Medium | **Uploads sent at the same moment pass the photo limit.** On MariaDB, six photos uploaded to one post at once were all stored (limit 3). Cause: `apps/posts/media.py` `add_photo()` recounts inside the locked transaction with `post.media.all().count()`, and the post views load the post with `prefetch_related("media")` (`apps/posts/views.py`, `post_queryset`), so the recount reads the list loaded with the post, not the database. The row lock waits as meant, but the count after it is stale. Any database; one upload at a time is not affected (each request loads the post fresh). The same count guards "photos or one video, never both" (`add_video`). Reached by a double tap or a retry on a slow network. The fix BE-DB-014 (BVTGC-109) is therefore not effective through the API; its own test calls the service with a fresh post | `apps/posts/tests/test_photo_limit_stale_count.py` (xfail, strict, any database, no threads); `grama/tests/test_concurrency_threads.py::test_photos_uploaded_at_once_never_pass_the_limit` (xfail, MariaDB and PostgreSQL) | Open: count from the database in `_check_room` (`PostMedia.objects.filter(post=post)`), not the post's related manager |
-| BE-TEST-208 | Low | A number too large for the database (`?district=99999999999999999999999999`) in the area filter of 7 lists answers **500** instead of 400: `admin/citizens/blocked/`, `geo/admin/villages/`, `geo/districts/`, `geo/mandals/`, `geo/villages/`, `posts/`, `users/`. The filter hands the number to the database, which cannot hold it (SQLite OverflowError; PostgreSQL "integer out of range"). Nothing leaks, and the error envelope and request id are kept; it only shows up as a server error in the logs | `grama/tests/test_attack_inputs.py::test_a_number_too_large_for_the_database_in_every_query_parameter` (xfail, strict on SQLite) | Open: fix by checking the filter is a valid id (400 `validation_error`) |
-| BE-TEST-209 | Low | `docs/api-contract.md`, section 5, says photos may be "JPEG, PNG, WebP or HEIC"; `apps/posts/media.py` takes JPEG, PNG and WebP and no HEIC decoder is installed, so a HEIC photo answers 415. Whether a client ever sends HEIC (iPhones convert to JPEG in most pickers) is for the mobile team to confirm | `apps/posts/tests/test_upload_attacks.py::test_the_photo_formats_in_the_contract_are_the_ones_the_server_takes` (xfail, strict) | Open: either take HEIC (a new package, needs approval) or remove HEIC from the contract |
+| BE-TEST-211 | Medium | **Uploads sent at the same moment pass the photo limit.** On MariaDB, six photos uploaded to one post at once were all stored (limit 3). Cause: `apps/posts/media.py` `add_photo()` recounts inside the locked transaction with `post.media.all().count()`, and the post views load the post with `prefetch_related("media")` (`apps/posts/views.py`, `post_queryset`), so the recount reads the list loaded with the post, not the database. The row lock waits as meant, but the count after it is stale. Any database; one upload at a time is not affected (each request loads the post fresh). The same count guards "photos or one video, never both" (`add_video`). Reached by a double tap or a retry on a slow network. The fix BE-DB-014 (BVTGC-109) is therefore not effective through the API; its own test calls the service with a fresh post | `apps/posts/tests/test_photo_limit_stale_count.py` (xfail, strict, any database, no threads); `grama/tests/test_concurrency_threads.py::test_photos_uploaded_at_once_never_pass_the_limit` (xfail, MariaDB and PostgreSQL) | **Fixed** 2026-11-26: `_check_room` and the photo order count `PostMedia` rows in the database |
+| BE-TEST-208 | Low | A number too large for the database (`?district=99999999999999999999999999`) in the area filter of 7 lists answers **500** instead of 400: `admin/citizens/blocked/`, `geo/admin/villages/`, `geo/districts/`, `geo/mandals/`, `geo/villages/`, `posts/`, `users/`. The filter hands the number to the database, which cannot hold it (SQLite OverflowError; PostgreSQL "integer out of range"). Nothing leaks, and the error envelope and request id are kept; it only shows up as a server error in the logs | `grama/tests/test_attack_inputs.py::test_a_number_too_large_for_the_database_in_every_query_parameter` (xfail, strict on SQLite) | **Fixed** 2026-11-26: `grama.params.is_number` also refuses a number above the largest database id, so the 7 lists answer 400 as for any bad id |
+| BE-TEST-209 | Low | `docs/api-contract.md`, section 5, says photos may be "JPEG, PNG, WebP or HEIC"; `apps/posts/media.py` takes JPEG, PNG and WebP and no HEIC decoder is installed, so a HEIC photo answers 415. Whether a client ever sends HEIC (iPhones convert to JPEG in most pickers) is for the mobile team to confirm | `apps/posts/tests/test_upload_attacks.py::test_the_photo_formats_in_the_contract_are_the_ones_the_server_takes` (xfail, strict) | **Fixed** 2026-11-26: the contract now says JPEG, PNG or WebP. The app picks photos with `imageQuality` and a maximum width, so `image_picker` sends iPhone photos as JPEG; no client change |
 | BE-TEST-210 | Info | The stage prompt's stack says "settings files base, dev, prod, test". The project has one `grama/settings.py`; the old module names are aliases of it (`.claude/architecture.md`). No change needed | – | Noted |
 
 No other bug was found: the SQL-injection, template and path strings in all 29 lists, mass assignment, hostile
@@ -160,9 +160,8 @@ uploads, token and session cases and the 80 x 8 RBAC cells all behave as the con
 
 **On MariaDB 11.4 (CI, 2026-11-26):** the other three real-thread tests pass: of four reviewers publishing
 one post at once exactly one wins and three get `409 already_decided`; eight posts from one phone at once
-against a limit of 3 store exactly 3; one push token sent six times at once is stored once. BE-TEST-208 does
-not occur there (MariaDB compares the large number and finds nothing: 400 or an empty list), so its mark is
-strict on SQLite only.
+against a limit of 3 store exactly 3; one push token sent six times at once is stored once. BE-TEST-208 did
+not occur there (MariaDB compares the large number and finds nothing: 400 or an empty list); it did on SQLite.
 
 ### Closed since V1
 
@@ -195,5 +194,16 @@ strict on SQLite only.
 
 ## Confirmation
 
-No application code changed: no file under `apps/` outside `tests/`, no settings, migration, URL, view,
-serializer or deployment script. The API, its contract and every permission are as before.
+The suite itself changed no application code. The three fixes that followed, on the backend owner's decision,
+changed only these, with no migration, URL, field, permission or client change:
+
+## Fixes after the findings (2026-11-26)
+
+| Finding | Change | Effect for clients |
+|---|---|---|
+| BE-TEST-211 | `apps/posts/media.py`: `_check_room` and the photo's order count `PostMedia` rows in the database instead of the post's (prefetched) `media` | None: a fourth photo sent at the same moment as others now gets the documented `400 validation_error` on `file` |
+| BE-TEST-208 | `grama/params.py`: `is_number` also refuses a number above 2^63 - 1 (the largest database id) | None: such a number gets the documented `400 validation_error`, as any other bad id |
+| BE-TEST-209 | `docs/api-contract.md`, section 5: "JPEG, PNG or WebP" | None: the server never took HEIC and the app never sends it |
+
+The xfail marks were removed; the tests that found them now pass as regression tests on SQLite, and the
+real-thread test on MariaDB and PostgreSQL in CI.
