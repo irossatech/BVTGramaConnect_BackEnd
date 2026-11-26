@@ -143,11 +143,11 @@ For the QA engineer and the client's testers during user acceptance testing. Wor
 The wallet is an optional citizen account for points and referrals (BackEnd `docs/features/citizen-wallet/requirements.md`). The test plan is `docs/features/citizen-wallet/test-plan.md`. Run these on the qa server.
 
 1. **Email works on qa** (BVTGC-143): a test code reaches a Gmail inbox, not spam. Have at least two Gmail addresses and one address at another provider, all yours.
-2. **Phones:** at least two budget Android phones with the new app build, one with two SIM cards. For the family checks, one phone is shared by three test accounts.
+2. **Phones:** at least two budget Android phones with the mobile team's test build for qa (a debug build made with `--dart-define=SITE_URL=<the qa address>/`, the address in `deploy/qa/README.md`; Mobile repo `docs/DEVELOPER_GUIDE.md`, section 3). The APK on the website's download page is a release build and talks only to the production server. One phone with two SIM cards. For the family checks, one phone is shared by three test accounts.
 3. **Console settings** (Settings → Citizen wallet), as the Super Admin:
    - switch the wallet **on**;
    - add the mandal of your test village to **Pilot mandals** (leave one other village outside it);
-   - set the **holding period to 1 day** and the **active days to 2**, so a referral is decided the next day: confirmed when the friend opened the app on both days, not confirmed when they did not. Put the suggested values (7 and 2) back after testing.
+   - set the **holding period to 2 days** and the **active days to 2** (the server refuses more active days than days on hold), so a referral is decided about 2 days after the sign-up: confirmed when the friend opened the app on 2 different days in that time, not confirmed when they opened it on only one. Put the suggested values (7 and 2) back after testing.
 4. **Language:** do each flow once in Telugu (the default) and once in English. Every Telugu word, in the app, the emails and the console, must show correctly.
 5. Write down each test account's mobile number and email; delete the accounts at the end (CW25, CW26).
 
@@ -169,10 +169,10 @@ The wallet is an optional citizen account for points and referrals (BackEnd `doc
 | CW12 | Change mobile number | The new number and the password. A number another account uses is refused, pointing to the help line. Login with the new number works; the old one no longer does. |
 | CW13 | Change village | Choosing another village in the app moves the account with it; the wallet and points stay. |
 | CW14 | Log out | **Log out** returns to the app without an account; village and saved news stay. Wallet pushes stop reaching the phone. |
-| CW15 | Invite | The wallet's **Invite** shares a message with a link (WhatsApp first). On another phone the link opens the website's download section with the code and **Copy**; the app, opened from the link, fills the code into Create account. A code can only be given at sign-up. A citizen's own code, or the code of a blocked or deleted account, is refused. |
+| CW15 | Invite | The wallet's **Invite** shares a message with a link (WhatsApp first). On another phone the link opens the website's download section with the code and **Copy**; the app, opened from the link, fills the code into Create account (App Links work only on the production domain, so check that part after the release, BVTGC-147). A code can only be given at sign-up. A citizen's own code, or the code of a blocked or deleted account, is refused. |
 | CW16 | Points on hold | When the friend signs up with the code, both wallets show the points **on hold** (50 and 20 with the suggested amounts) with the date they are expected, and the inviter gets a push "… joined Grama Connect with your invite code". |
-| CW17 | Confirmed | With the qa settings of "Before you start", the friend opens the app on both days: within an hour after the hold, both points are **confirmed**, the balances grow, and both phones get a push. |
-| CW18 | Not confirmed | A second friend signs up with the code but does not open the app the next day: after the hold, both entries show **not confirmed** with the reason ("the new citizen did not use the app on enough days"), and both get a push. |
+| CW17 | Confirmed | With the qa settings of "Before you start", the friend opens the app on 2 different days within the hold: within an hour after the hold, both points are **confirmed**, the balances grow, and both phones get a push. |
+| CW18 | Not confirmed | A second friend signs up with the code but opens the app on only one day within the hold: after the hold, both entries show **not confirmed** with the reason ("the new citizen did not use the app on enough days"), and both get a push. |
 | CW19 | Family phones | Two family members sign up on one shared phone, each with their own number and email: each gets the welcome points; a referral between the two pays no inviter reward (the history says why). A fourth account made on that phone gets no welcome points, with the reason shown. |
 | CW20 | No second welcome bonus | After deleting an account (CW25), a new account with the same mobile number or email gets no welcome points again. |
 | CW21 | Wallet screen | The confirmed balance, the points on hold with their date, and the history (date, reason, points, status) in the citizen's language. "Points have no cash value" shows. **Questions about points?** opens the help-line numbers, where the support number is listed. |

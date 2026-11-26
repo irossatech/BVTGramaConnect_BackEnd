@@ -215,13 +215,13 @@ All errors share one shape:
 | 429 | `locked_out` | 5 failed logins for this username from this IP address, or (since 2026-11-25) 20 within an hour for this username from any addresses; `retry_after_s` gives the seconds left. Same answer and message for both |
 | 429 | `throttled` | Rate limit; `retry_after_s` gives the seconds to wait, and the `Retry-After` header is set |
 
-Section 21 (citizen accounts and the wallet, planned) adds its own codes, listed there.
+Section 21 (citizen accounts and the wallet) adds its own codes, listed there.
 
 ### Enumerations
 
 | Name | Values |
 |---|---|
-| `role` | A group's key: `SUPER_ADMIN`, `DISTRICT_ADMIN`, `MANDAL_ADMIN`, `VILLAGE_ADMIN`, `PANCHAYAT_MEMBER` (`docs/authorization.md`, section 6). Citizens need no account; the optional wallet account of section 21 (planned) holds the group `CITIZEN`, which never appears in officials' lists. `CITIZEN` is also the role a citizen post was written under (`posted_as.role`, `source_role`; section 15). `SYSTEM` appears only as an actor in history and audit. |
+| `role` | A group's key: `SUPER_ADMIN`, `DISTRICT_ADMIN`, `MANDAL_ADMIN`, `VILLAGE_ADMIN`, `PANCHAYAT_MEMBER` (`docs/authorization.md`, section 6). Citizens need no account; the optional wallet account of section 21 holds the group `CITIZEN`, which never appears in officials' lists. `CITIZEN` is also the role a citizen post was written under (`posted_as.role`, `source_role`; section 15). `SYSTEM` appears only as an actor in history and audit. |
 | `level` | `STATE`, `DISTRICT`, `MANDAL`, `VILLAGE` |
 | `post.status` | `DRAFT`, `PENDING`, `PUBLISHED`, `RECHECK`, `DISCARDED`, `UNPUBLISHED`, `BLOCKED`. The prototypes call `UNPUBLISHED` "Taken down". `BLOCKED` (added 2026-11-20) is a citizen post closed because the Super Admin blocked its phone (section 15); the citizen API shows it as `DISCARDED`. **Since 2026-11-21** a block changes no post, so no post becomes `BLOCKED` any more; migrations `posts.0013` and `posts.0014` moved the ones there were, and the posts a block discarded before 2026-11-20, back to `PENDING`. Clients keep the value for safety. |
 | `review_action.action` | `SUBMIT`, `RESUBMIT`, `PUBLISH`, `AUTO_PUBLISH`, `RECHECK`, `DISCARD`, `UNPUBLISH`, `ESCALATE`, `REVERSE`, `BLOCK` (a block closed the post, 2026-11-20 to 2026-11-21 only; `last_review` shows it with the block's comment) |
@@ -672,8 +672,6 @@ What the apps read before login:
 |---|---|---|
 | `GET /app-config` | public, no login (a stale token is ignored) | `{"languages": {"te": true, "en": bool}, "min_version": "1.0.0+22"\|null, "latest_version": "1.0.0+24"\|null, "topic_prefix": "qa_"\|"", "ads_banner_limit": 0, "wallet_enabled": false, "wallet_pilot_mandals": [], "wallet_consent_version": "2026-11-25"}` (the wallet fields: section 21, BVTGC-129). `Cache-Control: public, max-age=300`, so a switch reaches phones within 5 minutes. Only these: escalation hours and the daily limit stay Super Admin only. The app hides its language switch while `en` is `false`. **App updates (BVTGC-90, 2026-11-24):** `min_version` and `latest_version` come from the server settings `APP_MIN_VERSION` and `APP_LATEST_VERSION` (`null` when not set, the default). The app compares only the **build number** after the `+` with its own: below `min_version` a blocking "Please update the app" screen; below `latest_version` an "Update available" note with Later; the download is the website APK. A missing or `null` field shows nothing. The server refuses to start with a value that has no build number, or a minimum above the latest. Raise `APP_MIN_VERSION` only after the new APK is on the website, and after the dashboard's `app_versions` shows few old installs. **Push topics (BVTGC-69):** `topic_prefix` is this server's `FCM_TOPIC_PREFIX` (`"qa_"` on qa, `""` in production); the app subscribes to its area topics with it (section 7). **Banners (BVTGC-92):** `ads_banner_limit` is the Super Admin's banners-per-Home number (0 = no limit); the app shows at most that many of the banners `ads/` returns. The app also sends its version in the header `X-App-Version: 1.0.0+21` on every call (optional; the server reads the version from `POST /devices/` and `POST /citizen/register/`). |
 
-Planned (section 21, BVTGC-106): `GET /app-config` also returns `wallet_enabled`, `wallet_pilot_mandals` and `wallet_consent_version`.
-
 ---
 
 ## 6. feed (public, no login)
@@ -968,8 +966,8 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Super Admin: More → Services | `GET /admin/services/`, `POST /admin/services/`, `PATCH /admin/services/{key}/`, `POST /admin/services/order/` |
 | Citizen: Home → Bills & Recharges | `GET /bills/` |
 | Super Admin: More → Bills & Recharges | `GET /admin/bills/`, `POST /admin/bills/`, `PATCH /admin/bills/{key}/`, `POST /admin/bills/order/` |
-| Citizen wallet account (planned, section 21): Create account, Check your email, Log in, Forgot password | `POST /citizen/auth/signup/`, `/signup/resend/`, `/signup/verify/`; `POST /citizen/auth/login/`; `POST /citizen/auth/password/forgot/`, `/password/reset/` |
-| Citizen: Wallet, Invite friends, account entries in Profile (planned, section 21) | `GET /citizen/account/`, `PATCH /citizen/account/`, `GET /wallet/`, `POST /citizen/account/password/`, `/email/`, `/email/verify/`, `/mobile/`, `/delete/`; `POST /devices/` with the citizen JWT |
+| Citizen wallet account (section 21): Create account, Check your email, Log in, Forgot password | `POST /citizen/auth/signup/`, `/signup/resend/`, `/signup/verify/`; `POST /citizen/auth/login/`; `POST /citizen/auth/password/forgot/`, `/password/reset/` |
+| Citizen: Wallet, Invite friends, account entries in Profile (section 21) | `GET /citizen/account/`, `PATCH /citizen/account/`, `GET /wallet/`, `POST /citizen/account/password/`, `/email/`, `/email/verify/`, `/mobile/`, `/delete/`; `POST /devices/` with the citizen JWT |
 
 ### Super Admin console
 
@@ -993,7 +991,7 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Ads | `GET /admin/ads/`, `POST /admin/ads/` (multipart), `PATCH /admin/ads/{id}/`, `DELETE /admin/ads/{id}/` |
 | Blocked citizens (Posts → Blocked) | `GET /admin/citizens/blocked/`, `GET /admin/citizens/{id}/blocks/`, `POST /admin/citizens/{id}/unblock/`; from a post: `POST /posts/{id}/block-citizen/`, `/unblock-citizen/`, `/discard-citizen-posts/` |
 | Telugu name suggestions (forms) | `GET /admin/transliterate/` |
-| Citizens & wallet (planned, section 21) | `GET /admin/citizen-accounts/`, `POST /admin/citizen-accounts/find/`, `…/{id}/email/`, `/release-mobile/`, `/block/`, `/unblock/`, `/delete/`; `GET /admin/referrals/`, `…/{id}/confirm/`, `/reject/`; `POST /admin/wallets/{id}/adjust/`; `GET /admin/wallet/export/`; the wallet settings in `/admin/settings/` |
+| Citizens & wallet (section 21) | `GET /admin/citizen-accounts/`, `POST /admin/citizen-accounts/find/`, `…/{id}/email/`, `/release-mobile/`, `/block/`, `/unblock/`, `/delete/`; `GET /admin/referrals/`, `…/{id}/confirm/`, `/reject/`; `GET /admin/wallets/{id}/`, `POST /admin/wallets/{id}/adjust/`; `GET /admin/wallet/entries/`, `GET /admin/wallet/export/`; the wallet settings in `/admin/settings/` |
 
 ### Public website
 
@@ -1002,8 +1000,8 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | All pages | `GET /app-config/` (the languages switched on). `GET /public/site-config/` is no longer called (since 2026-11-07); the app still uses it |
 | Home phone mockup | `GET /public/showcase` |
 | Contact | `POST /public/contact-messages` |
-| Download section with a friend's referral code (planned, section 21) | none: the page reads `ref` from its address |
-| Delete my wallet account (planned, section 21) | `POST /citizen/auth/delete/code/`, `POST /citizen/auth/delete/` |
+| Download section with a friend's referral code (section 21) | none: the page reads `ref` from its address |
+| Delete my wallet account (section 21) | `POST /citizen/auth/delete/code/`, `POST /citizen/auth/delete/` |
 
 ### Endpoints no client calls (BVTGC-77, 2026-11-23)
 
@@ -1039,7 +1037,7 @@ Kept on purpose (backend team's decision on audit CROSS-API-108): each checks it
 | Service requests | 10 per phone in 24 hours (`SERVICE_REQUESTS_PER_DAY`, 0 is no limit); name 100, address 5–300, details 500 characters |
 | Services | name 2–60 characters (unique, any case); `icon` and `color` from the lists in section 16; logo JPEG, PNG or WebP, at most 2 MB, at least 64 px a side, stored at most 256 px |
 | Citizen posts | 5 posts per phone in 24 hours (the Super Admin changes it in Settings; 0 is no limit); up to 3 photos (`MAX_PHOTOS_PER_POST`) or one video per post, never both; each photo at most `MAX_IMAGE_UPLOAD_MB` (10), the video at most `MAX_VIDEO_UPLOAD_MB` (60) and `VIDEO_MAX_SECONDS` (60 s); no limit on new phones (switchable: `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY`) |
-| Citizen wallet accounts (planned, section 21) | Codes: valid 10 minutes, 5 tries, one a minute, 5 a day per account or email and 10 a day per phone; 5 wrong passwords per account and IP address lock it for 15 minutes; an unfinished sign-up is kept 24 hours |
+| Citizen wallet accounts (section 21) | Codes: valid 10 minutes, 5 tries, one a minute, 5 a day per account or email and 10 a day per phone; 5 wrong passwords per account and IP address lock it for 15 minutes; an unfinished sign-up is kept 24 hours |
 
 ---
 
@@ -1571,7 +1569,7 @@ Built (`apps.share`, `apps.posts.sharing`). Not under `/api/v1/`: these are page
 
 ## 21. Citizen accounts and the wallet (live on `dev` since BVTGC-119 to BVTGC-130, behind `wallet_enabled`)
 
-**Planned, not built yet.** Agreed on 2026-11-25 so the app and the website can be built in parallel with the backend (lead's decision). Each endpoint is marked **live** here when its code is merged; until then the server answers `404`. Requirements and design: `docs/features/citizen-wallet/` (decisions D1 to D17).
+**Live.** Agreed on 2026-11-25 so the app and the website could be built in parallel with the backend (lead's decision); every endpoint below is built and marked **live** (BVTGC-123 to BVTGC-130 and BVTGC-151). While the Super Admin's switch `wallet_enabled` is off, each of them answers `404`. Requirements and design: `docs/features/citizen-wallet/` (decisions D1 to D17).
 
 An optional account for citizens, used **only for the wallet of points and referrals** (D2). Reading, posting and service requests keep working without it. The account and the posting token (`X-Citizen-Token`, section 15) are separate things: a phone may have both, and neither needs the other.
 

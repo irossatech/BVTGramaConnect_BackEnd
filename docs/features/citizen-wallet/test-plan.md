@@ -20,7 +20,7 @@
 | Environment | What | Who |
 |---|---|---|
 | Laptop | Each developer's own checks against a local backend with `WALLET_ENABLED=True`; emails print in the terminal | Developers |
-| qa server | UAT, with real email (BVTGC-143) and push; the wallet switched on in the console for one pilot mandal; holding period 1 day and active days 2 for the referral checks | Testing team (BVTGC-146) |
+| qa server | UAT, with real email (BVTGC-143) and push; the wallet switched on in the console for one pilot mandal; holding period 2 days and active days 2 for the referral checks (the server refuses more active days than days on hold), so a referral is decided about 2 days after the sign-up; the app is the mobile team's test build for qa (a debug build made with `--dart-define=SITE_URL=<the qa address>/`, the address in `deploy/qa/README.md`; Mobile repo `docs/DEVELOPER_GUIDE.md`, section 3). The APK on the website's download page is a release build and talks only to the production server, and App Links work only on the production domain | Testing team (BVTGC-146) |
 | Production | Smoke tests only, after the release, for the pilot mandals (technical-implementation.md, section 13) | Admin |
 
 ## 3. Test data
