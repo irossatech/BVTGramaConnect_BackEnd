@@ -37,7 +37,8 @@ def service_logo_path(instance, filename):
 
 
 class Service(models.Model):
-    """One service on the citizen's Home. Never deleted: hidden with is_active.
+    """One service on the citizen's Home, hidden with is_active. Deleted only while hidden and unused by any
+    request, such as one added by mistake (2026-11-26); edited only while hidden.
 
     The app shows `logo` (an image the Super Admin uploaded) when there is one, else draws `icon`.
     """

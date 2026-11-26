@@ -76,6 +76,7 @@ def test_every_category_carries_icon_url_seeded_ones_null(admin):
 
 def test_an_icon_is_replaced_kept_and_removed(admin, media_root, django_capture_on_commit_callbacks):
     news = Category.objects.get(key="news")
+    Category.objects.filter(pk=news.pk).update(is_active=False)  # the icon changes only while off
     path = f"{ADMIN}{news.id}/"
     with django_capture_on_commit_callbacks(execute=True):
         first = admin.patch(path, {"icon": icon(fmt="JPEG", name="n.jpg", mode="RGB")}, format="multipart").json()["icon_url"]
@@ -91,6 +92,7 @@ def test_an_icon_is_replaced_kept_and_removed(admin, media_root, django_capture_
     with django_capture_on_commit_callbacks(execute=True):
         removed = admin.patch(path, {"icon": None}, format="json").json()
     assert removed["icon_url"] is None and not on_disk(media_root, second).exists()
+    Category.objects.filter(key="news").update(is_active=True)  # the public list shows switched-on ones only
     assert public_row("news")["icon_url"] is None
     updates = [entry.data for entry in AuditLog.objects.filter(action="category.updated").order_by("created_at")]
     assert updates == [{"icon": "replaced"}, {"icon": "replaced"}, {"name_en": "Village news"}, {"icon": "removed"}]
@@ -113,11 +115,13 @@ def test_bad_icons_are_refused_and_nothing_is_saved(admin, media_root, upload, w
 
 def test_a_too_large_icon_is_refused_on_change_and_the_old_one_stays(admin, media_root, settings):
     news = Category.objects.get(key="news")
+    Category.objects.filter(pk=news.pk).update(is_active=False)  # the icon changes only while off
     url = admin.patch(f"{ADMIN}{news.id}/", {"icon": icon()}, format="multipart").json()["icon_url"]
     settings.SERVICE_LOGO_MAX_UPLOAD_MB = 0
     response = admin.patch(f"{ADMIN}{news.id}/", {"icon": icon(), "name_en": "Changed"}, format="multipart")
     assert response.status_code == 400 and "icon" in response.json()["error"]["fields"]
     news.refresh_from_db()
+    Category.objects.filter(key="news").update(is_active=True)  # the public list shows switched-on ones only
     assert news.name_en != "Changed" and public_row("news")["icon_url"] == url
 
 

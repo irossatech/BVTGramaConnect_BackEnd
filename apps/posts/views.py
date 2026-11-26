@@ -29,7 +29,7 @@ from apps.geography.areas import AreaRef, within_q
 from apps.geography.models import AreaLevel
 from grama import logos
 from grama.pagination import use_known_count
-from grama.exceptions import ApiError, out_of_area, permission_denied
+from grama.exceptions import ApiError, out_of_area, permission_denied, switch_off_first
 from grama.params import UUID_REGEX, is_number, uuid_or_none
 
 from . import media as media_service
@@ -176,7 +176,8 @@ class AdminCategoryViewSet(
     """Super Admin categories. JSON, or multipart with an `icon` image (BVTGC-91): POST adds the icon,
     PATCH replaces it, and `"icon": null` on PATCH removes it. A replaced or removed file is deleted
     only after the change is saved. DELETE removes a category no post uses, such as one added by
-    mistake; with posts it answers 409 category_in_use (posts are kept permanently)."""
+    mistake; with posts it answers 409 category_in_use (posts are kept permanently). Names, icon and
+    delete only while the category is switched off (409 switch_off_first otherwise; 2026-11-26)."""
 
     permission_classes = [IsAuthenticated, HasPerm("posts.manage_categories", PLATFORM, gettext_lazy("Only Super Admins can do this."))]
     serializer_class = AdminCategorySerializer
@@ -201,7 +202,13 @@ class AdminCategoryViewSet(
     @transaction.atomic
     def perform_update(self, serializer):
         icon = _new_icon(self.request)
-        remove = icon is None and _icon_removed(self.request) and bool(serializer.instance.icon)
+        before = serializer.instance
+        remove = icon is None and _icon_removed(self.request) and bool(before.icon)
+        # The on/off switch and the order work any time; names and the icon only while switched off.
+        edits = [name for name, value in serializer.validated_data.items()
+                 if name not in ("is_active", "order") and value != getattr(before, name)]
+        if before.is_active and (edits or icon is not None or remove):
+            raise switch_off_first()
         category = serializer.save()
         # Only the fields the serializer accepted and checked, never the raw request body.
         changes = dict(serializer.validated_data)
@@ -226,6 +233,8 @@ class AdminCategoryViewSet(
 
     @transaction.atomic
     def perform_destroy(self, category):
+        if category.is_active:
+            raise switch_off_first()
         count = Post.objects.filter(category=category).count()
         if count:
             raise _category_in_use(count)

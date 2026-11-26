@@ -273,6 +273,12 @@ class AdminServiceDetailView(APIView):
         )
         return _out(request, service)
 
+    @extend_schema(summary="Delete a hidden service no request uses (409 switch_off_first or service_in_use otherwise)",
+                   responses={204: None})
+    def delete(self, request, key):
+        services.delete_service(request.user, get_object_or_404(Service, key=key))
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class AdminServiceOrderView(APIView):
     permission_classes = [IsAuthenticated, MANAGE_SERVICES]

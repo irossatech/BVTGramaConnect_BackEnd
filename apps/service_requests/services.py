@@ -34,7 +34,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
-from django.db.models import Max
+from django.db.models import Max, ProtectedError
 from django.utils import timezone
 from django.utils.text import slugify
 from django.utils.translation import gettext as _
@@ -46,7 +46,7 @@ from apps.citizens import services as citizens
 from apps.geography.areas import AreaRef
 from apps.geography.models import AreaLevel, Village
 from grama import logos
-from grama.exceptions import ApiError, permission_denied
+from grama.exceptions import ApiError, permission_denied, switch_off_first
 
 from .models import CANCELLABLE, RequestStatus, Service, ServiceRequest, ServiceRequestEvent
 from .selectors import MANAGE, VIEW, village_admin_of
@@ -199,6 +199,9 @@ def update_service(user, service: Service, changes: dict, logo=None, remove_logo
     drop_logo = remove_logo and data is None and bool(service.logo)
     if not changed and data is None and not drop_logo:
         return service
+    # Shown on Home: only the switch works. Names, hints, icon, colour and logo only while hidden (2026-11-26).
+    if service.is_active and ([name for name in changed if name != "is_active"] or data is not None or drop_logo):
+        raise switch_off_first()
     with transaction.atomic():
         for name in changed:
             setattr(service, name, changes[name])
@@ -218,6 +221,37 @@ def update_service(user, service: Service, changes: dict, logo=None, remove_logo
             record("service.shown" if service.is_active else "service.hidden", actor=user, target=service,
                    target_label=service.name_en, data={"key": service.key})
     return service
+
+
+def _service_in_use(count: int) -> ApiError:
+    return ApiError(
+        "service_in_use",
+        _("%(count)d requests use this service, and requests are never deleted. Keep the service switched off instead.")
+        % {"count": count},
+        status=409,
+        count=count,
+    )
+
+
+def delete_service(user, service: Service) -> None:
+    """Delete a hidden service no request uses, such as one added by mistake (2026-11-26). Requests are kept
+    permanently and keep their service (ServiceRequest.service is PROTECT), so one in use stays."""
+    if service.is_active:
+        raise switch_off_first()
+    count = ServiceRequest.objects.filter(service=service).count()
+    if count:
+        raise _service_in_use(count)
+    with transaction.atomic():
+        record("service.deleted", actor=user, target=service, target_label=service.name_en,
+               data={"key": service.key, "name_en": service.name_en, "name_te": service.name_te})
+        logo = service.logo.name
+        try:
+            # A request sent at the same moment stops the delete here (PROTECT, and the database's own key).
+            with transaction.atomic():
+                service.delete()
+        except (ProtectedError, IntegrityError):
+            raise _service_in_use(ServiceRequest.objects.filter(service=service).count() or 1) from None
+        _delete_logo_after_commit(logo)
 
 
 def reorder_services(user, keys: list[str]) -> None:

@@ -206,6 +206,8 @@ All errors share one shape:
 | 409 | `already_decided` | Another reviewer acted first (`REVIEW_FIRST_DECISION_WINS`); `post` included |
 | 409 | `duplicate` | Username, email, mobile or name already used; `fields` says which |
 | 409 | `type_in_use` | A contact type that active numbers use cannot be deleted; `count` gives how many (section 14) |
+| 409 | `switch_off_first` | A post category or a service is edited (anything but the on/off switch and the order) or deleted only while switched off (2026-11-26) |
+| 409 | `service_in_use` | A service that requests use cannot be deleted (keep it hidden); `count` gives how many (section 16) |
 | 409 | `category_in_use` | A post category that posts use cannot be deleted (switch it off instead); `count` gives how many (section 5, "Categories") |
 | 409 | `protected` | The "Other" contact type cannot be deleted (section 14) |
 | 409 | `last_super_admin` | Blocking a Super Admin, or removing or switching off their role, would leave no active Super Admin (section 3) |
@@ -555,8 +557,8 @@ Rules:
 | `GET /categories` | public | `[Category]`, active only, in display order |
 | `GET /admin/categories` | Super Admin | `[Category with admin fields]` |
 | `POST /admin/categories` | Super Admin | `{"key", "name_te", "name_en", "short_name_te"?, "short_name_en"?}` → `201` (Pending Q6). JSON, or multipart with an optional `icon` image file |
-| `PATCH /admin/categories/{id}` | Super Admin | `{"name_te"?, "name_en"?, "short_name_te"?, "short_name_en"?, "is_active"?, "order"?}` (Pending Q6). Multipart with `icon` replaces the icon; `"icon": null` (or an empty `icon` form field) removes it. The `key` never changes once added: a different `key` answers `400 validation_error` on `key` (2026-11-26; the same key is accepted). Audited as `category.updated`. The console's Edit (2026-11-26) |
-| `DELETE /admin/categories/{id}` | Super Admin | `204`. Only for a category no post uses, such as one added by mistake (2026-11-26). Posts are kept permanently and each keeps its category, so a category with posts, switched off or not, answers `409 category_in_use` with `count` ("N posts use this category… Switch the category off instead.") and stays. Audited as `category.deleted` with the key and names; an uploaded icon file is removed after the delete is saved. The key may then be used again |
+| `PATCH /admin/categories/{id}` | Super Admin | `{"name_te"?, "name_en"?, "short_name_te"?, "short_name_en"?, "is_active"?, "order"?}` (Pending Q6). Multipart with `icon` replaces the icon; `"icon": null` (or an empty `icon` form field) removes it. The `key` never changes once added: a different `key` answers `400 validation_error` on `key` (2026-11-26; the same key is accepted). Names, short names and the icon change only while the category is switched off; switched on, only `is_active` and `order` may change, else `409 switch_off_first` (values sent unchanged are fine). Audited as `category.updated`. The console's Edit (2026-11-26) |
+| `DELETE /admin/categories/{id}` | Super Admin | `204`. Only for a switched-off category no post uses, such as one added by mistake (2026-11-26); switched on: `409 switch_off_first`. Posts are kept permanently and each keeps its category, so a category with posts, switched off or not, answers `409 category_in_use` with `count` ("N posts use this category… Switch the category off instead.") and stays. Audited as `category.deleted` with the key and names; an uploaded icon file is removed after the delete is saved. The key may then be used again |
 
 **Category icon** (2026-11-24, BVTGC-91): the same checks as service and bill logos (section 16). JPEG, PNG or WebP, judged from the content; at most `SERVICE_LOGO_MAX_UPLOAD_MB` (2 MB) and at least `SERVICE_LOGO_MIN_PX` (64) pixels a side; stored as WebP with the longest side at most 256 px, transparency kept, EXIF removed. A bad file answers `400 validation_error` with `fields.icon`, and nothing is saved. Every new icon gets a new file name (phones cache `/media/`); a replaced or removed file is deleted once the change is saved. The audit entry says `"icon": true` on `category.created` and `"icon": "replaced"` or `"removed"` on `category.updated`. `GET /categories` is cached for up to an hour, so a new icon reaches the apps within the hour.
 
@@ -965,7 +967,7 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Super Admin: More → Ads | `GET /admin/ads`, `POST /admin/ads` (multipart), `PATCH /admin/ads/{id}` (multipart with a new image or video, else JSON), `DELETE /admin/ads/{id}`; areas from `/geo/*` |
 | Citizen: Home → Services, Profile → My service requests (with Cancel request) | `GET /services/`, `POST /citizen/service-requests/`, `GET /citizen/service-requests/`, `POST /citizen/service-requests/{id}/cancel/` |
 | Service requests (officials) | `GET /service-requests/` (status tabs from `status_counts`), `GET /service-requests/{id}/`, `PATCH /service-requests/{id}/`; assignees from `GET /users/` |
-| Super Admin: More → Services | `GET /admin/services/`, `POST /admin/services/`, `PATCH /admin/services/{key}/`, `POST /admin/services/order/` |
+| Super Admin: More → Services | `GET /admin/services/`, `POST /admin/services/`, `PATCH /admin/services/{key}/` (edit only while hidden, 2026-11-26), `DELETE /admin/services/{key}/`, `POST /admin/services/order/` |
 | Citizen: Home → Bills & Recharges | `GET /bills/` |
 | Super Admin: More → Bills & Recharges | `GET /admin/bills/`, `POST /admin/bills/`, `PATCH /admin/bills/{key}/`, `POST /admin/bills/order/` |
 | Citizen wallet account (section 21): Create account, Check your email, Log in, Forgot password | `POST /citizen/auth/signup/`, `/signup/resend/`, `/signup/verify/`; `POST /citizen/auth/login/`; `POST /citizen/auth/password/forgot/`, `/password/reset/` |
@@ -987,7 +989,7 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Contact messages | `GET /admin/contact-messages` (full rows: the owner's decision of 2026-11-17 to show the mobile and message in the table; `contact=0` from WEB-DP-001 is no longer sent), `GET /admin/contact-messages/{id}` (View), `PATCH /admin/contact-messages/{id}` |
 | Important numbers | `GET /admin/contacts` (area and helpline tabs), `POST /admin/contacts`, `PATCH /admin/contacts/{id}`, `DELETE /admin/contacts/{id}`, `POST /admin/contacts/import`; types: `/admin/contact-types` |
 | Service requests | `GET /service-requests/`, `GET /service-requests/{id}/`, `PATCH /service-requests/{id}/`; assignees from `GET /users/` (shown to holders of `service_requests.view_service_requests`) |
-| Services | `GET /admin/services/`, `POST /admin/services/`, `PATCH /admin/services/{key}/`, `POST /admin/services/order/` |
+| Services | `GET /admin/services/`, `POST /admin/services/`, `PATCH /admin/services/{key}/`, `DELETE /admin/services/{key}/` (Edit and Delete only while hidden, 2026-11-26), `POST /admin/services/order/` |
 | Bills & Recharges | `GET /admin/bills/`, `POST /admin/bills/`, `PATCH /admin/bills/{key}/`, `POST /admin/bills/order/` |
 | Notifications (bell) | `GET /notifications/`, `POST /notifications/{id}/read/`, `POST /notifications/read-all/`; opens the post or service request |
 | Ads | `GET /admin/ads/`, `POST /admin/ads/` (multipart), `PATCH /admin/ads/{id}/`, `DELETE /admin/ads/{id}/` |
@@ -1275,7 +1277,7 @@ Built (`apps.service_requests`), from the mobile and web team's plan of 2026-10-
 | `color` | One of `orange`, `blue`, `green`, `purple`, `teal` |
 | `is_active` | `false` hides it from citizens; its old requests stay readable |
 
-Services are never deleted. The 8 services the app ships with are seeded with the same keys: `aadhaar`, `pan`, `voter_id`, `certificates`, `loans_insurance`, `govt_schemes`, `land_records`, `farmer`.
+Services are edited and deleted only while hidden (`is_active` false; owner's request of 2026-11-26): shown on Home, a change to anything but `is_active` and a delete answer `409 switch_off_first`. A service is deleted only when no request uses it, such as one added by mistake; requests are kept permanently, so one in use stays hidden. The 8 services the app ships with are seeded with the same keys: `aadhaar`, `pan`, `voter_id`, `certificates`, `loans_insurance`, `govt_schemes`, `land_records`, `farmer`.
 
 ### Public and citizens
 
@@ -1347,7 +1349,8 @@ Permission `service_requests.manage_services` (Super Admin only); everyone else 
 |---|---|---|
 | `GET /admin/services/` | — | **Every** service, hidden ones too, in Home order: a plain list of `Service` plus `order`, `created_at`, `updated_at` |
 | `POST /admin/services/` | JSON `{"name_en", "name_te"?, "icon"?, "color", "is_active"?}`, or the same fields as multipart with a `logo` image file | `201` with the service; the server makes `key` and puts it last. `400` with `fields` for a taken or bad name, an unknown `icon` or `color`, or a bad `logo` ("Upload a JPEG, PNG or WebP image.", too large, too small). |
-| `PATCH /admin/services/{key}/` | any of the same fields, as JSON or multipart (the list switch sends only `{"is_active": false}`). Multipart with `logo` replaces the logo; JSON `{"logo": null}` (or an empty `logo` form field) removes it. | The service; `404` for an unknown key. `key` cannot be changed. |
+| `PATCH /admin/services/{key}/` | any of the same fields, as JSON or multipart (the list switch sends only `{"is_active": false}`). Multipart with `logo` replaces the logo; JSON `{"logo": null}` (or an empty `logo` form field) removes it. | The service; `404` for an unknown key. `key` cannot be changed. Since 2026-11-26 only `is_active` may change while the service is shown: any other change (a value different from the stored one, or a logo) answers `409 switch_off_first`. Values sent unchanged are fine. |
+| `DELETE /admin/services/{key}/` | — | `204` (2026-11-26). Only for a hidden service no request uses (cancelled ones count). Shown: `409 switch_off_first`. Used: `409 service_in_use` with `count`, and it stays. Audited as `service.deleted` with the key and names; an uploaded logo file is removed after the delete is saved; `404` for an unknown key. |
 | `POST /admin/services/order/` | `{"keys": [every key, in the new order]}` | `200` with the full list in the new order; `400` with `fields.keys` unless the keys are exactly the existing ones, each once |
 
 ### Rules
