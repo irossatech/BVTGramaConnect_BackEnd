@@ -235,7 +235,8 @@ else:  # DEV
 # "throttle" counts the Telugu name suggestions' rate (TRANSLITERATION_RATE) and holds the citizen code
 # decoys (BVTGC-152). The per-IP login throttle
 # (30 logins an hour) was removed on 2026-11-20 and is not decided yet; the contact form has no per-IP
-# limit (lead's final decision). The IP-wide failed-login cap is back (LOGIN_IP_MAX_FAILURES, BVTGC-105).
+# limit (lead's final decision). The IP-wide failed-login cap is back but off by default
+# (LOGIN_IP_MAX_FAILURES=0, BVTGC-105).
  
  
 # ==============================================================================
@@ -388,8 +389,11 @@ LOGIN_USERNAME_WINDOW_MINUTES = env.int("LOGIN_USERNAME_WINDOW_MINUTES", default
 # Cap per address against password spraying (one password tried on many usernames; BVTGC-105, put back
 # before go-live by the lead's decision): this many failed logins from one IP within
 # LOGIN_IP_WINDOW_MINUTES, for any usernames, block every login from that IP until the oldest of them
-# leaves the window. 0 turns it off. apps/accounts/lockout.py.
-LOGIN_IP_MAX_FAILURES = env.int("LOGIN_IP_MAX_FAILURES", default=50)
+# leaves the window. 0 turns it off, and 0 is the default: the limits ship switched off until production
+# confirms it sees real visitor addresses (lead's decision, BVTGC-39). Mobile networks put many phones
+# behind one address, and the wallet's citizen logins count too, so a server that turns it on starts high
+# (such as 200). apps/accounts/lockout.py.
+LOGIN_IP_MAX_FAILURES = env.int("LOGIN_IP_MAX_FAILURES", default=0)
 LOGIN_IP_WINDOW_MINUTES = env.int("LOGIN_IP_WINDOW_MINUTES", default=60)
 AXES_LOCKOUT_PARAMETERS = [["username", "ip_address"]]
 AXES_RESET_ON_SUCCESS = True

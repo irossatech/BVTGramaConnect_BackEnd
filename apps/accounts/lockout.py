@@ -17,9 +17,9 @@ AccessFailureLog keeps it for HOUSEKEEPING_KEEP_DAYS. Every lookup by username
 goes through login_key(). Changing SECRET_KEY only clears current lockouts.
 
 Cap per address against password spraying (one password tried on many usernames; removed on
-2026-11-20, put back before go-live by BVTGC-105): LOGIN_IP_MAX_FAILURES (50) failed logins from one
-IP within LOGIN_IP_WINDOW_MINUTES (60), for any usernames, block every app and console login from that
-IP until the oldest of them leaves the window. It counts axes' AccessFailureLog rows, by the address
+2026-11-20, put back before go-live by BVTGC-105, off by default): LOGIN_IP_MAX_FAILURES failed logins
+from one IP within LOGIN_IP_WINDOW_MINUTES (60), for any usernames, block every app and console login
+from that IP until the oldest of them leaves the window. 0, the default, turns it off. It counts axes' AccessFailureLog rows, by the address
 from grama.http.client_ip (which believes X-Real-IP only from the server's own network, BE-SEC-101).
 A successful login does not reset it, so an attacker's own account cannot clear it, and an admin's
 unlock does not either: it is about an address, not a user.
