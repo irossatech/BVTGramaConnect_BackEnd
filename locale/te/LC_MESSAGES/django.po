@@ -655,194 +655,198 @@ msgid "added a bill / recharge"
 msgstr "బిల్లు / రీఛార్జ్‌ను చేర్చారు"
 
 #: apps/audit/labels.py:83
+msgid "deleted a bill / recharge"
+msgstr "బిల్లు / రీఛార్జ్‌ను తొలగించారు"
+
+#: apps/audit/labels.py:84
 msgid "edited a bill / recharge"
 msgstr "బిల్లు / రీఛార్జ్‌ను సవరించారు"
 
-#: apps/audit/labels.py:84
+#: apps/audit/labels.py:85
 msgid "showed a bill on Home"
 msgstr "హోమ్‌లో బిల్లును చూపించారు"
 
-#: apps/audit/labels.py:85
+#: apps/audit/labels.py:86
 msgid "hid a bill from Home"
 msgstr "హోమ్ నుండి బిల్లును దాచారు"
 
-#: apps/audit/labels.py:86
+#: apps/audit/labels.py:87
 msgid "changed the order of bills"
 msgstr "బిల్లుల క్రమాన్ని మార్చారు"
 
-#: apps/audit/labels.py:87
+#: apps/audit/labels.py:88
 msgid "sent a service request"
 msgstr "సేవా అభ్యర్థనను పంపారు"
 
-#: apps/audit/labels.py:88
+#: apps/audit/labels.py:89
 msgid "assigned a service request"
 msgstr "సేవా అభ్యర్థనను అప్పగించారు"
 
-#: apps/audit/labels.py:89
+#: apps/audit/labels.py:90
 msgid "changed a service request’s status"
 msgstr "సేవా అభ్యర్థన స్థితిని మార్చారు"
 
-#: apps/audit/labels.py:90
+#: apps/audit/labels.py:91
 msgid "cancelled their service request"
 msgstr "తమ సేవా అభ్యర్థనను రద్దు చేశారు"
 
-#: apps/audit/labels.py:92
+#: apps/audit/labels.py:93
 msgid "added a sponsored banner"
 msgstr "ప్రాయోజిత బ్యానర్‌ను చేర్చారు"
 
-#: apps/audit/labels.py:93
+#: apps/audit/labels.py:94
 msgid "edited a sponsored banner"
 msgstr "ప్రాయోజిత బ్యానర్‌ను సవరించారు"
 
-#: apps/audit/labels.py:94
+#: apps/audit/labels.py:95
 msgid "deleted a sponsored banner"
 msgstr "ప్రాయోజిత బ్యానర్‌ను తొలగించారు"
 
-#: apps/audit/labels.py:95
+#: apps/audit/labels.py:96
 msgid "added an important number"
 msgstr "ముఖ్యమైన నంబర్‌ను చేర్చారు"
 
-#: apps/audit/labels.py:96
+#: apps/audit/labels.py:97
 msgid "edited an important number"
 msgstr "ముఖ్యమైన నంబర్‌ను సవరించారు"
 
-#: apps/audit/labels.py:97
+#: apps/audit/labels.py:98
 msgid "removed an important number"
 msgstr "ముఖ్యమైన నంబర్‌ను తొలగించారు"
 
-#: apps/audit/labels.py:98
+#: apps/audit/labels.py:99
 msgid "imported important numbers"
 msgstr "ముఖ్యమైన నంబర్లను దిగుమతి చేశారు"
 
-#: apps/audit/labels.py:99
+#: apps/audit/labels.py:100
 msgid "added a number type"
 msgstr "నంబర్ రకాన్ని చేర్చారు"
 
-#: apps/audit/labels.py:100
+#: apps/audit/labels.py:101
 msgid "changed a number type"
 msgstr "నంబర్ రకాన్ని మార్చారు"
 
-#: apps/audit/labels.py:101
+#: apps/audit/labels.py:102
 msgid "deleted a number type"
 msgstr "నంబర్ రకాన్ని తొలగించారు"
 
-#: apps/audit/labels.py:102
+#: apps/audit/labels.py:103
 msgid "marked a contact message handled"
 msgstr "సంప్రదింపు సందేశాన్ని పరిష్కరించినట్లు గుర్తించారు"
 
-#: apps/audit/labels.py:103
+#: apps/audit/labels.py:104
 msgid "marked a contact message as new"
 msgstr "సంప్రదింపు సందేశాన్ని కొత్తదిగా గుర్తించారు"
 
-#: apps/audit/labels.py:105
+#: apps/audit/labels.py:106
 msgid "registered a citizen phone"
 msgstr "పౌరుని ఫోన్‌ను నమోదు చేశారు"
 
-#: apps/audit/labels.py:106
+#: apps/audit/labels.py:107
 msgid "blocked a citizen’s phone"
 msgstr "పౌరుని ఫోన్‌ను నిరోధించారు"
 
-#: apps/audit/labels.py:107
+#: apps/audit/labels.py:108
 msgid "unblocked a citizen’s phone"
 msgstr "పౌరుని ఫోన్‌పై నిరోధాన్ని తొలగించారు"
 
-#: apps/audit/labels.py:108
+#: apps/audit/labels.py:109
 msgid "ended a citizen’s block (its time was up)"
 msgstr "పౌరుని నిరోధాన్ని ముగించారు (సమయం పూర్తయింది)"
 
-#: apps/audit/labels.py:109
+#: apps/audit/labels.py:110
 msgid "discarded a citizen’s waiting posts"
 msgstr "పౌరుని వేచి ఉన్న పోస్ట్‌లను తిరస్కరించారు"
 
-#: apps/audit/labels.py:111
+#: apps/audit/labels.py:112
 msgid "sent a wallet code by email"
 msgstr "వాలెట్ కోడ్‌ను ఈమెయిల్‌లో పంపారు"
 
-#: apps/audit/labels.py:112
+#: apps/audit/labels.py:113
 msgid "created a citizen wallet account"
 msgstr "పౌరుని వాలెట్ ఖాతా సృష్టించారు"
 
-#: apps/audit/labels.py:113
+#: apps/audit/labels.py:114
 msgid "reset a forgotten wallet password with an email code"
 msgstr "ఈమెయిల్ కోడ్‌తో మర్చిపోయిన వాలెట్ పాస్‌వర్డ్‌ను రీసెట్ చేశారు"
 
-#: apps/audit/labels.py:114
+#: apps/audit/labels.py:115
 msgid "changed their wallet password"
 msgstr "తమ వాలెట్ పాస్‌వర్డ్ మార్చారు"
 
-#: apps/audit/labels.py:115
+#: apps/audit/labels.py:116
 msgid "changed their wallet account’s email"
 msgstr "తమ వాలెట్ ఖాతా ఈమెయిల్ మార్చారు"
 
-#: apps/audit/labels.py:116
+#: apps/audit/labels.py:117
 msgid "changed their wallet account’s mobile number"
 msgstr "తమ వాలెట్ ఖాతా మొబైల్ నంబర్ మార్చారు"
 
-#: apps/audit/labels.py:117
+#: apps/audit/labels.py:118
 msgid "moved their wallet account to another village"
 msgstr "తమ వాలెట్ ఖాతాను వేరే గ్రామానికి మార్చారు"
 
-#: apps/audit/labels.py:118
+#: apps/audit/labels.py:119
 msgid "deleted a citizen wallet account"
 msgstr "పౌరుని వాలెట్ ఖాతా తొలగించారు"
 
-#: apps/audit/labels.py:119
+#: apps/audit/labels.py:120
 msgid "looked up a citizen wallet account by number or email"
 msgstr "నంబర్ లేదా ఈమెయిల్‌తో పౌరుని వాలెట్ ఖాతాను వెతికారు"
 
-#: apps/audit/labels.py:120
+#: apps/audit/labels.py:121
 msgid "set a new email for a citizen wallet account"
 msgstr "పౌరుని వాలెట్ ఖాతాకు కొత్త ఈమెయిల్ పెట్టారు"
 
-#: apps/audit/labels.py:121
+#: apps/audit/labels.py:122
 msgid "removed the mobile number from a citizen wallet account"
 msgstr "పౌరుని వాలెట్ ఖాతా నుండి మొబైల్ నంబర్ తొలగించారు"
 
-#: apps/audit/labels.py:122
+#: apps/audit/labels.py:123
 msgid "blocked a citizen wallet account"
 msgstr "పౌరుని వాలెట్ ఖాతాను బ్లాక్ చేశారు"
 
-#: apps/audit/labels.py:123
+#: apps/audit/labels.py:124
 msgid "unblocked a citizen wallet account"
 msgstr "పౌరుని వాలెట్ ఖాతాను అన్‌బ్లాక్ చేశారు"
 
-#: apps/audit/labels.py:125
+#: apps/audit/labels.py:126
 msgid "started a referral (a friend signed up with a code)"
 msgstr "రిఫరల్ ప్రారంభమైంది (స్నేహితుడు కోడ్‌తో నమోదయ్యారు)"
 
-#: apps/audit/labels.py:126
+#: apps/audit/labels.py:127
 msgid "confirmed a referral"
 msgstr "రిఫరల్‌ను నిర్ధారించారు"
 
-#: apps/audit/labels.py:127
+#: apps/audit/labels.py:128
 msgid "did not confirm a referral"
 msgstr "రిఫరల్‌ను నిర్ధారించలేదు"
 
-#: apps/audit/labels.py:128
+#: apps/audit/labels.py:129
 msgid "found a wallet whose balance differs from its history"
 msgstr "చరిత్రతో సరిపోలని నిల్వ ఉన్న వాలెట్‌ను గుర్తించారు"
 
-#: apps/audit/labels.py:129
+#: apps/audit/labels.py:130
 msgid "corrected a citizen's points"
 msgstr "పౌరుని పాయింట్లను సరిచేశారు"
 
-#: apps/audit/labels.py:131
+#: apps/audit/labels.py:132
 msgid "exported a report"
 msgstr "నివేదికను ఎగుమతి చేశారు"
 
-#: apps/audit/labels.py:132
+#: apps/audit/labels.py:133
 msgid "email not delivered"
 msgstr "ఈమెయిల్ చేరలేదు"
 
-#: apps/audit/labels.py:133
+#: apps/audit/labels.py:134
 msgid "email skipped"
 msgstr "ఈమెయిల్ పంపలేదు"
 
-#: apps/audit/labels.py:134
+#: apps/audit/labels.py:135
 msgid "notification not delivered"
 msgstr "నోటిఫికేషన్ చేరలేదు"
 
-#: apps/audit/labels.py:143
+#: apps/audit/labels.py:144
 #, python-format
 msgid "other action (%(code)s)"
 msgstr "ఇతర చర్య (%(code)s)"
@@ -924,7 +928,7 @@ msgstr "కనీసం 2 అక్షరాలు రాయండి."
 msgid "A bill with this name already exists."
 msgstr "ఈ పేరుతో బిల్ ఇప్పటికే ఉంది."
 
-#: apps/bills/services.py:118
+#: apps/bills/services.py:134
 msgid "Send every bill's key exactly once."
 msgstr "ప్రతి బిల్ కీని ఒక్కసారి మాత్రమే పంపండి."
 
@@ -2275,39 +2279,39 @@ msgstr "ఈ అభ్యర్థన ఇప్పటికే '%(status)s' స�
 msgid "Your role cannot see service requests."
 msgstr "మీ పాత్ర సేవా అభ్యర్థనలను చూడలేదు."
 
-#: apps/wallet/serializers.py:14
+#: apps/wallet/serializers.py:15
 msgid "No reward: both accounts signed up on the same phone."
 msgstr "బహుమతి లేదు: రెండు ఖాతాలు ఒకే ఫోన్‌లో నమోదయ్యాయి."
 
-#: apps/wallet/serializers.py:15
+#: apps/wallet/serializers.py:16
 msgid "No welcome bonus: this phone or number already had one."
 msgstr "స్వాగత బోనస్ లేదు: ఈ ఫోన్ లేదా నంబర్‌కు ఇప్పటికే వచ్చింది."
 
-#: apps/wallet/serializers.py:16
+#: apps/wallet/serializers.py:17
 msgid "No welcome bonus: the phone could not be recognised."
 msgstr "స్వాగత బోనస్ లేదు: ఫోన్‌ను గుర్తించలేకపోయాము."
 
-#: apps/wallet/serializers.py:17
+#: apps/wallet/serializers.py:18
 msgid "Not confirmed: the new citizen did not use the app on enough days."
 msgstr "నిర్ధారించబడలేదు: కొత్త పౌరుడు తగినన్ని రోజులు యాప్ వాడలేదు."
 
-#: apps/wallet/serializers.py:18
+#: apps/wallet/serializers.py:19
 msgid "Not confirmed: the monthly limit of referrals was reached."
 msgstr "నిర్ధారించబడలేదు: నెలవారీ రిఫరల్ పరిమితి చేరింది."
 
-#: apps/wallet/serializers.py:19
+#: apps/wallet/serializers.py:20
 msgid "Not confirmed: an account was blocked."
 msgstr "నిర్ధారించబడలేదు: ఒక ఖాతా నిరోధించబడింది."
 
-#: apps/wallet/serializers.py:20
+#: apps/wallet/serializers.py:21
 msgid "Not confirmed: an account was deleted."
 msgstr "నిర్ధారించబడలేదు: ఒక ఖాతా తొలగించబడింది."
 
-#: apps/wallet/serializers.py:21
+#: apps/wallet/serializers.py:22
 msgid "Not confirmed by the Super Admin."
 msgstr "సూపర్ అడ్మిన్ నిర్ధారించలేదు."
 
-#: apps/wallet/serializers.py:108
+#: apps/wallet/serializers.py:119
 msgid "Give a number of points other than 0."
 msgstr "0 కాకుండా వేరే పాయింట్ల సంఖ్య ఇవ్వండి."
 

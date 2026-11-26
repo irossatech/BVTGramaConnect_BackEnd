@@ -80,6 +80,7 @@ ACTION_LABELS = {
     "service.hidden": _("hid a service from Home"),
     "service.reordered": _("changed the order of services"),
     "bill.created": _("added a bill / recharge"),
+    "bill.deleted": _("deleted a bill / recharge"),
     "bill.updated": _("edited a bill / recharge"),
     "bill.shown": _("showed a bill on Home"),
     "bill.hidden": _("hid a bill from Home"),

@@ -81,6 +81,11 @@ class AdminBillDetailView(APIView):
         )
         return _out(request, bill)
 
+    @extend_schema(summary="Delete a hidden bill (409 switch_off_first while it is shown)", responses={204: None})
+    def delete(self, request, key):
+        services.delete_bill(request.user, get_object_or_404(Bill, key=key))
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class AdminBillOrderView(APIView):
     permission_classes = [IsAuthenticated, MANAGE_BILLS]

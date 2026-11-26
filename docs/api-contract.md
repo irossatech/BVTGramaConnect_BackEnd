@@ -206,7 +206,7 @@ All errors share one shape:
 | 409 | `already_decided` | Another reviewer acted first (`REVIEW_FIRST_DECISION_WINS`); `post` included |
 | 409 | `duplicate` | Username, email, mobile or name already used; `fields` says which |
 | 409 | `type_in_use` | A contact type that active numbers use cannot be deleted; `count` gives how many (section 14) |
-| 409 | `switch_off_first` | A post category or a service is edited (anything but the on/off switch and the order) or deleted only while switched off (2026-11-26) |
+| 409 | `switch_off_first` | A post category, a service or a bill is edited (anything but the on/off switch and the order) or deleted only while switched off (2026-11-26) |
 | 409 | `service_in_use` | A service that requests use cannot be deleted (keep it hidden); `count` gives how many (section 16) |
 | 409 | `category_in_use` | A post category that posts use cannot be deleted (switch it off instead); `count` gives how many (section 5, "Categories") |
 | 409 | `protected` | The "Other" contact type cannot be deleted (section 14) |
@@ -969,7 +969,7 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Service requests (officials) | `GET /service-requests/` (status tabs from `status_counts`), `GET /service-requests/{id}/`, `PATCH /service-requests/{id}/`; assignees from `GET /users/` |
 | Super Admin: More → Services | `GET /admin/services/`, `POST /admin/services/`, `PATCH /admin/services/{key}/` (edit only while hidden, 2026-11-26), `DELETE /admin/services/{key}/`, `POST /admin/services/order/` |
 | Citizen: Home → Bills & Recharges | `GET /bills/` |
-| Super Admin: More → Bills & Recharges | `GET /admin/bills/`, `POST /admin/bills/`, `PATCH /admin/bills/{key}/`, `POST /admin/bills/order/` |
+| Super Admin: More → Bills & Recharges | `GET /admin/bills/`, `POST /admin/bills/`, `PATCH /admin/bills/{key}/` (edit only while hidden, 2026-11-26), `DELETE /admin/bills/{key}/`, `POST /admin/bills/order/` |
 | Citizen wallet account (section 21): Create account, Check your email, Log in, Forgot password | `POST /citizen/auth/signup/`, `/signup/resend/`, `/signup/verify/`; `POST /citizen/auth/login/`; `POST /citizen/auth/password/forgot/`, `/password/reset/` |
 | Citizen: Wallet, Invite friends, account entries in Profile (section 21) | `GET /citizen/account/`, `PATCH /citizen/account/`, `GET /wallet/`, `POST /citizen/account/password/`, `/email/`, `/email/verify/`, `/mobile/`, `/delete/`; `POST /devices/` with the citizen JWT |
 
@@ -990,7 +990,7 @@ Every row has tests against SQLite, per CLAUDE.md: each group × each permission
 | Important numbers | `GET /admin/contacts` (area and helpline tabs), `POST /admin/contacts`, `PATCH /admin/contacts/{id}`, `DELETE /admin/contacts/{id}`, `POST /admin/contacts/import`; types: `/admin/contact-types` |
 | Service requests | `GET /service-requests/`, `GET /service-requests/{id}/`, `PATCH /service-requests/{id}/`; assignees from `GET /users/` (shown to holders of `service_requests.view_service_requests`) |
 | Services | `GET /admin/services/`, `POST /admin/services/`, `PATCH /admin/services/{key}/`, `DELETE /admin/services/{key}/` (Edit and Delete only while hidden, 2026-11-26), `POST /admin/services/order/` |
-| Bills & Recharges | `GET /admin/bills/`, `POST /admin/bills/`, `PATCH /admin/bills/{key}/`, `POST /admin/bills/order/` |
+| Bills & Recharges | `GET /admin/bills/`, `POST /admin/bills/`, `PATCH /admin/bills/{key}/`, `DELETE /admin/bills/{key}/` (Edit and Delete only while hidden, 2026-11-26), `POST /admin/bills/order/` |
 | Notifications (bell) | `GET /notifications/`, `POST /notifications/{id}/read/`, `POST /notifications/read-all/`; opens the post or service request |
 | Ads | `GET /admin/ads/`, `POST /admin/ads/` (multipart), `PATCH /admin/ads/{id}/`, `DELETE /admin/ads/{id}/` |
 | Blocked citizens (Posts → Blocked) | `GET /admin/citizens/blocked/`, `GET /admin/citizens/{id}/blocks/`, `POST /admin/citizens/{id}/unblock/`; from a post: `POST /posts/{id}/block-citizen/`, `/unblock-citizen/`, `/discard-citizen-posts/` |
@@ -1516,7 +1516,7 @@ The citizen's Home has a second row next to Services: Electricity, Water, Mobile
 | `color` | One of `orange`, `blue`, `green`, `purple`, `teal` |
 | `is_active` | `false` hides it from Home |
 
-Bills are never deleted. The five the app used to ship are seeded with these keys: `electricity`, `water_bill`, `mobile_recharge`, `dth_recharge`, `broadband`.
+Bills are edited and deleted only while hidden (`is_active` false; 2026-11-26): shown on Home, a change to anything but `is_active` and a delete answer `409 switch_off_first`. Nothing refers to a bill yet (no payment or request behind it), so any hidden bill may be deleted. The five the app used to ship are seeded with these keys: `electricity`, `water_bill`, `mobile_recharge`, `dth_recharge`, `broadband`.
 
 ### Endpoints
 
@@ -1525,7 +1525,8 @@ Bills are never deleted. The five the app used to ship are seeded with these key
 | `GET /bills/` | public, no login | — | The **shown** bills in Home order, a plain list of `Bill`. `Cache-Control: max-age=300` (`SERVICES_PUBLIC_MAX_AGE`). |
 | `GET /admin/bills/` | Super Admin | — | **Every** bill, hidden ones too, plus `order`, `created_at`, `updated_at` |
 | `POST /admin/bills/` | Super Admin | JSON `{"name_en", "name_te"?, "icon"?, "color", "is_active"?}`, or the same fields as multipart with a `logo` file | `201` with the bill, last in the order |
-| `PATCH /admin/bills/{key}/` | Super Admin | any of the same fields, JSON or multipart. Multipart `logo` replaces the logo (the old file is deleted once saved); JSON `{"logo": null}` or an empty `logo` form field removes it; without `logo` it is kept. | The bill; `404` for an unknown key (a service's key too) |
+| `PATCH /admin/bills/{key}/` | Super Admin | any of the same fields, JSON or multipart. Multipart `logo` replaces the logo (the old file is deleted once saved); JSON `{"logo": null}` or an empty `logo` form field removes it; without `logo` it is kept. | The bill; `404` for an unknown key (a service's key too). Since 2026-11-26 only `is_active` may change while the bill is shown: any other change (a value different from the stored one, or a logo) answers `409 switch_off_first`; values sent unchanged are fine. |
+| `DELETE /admin/bills/{key}/` | Super Admin | — | `204` (2026-11-26). Only for a hidden bill; shown: `409 switch_off_first`. Audited as `bill.deleted` with the key and names; an uploaded logo file is removed after the delete is saved; `404` for an unknown key. |
 | `POST /admin/bills/order/` | Super Admin | `{"keys": [every bill key, in the new order]}` | `200` with the full list; `400 fields.keys` unless the keys are exactly the bills' own, each once (a service key is refused). Bills and services keep separate orders. |
 
 - Permission `bills.manage_bills` (Super Admin only). Anyone else gets `403 permission_denied`; no login gets `401` on the admin endpoints.

@@ -18,7 +18,7 @@ def bill_logo_path(instance, filename):
 
 
 class Bill(models.Model):
-    """One bill or recharge on the citizen's Home. Never deleted: hidden with is_active.
+    """One bill or recharge on the citizen's Home, hidden with is_active; edited and deleted only while hidden (2026-11-26).
 
     The app shows `logo` (an image the Super Admin uploaded) when there is one, else draws `icon`.
     """

@@ -17,7 +17,7 @@ from django.utils.translation import gettext as _
 
 from apps.audit.services import record
 from grama import logos
-from grama.exceptions import ApiError
+from grama.exceptions import ApiError, switch_off_first
 
 from .models import Bill
 
@@ -90,6 +90,9 @@ def update_bill(user, bill: Bill, changes: dict, logo=None, remove_logo: bool = 
     drop_logo = remove_logo and data is None and bool(bill.logo)
     if not changed and data is None and not drop_logo:
         return bill
+    # Shown on Home: only the switch works. Names, icon, colour and logo only while hidden (2026-11-26).
+    if bill.is_active and ([name for name in changed if name != "is_active"] or data is not None or drop_logo):
+        raise switch_off_first()
     with transaction.atomic():
         for name in changed:
             setattr(bill, name, changes[name])
@@ -109,6 +112,19 @@ def update_bill(user, bill: Bill, changes: dict, logo=None, remove_logo: bool = 
             record("bill.shown" if bill.is_active else "bill.hidden", actor=user, target=bill,
                    target_label=bill.name_en, data={"key": bill.key})
     return bill
+
+
+def delete_bill(user, bill: Bill) -> None:
+    """Delete a hidden bill, such as one added by mistake (2026-11-26). Nothing refers to a bill yet (no payment
+    or request behind it), so any hidden bill may go; shown on Home: 409 switch_off_first."""
+    if bill.is_active:
+        raise switch_off_first()
+    with transaction.atomic():
+        record("bill.deleted", actor=user, target=bill, target_label=bill.name_en,
+               data={"key": bill.key, "name_en": bill.name_en, "name_te": bill.name_te})
+        logo = bill.logo.name
+        bill.delete()
+        _delete_logo_after_commit(logo)
 
 
 def reorder_bills(user, keys: list[str]) -> None:

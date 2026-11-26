@@ -36,7 +36,7 @@ class AuthError(exceptions.AuthenticationFailed):
 
 
 def switch_off_first() -> ApiError:
-    """Post categories and services are edited and deleted only while switched off (2026-11-26)."""
+    """Post categories, services and bills are edited and deleted only while switched off (2026-11-26)."""
     return ApiError(
         "switch_off_first",
         _("Switch it off first. Only a switched-off item can be edited or deleted."),
