@@ -113,6 +113,9 @@ class AppConfigView(APIView):
                 "wallet_enabled": serializers.BooleanField(),
                 "wallet_pilot_mandals": serializers.ListField(child=serializers.IntegerField()),
                 "wallet_consent_version": serializers.CharField(),
+                "referral_reward_points": serializers.IntegerField(),
+                "welcome_bonus_points": serializers.IntegerField(),
+                "referrals_per_month": serializers.IntegerField(),
             },
         ),
     )
@@ -135,6 +138,11 @@ class AppConfigView(APIView):
                 "wallet_enabled": wallet_setting("WALLET_ENABLED"),
                 "wallet_pilot_mandals": wallet_setting("WALLET_PILOT_MANDALS"),
                 "wallet_consent_version": settings.CITIZEN_CONSENT_VERSION,
+                # The amounts the app's wallet texts name (BVTGC-160): the Super Admin's saved values, so
+                # "50 for you and 20 for your friend" and "Up to 30 a month" follow the console (0: no limit).
+                "referral_reward_points": wallet_setting("REFERRAL_REWARD_POINTS"),
+                "welcome_bonus_points": wallet_setting("WELCOME_BONUS_POINTS"),
+                "referrals_per_month": wallet_setting("REFERRALS_PER_MONTH"),
             }
         )
 

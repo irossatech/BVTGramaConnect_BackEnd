@@ -151,6 +151,18 @@ def test_app_config_tells_the_app_about_the_wallet(admin, settings):
     assert (data["wallet_enabled"], data["wallet_pilot_mandals"]) == (True, [mandal])
 
 
+def test_app_config_names_the_consoles_amounts(admin):
+    """BVTGC-160: the app's texts name the reward, the welcome bonus and the monthly limit the console saved."""
+    amounts = ("referral_reward_points", "welcome_bonus_points", "referrals_per_month")
+    data = APIClient().get(APP_CONFIG).json()
+    assert tuple(data[key] for key in amounts) == (50, 20, 30)
+    saved = admin.patch(SETTINGS, {"referral_reward_points": 60, "welcome_bonus_points": 25, "referrals_per_month": 0}, format="json")
+    assert saved.status_code == 200, saved.content
+    data = APIClient().get(APP_CONFIG).json()
+    assert tuple(data[key] for key in amounts) == (60, 25, 0)  # 0: no monthly limit
+    assert tuple(admin.get(SETTINGS).json()[key] for key in amounts) == (60, 25, 0)  # the same as the console's
+
+
 # --- The switch hides every citizen wallet endpoint --------------------------------------------------------------
 
 def citizen_wallet_routes() -> list[tuple[str, str]]:
