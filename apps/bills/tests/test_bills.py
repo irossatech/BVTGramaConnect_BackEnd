@@ -156,6 +156,7 @@ def test_a_new_bill_with_a_logo(admin, world, media_root):
 
 
 def test_a_logo_is_replaced_kept_and_removed(admin, world, media_root, django_capture_on_commit_callbacks):
+    Bill.objects.filter(key="electricity").update(is_active=False)  # edited only while hidden (2026-11-26)
     with django_capture_on_commit_callbacks(execute=True):
         first = admin.patch(f"{ADMIN}electricity/", {"logo": logo(fmt="JPEG", name="e.jpg", mode="RGB")},
                             format="multipart").json()["logo"]

@@ -87,8 +87,10 @@ def test_a_switched_on_category_is_not_deleted(admin, english):
 
 
 def test_the_key_of_a_deleted_category_can_be_used_again(admin):
-    admin.delete(f"{ADMIN}{added_off(admin)}/")
-    assert admin.post(ADMIN, NEW, format="json").status_code == 201
+    deleted = admin.delete(f"{ADMIN}{added_off(admin)}/")
+    assert deleted.status_code == 204, deleted.content
+    again = admin.post(ADMIN, NEW, format="json")
+    assert again.status_code == 201, again.json()
 
 
 def test_a_switched_off_category_with_posts_is_kept(admin, world, english):
