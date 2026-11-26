@@ -36,6 +36,12 @@ class IntegrityFailed(Exception):
     """Google did not confirm a genuine app on a real phone. The message is for logs, never for the client."""
 
 
+class IntegrityUnavailable(Exception):
+    """Google could not answer (5xx, or 429 rate limit): no verdict about the phone. Registration answers
+    503 integrity_unavailable, so the app says "try again later", not "install from the Play Store"
+    (finding BE-ERR-203)."""
+
+
 # --- Challenges --------------------------------------------------------------------------------
 
 
@@ -91,6 +97,8 @@ class PlayIntegrityVerifier:
         if response.status_code != 200:
             # Only the status code: the message is logged (services.register), and Google's reply
             # can echo the token and request details, which stay out of the logs.
+            if response.status_code == 429 or response.status_code >= 500:
+                raise IntegrityUnavailable(f"Google answered {response.status_code}")
             raise IntegrityFailed(f"Google answered {response.status_code}")
         return response.json().get("tokenPayloadExternal", {})
 

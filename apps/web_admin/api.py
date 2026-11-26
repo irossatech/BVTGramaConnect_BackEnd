@@ -70,8 +70,10 @@ def app_versions(now) -> list[dict]:
     )
 
     def build(version: str) -> int:
-        number = version.rpartition("+")[2]
-        return int(number) if version and number.isdigit() else -1
+        # The version is whatever a phone sent, without login: is_number, not isdigit(), so "1.0+²" sorts
+        # last instead of making the dashboard answer 500 for everyone (BE-ERR-201).
+        number = (version or "").rpartition("+")[2]
+        return int(number) if is_number(number) else -1
 
     return sorted(
         ({"version": row["app_version"], "phones": row["phones"]} for row in rows),
@@ -348,21 +350,30 @@ def decision_hours(decisions) -> list[tuple]:
 
     Decisions with no submission before them are left out. Shared by review-time and admin-activity,
     so both reports measure the same thing.
+
+    The latest submission at or before each decision is found by the database (a correlated subquery),
+    and the rows are streamed: no list of every decided post's id is sent back to it, however long the
+    window (finding BE-DB-204).
     """
-    rows = list(decisions.values_list("post_id", "actor_id", "actor_role", "created_at"))
-    submissions = defaultdict(list)
-    for post_id, at in (
+    latest_submission = (
         ReviewAction.objects.filter(
-            post_id__in={row[0] for row in rows}, action__in=[ReviewAction.Action.SUBMIT, ReviewAction.Action.RESUBMIT]
-        ).values_list("post_id", "created_at")
-    ):
-        submissions[post_id].append(at)
-    result = []
-    for post_id, actor_id, role, at in rows:
-        earlier = [s for s in submissions.get(post_id, []) if s <= at]
-        if earlier:
-            result.append((actor_id, role, (at - max(earlier)).total_seconds() / 3600))
-    return result
+            post_id=OuterRef("post_id"),
+            action__in=[ReviewAction.Action.SUBMIT, ReviewAction.Action.RESUBMIT],
+            created_at__lte=OuterRef("created_at"),
+        )
+        .order_by("-created_at")
+        .values("created_at")[:1]
+    )
+    rows = (
+        decisions.annotate(submitted=Subquery(latest_submission))
+        .filter(submitted__isnull=False)
+        .order_by()
+        .values_list("actor_id", "actor_role", "created_at", "submitted")
+    )
+    return [
+        (actor_id, role, (at - submitted).total_seconds() / 3600)
+        for actor_id, role, at, submitted in rows.iterator(chunk_size=2000)
+    ]
 
 
 def average(total: float, count: int) -> float | None:

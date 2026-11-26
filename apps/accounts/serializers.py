@@ -9,6 +9,7 @@ from rest_framework import serializers
 from apps.audit.masking import mask_email
 from apps.geography.areas import AreaDescriber, AreaRef, ancestries
 from apps.geography.models import AreaLevel
+from grama.params import DbIdField
 
 from . import authz
 from .models import (
@@ -59,7 +60,7 @@ class RoleField(serializers.Field):
 
 class AreaInputSerializer(serializers.Serializer):
     level = serializers.ChoiceField(choices=AreaLevel.choices)
-    id = serializers.IntegerField(min_value=1)
+    id = DbIdField()
 
     def to_internal_value(self, data):
         values = super().to_internal_value(data)

@@ -65,3 +65,31 @@ def test_a_retry_carries_ids_only_and_writes_the_text_again(world, request_from,
     [message] = [m for m in LocmemPushGateway.outbox if m.token == "tok-va"]
     assert NAME in message.title and message.data["request_id"] == str(request_id)
     assert template_key in {"service_request_new", "service_request_assigned_you"}
+
+
+NOTE = "Call Xyznote at 98765"
+
+
+def test_the_citizens_status_push_job_gets_no_note_and_a_retry_neither(world, request_from, queued, settings):
+    # BE-JOB-201: the official's note is free text; the job and its retries get the id and the status only.
+    from apps.service_requests.models import ServiceRequest
+
+    _phone, request_id = request_from("kolakaluru")
+    request = ServiceRequest.objects.select_related("service", "device").get(pk=request_id)
+    type(request.device).objects.filter(pk=request.device_id).update(fcm_token="tok-citizen", language="en")
+    ServiceRequest.objects.filter(pk=request_id).update(status="REJECTED", note=NOTE)
+    request = ServiceRequest.objects.select_related("service", "device").get(pk=request_id)
+    settings.DELIVERY_RETRY_BASE_SECONDS = 1.0
+    LocmemPushGateway.outbox.clear()
+    LocmemPushGateway.failures.append(RuntimeError("503"))  # the first try fails: a retry is scheduled
+
+    assert notification_services.tell_citizen_service_request(request) is True
+    [(func, args)] = [(f, a) for f, a in queued if f == notification_services.SERVICE_REQUEST_UPDATE_TASK]
+    assert args == (request_id, "REJECTED")
+    retry = Schedule.objects.get(func=tasks.SERVICE_REQUEST_UPDATE_TASK)
+    assert "Xyznote" not in retry.args and ast.literal_eval(retry.args) == (request_id, "REJECTED", 2)
+
+    assert tasks.send_service_request_update(*ast.literal_eval(retry.args)) is True
+    [message] = [m for m in LocmemPushGateway.outbox if m.token == "tok-citizen"]
+    assert message.body == NOTE and "Rejected" in message.title  # the push reads as before
+    assert message.data == {"type": "SERVICE_REQUEST_UPDATED", "request_id": str(request_id), "status": "REJECTED"}

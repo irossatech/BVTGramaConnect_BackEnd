@@ -6,6 +6,8 @@ The rules beyond shape (parent exists, unique names, warnings) live in services.
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
+from grama.params import DbIdField
+
 NAME = {"max_length": 120}
 
 
@@ -25,11 +27,11 @@ class _AreaFields(serializers.Serializer):
 
 
 class DistrictCreateSerializer(_AreaFields):
-    state_id = serializers.IntegerField(min_value=1)
+    state_id = DbIdField()
 
 
 class MandalCreateSerializer(_AreaFields):
-    district_id = serializers.IntegerField(min_value=1)
+    district_id = DbIdField()
 
 
 class _VillagePlace(serializers.Serializer):
@@ -39,7 +41,7 @@ class _VillagePlace(serializers.Serializer):
 
 
 class VillageCreateSerializer(_AreaFields, _VillagePlace):
-    mandal_id = serializers.IntegerField(min_value=1)
+    mandal_id = DbIdField()
 
 
 class AreaUpdateSerializer(_AreaFields):

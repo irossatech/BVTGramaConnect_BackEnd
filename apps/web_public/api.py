@@ -9,6 +9,7 @@
 
 
 from django.conf import settings
+from django.db import transaction
 from django.db.models import Count, Q
 from django.utils import timezone
 from django.utils.decorators import method_decorator
@@ -287,17 +288,22 @@ class ContactMessageDetailView(APIView):
         data = ContactHandledSerializer(data=request.data)
         data.is_valid(raise_exception=True)
         handled = data.validated_data["handled"]
-        if message.handled != handled:
-            message.handled = handled
-            message.handled_at = timezone.now() if handled else None
-            message.handled_by = request.user if handled else None
-            message.save(update_fields=["handled", "handled_at", "handled_by"])
-            record(
-                "contact.handled" if handled else "contact.reopened",
-                actor=request.user,
-                target=message,
-                target_label=f"#{message.id}",  # never the sender's name or number
-                via=client_via(request),
+        # One conditional UPDATE and its audit entry in one transaction: two admins clicking at the same
+        # moment change it once and audit it once, and a failed audit undoes the change (BE-ARC-202).
+        with transaction.atomic():
+            changed = ContactMessage.objects.filter(pk=message.pk, handled=not handled).update(
+                handled=handled,
+                handled_at=timezone.now() if handled else None,
+                handled_by=request.user if handled else None,
             )
+            if changed:
+                record(
+                    "contact.handled" if handled else "contact.reopened",
+                    actor=request.user,
+                    target=message,
+                    target_label=f"#{message.id}",  # never the sender's name or number
+                    via=client_via(request),
+                )
+        message = ContactMessage.objects.select_related("handled_by").get(pk=message.pk)
         return Response(ContactMessageAdminSerializer(message).data)
 

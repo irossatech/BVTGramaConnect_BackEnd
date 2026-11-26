@@ -1,8 +1,10 @@
 """Unified Django Settings for GramaConnect.
  
-Only two environments: DEV and PROD, controlled entirely by standard DEBUG:
+One file; DEBUG in .env picks the mode (the old names grama.settings.base/.dev/.prod/.test are aliases):
 - DEV (default): DEBUG=True in .env (or unset). Uses SQLite, local file serving.
-- PROD: DEBUG=False in .env. Enforces strict security, MySQL/Postgres, HSTS, Nginx serving.
+- PROD: DEBUG=False in .env, also the qa server. Enforces strict security, MySQL/Postgres, HSTS,
+  Nginx serving (qa serves the files itself, SERVE_FILES).
+- Tests (pytest running): always SQLite and .test-media/, whatever DEBUG says.
 """
  
 from __future__ import annotations

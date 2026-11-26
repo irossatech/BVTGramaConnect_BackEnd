@@ -262,6 +262,28 @@ def test_reports(api, world):
     assert activity["count"] == 9
 
 
+def test_review_time_counts_from_the_latest_submission_before_each_decision(api, world):
+    # BE-DB-204: found by a subquery now; a recheck sends the post back, and the clock restarts at the
+    # resubmission. A submission after the decision does not count, and a decision with none before it is left out.
+    post = make_post(world, "pm_kaza", "kaza", PostStatus.PUBLISHED, published=True)
+    alone = make_post(world, "pm_kolakaluru", "kolakaluru", PostStatus.PUBLISHED, published=True)
+    now = timezone.now()
+
+    def act(target, action, hours_ago, actor="pm_kaza", role="PANCHAYAT_MEMBER"):
+        row = ReviewAction.objects.create(post=target, action=action, from_status="PENDING", to_status="PENDING",
+                                          actor=world.users[actor], actor_role=role)
+        ReviewAction.objects.filter(pk=row.pk).update(created_at=now - timedelta(hours=hours_ago))
+
+    act(post, "SUBMIT", 20)
+    act(post, "RECHECK", 15, "va_kaza", "VILLAGE_ADMIN")  # 5 h after the first submission
+    act(post, "RESUBMIT", 10)
+    act(post, "PUBLISH", 7, "va_kaza", "VILLAGE_ADMIN")  # 3 h after the resubmission
+    act(post, "RESUBMIT", 1)  # after the decision: not counted
+    act(alone, "PUBLISH", 2, "va_kolakaluru", "VILLAGE_ADMIN")  # no submission before it: left out
+    review = {row["level"]: row for row in api(world.users["super"]).get("/api/v1/admin/reports/review-time/").json()}
+    assert review["VILLAGE"]["reviews"] == 2 and review["VILLAGE"]["avg_hours"] == pytest.approx(4.0, abs=0.05)
+
+
 def log_action(world, post, action, actor, role, hours_ago):
     row = ReviewAction.objects.create(
         post=post, action=action, from_status="", to_status="", actor=world.users[actor], actor_role=role

@@ -13,8 +13,10 @@ sees, never a name, phone number or device id. Errors never carry the text.
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 from typing import Protocol
+from urllib.parse import urlsplit
 
 import requests
 from django.conf import settings
@@ -114,7 +116,8 @@ class BhashiniTranslator:
             inference = data["pipelineInferenceAPIEndPoint"]
             service_id = data["pipelineResponseConfig"][0]["config"][0]["serviceId"]
             key = inference["inferenceApiKey"]
-            self._endpoints[(src, dst)] = (inference["callbackUrl"], key["name"], key["value"], service_id)
+            url = _safe_callback(inference["callbackUrl"])
+            self._endpoints[(src, dst)] = (url, key["name"], key["value"], service_id)
         return self._endpoints[(src, dst)]
 
     def translate(self, texts, src, dst):
@@ -132,8 +135,30 @@ class BhashiniTranslator:
             },
             headers={header: value},
             timeout=settings.TRANSLATION_TIMEOUT_S,
+            allow_redirects=False,  # the post's text and the key go to the checked address only
         )
+        if response.status_code in (401, 403):
+            # The inference key was rotated: ask the pipeline again on the next try, instead of failing
+            # until the worker restarts (finding BE-INT-202).
+            self._endpoints.pop((src, dst), None)
         return [row["target"] for row in _check(response, "Bhashini")["pipelineResponse"][0]["output"]]
+
+
+def _safe_callback(url: str) -> str:
+    """The inference address from Bhashini's pipeline reply, if it is https and not a loopback, private,
+    link-local or reserved address. The reply comes from a third party, and this server sends the post's
+    text and an API key there (finding BE-SEC-206)."""
+    parts = urlsplit(str(url or ""))
+    host = (parts.hostname or "").lower()
+    if parts.scheme != "https" or not host or host == "localhost" or host.endswith(".localhost"):
+        raise RuntimeError("Bhashini gave an inference address that is not https or has no public host.")
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return url  # a host name
+    if not address.is_global:
+        raise RuntimeError("Bhashini gave an inference address on a private or reserved network.")
+    return url
 
 
 PROVIDERS = {"google": GoogleTranslator, "bhashini": BhashiniTranslator}

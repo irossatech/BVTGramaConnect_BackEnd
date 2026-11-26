@@ -9,6 +9,7 @@ from rest_framework import serializers
 
 from apps.accounts.serializers import describer_from
 from apps.geography.models import AreaLevel
+from grama.params import DbIdField
 
 from .models import Ad
 
@@ -24,7 +25,7 @@ class AdWriteSerializer(serializers.Serializer):
     title = serializers.CharField(max_length=80)
     link = serializers.CharField(max_length=500, required=False, allow_blank=True, default="")
     area_level = serializers.ChoiceField(choices=AreaLevel.choices)
-    area_id = serializers.IntegerField(min_value=1)
+    area_id = DbIdField()
     starts_on = serializers.DateField(required=False, allow_null=True, default=None)
     ends_on = serializers.DateField(required=False, allow_null=True, default=None)
     is_active = serializers.BooleanField(required=False, default=True)

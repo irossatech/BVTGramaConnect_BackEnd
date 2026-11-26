@@ -87,6 +87,25 @@ def test_a_phone_cannot_pass_its_daily_limit_by_sending_at_once(world, settings)
     assert Post.objects.filter(citizen__isnull=False).count() == 3
 
 
+def test_a_phone_cannot_pass_its_daily_service_request_limit_by_sending_at_once(world, settings):
+    # BE-TEST-302: service requests lock the phone before the insert (6b41a4a), as citizen posts do;
+    # locking after it deadlocked on MariaDB. The limit holds and nothing answers 500.
+    from apps.service_requests.models import ServiceRequest
+
+    settings.SERVICE_REQUESTS_PER_DAY = 3
+    token = register(world).json()["token"]
+    phone = [APIClient(HTTP_X_CITIZEN_TOKEN=token) for _ in range(8)]
+    body = {"service": "aadhaar", "name": "లక్ష్మి దేవి", "phone": "9876543210", "address": "4-12, Temple Street"}
+    results = together(*[
+        (lambda client=client: client.post("/api/v1/citizen/service-requests/", body, format="json"))
+        for client in phone
+    ])
+    created = [r for r in results if getattr(r, "status_code", None) == 201]
+    refused = [r for r in results if getattr(r, "status_code", None) == 429]
+    assert len(created) == 3 and len(refused) == 5, statuses(results)
+    assert ServiceRequest.objects.count() == 3
+
+
 def test_the_same_push_token_registered_at_once_is_stored_once(world):
     body = {"fcm_token": "same-token-from-a-double-tap", "platform": "android", "language": "te",
             "village_id": world.ref("kolakaluru").id}

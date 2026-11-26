@@ -199,10 +199,12 @@ def update_service(user, service: Service, changes: dict, logo=None, remove_logo
     drop_logo = remove_logo and data is None and bool(service.logo)
     if not changed and data is None and not drop_logo:
         return service
-    # Shown on Home: only the switch works. Names, hints, icon, colour and logo only while hidden (2026-11-26).
-    if service.is_active and ([name for name in changed if name != "is_active"] or data is not None or drop_logo):
-        raise switch_off_first()
     with transaction.atomic():
+        # Shown on Home: only the switch works. Names, hints, icon, colour and logo only while hidden
+        # (2026-11-26). Read under a row lock, so a "show" sent at the same moment cannot let an edit
+        # through (finding BE-QUA-203).
+        if _shown_now(service) and ([name for name in changed if name != "is_active"] or data is not None or drop_logo):
+            raise switch_off_first()
         for name in changed:
             setattr(service, name, changes[name])
         if data is not None or drop_logo:
@@ -223,6 +225,11 @@ def update_service(user, service: Service, changes: dict, logo=None, remove_logo
     return service
 
 
+def _shown_now(service: Service) -> bool:
+    """Inside a transaction: lock the service's row and read its switch as saved now."""
+    return bool(Service.objects.select_for_update().filter(pk=service.pk).values_list("is_active", flat=True).first())
+
+
 def _service_in_use(count: int) -> ApiError:
     return ApiError(
         "service_in_use",
@@ -236,12 +243,12 @@ def _service_in_use(count: int) -> ApiError:
 def delete_service(user, service: Service) -> None:
     """Delete a hidden service no request uses, such as one added by mistake (2026-11-26). Requests are kept
     permanently and keep their service (ServiceRequest.service is PROTECT), so one in use stays."""
-    if service.is_active:
-        raise switch_off_first()
-    count = ServiceRequest.objects.filter(service=service).count()
-    if count:
-        raise _service_in_use(count)
     with transaction.atomic():
+        if _shown_now(service):  # under a row lock (BE-QUA-203)
+            raise switch_off_first()
+        count = ServiceRequest.objects.filter(service=service).count()
+        if count:
+            raise _service_in_use(count)
         record("service.deleted", actor=user, target=service, target_label=service.name_en,
                data={"key": service.key, "name_en": service.name_en, "name_te": service.name_te})
         logo = service.logo.name

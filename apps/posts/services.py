@@ -907,6 +907,19 @@ def lowest_level(refs: list[AreaRef]) -> str:
     return max((ref.level for ref in refs), key=lambda level: DEPTH[level])
 
 
+def _can_climb() -> Q:
+    """Posts with a level left above them: escalated below the state, or not escalated yet with an area
+    below the state (older posts without target rows: their first area). Posts for Everyone and posts at
+    the state already stay out of the batch, so they can never fill it and stop every other post (BE-DB-201)."""
+    below_state = [AreaLevel.VILLAGE, AreaLevel.MANDAL, AreaLevel.DISTRICT]
+    targets = PostTarget.objects.filter(post=OuterRef("pk"))
+    not_escalated = Q(escalation_level="") & (
+        Exists(targets.filter(area_level__in=below_state))
+        | (~Exists(targets) & Q(target_level__in=below_state))
+    )
+    return Q(escalation_level__in=below_state) | not_escalated
+
+
 def escalate_overdue(now=None) -> int:
     """Flag PENDING posts nobody decided within REVIEW_ESCALATION_HOURS.
 
@@ -924,6 +937,7 @@ def escalate_overdue(now=None) -> int:
     candidates = (
         Post.objects.filter(status=PostStatus.PENDING)
         .filter(Q(escalated_at__isnull=True, submitted_at__lte=cutoff) | Q(escalated_at__lte=cutoff))
+        .filter(_can_climb())
         .order_by("submitted_at", "pk")
         .prefetch_related("targets")[: settings.ESCALATION_BATCH_SIZE]
     )

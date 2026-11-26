@@ -165,3 +165,18 @@ def test_the_switch_works_any_time_and_unchanged_values_are_fine(admin, world):
     body = {"name_en": shown["name_en"], "color": shown["color"], "is_active": False}
     assert admin.patch(f"{ADMIN}{shown['key']}/", body, format="json").status_code == 200
     assert admin.patch(f"{ADMIN}{shown['key']}/", {"is_active": True}, format="json").status_code == 200
+
+
+def test_a_stale_copy_that_says_hidden_cannot_edit_or_delete_a_service_shown_meanwhile(world):
+    # BE-QUA-203: the switch is read again under a row lock, not from the copy the request loaded.
+    from grama.exceptions import ApiError
+
+    stale = Service.objects.get(key="aadhaar")
+    stale.is_active = False  # loaded while hidden; switched on by another admin since (saved: shown)
+    with pytest.raises(ApiError) as refused:
+        service_writes.update_service(world.users["super"], stale, {"name_en": "Changed"})
+    assert refused.value.error_code == "switch_off_first"
+    with pytest.raises(ApiError) as refused:
+        service_writes.delete_service(world.users["super"], stale)
+    assert refused.value.error_code == "switch_off_first"
+    assert Service.objects.get(key="aadhaar").name_en != "Changed"

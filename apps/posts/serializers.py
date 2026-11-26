@@ -6,6 +6,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.accounts.serializers import AreaInputSerializer, AreaOutputSerializer, describer_from
+from grama.params import DbIdField
 
 from .models import Category, EventKind, MediaKind, Post, PostMedia, PostStatus, ReviewAction
 from .services import REVERSE_TARGETS, allowed_actions
@@ -427,7 +428,7 @@ class SettingsSerializer(serializers.Serializer):
     # The citizen wallet (BVTGC-129; contract section 21, "Settings").
     wallet_enabled = serializers.BooleanField()
     wallet_pilot_mandals = serializers.ListField(
-        child=serializers.IntegerField(min_value=1), allow_empty=True, max_length=1000,
+        child=DbIdField(), allow_empty=True, max_length=1000,
         help_text="Mandal ids where sign-up is open; empty: everywhere",
     )
     referral_reward_points = serializers.IntegerField(min_value=0, max_value=10_000)

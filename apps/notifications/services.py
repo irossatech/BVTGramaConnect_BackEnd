@@ -353,27 +353,32 @@ def tell_assignee_cancelled(request) -> Notification | None:
     return _service_request_notes([(assignee, "service_request_cancelled")], request)[0]
 
 
-def tell_citizen_service_request(request) -> bool:
-    """After a status change: push the new status (and the note) to the phone that sent the request."""
+def service_request_update_push(request, status: str, language: str) -> tuple[str, str, dict]:
+    """(title, body, data) of the push that tells the citizen their request moved to `status`.
+
+    Written by the push job when it sends, so the official's note (free text that may name people)
+    never sits in the job tables or a retry's arguments (finding BE-JOB-201, as BVTGC-78 did for officials).
+    """
     from apps.service_requests.models import status_label
 
-    device = request.device
-    if not device.fcm_token:
-        return False
-    language = device.language
-    status = status_label(request.status, language)
-    text = render(
+    label = status_label(status, language)
+    title = render(
         "service_request_updated", language,
-        service=request.service.display_name(language), status=status, note=request.note,
+        service=request.service.display_name(language), status=label, note=request.note,
     )
-    async_task(
-        "apps.notifications.tasks.send_push_to_citizen",
-        str(device.pk),
-        text[:255],
-        (request.note or status)[:500],
-        {"type": "SERVICE_REQUEST_UPDATED", "request_id": str(request.pk), "status": request.status},
-        group="push",
-    )
+    data = {"type": "SERVICE_REQUEST_UPDATED", "request_id": str(request.pk), "status": status}
+    return title[:255], (request.note or label)[:500], data
+
+
+SERVICE_REQUEST_UPDATE_TASK = "apps.notifications.tasks.send_service_request_update"
+
+
+def tell_citizen_service_request(request) -> bool:
+    """After a status change: push the new status (and the note) to the phone that sent the request.
+    The job gets the request's id and the new status only."""
+    if not request.device.fcm_token:
+        return False
+    async_task(SERVICE_REQUEST_UPDATE_TASK, request.pk, request.status, group="push")
     return True
 
 

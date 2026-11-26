@@ -96,5 +96,20 @@ def test_the_dashboard_counts_phones_by_app_version(api, world):
     ]
 
 
+def test_a_version_any_phone_can_send_never_breaks_the_dashboard(api, world):
+    # BE-ERR-201: POST /devices/ needs no login, and "²".isdigit() is True while int("²") raises.
+    from rest_framework.test import APIClient
+
+    for token, version in (("x1", "1.0+²"), ("x2", "+"), ("x3", "9" * 20), ("x4", "1.0.0+24")):
+        answer = APIClient().post("/api/v1/devices/", {"fcm_token": token, "platform": "android",
+                                                       "app_version": version}, format="json")
+        assert answer.status_code in (200, 201), answer.content
+    answer = api(world.users["super"]).get("/api/v1/admin/dashboard/")
+    assert answer.status_code == 200, answer.content
+    rows = answer.json()["app_versions"]
+    assert rows[0] == {"version": "1.0.0+24", "phones": 1}  # odd versions sort after the real builds
+    assert {row["version"] for row in rows} == {"1.0+²", "+", "9" * 20, "1.0.0+24"}
+
+
 def test_only_the_super_admin_sees_the_dashboard(api, world):
     assert api(world.users["da_guntur"]).get("/api/v1/admin/dashboard/").status_code == 403

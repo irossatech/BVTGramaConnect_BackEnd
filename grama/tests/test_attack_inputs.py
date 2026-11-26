@@ -162,6 +162,27 @@ def test_a_number_too_large_for_the_database_in_every_query_parameter(world, pat
     assert not problems, f"{path}: " + "; ".join(problems)
 
 
+def test_a_number_too_large_for_the_database_in_a_request_body(world):
+    # BE-TEST-301: the same class as BE-TEST-208 in JSON bodies; DbIdField caps every id a body carries.
+    from apps.citizens.tests.conftest import nonce
+
+    huge = int(HUGE)
+    ip = "10.20.30.41"
+    answers = {
+        "citizen register": APIClient(REMOTE_ADDR=ip).post("/api/v1/citizen/register/", {
+            "nonce": nonce(ip), "integrity_token": "t", "platform": "android", "village_id": huge,
+        }, format="json"),
+        "targets check": client_for(world.users["va_kolakaluru"]).post(
+            "/api/v1/posts/targets/check/", {"targets": [{"level": "VILLAGE", "id": huge}]}, format="json"),
+        "new village": client_for(world.users["super"]).post(
+            "/api/v1/geo/villages/", {"name_en": "Big", "name_te": "పెద్ద", "mandal_id": huge}, format="json"),
+    }
+    wrong = {name: (r.status_code, r.content[:200]) for name, r in answers.items() if r.status_code != 400}
+    assert not wrong, wrong
+    for response in answers.values():
+        assert response.json()["error"]["code"] == "validation_error"
+
+
 @pytest.fixture
 def make_published_posts(world):
     """A few published posts, so a widened search would show."""

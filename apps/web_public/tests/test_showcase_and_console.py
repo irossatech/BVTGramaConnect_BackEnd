@@ -164,6 +164,23 @@ def test_marking_handled_and_reopening_is_recorded(world, console):
     assert "రవి" not in rows[0].target_label and "9876543210" not in str(rows[0].data)
 
 
+def test_a_failed_audit_leaves_the_message_unchanged(world, api, monkeypatch):
+    # BE-ARC-202: the change and its audit entry are one transaction.
+    from apps.web_public import api as web_api
+
+    item = message()
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("audit down")
+
+    monkeypatch.setattr(web_api, "record", broken)
+    client = api(world.users["super"])
+    client.raise_request_exception = False
+    assert client.patch(f"{INBOX}{item.id}/", {"handled": True}, format="json").status_code == 500
+    item.refresh_from_db()
+    assert not item.handled and item.handled_at is None
+
+
 def test_the_tables_rows_leave_out_the_mobile_and_message_only_when_asked(world, api):
     """contact=0 (the console's table, audit WEB-DP-001): last 4 digits only, no message; the app's list keeps them."""
     item = message(mobile="9816023452", text="మా గ్రామం")
