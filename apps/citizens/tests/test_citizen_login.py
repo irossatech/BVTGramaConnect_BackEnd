@@ -186,6 +186,26 @@ def test_a_reset_sets_the_new_password_and_ends_every_other_login(api, citizen, 
     assert AuditLog.objects.filter(action="citizen.password_reset", target_id=str(citizen.user_id)).exists()
 
 
+def test_a_login_counts_the_day_and_a_refused_one_does_not(api, world, citizen):
+    """BVTGC-154: a login is a day of using the app (the referral's active rule); a refused one is not."""
+    assert err(log_in(api, "9876543210", "wrong-pass")) == "invalid_credentials"
+    blocked = make_citizen(world, n=2, email="suresh@gmail.com", mobile="9876500002")
+    User.objects.filter(pk=blocked.user_id).update(is_active=False)
+    assert err(log_in(api, "suresh@gmail.com")) == "account_blocked"
+    assert not citizen.active_days.exists() and not blocked.active_days.exists()
+    assert log_in(api, "9876543210").status_code == 200
+    assert log_in(api, "lakshmi.devi@gmail.com").status_code == 200
+    assert list(citizen.active_days.values_list("day", flat=True)) == [timezone.localdate()]
+
+
+def test_a_reset_counts_the_day(api, citizen, mailoutbox):
+    """BVTGC-154: the reset signs the app in, so it is a day of using it."""
+    code = reset_code(api, mailoutbox)
+    response = api().post(RESET, {"login": "9876543210", "code": code, "new_password": "71935284"}, format="json")
+    assert response.status_code == 200
+    assert list(citizen.active_days.values_list("day", flat=True)) == [timezone.localdate()]
+
+
 def test_a_reset_ends_a_lockout(api, citizen, mailoutbox):
     for _ in range(5):
         log_in(api, "9876543210", "wrong-pass")

@@ -116,6 +116,13 @@ def test_a_citizen_signs_up_with_the_email_code(api, world, wallet_on, mailoutbo
     assert entry.data == {"village_id": world.ref("kolakaluru").id, "referral_code_used": False}
 
 
+def test_finishing_the_sign_up_counts_today_for_the_active_rule(api, world, wallet_on, mailoutbox):
+    """BVTGC-154: the sign-up day is a day of using the app (the referral's active rule)."""
+    signed_up(api, world, mailoutbox)
+    account = CitizenAccount.objects.get()
+    assert list(account.active_days.values_list("day", flat=True)) == [timezone.localdate()]
+
+
 def test_the_new_account_is_logged_in_with_a_citizen_token(api, world, wallet_on, mailoutbox):
     data = signed_up(api, world, mailoutbox)
     client = api()

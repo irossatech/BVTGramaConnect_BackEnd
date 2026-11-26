@@ -312,6 +312,8 @@ def finish_signup(token: str, code: str, *, via: str = "app") -> CitizenAccount:
                 last_active_at=now,
                 created_at=now,
             )
+            # The sign-up day is a day of using the app for the referral's active rule (BVTGC-154).
+            CitizenActiveDay.objects.create(account=account, day=timezone.localdate(now))
             from apps.wallet.models import Wallet
             from apps.wallet.services import start_referral
 
@@ -381,6 +383,7 @@ def log_in(request, login: str, password: str, *, via: str = "citizen") -> Citiz
         raise citizen_invalid_credentials()
     if not user.is_active:
         raise credentials.refuse(user, "account_blocked", _("This account is blocked."), via)
+    record_active_day(account)  # a login is a day of using the app (BVTGC-154)
     return account
 
 
@@ -436,6 +439,7 @@ def reset_password(login: str, code: str, new_password: str, *, via: str = "citi
     revoke_all_sessions(user)
     lockout.unlock(user)
     emails.notify("password_changed", account.email, language=user.preferred_language, name=user.name)
+    record_active_day(account)  # the reset signs the app in: a day of using it (BVTGC-154)
     account.refresh_from_db()
     account.user.refresh_from_db()
     return account
@@ -444,8 +448,9 @@ def reset_password(login: str, code: str, new_password: str, *, via: str = "citi
 # --- The citizen's own account (BVTGC-125) --------------------------------------------------------------
 
 def record_active_day(account: CitizenAccount) -> None:
-    """One row per India date the app opens with the account (the referral active rule); the first open of
-    a day also sets last_active_at. Cheap: get_or_create on the unique pair."""
+    """One row per India date the app is used with the account (the referral active rule): opening the app
+    (GET citizen/account/), and since BVTGC-154 a login and a password reset; finish_signup writes the
+    sign-up day itself. The first of a day also sets last_active_at. Cheap: get_or_create on the unique pair."""
     _row, created = CitizenActiveDay.objects.get_or_create(account=account, day=timezone.localdate())
     if created:
         CitizenAccount.objects.filter(pk=account.pk).update(last_active_at=timezone.now())

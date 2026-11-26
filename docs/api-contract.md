@@ -1646,7 +1646,7 @@ An optional account for citizens, used **only for the wallet of points and refer
 
 | Method and path | Request | Response |
 |---|---|---|
-| `GET /citizen/account/` **live** (BVTGC-125) | — | `Account`. The app calls it when it opens; it records the day for the active rule. |
+| `GET /citizen/account/` **live** (BVTGC-125) | — | `Account`. The app calls it when it opens; it records the day for the active rule. Finishing the sign-up, a login and a password reset record the day too (BVTGC-154), so the sign-up day counts. |
 | `PATCH /citizen/account/` **live** (BVTGC-125) | any of `{village_id, language}` | `Account`. A new village moves the Citizen role with it. |
 | `POST /citizen/account/password/` **live** (BVTGC-125) | `{current_password, new_password}` | `200 {access, refresh}`: other logins end, this phone gets new tokens, a notice is emailed. `400 invalid_credentials` (wrong current password; the 5th wrong try within 15 minutes ends every session: `401 session_revoked`); `400 validation_error` on `new_password` |
 | `POST /citizen/account/email/` **live** (BVTGC-125) | `{email, password}` (the new email) | `200 CodeSent` with `email_hint`: a code went to the new email. `409 email_in_use`; `400 invalid_credentials`; `503 email_unavailable` |
