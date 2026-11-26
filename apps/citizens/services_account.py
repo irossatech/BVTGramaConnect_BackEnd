@@ -97,10 +97,14 @@ def canonical_email(email: str) -> str:
 
 
 def clean_mobile(mobile: str) -> str:
-    """The 10 digits, with spaces, dashes and a leading +91 dropped; validation_error otherwise."""
+    """The 10 digits, with spaces, dashes and a leading +91 dropped, or a leading 0 when 11 digits are left
+    (BVTGC-153: "09876543210" is the number the app's and the website's checks accept); validation_error
+    otherwise. Used by sign-up, login, the forgotten password, the website deletion and the Super Admin's Find."""
     value = "".join(ch for ch in (mobile or "") if ch not in " -")
     if value.startswith("+91"):
         value = value[3:]
+    elif len(value) == 11 and value.startswith("0"):
+        value = value[1:]
     try:
         mobile_validator(value)
     except ValidationError as exc:

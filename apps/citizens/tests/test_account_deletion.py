@@ -284,6 +284,12 @@ def test_the_same_answer_for_every_login(api, world, citizen, mailoutbox):
     assert [m.to for m in mailoutbox] == [["lakshmi.devi@gmail.com"]]  # only the open account
 
 
+def test_a_number_with_a_leading_0_gets_the_code(api, citizen, mailoutbox):
+    """BVTGC-153: the website accepts "0" + 10 digits, so the server must find the account by it."""
+    assert ask_code(api, "098765 43210").status_code == 200
+    assert [m.to for m in mailoutbox] == [["lakshmi.devi@gmail.com"]]
+
+
 def test_a_password_reset_code_does_not_delete(api, citizen, mailoutbox):
     api().post(FORGOT, {"login": "9876543210"}, format="json")
     reset_code = code_in(mailoutbox[-1])

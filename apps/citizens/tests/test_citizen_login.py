@@ -83,7 +83,9 @@ def test_hidden_while_the_wallet_is_off(api, world, url):
 # --- Login ------------------------------------------------------------------------------------------------
 
 @pytest.mark.parametrize(
-    "login", ["lakshmi.devi@gmail.com", "LAKSHMI.DEVI@gmail.com", "lakshmidevi+x@googlemail.com", "9876543210", "+91 98765-43210"]
+    "login",
+    ["lakshmi.devi@gmail.com", "LAKSHMI.DEVI@gmail.com", "lakshmidevi+x@googlemail.com", "9876543210", "+91 98765-43210",
+     "09876543210"],  # a leading 0 (BVTGC-153)
 )
 def test_a_citizen_logs_in_with_the_email_or_the_number(api, citizen, login):
     response = log_in(api, login)

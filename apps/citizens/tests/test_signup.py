@@ -169,6 +169,19 @@ def test_mobile_with_plus_91_and_spaces_is_accepted(api, world, wallet_on, mailo
     assert CitizenAccount.objects.get().mobile_last4 == "3210"
 
 
+def test_mobile_with_a_leading_0_is_the_same_number(api, world, wallet_on, mailoutbox):
+    """BVTGC-153: the app and the website accept "0" + 10 digits; the server stores the 10 digits."""
+    signed_up(api, world, mailoutbox, mobile="098765 43210")
+    account = CitizenAccount.objects.get()
+    assert account.mobile_last4 == "3210" and account.mobile_hash == hash_mobile("9876543210")
+
+
+@pytest.mark.parametrize("mobile", ["05876543210", "0987654321", "009876543210", "+910987654321"])
+def test_a_leading_0_does_not_make_a_wrong_number_right(api, world, wallet_on, mobile):
+    response = api().post(SIGNUP, form(world, mobile=mobile), format="json")
+    assert err(response) == "validation_error" and "mobile" in response.json()["error"]["fields"]
+
+
 def test_the_officials_password_rule_is_unchanged():
     with pytest.raises(ApiError):
         check_new_password("48213957")  # fine for a citizen, not for an official
