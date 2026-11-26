@@ -1,0 +1,36 @@
+{
+  "about": "Load, stress, spike and soak runs of deploy/loadtest/locustfile.py (audit stage S6, BVTGC-17). python -m grama.perftest <kind> reads this file and .env.test (git-ignored; copy .env.test.example). It refuses to start without a base URL, and against any host in refused_hosts. Staging only (BVTGC-38); user numbers follow BVTGC-37 once the client gives them.",
+  "refused_hosts": {
+    "gramaconnect.com": "production",
+    "www.gramaconnect.com": "production",
+    "dev.bvtgramaconnect.com": "the qa server: Django's development server without Nginx, so its figures mean nothing and the testers use it",
+    "dev.gramaconnect.com": "the qa server"
+  },
+  "required_env": ["LOADTEST_BASE_URL"],
+  "optional_env": {
+    "LOADTEST_OFFICIAL_USERNAME": "a staging official for the logged-in mix (login, refresh, notifications, a draft post deleted again); without it only citizens and failed logins run",
+    "LOADTEST_OFFICIAL_PASSWORD": "that official's password",
+    "LOADTEST_METRICS_URL": "an address answering JSON {\"cpu_percent\", \"memory_mb\", \"db_connections\"} on the staging server, read every 5 s; without it server figures are not recorded"
+  },
+  "sla": {
+    "about": "The answer times and error rate a step must stay within (per endpoint where listed, else the default).",
+    "default": {"p95_ms": 800, "p99_ms": 2000, "error_percent": 1.0},
+    "endpoints": {
+      "feed first page": {"p95_ms": 600},
+      "feed next page": {"p95_ms": 600},
+      "feed post detail": {"p95_ms": 500},
+      "official login": {"p95_ms": 1500},
+      "create draft post": {"p95_ms": 1500}
+    }
+  },
+  "profiles": {
+    "load": {"about": "Each user count in turn, the realistic mix.", "users": [1, 5, 10, 25, 50], "spawn_rate": 5, "duration_s": 120},
+    "stress": {"about": "From start, add step users each round until the error rate or P95 crosses stop_when, or max.",
+               "start": 50, "step": 25, "max": 500, "spawn_rate": 25, "duration_s": 60,
+               "stop_when": {"error_percent": 5.0, "p95_ms": 3000}},
+    "spike": {"about": "0 to users at once; recovery is the time until P95 is back within the SLA.",
+              "users": 50, "spawn_rate": 50, "duration_s": 180},
+    "soak": {"about": "Sustained load; error drift between the first and the last minutes, and server memory and DB connections when a metrics source is set.",
+             "users": 25, "spawn_rate": 5, "duration_s": 600}
+  }
+}

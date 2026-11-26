@@ -12,9 +12,15 @@ import uuid
 UUID_REGEX = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 
 
+#: The largest id a database column can hold (BigAutoField, a signed 64-bit integer on every database).
+MAX_DB_ID = 2**63 - 1
+
+
 def is_number(value) -> bool:
-    """True when int(value) works on the text: decimal digits only (Telugu digits too), never "²" or "-1"."""
-    return isinstance(value, str) and value.isdecimal()
+    """True when int(value) works on the text and the database can hold it: decimal digits only (Telugu
+    digits too), never "²" or "-1", and at most MAX_DB_ID. A larger number would reach the database and
+    fail there with a 500 (SQLite OverflowError, PostgreSQL "out of range"; finding BE-TEST-208)."""
+    return isinstance(value, str) and value.isdecimal() and len(value) <= 19 and int(value) <= MAX_DB_ID
 
 
 def uuid_or_none(value) -> uuid.UUID | None:

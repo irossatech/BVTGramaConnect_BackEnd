@@ -1,5 +1,29 @@
 {
   "about": "Backend test suite (audit stage S6, BVTGC-17). Every test file belongs to exactly one category; python -m grama.testsuite refuses to run while one does not. Run: python -m grama.testsuite all | <category> | --list | --check.",
+  "markers": {
+    "permissions": ["rbac", "integration"],
+    "auth": ["security", "integration"],
+    "posts": ["integration"],
+    "citizens": ["integration"],
+    "privacy": ["security"],
+    "notifications": ["jobs"],
+    "content": ["integration"],
+    "performance": ["db"],
+    "database": ["db", "concurrency"],
+    "api": ["contract", "errors"],
+    "security": ["security"]
+  },
+  "dashboard": {
+    "about": "The health score of python -m grama.testsuite's dashboard (0-100). parts: how many points each part gives; weights: how much each category's pass rate counts within the tests part; risk: the lowest score for LOW and MEDIUM, and any failed test makes the risk at least MEDIUM.",
+    "parts": {"tests": 70, "line_coverage": 10, "api_coverage": 10, "rbac_coverage": 10},
+    "line_coverage_target": 80,
+    "api_coverage_target": 90,
+    "weights": {
+      "permissions": 18, "auth": 12, "privacy": 10, "security": 12, "api": 8, "posts": 8, "citizens": 8,
+      "database": 7, "performance": 5, "notifications": 6, "content": 6
+    },
+    "risk": {"low_at_least": 90, "medium_at_least": 75}
+  },
   "categories": {
     "permissions": {
       "title": "Permissions and areas",
@@ -8,6 +32,7 @@
         "apps/accounts/tests/test_authz.py",
         "apps/accounts/tests/test_citizen_role.py",
         "grama/tests/test_citizen_token_scope.py",
+        "grama/tests/test_rbac_matrix.py",
         "apps/accounts/tests/test_escalation.py",
         "apps/accounts/tests/test_matrix.py",
         "apps/accounts/tests/test_me.py",
@@ -39,7 +64,8 @@
         "apps/accounts/tests/test_username_spaces.py",
         "apps/citizens/tests/test_citizen_login.py",
         "apps/citizens/tests/test_email_codes.py",
-        "apps/citizens/tests/test_signup.py"
+        "apps/citizens/tests/test_signup.py",
+        "grama/tests/test_token_edge_cases.py"
       ]
     },
     "posts": {
@@ -176,7 +202,8 @@
         "apps/service_requests/tests/test_list_queries.py",
         "apps/web_admin/tests/test_admin_activity_paging.py",
         "apps/web_admin/tests/test_report_cost.py",
-        "apps/web_admin/tests/test_report_queries.py"
+        "apps/web_admin/tests/test_report_queries.py",
+        "grama/tests/test_perftest.py"
       ]
     },
     "database": {
@@ -193,7 +220,10 @@
         "grama/tests/test_engine_differences.py",
         "grama/tests/test_key_clash.py",
         "grama/tests/test_limits_under_concurrency.py",
-        "grama/tests/test_small_races.py"
+        "grama/tests/test_small_races.py",
+        "grama/tests/test_concurrency_threads.py",
+        "grama/tests/test_migrations_both_ways.py",
+        "apps/posts/tests/test_photo_limit_stale_count.py"
       ]
     },
     "api": {
@@ -217,6 +247,7 @@
         "grama/tests/test_project.py",
         "grama/tests/test_request_id.py",
         "grama/tests/test_schema.py",
+        "grama/tests/test_schema_snapshot.py",
         "grama/tests/test_suite_layout.py",
         "grama/tests/test_village_not_found.py"
       ]
@@ -230,7 +261,9 @@
         "grama/tests/test_client_ip.py",
         "apps/accounts/tests/test_real_ip_spoof.py",
         "grama/tests/test_security_gaps.py",
-        "grama/tests/test_settings_safety.py"
+        "grama/tests/test_settings_safety.py",
+        "grama/tests/test_attack_inputs.py",
+        "apps/posts/tests/test_upload_attacks.py"
       ]
     }
   }

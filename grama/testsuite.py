@@ -10,9 +10,17 @@ Categories live in grama/tests/suite.json. A test file in no category, in two, o
 stops the run before any test starts, so a new test file cannot be left out of the report
 (grama/tests/test_suite_layout.py checks the same in every normal pytest run).
 
-Each run writes test-reports/BE_TESTS_<scope>_<date>_<time>.md and .json (git-ignored): when and on
-which commit it ran, the config's hash, counts per category, every failure, every skip with its
-reason and the slowest tests. The exit code is pytest's, so 0 means everything passed.
+Each run writes, in test-reports/ (git-ignored, never overwritten):
+- BE_TESTS_<scope>_<date>_<time>.md, .json and .html: start and end time, duration, commit, Python and
+  Django versions, CPU and memory, the config's hash, counts per category, every failure, every known
+  bug (an xfail test with its finding ID), every skip with its reason, and the slowest tests;
+- backend-test-dashboard-<date>_<time>.html: the health score, pass and fail per category, line, API and
+  RBAC matrix coverage, the known bugs, the latest load-test figures and the risk (grama/testdashboard.py).
+The exit code is pytest's, so 0 means everything passed.
+
+The same tests by marker, without a report: python -m pytest -m rbac (or unit, integration, contract,
+security, db, concurrency, jobs, errors, or a category's key). Load, stress, spike and soak tests run
+against a staging server with python -m grama.perftest.
 
 Only the standard library is used here; the tests themselves run in a pytest child process with the
 project's normal settings (pytest.ini), and grama/testsuite_plugin.py hands every outcome back as JSON.
@@ -33,10 +41,13 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from grama import testsuite_plugin
+from grama import testdashboard, testsuite_plugin
 
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG = ROOT / "grama" / "tests" / "suite.json"
+#: Every file whose content decides what a run checks; their joint hash is in every report.
+CONFIG_FILES = (CONFIG, ROOT / "grama" / "tests" / "config" / "rbac-matrix.json",
+                ROOT / "grama" / "tests" / "config" / "openapi-snapshot.json")
 REPORTS = ROOT / "test-reports"
 TEST_DIRS = ("apps", "grama")
 IST = timezone(timedelta(hours=5, minutes=30), "IST")
@@ -79,12 +90,13 @@ def git(*args: str) -> str:
 
 #: Measured code: the apps and the project package, without the tests, the migrations and this runner.
 COVERAGE_SOURCE = "apps,grama"
-COVERAGE_OMIT = "*/tests/*,*/migrations/*,grama/testsuite.py,grama/testsuite_plugin.py"
+COVERAGE_OMIT = ("*/tests/*,*/migrations/*,grama/testsuite.py,grama/testsuite_plugin.py,grama/testdashboard.py,"
+                 "grama/perftest.py")
 
 
 def run_pytest(files: list[str], results: Path, coverage_data: Path | None = None) -> tuple[int, float]:
     """Run pytest on `files`; grama/testsuite_plugin.py writes every outcome to `results` as JSON."""
-    pytest = ["-m", "pytest", "-q", "-p", "no:logging", "-p", "grama.testsuite_plugin", *files]
+    pytest = ["-m", "pytest", "-q", "-p", "no:logging", *files]  # pytest.ini loads grama.testsuite_plugin
     if coverage_data is None:
         command = [sys.executable, *pytest]
     else:
@@ -135,10 +147,61 @@ def coverage_summary(report: dict) -> dict:
 
 
 def read_results(results: Path) -> list[dict]:
-    """One dict per test: file, name, seconds, outcome (passed, failed, error, skipped) and message."""
+    """One dict per test: file, name, seconds, outcome (passed, failed, error, skipped, xfailed) and message."""
     if not results.exists():
         return []
     return json.loads(results.read_text(encoding="utf-8"))
+
+
+def read_routes(results: Path) -> dict:
+    """The plugin's route figures: every API method, those the tests called, those the RBAC matrix checks."""
+    path = Path(str(results) + ".routes.json")
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"all": [], "called": [], "rbac": []}
+
+
+def config_hash() -> str:
+    digest = hashlib.sha256()
+    for path in CONFIG_FILES:
+        digest.update(path.name.encode())
+        digest.update(path.read_bytes() if path.exists() else b"(missing)")
+    return digest.hexdigest()[:12]
+
+
+def machine() -> str:
+    """CPU and memory of this machine, for the report (best effort, standard library only)."""
+    cpus = os.cpu_count() or 0
+    memory = None
+    try:
+        if sys.platform == "win32":
+            import ctypes
+
+            class Status(ctypes.Structure):
+                _fields_ = [("length", ctypes.c_ulong), ("load", ctypes.c_ulong), ("total", ctypes.c_ulonglong),
+                            ("free", ctypes.c_ulonglong), ("page_total", ctypes.c_ulonglong),
+                            ("page_free", ctypes.c_ulonglong), ("virtual_total", ctypes.c_ulonglong),
+                            ("virtual_free", ctypes.c_ulonglong), ("extended", ctypes.c_ulonglong)]
+
+            status = Status()
+            status.length = ctypes.sizeof(Status)
+            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+                memory = status.total
+        else:
+            for line in Path("/proc/meminfo").read_text().splitlines():
+                if line.startswith("MemTotal:"):
+                    memory = int(line.split()[1]) * 1024
+    except (OSError, ValueError, AttributeError):
+        memory = None
+    size = f", {memory / 1024 ** 3:.1f} GB memory" if memory else ""
+    return f"{platform.system()} {platform.machine()}, {cpus} CPUs{size}"
+
+
+def django_version() -> str:
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version("Django")
+    except PackageNotFoundError:
+        return "unknown"
 
 
 def summarise(config: dict, keys: list[str], results: list[dict]) -> dict:
@@ -162,8 +225,9 @@ def short(text: str, length: int = 160) -> str:
 
 
 def write_report(scope: str, config: dict, keys: list[str], results: list[dict], code: int, seconds: float,
-                 coverage: dict | None = None, started: datetime | None = None) -> Path:
-    """The report's .md and .json; `started` is when the run began (its file name and "Started" line)."""
+                 coverage: dict | None = None, started: datetime | None = None, routes: dict | None = None) -> Path:
+    """The report's .md, .json and .html, and the dashboard; `started` is when the run began (the file
+    names and the "Started" line). Returns the .md file."""
     now = started or datetime.now(IST)
     rows = summarise(config, keys, results)
     totals = Counter()
@@ -173,15 +237,21 @@ def write_report(scope: str, config: dict, keys: list[str], results: list[dict],
     meta = {
         "scope": scope,
         "started_ist": now.isoformat(timespec="seconds"),
+        "ended_ist": (now + timedelta(seconds=seconds)).isoformat(timespec="seconds"),
         "commit": git("rev-parse", "--short", "HEAD") + (" (with uncommitted changes)" if dirty else ""),
         "branch": git("branch", "--show-current"),
-        "config_sha256": hashlib.sha256(CONFIG.read_bytes()).hexdigest()[:12],
+        "config_sha256": config_hash(),
         "python": platform.python_version(),
+        "django": django_version(),
+        "machine": machine(),
+        "environment": "tests (pytest-django test client, no server; database "
+                       + ("TEST_DATABASE_URL" if os.environ.get("TEST_DATABASE_URL") else "SQLite") + ")",
         "pytest_exit_code": code,
         "seconds": round(seconds, 1),
         "result": "PASS" if code == 0 else "FAIL",
     }
     failures = [r for r in results if r["outcome"] in ("failed", "error")]
+    known_bugs = [r for r in results if r["outcome"] == "xfailed"]
     skips = Counter(short(r["message"], 120) for r in results if r["outcome"] == "skipped")
     slowest = sorted(results, key=lambda r: r["seconds"], reverse=True)[:10]
 
@@ -192,12 +262,16 @@ def write_report(scope: str, config: dict, keys: list[str], results: list[dict],
         "|---|---|",
         f"| Result | **{meta['result']}** (pytest exit code {code}) |",
         f"| Started | {now:%Y-%m-%d %H:%M:%S} IST |",
+        f"| Ended | {now + timedelta(seconds=seconds):%Y-%m-%d %H:%M:%S} IST |",
         f"| Commit | `{meta['commit']}` on `{meta['branch']}` |",
-        f"| Categories file | `grama/tests/suite.json`, sha256 `{meta['config_sha256']}…` |",
-        f"| Python | {meta['python']} |",
+        f"| Config | `grama/tests/suite.json`, `config/rbac-matrix.json`, `config/openapi-snapshot.json`: "
+        f"sha256 `{meta['config_sha256']}…` |",
+        f"| Python, Django | {meta['python']}, {meta['django']} |",
+        f"| Machine | {meta['machine']} |",
+        f"| Environment | {meta['environment']} |",
         f"| Time | {seconds / 60:.1f} minutes |",
         f"| Tests | {totals['tests']}: {totals['passed']} passed, {totals['failed']} failed, "
-        f"{totals['error']} errors, {totals['skipped']} skipped |",
+        f"{totals['error']} errors, {totals['xfailed']} known bugs (xfail), {totals['skipped']} skipped |",
     ]
     if coverage:
         total = coverage["total"]
@@ -207,14 +281,14 @@ def write_report(scope: str, config: dict, keys: list[str], results: list[dict],
         "",
         "## By category",
         "",
-        "| Category | Files | Tests | Passed | Failed | Errors | Skipped | Seconds |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|",
+        "| Category | Files | Tests | Passed | Failed | Errors | Known bugs | Skipped | Seconds |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for key in keys:
         row, category = rows[key], config["categories"][key]
         lines.append(
             f"| {category['title']} (`{key}`) | {len(category['files'])} | {row['tests']} | {row['passed']} | "
-            f"{row['failed']} | {row['error']} | {row['skipped']} | {row['seconds']:.0f} |"
+            f"{row['failed']} | {row['error']} | {row['xfailed']} | {row['skipped']} | {row['seconds']:.0f} |"
         )
     if coverage:
         lines += ["", "## Line coverage", "",
@@ -228,6 +302,8 @@ def write_report(scope: str, config: dict, keys: list[str], results: list[dict],
         lines += [f"| `{f['file']}` | {f['statements']} | {f['percent']} |" for f in coverage["least_covered"]]
     lines += ["", "## Failures", ""]
     lines += [f"- `{r['file']}::{r['name']}`: {short(r['message'])}" for r in failures] or ["None."]
+    lines += ["", "## Known bugs (xfail tests, each naming its finding)", ""]
+    lines += [f"- `{r['file']}::{r['name']}`: {short(r['message'])}" for r in known_bugs] or ["None."]
     lines += ["", "## Skipped, by reason", ""]
     lines += [f"- {count} × {reason or '(no reason given)'}" for reason, count in skips.most_common()] or ["None."]
     lines += ["", "## Slowest tests", "", "| Seconds | Test |", "|---:|---|"]
@@ -235,10 +311,20 @@ def write_report(scope: str, config: dict, keys: list[str], results: list[dict],
     lines.append("")
 
     REPORTS.mkdir(exist_ok=True)
-    stem = REPORTS / f"BE_TESTS_{scope}_{now:%Y-%m-%d_%H-%M-%S}"
-    stem.with_suffix(".md").write_text("\n".join(lines), encoding="utf-8")
+    stamp = f"{now:%Y-%m-%d_%H-%M-%S}"
+    stem = REPORTS / f"BE_TESTS_{scope}_{stamp}"
+    markdown = "\n".join(lines)
+    stem.with_suffix(".md").write_text(markdown, encoding="utf-8")
+    stem.with_suffix(".html").write_text(testdashboard.markdown_to_html(markdown, f"Backend test run: {scope}"),
+                                         encoding="utf-8")
+    links = [stem.with_suffix(suffix).name for suffix in (".md", ".html", ".json")]
+    dashboard, figures = testdashboard.write_dashboard(
+        reports=REPORTS, stamp=stamp, meta=meta, config=config, keys=keys, rows=rows, coverage=coverage,
+        routes=routes or {}, results=results, links=links,
+    )
     stem.with_suffix(".json").write_text(json.dumps(
-        {"meta": meta, "categories": {key: dict(rows[key]) for key in keys}, "coverage": coverage, "tests": results},
+        {"meta": meta, "categories": {key: dict(rows[key]) for key in keys}, "coverage": coverage,
+         "dashboard": {"file": dashboard.name, **figures}, "tests": results},
         ensure_ascii=False, indent=1,
     ), encoding="utf-8")
     return stem.with_suffix(".md")
@@ -277,14 +363,18 @@ def main(argv: list[str] | None = None) -> int:
         data = Path(folder) / "coverage.data" if args.coverage else None
         code, seconds = run_pytest(files, outcomes, data)
         results = read_results(outcomes)
+        routes = read_routes(outcomes)
         if data is not None:
             measured = read_coverage(data)
             if measured is None:
                 print("Coverage was not measured: is coverage installed (requirements.txt)?", file=sys.stderr)
             else:
                 coverage = coverage_summary(measured)
-    report = write_report(args.scope, config, keys, results, code, seconds, coverage, started)
-    print(f"\nReport: {report.relative_to(ROOT).as_posix()}")
+    report = write_report(args.scope, config, keys, results, code, seconds, coverage, started, routes)
+    print(f"\nReport: {report.relative_to(ROOT).as_posix()} (also .html and .json)")
+    dashboards = sorted(REPORTS.glob(f"backend-test-dashboard-{started:%Y-%m-%d_%H-%M-%S}.html"))
+    if dashboards:
+        print(f"Dashboard: {dashboards[-1].relative_to(ROOT).as_posix()}")
     return code
 
 

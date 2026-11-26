@@ -1,0 +1,4028 @@
+{
+ "DELETE /api/v1/admin/ads/{id}/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "204": {}
+  }
+ },
+ "DELETE /api/v1/admin/bills/{key}/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "204": {}
+  }
+ },
+ "DELETE /api/v1/admin/categories/{id}/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "204": {}
+  }
+ },
+ "DELETE /api/v1/admin/contact-types/{id}/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "204": {}
+  }
+ },
+ "DELETE /api/v1/admin/contacts/{id}/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "204": {}
+  }
+ },
+ "DELETE /api/v1/admin/services/{key}/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "204": {}
+  }
+ },
+ "DELETE /api/v1/devices/{id}/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "204": {}
+  }
+ },
+ "DELETE /api/v1/posts/{id}/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "204": {}
+  }
+ },
+ "DELETE /api/v1/posts/{id}/media/{media_id}/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "204": {}
+  }
+ },
+ "DELETE /api/v1/users/{user_pk}/role-assignments/{id}/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "204": {}
+  }
+ },
+ "GET /api/v1/admin/ads/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "count": "integer",
+    "next": "string?",
+    "previous": "string?",
+    "results": "array<object>",
+    "results[].area": "object",
+    "results[].created_at": "string",
+    "results[].duration_s": "integer?",
+    "results[].ends_on": "string?",
+    "results[].id": "integer",
+    "results[].image": "string",
+    "results[].is_active": "boolean",
+    "results[].link": "string",
+    "results[].starts_on": "string?",
+    "results[].title": "string",
+    "results[].updated_at": "string",
+    "results[].video": "string"
+   }
+  }
+ },
+ "GET /api/v1/admin/ads/{id}/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "area": "object",
+    "created_at": "string",
+    "duration_s": "integer?",
+    "ends_on": "string?",
+    "id": "integer",
+    "image": "string",
+    "is_active": "boolean",
+    "link": "string",
+    "starts_on": "string?",
+    "title": "string",
+    "updated_at": "string",
+    "video": "string"
+   }
+  }
+ },
+ "GET /api/v1/admin/bills/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "[].color": "string",
+    "[].created_at": "string",
+    "[].icon": "string",
+    "[].is_active": "boolean",
+    "[].key": "string",
+    "[].logo": "string?",
+    "[].name_en": "string",
+    "[].name_te": "string",
+    "[].order": "integer",
+    "[].updated_at": "string"
+   }
+  }
+ },
+ "GET /api/v1/admin/categories/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "[].icon_url": "string?",
+    "[].id": "integer",
+    "[].is_active": "boolean",
+    "[].key": "string",
+    "[].name_en": "string",
+    "[].name_te": "string",
+    "[].order": "integer",
+    "[].post_count": "integer",
+    "[].short_name_en": "string",
+    "[].short_name_te": "string"
+   }
+  }
+ },
+ "GET /api/v1/admin/citizen-accounts/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "[].allowed_actions": "array<string>",
+    "[].confirmed_points": "integer",
+    "[].created_at": "string",
+    "[].deleted_at": "string?",
+    "[].email_hint": "string",
+    "[].email_verified": "boolean",
+    "[].held_points": "integer",
+    "[].id": "string",
+    "[].last_active_at": "string?",
+    "[].mobile_last4": "string",
+    "[].mobile_missing": "boolean",
+    "[].mobile_verified": "boolean",
+    "[].name": "string",
+    "[].referral_code": "string",
+    "[].status": "string",
+    "[].village": "object"
+   }
+  }
+ },
+ "GET /api/v1/admin/citizens/blocked/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "[].blocked": "boolean",
+    "[].blocked_at": "string",
+    "[].blocked_by": "object",
+    "[].blocked_until": "string?",
+    "[].ended_at": "string?",
+    "[].ended_by": "object",
+    "[].id": "string",
+    "[].latest_post_id": "string?",
+    "[].posts_blocked": "integer",
+    "[].posts_discarded": "integer",
+    "[].posts_total": "integer",
+    "[].reason": "string",
+    "[].village": "object"
+   }
+  }
+ },
+ "GET /api/v1/admin/citizens/{id}/blocks/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "[].blocked": "boolean",
+    "[].blocked_at": "string",
+    "[].blocked_by": "object",
+    "[].blocked_until": "string?",
+    "[].ended_at": "string?",
+    "[].ended_by": "object",
+    "[].reason": "string"
+   }
+  }
+ },
+ "GET /api/v1/admin/contact-messages/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "count": "integer",
+    "next": "string?",
+    "previous": "string?",
+    "results": "array<object>",
+    "results[].created_at": "string",
+    "results[].handled": "boolean",
+    "results[].handled_at": "string?",
+    "results[].handled_by": "object?",
+    "results[].id": "integer",
+    "results[].language": "string",
+    "results[].message": "string",
+    "results[].mobile": "string",
+    "results[].name": "string",
+    "results[].village_text": "string"
+   }
+  }
+ },
+ "GET /api/v1/admin/contact-messages/{id}/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "created_at": "string",
+    "handled": "boolean",
+    "handled_at": "string?",
+    "handled_by": "object?",
+    "id": "integer",
+    "language": "string",
+    "message": "string",
+    "mobile": "string",
+    "name": "string",
+    "village_text": "string"
+   }
+  }
+ },
+ "GET /api/v1/admin/contact-types/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "[].contact_count": "integer",
+    "[].id": "integer",
+    "[].is_active": "boolean",
+    "[].is_other": "boolean",
+    "[].key": "string",
+    "[].name_en": "string",
+    "[].name_te": "string",
+    "[].section": "string",
+    "[].sort_order": "integer"
+   }
+  }
+ },
+ "GET /api/v1/admin/contacts/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "count": "integer",
+    "next": "string?",
+    "previous": "string?",
+    "results": "array<object>",
+    "results[].allowed_actions": "array<string>",
+    "results[].area": "object",
+    "results[].consent_recorded": "boolean",
+    "results[].created_at": "string",
+    "results[].created_by": "object",
+    "results[].custom_type": "string",
+    "results[].email": "string",
+    "results[].id": "string",
+    "results[].name": "string",
+    "results[].name_te": "string",
+    "results[].needs_recheck": "boolean",
+    "results[].phone": "string",
+    "results[].phone_kind": "string",
+    "results[].sort_order": "integer",
+    "results[].type": "object",
+    "results[].updated_at": "string",
+    "results[].verified_at": "string?"
+   }
+  }
+ },
+ "GET /api/v1/admin/contacts/targets/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "levels": "array<object>"
+   }
+  }
+ },
+ "GET /api/v1/admin/contacts/{id}/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "allowed_actions": "array<string>",
+    "area": "object",
+    "consent_recorded": "boolean",
+    "created_at": "string",
+    "created_by": "object",
+    "custom_type": "string",
+    "email": "string",
+    "id": "string",
+    "name": "string",
+    "name_te": "string",
+    "needs_recheck": "boolean",
+    "phone": "string",
+    "phone_kind": "string",
+    "sort_order": "integer",
+    "type": "object",
+    "updated_at": "string",
+    "verified_at": "string?"
+   }
+  }
+ },
+ "GET /api/v1/admin/dashboard/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {}
+  }
+ },
+ "GET /api/v1/admin/notification-templates/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "[].channel": "string",
+    "[].editable": "boolean",
+    "[].key": "string",
+    "[].name": "string",
+    "[].name_en": "string",
+    "[].name_te": "string",
+    "[].recipient": "string",
+    "[].text_en": "string",
+    "[].text_te": "string",
+    "[].updated_at": "string",
+    "[].variables": "any"
+   }
+  }
+ },
+ "GET /api/v1/admin/referrals/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "[].allowed_actions": "array<string>",
+    "[].comment": "string",
+    "[].confirm_after": "string",
+    "[].decided_at": "string?",
+    "[].decided_by": "object?",
+    "[].id": "string",
+    "[].pending_at": "string",
+    "[].reason_key": "string?",
+    "[].referee": "object",
+    "[].referrer": "object",
+    "[].status": "string"
+   }
+  }
+ },
+ "GET /api/v1/admin/reports/admin-activity/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {}
+  }
+ },
+ "GET /api/v1/admin/reports/posts-by-area/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {}
+  }
+ },
+ "GET /api/v1/admin/reports/review-time/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {}
+  }
+ },
+ "GET /api/v1/admin/reports/summary/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {}
+  }
+ },
+ "GET /api/v1/admin/reports/{report}/export/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {}
+  }
+ },
+ "GET /api/v1/admin/services/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "[].color": "string",
+    "[].created_at": "string",
+    "[].hint_en": "string",
+    "[].hint_te": "string",
+    "[].icon": "string",
+    "[].is_active": "boolean",
+    "[].key": "string",
+    "[].logo": "string?",
+    "[].name_en": "string",
+    "[].name_te": "string",
+    "[].order": "integer",
+    "[].updated_at": "string"
+   }
+  }
+ },
+ "GET /api/v1/admin/settings/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "admin_posts_auto_publish": "boolean",
+    "ads_banner_limit": "integer",
+    "citizen_posts_per_day": "integer",
+    "languages": "object",
+    "max_photos_per_post": "integer",
+    "referral_active_days": "integer",
+    "referral_hold_days": "integer",
+    "referral_reward_points": "integer",
+    "referrals_per_month": "integer",
+    "review_escalation_hours": "integer",
+    "review_first_decision_wins": "boolean",
+    "super_admin_can_post": "boolean",
+    "wallet_enabled": "boolean",
+    "wallet_pilot_mandals": "array<integer>",
+    "welcome_bonus_points": "integer",
+    "welcome_bonuses_per_phone": "integer"
+   }
+  }
+ },
+ "GET /api/v1/admin/transliterate/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "te": "string"
+   }
+  }
+ },
+ "GET /api/v1/admin/wallet/entries/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "[].citizen": "object",
+    "[].created_at": "string",
+    "[].created_by": "object?",
+    "[].decided_at": "string?",
+    "[].id": "string",
+    "[].kind": "string",
+    "[].points": "integer",
+    "[].reason": "string?",
+    "[].reason_key": "string",
+    "[].referral_id": "string?",
+    "[].release_at": "string?",
+    "[].status": "string"
+   }
+  }
+ },
+ "GET /api/v1/admin/wallet/export/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {}
+  }
+ },
+ "GET /api/v1/admin/wallets/{account_id}/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "confirmed_points": "integer",
+    "count": "integer",
+    "held_points": "integer",
+    "next": "string?",
+    "next_release_at": "string?",
+    "previous": "string?",
+    "results": "array<object>",
+    "results[].created_at": "string",
+    "results[].created_by": "object?",
+    "results[].decided_at": "string?",
+    "results[].id": "string",
+    "results[].kind": "string",
+    "results[].points": "integer",
+    "results[].reason": "string?",
+    "results[].reason_key": "string",
+    "results[].referral_id": "string?",
+    "results[].release_at": "string?",
+    "results[].status": "string"
+   }
+  }
+ },
+ "GET /api/v1/ads/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "[].duration_s": "integer?",
+    "[].id": "integer",
+    "[].image": "string",
+    "[].link": "string",
+    "[].title": "string",
+    "[].video": "string"
+   }
+  }
+ },
+ "GET /api/v1/app-config/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "ads_banner_limit": "integer",
+    "languages": "object",
+    "latest_version": "string?",
+    "min_version": "string?",
+    "referral_reward_points": "integer",
+    "referrals_per_month": "integer",
+    "topic_prefix": "string",
+    "wallet_consent_version": "string",
+    "wallet_enabled": "boolean",
+    "wallet_pilot_mandals": "array<integer>",
+    "welcome_bonus_points": "integer"
+   }
+  }
+ },
+ "GET /api/v1/audit/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "count": "integer",
+    "next": "string?",
+    "previous": "string?",
+    "results": "array<object>",
+    "results[].action": "string",
+    "results[].action_label": "string",
+    "results[].actor": "object",
+    "results[].area": "object?",
+    "results[].at": "string",
+    "results[].data": "any",
+    "results[].id": "string",
+    "results[].target": "object?",
+    "results[].target_label": "string",
+    "results[].type": "string",
+    "results[].via": "string"
+   }
+  }
+ },
+ "GET /api/v1/audit/export/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {}
+  }
+ },
+ "GET /api/v1/auth/csrf/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "detail": "string"
+   }
+  }
+ },
+ "GET /api/v1/bills/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "[].color": "string",
+    "[].icon": "string",
+    "[].is_active": "boolean",
+    "[].key": "string",
+    "[].logo": "string?",
+    "[].name_en": "string",
+    "[].name_te": "string"
+   }
+  }
+ },
+ "GET /api/v1/categories/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "[].icon_url": "string?",
+    "[].key": "string",
+    "[].name": "string",
+    "[].order": "integer",
+    "[].short_name": "string"
+   }
+  }
+ },
+ "GET /api/v1/citizen/account/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "created_at": "string",
+    "email_hint": "string",
+    "email_verified": "boolean",
+    "invite_url": "string?",
+    "language": "string",
+    "mobile_last4": "string",
+    "mobile_missing": "boolean",
+    "mobile_verified": "boolean",
+    "name": "string",
+    "referral": "object?",
+    "referral_code": "string",
+    "village": "object",
+    "wallet": "object"
+   }
+  }
+ },
+ "GET /api/v1/citizen/me/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "block_reason": "string?",
+    "blocked": "boolean",
+    "blocked_until": "string?",
+    "created_at": "string",
+    "id": "string",
+    "language": "string",
+    "posts_per_day": "integer?",
+    "posts_today": "integer",
+    "village": "object"
+   }
+  }
+ },
+ "GET /api/v1/citizen/posts/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "[].area": "object",
+    "[].body": "string",
+    "[].category": "string",
+    "[].created_at": "string",
+    "[].decided_at": "string?",
+    "[].id": "string",
+    "[].language": "string",
+    "[].photos": "array<object>",
+    "[].reason": "string?",
+    "[].status": "string",
+    "[].targets": "array<object>",
+    "[].title": "string",
+    "[].translation": "object",
+    "[].videos": "array<object>"
+   }
+  }
+ },
+ "GET /api/v1/citizen/service-requests/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "[].address": "string",
+    "[].can_cancel": "boolean",
+    "[].created_at": "string",
+    "[].details": "string",
+    "[].district": "object",
+    "[].email": "string",
+    "[].id": "integer",
+    "[].mandal": "object",
+    "[].name": "string",
+    "[].note": "string",
+    "[].phone": "string",
+    "[].service": "string",
+    "[].service_name": "string",
+    "[].status": "string",
+    "[].updated_at": "string",
+    "[].village": "object"
+   }
+  }
+ },
+ "GET /api/v1/contact-types/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "[].is_other": "boolean",
+    "[].key": "string",
+    "[].name": "string",
+    "[].section": "string",
+    "[].sort_order": "integer"
+   }
+  }
+ },
+ "GET /api/v1/contacts/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "for_you": "array<object>",
+    "for_you[].contacts": "array<object>",
+    "for_you[].label": "string",
+    "for_you[].type": "string",
+    "helplines": "array<object>",
+    "helplines[].contacts": "array<object>",
+    "helplines[].label": "string",
+    "helplines[].type": "string",
+    "updated_at": "string?",
+    "village": "object",
+    "village.id": "integer",
+    "village.level": "string",
+    "village.name": "string",
+    "village.path": "string"
+   }
+  }
+ },
+ "GET /api/v1/feed/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "next": "string?",
+    "previous": "string?",
+    "results": "array<object>",
+    "results[].area": "object",
+    "results[].body": "string",
+    "results[].category": "string",
+    "results[].event": "object",
+    "results[].id": "string",
+    "results[].image_url": "string?",
+    "results[].is_urgent": "boolean",
+    "results[].language": "string",
+    "results[].media_count": "integer",
+    "results[].medium_url": "string?",
+    "results[].published_at": "string",
+    "results[].share_url": "string?",
+    "results[].source_area": "object",
+    "results[].source_role": "string",
+    "results[].targets": "array<object>",
+    "results[].thumbnail_url": "string?",
+    "results[].title": "string",
+    "results[].translation": "object",
+    "results[].video": "object"
+   }
+  }
+ },
+ "GET /api/v1/feed/posts/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "[].area": "object",
+    "[].body": "string",
+    "[].category": "string",
+    "[].event": "object",
+    "[].id": "string",
+    "[].image_url": "string?",
+    "[].is_urgent": "boolean",
+    "[].language": "string",
+    "[].media_count": "integer",
+    "[].medium_url": "string?",
+    "[].published_at": "string",
+    "[].share_url": "string?",
+    "[].source_area": "object",
+    "[].source_role": "string",
+    "[].targets": "array<object>",
+    "[].thumbnail_url": "string?",
+    "[].title": "string",
+    "[].translation": "object",
+    "[].video": "object"
+   }
+  }
+ },
+ "GET /api/v1/feed/posts/{id}/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "area": "object",
+    "body": "string",
+    "category": "string",
+    "event": "object",
+    "id": "string",
+    "image_url": "string?",
+    "is_urgent": "boolean",
+    "language": "string",
+    "media": "array<object>",
+    "media[].duration_s": "integer?",
+    "media[].height": "integer",
+    "media[].id": "string",
+    "media[].kind": "string",
+    "media[].poster_url": "string?",
+    "media[].thumb_url": "string",
+    "media[].url": "string",
+    "media[].width": "integer",
+    "media_count": "integer",
+    "medium_url": "string?",
+    "path": "string",
+    "published_at": "string",
+    "share_url": "string?",
+    "source_area": "object",
+    "source_role": "string",
+    "targets": "array<object>",
+    "targets[].id": "integer",
+    "targets[].level": "string",
+    "targets[].name": "string",
+    "targets[].path": "string",
+    "thumbnail_url": "string?",
+    "title": "string",
+    "translation": "object",
+    "video": "object"
+   }
+  }
+ },
+ "GET /api/v1/feed/share/{code}/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "area": "object",
+    "body": "string",
+    "category": "string",
+    "event": "object",
+    "id": "string",
+    "image_url": "string?",
+    "is_urgent": "boolean",
+    "language": "string",
+    "media": "array<object>",
+    "media[].duration_s": "integer?",
+    "media[].height": "integer",
+    "media[].id": "string",
+    "media[].kind": "string",
+    "media[].poster_url": "string?",
+    "media[].thumb_url": "string",
+    "media[].url": "string",
+    "media[].width": "integer",
+    "media_count": "integer",
+    "medium_url": "string?",
+    "path": "string",
+    "published_at": "string",
+    "share_url": "string?",
+    "source_area": "object",
+    "source_role": "string",
+    "targets": "array<object>",
+    "targets[].id": "integer",
+    "targets[].level": "string",
+    "targets[].name": "string",
+    "targets[].path": "string",
+    "thumbnail_url": "string?",
+    "title": "string",
+    "translation": "object",
+    "video": "object"
+   }
+  }
+ },
+ "GET /api/v1/feed/upcoming/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "[].area": "object",
+    "[].body": "string",
+    "[].category": "string",
+    "[].event": "object",
+    "[].id": "string",
+    "[].image_url": "string?",
+    "[].is_urgent": "boolean",
+    "[].language": "string",
+    "[].media_count": "integer",
+    "[].medium_url": "string?",
+    "[].published_at": "string",
+    "[].share_url": "string?",
+    "[].source_area": "object",
+    "[].source_role": "string",
+    "[].targets": "array<object>",
+    "[].thumbnail_url": "string?",
+    "[].title": "string",
+    "[].translation": "object",
+    "[].video": "object"
+   }
+  }
+ },
+ "GET /api/v1/feed/urgent/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "[].area": "object",
+    "[].body": "string",
+    "[].category": "string",
+    "[].event": "object",
+    "[].id": "string",
+    "[].image_url": "string?",
+    "[].is_urgent": "boolean",
+    "[].language": "string",
+    "[].media_count": "integer",
+    "[].medium_url": "string?",
+    "[].published_at": "string",
+    "[].share_url": "string?",
+    "[].source_area": "object",
+    "[].source_role": "string",
+    "[].targets": "array<object>",
+    "[].thumbnail_url": "string?",
+    "[].title": "string",
+    "[].translation": "object",
+    "[].video": "object"
+   }
+  }
+ },
+ "GET /api/v1/geo/admin/villages/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "[].district_id": "integer",
+    "[].id": "integer",
+    "[].is_active": "boolean",
+    "[].latitude": "string?",
+    "[].level": "string",
+    "[].lgd_code": "string?",
+    "[].longitude": "string?",
+    "[].mandal_id": "integer",
+    "[].name_en": "string",
+    "[].name_te": "string",
+    "[].pin_code": "string",
+    "[].state_id": "integer"
+   }
+  }
+ },
+ "GET /api/v1/geo/districts/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "[].id": "integer",
+    "[].name": "string",
+    "[].state_id": "integer"
+   }
+  }
+ },
+ "GET /api/v1/geo/mandals/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "[].district_id": "integer",
+    "[].id": "integer",
+    "[].name": "string"
+   }
+  }
+ },
+ "GET /api/v1/geo/nearest/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "distance_km": "number",
+    "village": "object",
+    "village.district": "object",
+    "village.id": "integer",
+    "village.latitude": "string?",
+    "village.longitude": "string?",
+    "village.mandal": "object",
+    "village.name": "string",
+    "village.path": "string",
+    "village.pin_code": "string",
+    "village.state": "object"
+   }
+  }
+ },
+ "GET /api/v1/geo/states/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "[].id": "integer",
+    "[].name": "string"
+   }
+  }
+ },
+ "GET /api/v1/geo/tree/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "[].district_id": "integer",
+    "[].districts": "array<object>",
+    "[].id": "integer",
+    "[].is_active": "boolean",
+    "[].latitude": "string?",
+    "[].level": "string",
+    "[].lgd_code": "string?",
+    "[].longitude": "string?",
+    "[].mandal_id": "integer",
+    "[].name_en": "string",
+    "[].name_te": "string",
+    "[].pin_code": "string",
+    "[].state_id": "integer"
+   }
+  }
+ },
+ "GET /api/v1/geo/villages/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "[].id": "integer",
+    "[].mandal_id": "integer",
+    "[].name": "string",
+    "[].pin_code": "string"
+   }
+  }
+ },
+ "GET /api/v1/geo/villages/{id}/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "district": "object",
+    "district.id": "integer",
+    "district.name": "string",
+    "id": "integer",
+    "latitude": "string?",
+    "longitude": "string?",
+    "mandal": "object",
+    "mandal.id": "integer",
+    "mandal.name": "string",
+    "name": "string",
+    "path": "string",
+    "pin_code": "string",
+    "state": "object",
+    "state.id": "integer",
+    "state.name": "string"
+   }
+  }
+ },
+ "GET /api/v1/health/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "status": "string",
+    "time": "string",
+    "worker": "string"
+   }
+  }
+ },
+ "GET /api/v1/me/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "assignments": "array<object>",
+    "capabilities": "object",
+    "email": "string",
+    "groups": "array<object>",
+    "groups[].key": "string",
+    "groups[].level": "string",
+    "groups[].name": "string",
+    "groups[].rank": "integer",
+    "id": "string",
+    "is_active": "boolean",
+    "mobile": "string",
+    "must_change_password": "boolean",
+    "name": "string",
+    "name_te": "string",
+    "permissions": "array<string>",
+    "permissions_by_area": "array<object>",
+    "permissions_by_area[].area": "object",
+    "permissions_by_area[].permissions": "array<string>",
+    "preferred_language": "string",
+    "role_assignments": "array<object>",
+    "role_assignments[].area": "object",
+    "role_assignments[].assigned_at": "string",
+    "role_assignments[].created_at": "string",
+    "role_assignments[].group": "object",
+    "role_assignments[].id": "string",
+    "role_assignments[].is_active": "boolean",
+    "role_assignments[].role": "string",
+    "rules": "object",
+    "status": "string",
+    "username": "string"
+   }
+  }
+ },
+ "GET /api/v1/notifications/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "next": "string?",
+    "previous": "string?",
+    "results": "array<object>",
+    "results[].area": "object?",
+    "results[].body": "string",
+    "results[].created_at": "string",
+    "results[].id": "string",
+    "results[].kind": "string",
+    "results[].post_id": "string?",
+    "results[].read_at": "string?",
+    "results[].service_request_id": "integer?",
+    "results[].title": "string"
+   }
+  }
+ },
+ "GET /api/v1/posts/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "count": "integer",
+    "next": "string?",
+    "previous": "string?",
+    "results": "array<object>",
+    "results[].allowed_actions": "array<string>",
+    "results[].author": "object",
+    "results[].body": "string",
+    "results[].category": "object",
+    "results[].citizen": "object",
+    "results[].created_at": "string",
+    "results[].decided_at": "string?",
+    "results[].decided_by": "object",
+    "results[].escalated": "boolean",
+    "results[].escalated_at": "string?",
+    "results[].escalation_level": "any|string",
+    "results[].event": "object",
+    "results[].id": "string",
+    "results[].is_urgent": "boolean",
+    "results[].language": "string",
+    "results[].last_review": "object",
+    "results[].media": "array<object>",
+    "results[].posted_as": "object",
+    "results[].published_at": "string?",
+    "results[].share_url": "string?",
+    "results[].status": "string",
+    "results[].submitted_at": "string?",
+    "results[].target_area": "object",
+    "results[].target_level": "string",
+    "results[].targets": "array<object>",
+    "results[].title": "string",
+    "results[].translation": "object",
+    "results[].updated_at": "string"
+   }
+  }
+ },
+ "GET /api/v1/posts/targets/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "levels": "array<object>",
+    "levels[].areas": "array<object>",
+    "levels[].level": "string",
+    "levels[].pick_via": "string"
+   }
+  }
+ },
+ "GET /api/v1/posts/{id}/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "allowed_actions": "array<string>",
+    "author": "object",
+    "body": "string",
+    "category": "object",
+    "category.key": "string",
+    "category.name": "string",
+    "category.order": "integer",
+    "category.short_name": "string",
+    "citizen": "object",
+    "created_at": "string",
+    "decided_at": "string?",
+    "decided_by": "object",
+    "escalated": "boolean",
+    "escalated_at": "string?",
+    "escalation_level": "any|string",
+    "event": "object",
+    "id": "string",
+    "is_urgent": "boolean",
+    "language": "string",
+    "last_review": "object",
+    "media": "array<object>",
+    "media[].bytes": "integer",
+    "media[].duration_s": "integer?",
+    "media[].height": "integer",
+    "media[].id": "string",
+    "media[].kind": "string",
+    "media[].poster_url": "string?",
+    "media[].thumb_url": "string",
+    "media[].url": "string",
+    "media[].width": "integer",
+    "posted_as": "object",
+    "published_at": "string?",
+    "share_url": "string?",
+    "status": "string",
+    "submitted_at": "string?",
+    "target_area": "object",
+    "target_level": "string",
+    "targets": "array<object>",
+    "targets[].id": "integer",
+    "targets[].level": "string",
+    "targets[].name": "string",
+    "targets[].path": "string",
+    "title": "string",
+    "translation": "object",
+    "updated_at": "string"
+   }
+  }
+ },
+ "GET /api/v1/posts/{id}/history/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "count": "integer",
+    "next": "string?",
+    "previous": "string?",
+    "results": "array<object>",
+    "results[].action": "string",
+    "results[].actor": "object",
+    "results[].at": "string",
+    "results[].comment": "string",
+    "results[].from_status": "any|string",
+    "results[].id": "string",
+    "results[].to_status": "string"
+   }
+  }
+ },
+ "GET /api/v1/public/showcase/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "featured": "object",
+    "items": "array<object>",
+    "items[].area": "object",
+    "items[].body": "string",
+    "items[].category": "string",
+    "items[].event": "object",
+    "items[].id": "string",
+    "items[].image_url": "string?",
+    "items[].is_urgent": "boolean",
+    "items[].language": "string",
+    "items[].media_count": "integer",
+    "items[].medium_url": "string?",
+    "items[].published_at": "string",
+    "items[].share_url": "string?",
+    "items[].source_area": "object",
+    "items[].source_role": "string",
+    "items[].targets": "array<object>",
+    "items[].thumbnail_url": "string?",
+    "items[].title": "string",
+    "items[].translation": "object",
+    "items[].video": "object",
+    "location": "object?"
+   }
+  }
+ },
+ "GET /api/v1/public/site-config/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "helplines": "array<object>",
+    "invite_url": "string?",
+    "play_store_url": "string",
+    "website_url": "string"
+   }
+  }
+ },
+ "GET /api/v1/review/queue/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "count": "integer",
+    "next": "string?",
+    "previous": "string?",
+    "results": "array<object>",
+    "results[].allowed_actions": "array<string>",
+    "results[].author": "object",
+    "results[].body": "string",
+    "results[].category": "object",
+    "results[].citizen": "object",
+    "results[].created_at": "string",
+    "results[].decided_at": "string?",
+    "results[].decided_by": "object",
+    "results[].escalated": "boolean",
+    "results[].escalated_at": "string?",
+    "results[].escalation_level": "any|string",
+    "results[].event": "object",
+    "results[].id": "string",
+    "results[].is_urgent": "boolean",
+    "results[].language": "string",
+    "results[].last_review": "object",
+    "results[].media": "array<object>",
+    "results[].posted_as": "object",
+    "results[].published_at": "string?",
+    "results[].share_url": "string?",
+    "results[].status": "string",
+    "results[].submitted_at": "string?",
+    "results[].target_area": "object",
+    "results[].target_level": "string",
+    "results[].targets": "array<object>",
+    "results[].title": "string",
+    "results[].translation": "object",
+    "results[].updated_at": "string"
+   }
+  }
+ },
+ "GET /api/v1/service-requests/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "count": "integer",
+    "next": "string?",
+    "previous": "string?",
+    "results": "array<object>",
+    "results[].address": "string",
+    "results[].allowed_actions": "array<string>",
+    "results[].assigned_to": "object",
+    "results[].can_cancel": "boolean",
+    "results[].created_at": "string",
+    "results[].details": "string",
+    "results[].district": "object",
+    "results[].email": "string",
+    "results[].history": "array<object>",
+    "results[].id": "integer",
+    "results[].mandal": "object",
+    "results[].name": "string",
+    "results[].note": "string",
+    "results[].phone": "string",
+    "results[].service": "string",
+    "results[].service_name": "string",
+    "results[].status": "string",
+    "results[].updated_at": "string",
+    "results[].village": "object"
+   }
+  }
+ },
+ "GET /api/v1/service-requests/{id}/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "address": "string",
+    "allowed_actions": "array<string>",
+    "assigned_to": "object",
+    "can_cancel": "boolean",
+    "created_at": "string",
+    "details": "string",
+    "district": "object",
+    "email": "string",
+    "history": "array<object>",
+    "history[].assigned_to": "object?",
+    "history[].at": "string",
+    "history[].by": "object",
+    "history[].by_citizen": "boolean",
+    "history[].note": "string",
+    "history[].status": "string",
+    "id": "integer",
+    "mandal": "object",
+    "name": "string",
+    "note": "string",
+    "phone": "string",
+    "service": "string",
+    "service_name": "string",
+    "status": "string",
+    "updated_at": "string",
+    "village": "object"
+   }
+  }
+ },
+ "GET /api/v1/services/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "[].color": "string",
+    "[].hint_en": "string",
+    "[].hint_te": "string",
+    "[].icon": "string",
+    "[].is_active": "boolean",
+    "[].key": "string",
+    "[].logo": "string?",
+    "[].name_en": "string",
+    "[].name_te": "string"
+   }
+  }
+ },
+ "GET /api/v1/stats/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {}
+  }
+ },
+ "GET /api/v1/users/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "count": "integer",
+    "next": "string?",
+    "previous": "string?",
+    "results": "array<object>",
+    "results[].count": "integer",
+    "results[].counts": "object",
+    "results[].next": "string?",
+    "results[].previous": "string?",
+    "results[].results": "array<object>"
+   }
+  }
+ },
+ "GET /api/v1/users/{id}/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "allowed_actions": "array<string>",
+    "created_at": "string",
+    "created_by": "object",
+    "email": "string",
+    "email_masked": "string",
+    "id": "string",
+    "is_active": "boolean",
+    "last_login_at": "string",
+    "locked_out": "boolean",
+    "mobile": "string",
+    "mobile_last4": "string",
+    "must_change_password": "boolean",
+    "name": "string",
+    "name_te": "string",
+    "preferred_language": "string",
+    "role_assignments": "array<object>",
+    "role_assignments[].area": "object",
+    "role_assignments[].assigned_at": "string",
+    "role_assignments[].created_at": "string",
+    "role_assignments[].group": "object",
+    "role_assignments[].id": "string",
+    "role_assignments[].is_active": "boolean",
+    "role_assignments[].role": "string",
+    "status": "string",
+    "username": "string"
+   }
+  }
+ },
+ "GET /api/v1/wallet/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "confirmed_points": "integer",
+    "held_points": "integer",
+    "next": "string?",
+    "next_release_at": "string?",
+    "previous": "string?",
+    "results": "array<object>",
+    "results[].created_at": "string",
+    "results[].decided_at": "string?",
+    "results[].id": "string",
+    "results[].kind": "string",
+    "results[].points": "integer",
+    "results[].reason": "string?",
+    "results[].reason_key": "string",
+    "results[].release_at": "string?",
+    "results[].status": "string"
+   }
+  }
+ },
+ "PATCH /api/v1/admin/ads/{id}/": {
+  "request": {
+   "area_id": "integer",
+   "area_level": "string",
+   "duration_s": "integer?",
+   "ends_on": "string?",
+   "is_active": "boolean",
+   "link": "string",
+   "starts_on": "string?",
+   "title": "string"
+  },
+  "required": [],
+  "responses": {
+   "200": {
+    "area": "object",
+    "created_at": "string",
+    "duration_s": "integer?",
+    "ends_on": "string?",
+    "id": "integer",
+    "image": "string",
+    "is_active": "boolean",
+    "link": "string",
+    "starts_on": "string?",
+    "title": "string",
+    "updated_at": "string",
+    "video": "string"
+   }
+  }
+ },
+ "PATCH /api/v1/admin/bills/{key}/": {
+  "request": {
+   "color": "string",
+   "icon": "string",
+   "is_active": "boolean",
+   "name_en": "string",
+   "name_te": "string"
+  },
+  "required": [],
+  "responses": {
+   "200": {
+    "color": "string",
+    "created_at": "string",
+    "icon": "string",
+    "is_active": "boolean",
+    "key": "string",
+    "logo": "string?",
+    "name_en": "string",
+    "name_te": "string",
+    "order": "integer",
+    "updated_at": "string"
+   }
+  }
+ },
+ "PATCH /api/v1/admin/categories/{id}/": {
+  "request": {
+   "is_active": "boolean",
+   "key": "string",
+   "name_en": "string",
+   "name_te": "string",
+   "order": "integer",
+   "short_name_en": "string",
+   "short_name_te": "string"
+  },
+  "required": [],
+  "responses": {
+   "200": {
+    "icon_url": "string?",
+    "id": "integer",
+    "is_active": "boolean",
+    "key": "string",
+    "name_en": "string",
+    "name_te": "string",
+    "order": "integer",
+    "post_count": "integer",
+    "short_name_en": "string",
+    "short_name_te": "string"
+   }
+  }
+ },
+ "PATCH /api/v1/admin/contact-messages/{id}/": {
+  "request": {
+   "handled": "boolean"
+  },
+  "required": [],
+  "responses": {
+   "200": {
+    "created_at": "string",
+    "handled": "boolean",
+    "handled_at": "string?",
+    "handled_by": "object?",
+    "id": "integer",
+    "language": "string",
+    "message": "string",
+    "mobile": "string",
+    "name": "string",
+    "village_text": "string"
+   }
+  }
+ },
+ "PATCH /api/v1/admin/contact-types/{id}/": {
+  "request": {
+   "is_active": "boolean",
+   "is_other": "boolean",
+   "key": "string",
+   "name_en": "string",
+   "name_te": "string",
+   "section": "string",
+   "sort_order": "integer"
+  },
+  "required": [],
+  "responses": {
+   "200": {
+    "contact_count": "integer",
+    "id": "integer",
+    "is_active": "boolean",
+    "is_other": "boolean",
+    "key": "string",
+    "name_en": "string",
+    "name_te": "string",
+    "section": "string",
+    "sort_order": "integer"
+   }
+  }
+ },
+ "PATCH /api/v1/admin/contacts/{id}/": {
+  "request": {
+   "area": "object",
+   "area.id": "integer",
+   "area.level": "string",
+   "consent_recorded": "boolean",
+   "custom_type": "string",
+   "email": "string",
+   "name": "string",
+   "name_te": "string",
+   "phone": "string",
+   "sort_order": "integer",
+   "type": "string",
+   "verified": "boolean"
+  },
+  "required": [],
+  "responses": {
+   "200": {
+    "allowed_actions": "array<string>",
+    "area": "object",
+    "consent_recorded": "boolean",
+    "created_at": "string",
+    "created_by": "object",
+    "custom_type": "string",
+    "email": "string",
+    "id": "string",
+    "name": "string",
+    "name_te": "string",
+    "needs_recheck": "boolean",
+    "phone": "string",
+    "phone_kind": "string",
+    "sort_order": "integer",
+    "type": "object",
+    "updated_at": "string",
+    "verified_at": "string?"
+   }
+  }
+ },
+ "PATCH /api/v1/admin/notification-templates/{key}/": {
+  "request": {
+   "text_en": "string",
+   "text_te": "string"
+  },
+  "required": [],
+  "responses": {
+   "200": {
+    "channel": "string",
+    "editable": "boolean",
+    "key": "string",
+    "name": "string",
+    "name_en": "string",
+    "name_te": "string",
+    "recipient": "string",
+    "text_en": "string",
+    "text_te": "string",
+    "updated_at": "string",
+    "variables": "any"
+   }
+  }
+ },
+ "PATCH /api/v1/admin/services/{key}/": {
+  "request": {
+   "color": "string",
+   "hint_en": "string",
+   "hint_te": "string",
+   "icon": "string",
+   "is_active": "boolean",
+   "name_en": "string",
+   "name_te": "string"
+  },
+  "required": [],
+  "responses": {
+   "200": {
+    "color": "string",
+    "created_at": "string",
+    "hint_en": "string",
+    "hint_te": "string",
+    "icon": "string",
+    "is_active": "boolean",
+    "key": "string",
+    "logo": "string?",
+    "name_en": "string",
+    "name_te": "string",
+    "order": "integer",
+    "updated_at": "string"
+   }
+  }
+ },
+ "PATCH /api/v1/admin/settings/": {
+  "request": {
+   "ads_banner_limit": "integer",
+   "citizen_posts_per_day": "integer",
+   "languages": "object",
+   "referral_active_days": "integer",
+   "referral_hold_days": "integer",
+   "referral_reward_points": "integer",
+   "referrals_per_month": "integer",
+   "review_escalation_hours": "integer",
+   "wallet_enabled": "boolean",
+   "wallet_pilot_mandals": "array<integer>",
+   "welcome_bonus_points": "integer",
+   "welcome_bonuses_per_phone": "integer"
+  },
+  "required": [],
+  "responses": {
+   "200": {
+    "admin_posts_auto_publish": "boolean",
+    "ads_banner_limit": "integer",
+    "citizen_posts_per_day": "integer",
+    "languages": "object",
+    "max_photos_per_post": "integer",
+    "referral_active_days": "integer",
+    "referral_hold_days": "integer",
+    "referral_reward_points": "integer",
+    "referrals_per_month": "integer",
+    "review_escalation_hours": "integer",
+    "review_first_decision_wins": "boolean",
+    "super_admin_can_post": "boolean",
+    "wallet_enabled": "boolean",
+    "wallet_pilot_mandals": "array<integer>",
+    "welcome_bonus_points": "integer",
+    "welcome_bonuses_per_phone": "integer"
+   }
+  }
+ },
+ "PATCH /api/v1/citizen/account/": {
+  "request": {
+   "language": "string",
+   "village_id": "integer"
+  },
+  "required": [],
+  "responses": {
+   "200": {
+    "created_at": "string",
+    "email_hint": "string",
+    "email_verified": "boolean",
+    "invite_url": "string?",
+    "language": "string",
+    "mobile_last4": "string",
+    "mobile_missing": "boolean",
+    "mobile_verified": "boolean",
+    "name": "string",
+    "referral": "object?",
+    "referral_code": "string",
+    "village": "object",
+    "wallet": "object"
+   }
+  }
+ },
+ "PATCH /api/v1/citizen/me/": {
+  "request": {
+   "fcm_token": "string",
+   "language": "string",
+   "village_id": "integer"
+  },
+  "required": [],
+  "responses": {
+   "200": {
+    "block_reason": "string?",
+    "blocked": "boolean",
+    "blocked_until": "string?",
+    "created_at": "string",
+    "id": "string",
+    "language": "string",
+    "posts_per_day": "integer?",
+    "posts_today": "integer",
+    "village": "object"
+   }
+  }
+ },
+ "PATCH /api/v1/devices/{id}/": {
+  "request": {
+   "app_version": "string",
+   "fcm_token": "string",
+   "language": "string",
+   "platform": "string",
+   "village_id": "integer?"
+  },
+  "required": [],
+  "responses": {
+   "200": {
+    "app_version": "string",
+    "fcm_token": "string",
+    "id": "string",
+    "language": "string",
+    "platform": "string",
+    "village_id": "integer?"
+   }
+  }
+ },
+ "PATCH /api/v1/geo/districts/{id}/": {
+  "request": {
+   "is_active": "boolean",
+   "lgd_code": "string",
+   "name_en": "string",
+   "name_te": "string"
+  },
+  "required": [],
+  "responses": {
+   "200": {
+    "district_id": "integer",
+    "id": "integer",
+    "is_active": "boolean",
+    "latitude": "string?",
+    "level": "string",
+    "lgd_code": "string?",
+    "longitude": "string?",
+    "mandal_id": "integer",
+    "name_en": "string",
+    "name_te": "string",
+    "pin_code": "string",
+    "state_id": "integer",
+    "warnings": "array<object>",
+    "warnings[].code": "string",
+    "warnings[].message": "string"
+   }
+  }
+ },
+ "PATCH /api/v1/geo/mandals/{id}/": {
+  "request": {
+   "is_active": "boolean",
+   "lgd_code": "string",
+   "name_en": "string",
+   "name_te": "string"
+  },
+  "required": [],
+  "responses": {
+   "200": {
+    "district_id": "integer",
+    "id": "integer",
+    "is_active": "boolean",
+    "latitude": "string?",
+    "level": "string",
+    "lgd_code": "string?",
+    "longitude": "string?",
+    "mandal_id": "integer",
+    "name_en": "string",
+    "name_te": "string",
+    "pin_code": "string",
+    "state_id": "integer",
+    "warnings": "array<object>",
+    "warnings[].code": "string",
+    "warnings[].message": "string"
+   }
+  }
+ },
+ "PATCH /api/v1/geo/villages/{id}/": {
+  "request": {
+   "is_active": "boolean",
+   "latitude": "string",
+   "lgd_code": "string",
+   "longitude": "string",
+   "name_en": "string",
+   "name_te": "string",
+   "pin_code": "string"
+  },
+  "required": [],
+  "responses": {
+   "200": {
+    "district_id": "integer",
+    "id": "integer",
+    "is_active": "boolean",
+    "latitude": "string?",
+    "level": "string",
+    "lgd_code": "string?",
+    "longitude": "string?",
+    "mandal_id": "integer",
+    "name_en": "string",
+    "name_te": "string",
+    "pin_code": "string",
+    "state_id": "integer",
+    "warnings": "array<object>",
+    "warnings[].code": "string",
+    "warnings[].message": "string"
+   }
+  }
+ },
+ "PATCH /api/v1/me/": {
+  "request": {
+   "name": "string",
+   "name_te": "string",
+   "preferred_language": "string"
+  },
+  "required": [],
+  "responses": {
+   "200": {
+    "assignments": "array<object>",
+    "capabilities": "object",
+    "email": "string",
+    "groups": "array<object>",
+    "groups[].key": "string",
+    "groups[].level": "string",
+    "groups[].name": "string",
+    "groups[].rank": "integer",
+    "id": "string",
+    "is_active": "boolean",
+    "mobile": "string",
+    "must_change_password": "boolean",
+    "name": "string",
+    "name_te": "string",
+    "permissions": "array<string>",
+    "permissions_by_area": "array<object>",
+    "permissions_by_area[].area": "object",
+    "permissions_by_area[].permissions": "array<string>",
+    "preferred_language": "string",
+    "role_assignments": "array<object>",
+    "role_assignments[].area": "object",
+    "role_assignments[].assigned_at": "string",
+    "role_assignments[].created_at": "string",
+    "role_assignments[].group": "object",
+    "role_assignments[].id": "string",
+    "role_assignments[].is_active": "boolean",
+    "role_assignments[].role": "string",
+    "rules": "object",
+    "status": "string",
+    "username": "string"
+   }
+  }
+ },
+ "PATCH /api/v1/posts/{id}/": {
+  "request": {
+   "body": "string",
+   "category": "string",
+   "event": "object",
+   "is_urgent": "boolean",
+   "language": "string",
+   "target": "object",
+   "target.id": "integer",
+   "target.level": "string",
+   "targets": "array<object>",
+   "targets[].id": "integer",
+   "targets[].level": "string",
+   "title": "string"
+  },
+  "required": [],
+  "responses": {
+   "200": {
+    "allowed_actions": "array<string>",
+    "author": "object",
+    "body": "string",
+    "category": "object",
+    "category.key": "string",
+    "category.name": "string",
+    "category.order": "integer",
+    "category.short_name": "string",
+    "citizen": "object",
+    "created_at": "string",
+    "decided_at": "string?",
+    "decided_by": "object",
+    "escalated": "boolean",
+    "escalated_at": "string?",
+    "escalation_level": "any|string",
+    "event": "object",
+    "id": "string",
+    "is_urgent": "boolean",
+    "language": "string",
+    "last_review": "object",
+    "media": "array<object>",
+    "media[].bytes": "integer",
+    "media[].duration_s": "integer?",
+    "media[].height": "integer",
+    "media[].id": "string",
+    "media[].kind": "string",
+    "media[].poster_url": "string?",
+    "media[].thumb_url": "string",
+    "media[].url": "string",
+    "media[].width": "integer",
+    "posted_as": "object",
+    "published_at": "string?",
+    "share_url": "string?",
+    "status": "string",
+    "submitted_at": "string?",
+    "target_area": "object",
+    "target_level": "string",
+    "targets": "array<object>",
+    "targets[].id": "integer",
+    "targets[].level": "string",
+    "targets[].name": "string",
+    "targets[].path": "string",
+    "title": "string",
+    "translation": "object",
+    "updated_at": "string"
+   }
+  }
+ },
+ "PATCH /api/v1/service-requests/{id}/": {
+  "request": {
+   "assigned_to": "string?",
+   "note": "string",
+   "status": "string"
+  },
+  "required": [],
+  "responses": {
+   "200": {
+    "address": "string",
+    "allowed_actions": "array<string>",
+    "assigned_to": "object",
+    "can_cancel": "boolean",
+    "created_at": "string",
+    "details": "string",
+    "district": "object",
+    "email": "string",
+    "history": "array<object>",
+    "history[].assigned_to": "object?",
+    "history[].at": "string",
+    "history[].by": "object",
+    "history[].by_citizen": "boolean",
+    "history[].note": "string",
+    "history[].status": "string",
+    "id": "integer",
+    "mandal": "object",
+    "name": "string",
+    "note": "string",
+    "phone": "string",
+    "service": "string",
+    "service_name": "string",
+    "status": "string",
+    "updated_at": "string",
+    "village": "object"
+   }
+  }
+ },
+ "PATCH /api/v1/users/{id}/": {
+  "request": {
+   "email": "string",
+   "mobile": "string",
+   "name": "string",
+   "name_te": "string",
+   "preferred_language": "string",
+   "username": "string"
+  },
+  "required": [],
+  "responses": {
+   "200": {
+    "allowed_actions": "array<string>",
+    "created_at": "string",
+    "created_by": "object",
+    "email": "string",
+    "email_masked": "string",
+    "id": "string",
+    "is_active": "boolean",
+    "last_login_at": "string",
+    "locked_out": "boolean",
+    "mobile": "string",
+    "mobile_last4": "string",
+    "must_change_password": "boolean",
+    "name": "string",
+    "name_te": "string",
+    "preferred_language": "string",
+    "role_assignments": "array<object>",
+    "role_assignments[].area": "object",
+    "role_assignments[].assigned_at": "string",
+    "role_assignments[].created_at": "string",
+    "role_assignments[].group": "object",
+    "role_assignments[].id": "string",
+    "role_assignments[].is_active": "boolean",
+    "role_assignments[].role": "string",
+    "status": "string",
+    "username": "string"
+   }
+  }
+ },
+ "PATCH /api/v1/users/{user_pk}/role-assignments/{id}/": {
+  "request": {
+   "area": "object",
+   "area.id": "integer",
+   "area.level": "string",
+   "is_active": "boolean"
+  },
+  "required": [],
+  "responses": {
+   "200": {
+    "area": "object",
+    "assigned_at": "string",
+    "created_at": "string",
+    "group": "object",
+    "id": "string",
+    "is_active": "boolean",
+    "role": "string"
+   }
+  }
+ },
+ "POST /api/v1/admin/ads/": {
+  "request": {
+   "area_id": "integer",
+   "area_level": "string",
+   "duration_s": "integer?",
+   "ends_on": "string?",
+   "is_active": "boolean",
+   "link": "string",
+   "starts_on": "string?",
+   "title": "string"
+  },
+  "required": [
+   "area_id",
+   "area_level",
+   "title"
+  ],
+  "responses": {
+   "201": {
+    "area": "object",
+    "created_at": "string",
+    "duration_s": "integer?",
+    "ends_on": "string?",
+    "id": "integer",
+    "image": "string",
+    "is_active": "boolean",
+    "link": "string",
+    "starts_on": "string?",
+    "title": "string",
+    "updated_at": "string",
+    "video": "string"
+   }
+  }
+ },
+ "POST /api/v1/admin/bills/": {
+  "request": {
+   "color": "string",
+   "icon": "string",
+   "is_active": "boolean",
+   "name_en": "string",
+   "name_te": "string"
+  },
+  "required": [
+   "color",
+   "name_en"
+  ],
+  "responses": {
+   "201": {
+    "color": "string",
+    "created_at": "string",
+    "icon": "string",
+    "is_active": "boolean",
+    "key": "string",
+    "logo": "string?",
+    "name_en": "string",
+    "name_te": "string",
+    "order": "integer",
+    "updated_at": "string"
+   }
+  }
+ },
+ "POST /api/v1/admin/bills/order/": {
+  "request": {
+   "keys": "array<string>"
+  },
+  "required": [
+   "keys"
+  ],
+  "responses": {
+   "200": {
+    "[].color": "string",
+    "[].created_at": "string",
+    "[].icon": "string",
+    "[].is_active": "boolean",
+    "[].key": "string",
+    "[].logo": "string?",
+    "[].name_en": "string",
+    "[].name_te": "string",
+    "[].order": "integer",
+    "[].updated_at": "string"
+   }
+  }
+ },
+ "POST /api/v1/admin/categories/": {
+  "request": {
+   "is_active": "boolean",
+   "key": "string",
+   "name_en": "string",
+   "name_te": "string",
+   "order": "integer",
+   "short_name_en": "string",
+   "short_name_te": "string"
+  },
+  "required": [
+   "key",
+   "name_en",
+   "name_te"
+  ],
+  "responses": {
+   "201": {
+    "icon_url": "string?",
+    "id": "integer",
+    "is_active": "boolean",
+    "key": "string",
+    "name_en": "string",
+    "name_te": "string",
+    "order": "integer",
+    "post_count": "integer",
+    "short_name_en": "string",
+    "short_name_te": "string"
+   }
+  }
+ },
+ "POST /api/v1/admin/citizen-accounts/find/": {
+  "request": {
+   "email": "string",
+   "mobile": "string"
+  },
+  "required": [],
+  "responses": {
+   "200": {
+    "results": "array<object>",
+    "results[].allowed_actions": "array<string>",
+    "results[].confirmed_points": "integer",
+    "results[].created_at": "string",
+    "results[].deleted_at": "string?",
+    "results[].email_hint": "string",
+    "results[].email_verified": "boolean",
+    "results[].held_points": "integer",
+    "results[].id": "string",
+    "results[].last_active_at": "string?",
+    "results[].mobile_last4": "string",
+    "results[].mobile_missing": "boolean",
+    "results[].mobile_verified": "boolean",
+    "results[].name": "string",
+    "results[].referral_code": "string",
+    "results[].status": "string",
+    "results[].village": "object"
+   }
+  }
+ },
+ "POST /api/v1/admin/citizen-accounts/{id}/block/": {
+  "request": {
+   "reason": "string"
+  },
+  "required": [
+   "reason"
+  ],
+  "responses": {
+   "200": {
+    "allowed_actions": "array<string>",
+    "confirmed_points": "integer",
+    "created_at": "string",
+    "deleted_at": "string?",
+    "email_hint": "string",
+    "email_verified": "boolean",
+    "held_points": "integer",
+    "id": "string",
+    "last_active_at": "string?",
+    "mobile_last4": "string",
+    "mobile_missing": "boolean",
+    "mobile_verified": "boolean",
+    "name": "string",
+    "referral_code": "string",
+    "status": "string",
+    "village": "object"
+   }
+  }
+ },
+ "POST /api/v1/admin/citizen-accounts/{id}/delete/": {
+  "request": {
+   "reason": "string"
+  },
+  "required": [
+   "reason"
+  ],
+  "responses": {
+   "200": {
+    "allowed_actions": "array<string>",
+    "confirmed_points": "integer",
+    "created_at": "string",
+    "deleted_at": "string?",
+    "email_hint": "string",
+    "email_verified": "boolean",
+    "held_points": "integer",
+    "id": "string",
+    "last_active_at": "string?",
+    "mobile_last4": "string",
+    "mobile_missing": "boolean",
+    "mobile_verified": "boolean",
+    "name": "string",
+    "referral_code": "string",
+    "status": "string",
+    "village": "object"
+   }
+  }
+ },
+ "POST /api/v1/admin/citizen-accounts/{id}/email/": {
+  "request": {
+   "called_back": "boolean",
+   "email": "string",
+   "reason": "string"
+  },
+  "required": [
+   "called_back",
+   "email",
+   "reason"
+  ],
+  "responses": {
+   "200": {
+    "allowed_actions": "array<string>",
+    "confirmed_points": "integer",
+    "created_at": "string",
+    "deleted_at": "string?",
+    "email_hint": "string",
+    "email_verified": "boolean",
+    "held_points": "integer",
+    "id": "string",
+    "last_active_at": "string?",
+    "mobile_last4": "string",
+    "mobile_missing": "boolean",
+    "mobile_verified": "boolean",
+    "name": "string",
+    "referral_code": "string",
+    "status": "string",
+    "village": "object"
+   }
+  }
+ },
+ "POST /api/v1/admin/citizen-accounts/{id}/release-mobile/": {
+  "request": {
+   "called_back": "boolean",
+   "reason": "string"
+  },
+  "required": [
+   "called_back",
+   "reason"
+  ],
+  "responses": {
+   "200": {
+    "allowed_actions": "array<string>",
+    "confirmed_points": "integer",
+    "created_at": "string",
+    "deleted_at": "string?",
+    "email_hint": "string",
+    "email_verified": "boolean",
+    "held_points": "integer",
+    "id": "string",
+    "last_active_at": "string?",
+    "mobile_last4": "string",
+    "mobile_missing": "boolean",
+    "mobile_verified": "boolean",
+    "name": "string",
+    "referral_code": "string",
+    "status": "string",
+    "village": "object"
+   }
+  }
+ },
+ "POST /api/v1/admin/citizen-accounts/{id}/unblock/": {
+  "request": {
+   "reason": "string"
+  },
+  "required": [
+   "reason"
+  ],
+  "responses": {
+   "200": {
+    "allowed_actions": "array<string>",
+    "confirmed_points": "integer",
+    "created_at": "string",
+    "deleted_at": "string?",
+    "email_hint": "string",
+    "email_verified": "boolean",
+    "held_points": "integer",
+    "id": "string",
+    "last_active_at": "string?",
+    "mobile_last4": "string",
+    "mobile_missing": "boolean",
+    "mobile_verified": "boolean",
+    "name": "string",
+    "referral_code": "string",
+    "status": "string",
+    "village": "object"
+   }
+  }
+ },
+ "POST /api/v1/admin/citizens/{id}/unblock/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "block_reason": "string?",
+    "blocked": "boolean",
+    "blocked_until": "string?",
+    "created_at": "string",
+    "id": "string",
+    "language": "string",
+    "posts_per_day": "integer?",
+    "posts_today": "integer",
+    "village": "object"
+   }
+  }
+ },
+ "POST /api/v1/admin/contact-types/": {
+  "request": {
+   "is_active": "boolean",
+   "is_other": "boolean",
+   "key": "string",
+   "name_en": "string",
+   "name_te": "string",
+   "section": "string",
+   "sort_order": "integer"
+  },
+  "required": [
+   "key",
+   "name_en",
+   "name_te",
+   "section"
+  ],
+  "responses": {
+   "201": {
+    "contact_count": "integer",
+    "id": "integer",
+    "is_active": "boolean",
+    "is_other": "boolean",
+    "key": "string",
+    "name_en": "string",
+    "name_te": "string",
+    "section": "string",
+    "sort_order": "integer"
+   }
+  }
+ },
+ "POST /api/v1/admin/contacts/": {
+  "request": {
+   "area": "object",
+   "area.id": "integer",
+   "area.level": "string",
+   "consent_recorded": "boolean",
+   "custom_type": "string",
+   "email": "string",
+   "name": "string",
+   "name_te": "string",
+   "phone": "string",
+   "sort_order": "integer",
+   "type": "string",
+   "verified": "boolean"
+  },
+  "required": [
+   "area",
+   "name",
+   "phone",
+   "type"
+  ],
+  "responses": {
+   "201": {
+    "allowed_actions": "array<string>",
+    "area": "object",
+    "consent_recorded": "boolean",
+    "created_at": "string",
+    "created_by": "object",
+    "custom_type": "string",
+    "email": "string",
+    "id": "string",
+    "name": "string",
+    "name_te": "string",
+    "needs_recheck": "boolean",
+    "phone": "string",
+    "phone_kind": "string",
+    "sort_order": "integer",
+    "type": "object",
+    "updated_at": "string",
+    "verified_at": "string?"
+   }
+  }
+ },
+ "POST /api/v1/admin/contacts/import/": {
+  "request": {
+   "file": "string"
+  },
+  "required": [],
+  "responses": {
+   "200": {
+    "created": "integer",
+    "dry_run": "boolean",
+    "errors": "array<object>",
+    "errors[].field": "string",
+    "errors[].message": "string",
+    "errors[].row": "integer",
+    "skipped": "integer",
+    "updated": "integer"
+   }
+  }
+ },
+ "POST /api/v1/admin/referrals/{id}/confirm/": {
+  "request": {
+   "comment": "string"
+  },
+  "required": [
+   "comment"
+  ],
+  "responses": {
+   "200": {
+    "allowed_actions": "array<string>",
+    "comment": "string",
+    "confirm_after": "string",
+    "decided_at": "string?",
+    "decided_by": "object?",
+    "id": "string",
+    "pending_at": "string",
+    "reason_key": "string?",
+    "referee": "object",
+    "referrer": "object",
+    "status": "string"
+   }
+  }
+ },
+ "POST /api/v1/admin/referrals/{id}/reject/": {
+  "request": {
+   "comment": "string"
+  },
+  "required": [
+   "comment"
+  ],
+  "responses": {
+   "200": {
+    "allowed_actions": "array<string>",
+    "comment": "string",
+    "confirm_after": "string",
+    "decided_at": "string?",
+    "decided_by": "object?",
+    "id": "string",
+    "pending_at": "string",
+    "reason_key": "string?",
+    "referee": "object",
+    "referrer": "object",
+    "status": "string"
+   }
+  }
+ },
+ "POST /api/v1/admin/services/": {
+  "request": {
+   "color": "string",
+   "hint_en": "string",
+   "hint_te": "string",
+   "icon": "string",
+   "is_active": "boolean",
+   "name_en": "string",
+   "name_te": "string"
+  },
+  "required": [
+   "color",
+   "name_en"
+  ],
+  "responses": {
+   "201": {
+    "color": "string",
+    "created_at": "string",
+    "hint_en": "string",
+    "hint_te": "string",
+    "icon": "string",
+    "is_active": "boolean",
+    "key": "string",
+    "logo": "string?",
+    "name_en": "string",
+    "name_te": "string",
+    "order": "integer",
+    "updated_at": "string"
+   }
+  }
+ },
+ "POST /api/v1/admin/services/order/": {
+  "request": {
+   "keys": "array<string>"
+  },
+  "required": [
+   "keys"
+  ],
+  "responses": {
+   "200": {
+    "[].color": "string",
+    "[].created_at": "string",
+    "[].hint_en": "string",
+    "[].hint_te": "string",
+    "[].icon": "string",
+    "[].is_active": "boolean",
+    "[].key": "string",
+    "[].logo": "string?",
+    "[].name_en": "string",
+    "[].name_te": "string",
+    "[].order": "integer",
+    "[].updated_at": "string"
+   }
+  }
+ },
+ "POST /api/v1/admin/wallets/{account_id}/adjust/": {
+  "request": {
+   "points": "integer",
+   "reason": "string"
+  },
+  "required": [
+   "points",
+   "reason"
+  ],
+  "responses": {
+   "200": {
+    "confirmed_points": "integer",
+    "held_points": "integer",
+    "next_release_at": "string?"
+   }
+  }
+ },
+ "POST /api/v1/auth/login/": {
+  "request": {
+   "password": "string",
+   "username": "string"
+  },
+  "required": [
+   "password",
+   "username"
+  ],
+  "responses": {
+   "200": {
+    "access": "string",
+    "refresh": "string",
+    "user": "object",
+    "user.assignments": "array<object>",
+    "user.capabilities": "object",
+    "user.email": "string",
+    "user.groups": "array<object>",
+    "user.id": "string",
+    "user.is_active": "boolean",
+    "user.mobile": "string",
+    "user.must_change_password": "boolean",
+    "user.name": "string",
+    "user.name_te": "string",
+    "user.permissions": "array<string>",
+    "user.permissions_by_area": "array<object>",
+    "user.preferred_language": "string",
+    "user.role_assignments": "array<object>",
+    "user.rules": "object",
+    "user.status": "string",
+    "user.username": "string"
+   }
+  }
+ },
+ "POST /api/v1/auth/logout/": {
+  "request": {
+   "all_devices": "boolean",
+   "refresh": "string"
+  },
+  "required": [],
+  "responses": {
+   "204": {}
+  }
+ },
+ "POST /api/v1/auth/password/change/": {
+  "request": {
+   "current_password": "string",
+   "new_password": "string"
+  },
+  "required": [
+   "current_password",
+   "new_password"
+  ],
+  "responses": {
+   "200": {}
+  }
+ },
+ "POST /api/v1/auth/refresh/": {
+  "request": {
+   "refresh": "string"
+  },
+  "required": [
+   "refresh"
+  ],
+  "responses": {
+   "200": {
+    "access": "string",
+    "refresh": "string"
+   }
+  }
+ },
+ "POST /api/v1/auth/session/login/": {
+  "request": {
+   "password": "string",
+   "username": "string"
+  },
+  "required": [
+   "password",
+   "username"
+  ],
+  "responses": {
+   "200": {
+    "user": "object",
+    "user.assignments": "array<object>",
+    "user.capabilities": "object",
+    "user.email": "string",
+    "user.groups": "array<object>",
+    "user.id": "string",
+    "user.is_active": "boolean",
+    "user.mobile": "string",
+    "user.must_change_password": "boolean",
+    "user.name": "string",
+    "user.name_te": "string",
+    "user.permissions": "array<string>",
+    "user.permissions_by_area": "array<object>",
+    "user.preferred_language": "string",
+    "user.role_assignments": "array<object>",
+    "user.rules": "object",
+    "user.status": "string",
+    "user.username": "string"
+   }
+  }
+ },
+ "POST /api/v1/auth/session/logout/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "204": {}
+  }
+ },
+ "POST /api/v1/citizen/account/delete/": {
+  "request": {
+   "password": "string"
+  },
+  "required": [
+   "password"
+  ],
+  "responses": {
+   "204": {}
+  }
+ },
+ "POST /api/v1/citizen/account/email/": {
+  "request": {
+   "email": "string",
+   "password": "string"
+  },
+  "required": [
+   "email",
+   "password"
+  ],
+  "responses": {
+   "200": {
+    "email_hint": "string",
+    "expires_in": "integer",
+    "resend_after": "integer"
+   }
+  }
+ },
+ "POST /api/v1/citizen/account/email/verify/": {
+  "request": {
+   "code": "string"
+  },
+  "required": [
+   "code"
+  ],
+  "responses": {
+   "200": {
+    "created_at": "string",
+    "email_hint": "string",
+    "email_verified": "boolean",
+    "invite_url": "string?",
+    "language": "string",
+    "mobile_last4": "string",
+    "mobile_missing": "boolean",
+    "mobile_verified": "boolean",
+    "name": "string",
+    "referral": "object?",
+    "referral_code": "string",
+    "village": "object",
+    "wallet": "object"
+   }
+  }
+ },
+ "POST /api/v1/citizen/account/mobile/": {
+  "request": {
+   "mobile": "string",
+   "password": "string"
+  },
+  "required": [
+   "mobile",
+   "password"
+  ],
+  "responses": {
+   "200": {
+    "created_at": "string",
+    "email_hint": "string",
+    "email_verified": "boolean",
+    "invite_url": "string?",
+    "language": "string",
+    "mobile_last4": "string",
+    "mobile_missing": "boolean",
+    "mobile_verified": "boolean",
+    "name": "string",
+    "referral": "object?",
+    "referral_code": "string",
+    "village": "object",
+    "wallet": "object"
+   }
+  }
+ },
+ "POST /api/v1/citizen/account/password/": {
+  "request": {
+   "current_password": "string",
+   "new_password": "string"
+  },
+  "required": [
+   "current_password",
+   "new_password"
+  ],
+  "responses": {
+   "200": {
+    "access": "string",
+    "refresh": "string"
+   }
+  }
+ },
+ "POST /api/v1/citizen/auth/delete/": {
+  "request": {
+   "code": "string",
+   "login": "string"
+  },
+  "required": [
+   "code",
+   "login"
+  ],
+  "responses": {
+   "200": {
+    "deleted": "boolean"
+   }
+  }
+ },
+ "POST /api/v1/citizen/auth/delete/code/": {
+  "request": {
+   "login": "string"
+  },
+  "required": [
+   "login"
+  ],
+  "responses": {
+   "200": {
+    "email_hint": "string",
+    "expires_in": "integer",
+    "resend_after": "integer"
+   }
+  }
+ },
+ "POST /api/v1/citizen/auth/login/": {
+  "request": {
+   "login": "string",
+   "password": "string"
+  },
+  "required": [
+   "login",
+   "password"
+  ],
+  "responses": {
+   "200": {
+    "access": "string",
+    "account": "object",
+    "account.created_at": "string",
+    "account.email_hint": "string",
+    "account.email_verified": "boolean",
+    "account.invite_url": "string?",
+    "account.language": "string",
+    "account.mobile_last4": "string",
+    "account.mobile_missing": "boolean",
+    "account.mobile_verified": "boolean",
+    "account.name": "string",
+    "account.referral": "object?",
+    "account.referral_code": "string",
+    "account.village": "object",
+    "account.wallet": "object",
+    "refresh": "string"
+   }
+  }
+ },
+ "POST /api/v1/citizen/auth/password/forgot/": {
+  "request": {
+   "login": "string"
+  },
+  "required": [
+   "login"
+  ],
+  "responses": {
+   "200": {
+    "email_hint": "string",
+    "expires_in": "integer",
+    "resend_after": "integer"
+   }
+  }
+ },
+ "POST /api/v1/citizen/auth/password/reset/": {
+  "request": {
+   "code": "string",
+   "login": "string",
+   "new_password": "string"
+  },
+  "required": [
+   "code",
+   "login",
+   "new_password"
+  ],
+  "responses": {
+   "200": {
+    "access": "string",
+    "account": "object",
+    "account.created_at": "string",
+    "account.email_hint": "string",
+    "account.email_verified": "boolean",
+    "account.invite_url": "string?",
+    "account.language": "string",
+    "account.mobile_last4": "string",
+    "account.mobile_missing": "boolean",
+    "account.mobile_verified": "boolean",
+    "account.name": "string",
+    "account.referral": "object?",
+    "account.referral_code": "string",
+    "account.village": "object",
+    "account.wallet": "object",
+    "refresh": "string"
+   }
+  }
+ },
+ "POST /api/v1/citizen/auth/signup/": {
+  "request": {
+   "age_confirmed": "boolean",
+   "android_id": "string",
+   "consent_version": "string",
+   "email": "string",
+   "language": "string",
+   "mobile": "string",
+   "name": "string",
+   "password": "string",
+   "referral_code": "string",
+   "village_id": "integer"
+  },
+  "required": [
+   "age_confirmed",
+   "consent_version",
+   "email",
+   "mobile",
+   "name",
+   "password",
+   "village_id"
+  ],
+  "responses": {
+   "200": {
+    "email_hint": "string",
+    "expires_in": "integer",
+    "resend_after": "integer",
+    "signup_token": "string"
+   }
+  }
+ },
+ "POST /api/v1/citizen/auth/signup/resend/": {
+  "request": {
+   "signup_token": "string"
+  },
+  "required": [
+   "signup_token"
+  ],
+  "responses": {
+   "200": {
+    "email_hint": "string",
+    "expires_in": "integer",
+    "resend_after": "integer"
+   }
+  }
+ },
+ "POST /api/v1/citizen/auth/signup/verify/": {
+  "request": {
+   "code": "string",
+   "signup_token": "string"
+  },
+  "required": [
+   "code",
+   "signup_token"
+  ],
+  "responses": {
+   "201": {
+    "access": "string",
+    "account": "object",
+    "account.created_at": "string",
+    "account.email_hint": "string",
+    "account.email_verified": "boolean",
+    "account.invite_url": "string?",
+    "account.language": "string",
+    "account.mobile_last4": "string",
+    "account.mobile_missing": "boolean",
+    "account.mobile_verified": "boolean",
+    "account.name": "string",
+    "account.referral": "object?",
+    "account.referral_code": "string",
+    "account.village": "object",
+    "account.wallet": "object",
+    "refresh": "string"
+   }
+  }
+ },
+ "POST /api/v1/citizen/challenge/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "expires_in": "integer",
+    "nonce": "string"
+   }
+  }
+ },
+ "POST /api/v1/citizen/posts/": {
+  "request": {
+   "body": "string",
+   "category": "string",
+   "client_ref": "string",
+   "language": "string",
+   "photos": "array<string>",
+   "title": "string",
+   "videos": "array<string>"
+  },
+  "required": [
+   "body",
+   "category",
+   "title"
+  ],
+  "responses": {
+   "200": {
+    "area": "object",
+    "body": "string",
+    "category": "string",
+    "created_at": "string",
+    "decided_at": "string?",
+    "id": "string",
+    "language": "string",
+    "photos": "array<object>",
+    "photos[].thumb_url": "string",
+    "photos[].url": "string",
+    "reason": "string?",
+    "status": "string",
+    "targets": "array<object>",
+    "targets[].id": "integer",
+    "targets[].level": "string",
+    "targets[].name": "string",
+    "targets[].path": "string",
+    "title": "string",
+    "translation": "object",
+    "videos": "array<object>",
+    "videos[].duration_s": "integer?",
+    "videos[].poster_url": "string",
+    "videos[].thumb_url": "string",
+    "videos[].url": "string"
+   },
+   "201": {
+    "area": "object",
+    "body": "string",
+    "category": "string",
+    "created_at": "string",
+    "decided_at": "string?",
+    "id": "string",
+    "language": "string",
+    "photos": "array<object>",
+    "photos[].thumb_url": "string",
+    "photos[].url": "string",
+    "reason": "string?",
+    "status": "string",
+    "targets": "array<object>",
+    "targets[].id": "integer",
+    "targets[].level": "string",
+    "targets[].name": "string",
+    "targets[].path": "string",
+    "title": "string",
+    "translation": "object",
+    "videos": "array<object>",
+    "videos[].duration_s": "integer?",
+    "videos[].poster_url": "string",
+    "videos[].thumb_url": "string",
+    "videos[].url": "string"
+   }
+  }
+ },
+ "POST /api/v1/citizen/register/": {
+  "request": {
+   "android_id": "string",
+   "app_version": "string",
+   "fcm_token": "string",
+   "integrity_token": "string",
+   "language": "string",
+   "nonce": "string",
+   "platform": "string",
+   "village_id": "integer"
+  },
+  "required": [
+   "nonce",
+   "platform",
+   "village_id"
+  ],
+  "responses": {
+   "201": {
+    "device": "object",
+    "device.block_reason": "string?",
+    "device.blocked": "boolean",
+    "device.blocked_until": "string?",
+    "device.created_at": "string",
+    "device.id": "string",
+    "device.language": "string",
+    "device.posts_per_day": "integer?",
+    "device.posts_today": "integer",
+    "device.village": "object",
+    "token": "string"
+   }
+  }
+ },
+ "POST /api/v1/citizen/service-requests/": {
+  "request": {
+   "address": "string",
+   "client_ref": "string",
+   "details": "string",
+   "email": "string",
+   "name": "string",
+   "phone": "string",
+   "service": "string"
+  },
+  "required": [
+   "address",
+   "name",
+   "phone",
+   "service"
+  ],
+  "responses": {
+   "200": {
+    "address": "string",
+    "can_cancel": "boolean",
+    "created_at": "string",
+    "details": "string",
+    "district": "object",
+    "email": "string",
+    "id": "integer",
+    "mandal": "object",
+    "name": "string",
+    "note": "string",
+    "phone": "string",
+    "service": "string",
+    "service_name": "string",
+    "status": "string",
+    "updated_at": "string",
+    "village": "object"
+   },
+   "201": {
+    "address": "string",
+    "can_cancel": "boolean",
+    "created_at": "string",
+    "details": "string",
+    "district": "object",
+    "email": "string",
+    "id": "integer",
+    "mandal": "object",
+    "name": "string",
+    "note": "string",
+    "phone": "string",
+    "service": "string",
+    "service_name": "string",
+    "status": "string",
+    "updated_at": "string",
+    "village": "object"
+   }
+  }
+ },
+ "POST /api/v1/citizen/service-requests/{id}/cancel/": {
+  "request": {
+   "reason": "string"
+  },
+  "required": [],
+  "responses": {
+   "200": {
+    "address": "string",
+    "can_cancel": "boolean",
+    "created_at": "string",
+    "details": "string",
+    "district": "object",
+    "email": "string",
+    "id": "integer",
+    "mandal": "object",
+    "name": "string",
+    "note": "string",
+    "phone": "string",
+    "service": "string",
+    "service_name": "string",
+    "status": "string",
+    "updated_at": "string",
+    "village": "object"
+   }
+  }
+ },
+ "POST /api/v1/devices/": {
+  "request": {
+   "app_version": "string",
+   "fcm_token": "string",
+   "language": "string",
+   "platform": "string",
+   "village_id": "integer?"
+  },
+  "required": [
+   "fcm_token",
+   "platform"
+  ],
+  "responses": {
+   "200": {
+    "app_version": "string",
+    "fcm_token": "string",
+    "id": "string",
+    "language": "string",
+    "platform": "string",
+    "village_id": "integer?"
+   }
+  }
+ },
+ "POST /api/v1/geo/districts/": {
+  "request": {
+   "lgd_code": "string",
+   "name_en": "string",
+   "name_te": "string",
+   "state_id": "integer"
+  },
+  "required": [
+   "name_en",
+   "state_id"
+  ],
+  "responses": {
+   "201": {
+    "district_id": "integer",
+    "id": "integer",
+    "is_active": "boolean",
+    "latitude": "string?",
+    "level": "string",
+    "lgd_code": "string?",
+    "longitude": "string?",
+    "mandal_id": "integer",
+    "name_en": "string",
+    "name_te": "string",
+    "pin_code": "string",
+    "state_id": "integer",
+    "warnings": "array<object>",
+    "warnings[].code": "string",
+    "warnings[].message": "string"
+   }
+  }
+ },
+ "POST /api/v1/geo/mandals/": {
+  "request": {
+   "district_id": "integer",
+   "lgd_code": "string",
+   "name_en": "string",
+   "name_te": "string"
+  },
+  "required": [
+   "district_id",
+   "name_en"
+  ],
+  "responses": {
+   "201": {
+    "district_id": "integer",
+    "id": "integer",
+    "is_active": "boolean",
+    "latitude": "string?",
+    "level": "string",
+    "lgd_code": "string?",
+    "longitude": "string?",
+    "mandal_id": "integer",
+    "name_en": "string",
+    "name_te": "string",
+    "pin_code": "string",
+    "state_id": "integer",
+    "warnings": "array<object>",
+    "warnings[].code": "string",
+    "warnings[].message": "string"
+   }
+  }
+ },
+ "POST /api/v1/geo/villages/": {
+  "request": {
+   "latitude": "string",
+   "lgd_code": "string",
+   "longitude": "string",
+   "mandal_id": "integer",
+   "name_en": "string",
+   "name_te": "string",
+   "pin_code": "string"
+  },
+  "required": [
+   "latitude",
+   "longitude",
+   "mandal_id",
+   "name_en"
+  ],
+  "responses": {
+   "201": {
+    "district_id": "integer",
+    "id": "integer",
+    "is_active": "boolean",
+    "latitude": "string?",
+    "level": "string",
+    "lgd_code": "string?",
+    "longitude": "string?",
+    "mandal_id": "integer",
+    "name_en": "string",
+    "name_te": "string",
+    "pin_code": "string",
+    "state_id": "integer",
+    "warnings": "array<object>",
+    "warnings[].code": "string",
+    "warnings[].message": "string"
+   }
+  }
+ },
+ "POST /api/v1/geo/villages/import/": {
+  "request": {
+   "file": "string"
+  },
+  "required": [
+   "file"
+  ],
+  "responses": {
+   "200": {
+    "counts": "object",
+    "dry_run": "boolean",
+    "errors": "array<string>",
+    "missing_coordinates": "array<object>",
+    "missing_coordinates[].district": "string",
+    "missing_coordinates[].mandal": "string",
+    "missing_coordinates[].state": "string",
+    "missing_coordinates[].village": "string",
+    "missing_coordinates[].village_lgd_code": "string?",
+    "missing_coordinates_count": "integer",
+    "missing_coordinates_total": "integer",
+    "missing_telugu": "integer",
+    "ok": "boolean",
+    "rows": "integer",
+    "warnings": "array<string>"
+   }
+  }
+ },
+ "POST /api/v1/notifications/read-all/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "204": {}
+  }
+ },
+ "POST /api/v1/notifications/{id}/read/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "204": {}
+  }
+ },
+ "POST /api/v1/posts/": {
+  "request": {
+   "body": "string",
+   "category": "string",
+   "client_ref": "string",
+   "event": "object",
+   "is_urgent": "boolean",
+   "language": "string",
+   "submit": "boolean",
+   "target": "object",
+   "target.id": "integer",
+   "target.level": "string",
+   "targets": "array<object>",
+   "targets[].id": "integer",
+   "targets[].level": "string",
+   "title": "string"
+  },
+  "required": [
+   "body",
+   "category",
+   "title"
+  ],
+  "responses": {
+   "200": {
+    "allowed_actions": "array<string>",
+    "author": "object",
+    "body": "string",
+    "category": "object",
+    "category.key": "string",
+    "category.name": "string",
+    "category.order": "integer",
+    "category.short_name": "string",
+    "citizen": "object",
+    "created_at": "string",
+    "decided_at": "string?",
+    "decided_by": "object",
+    "escalated": "boolean",
+    "escalated_at": "string?",
+    "escalation_level": "any|string",
+    "event": "object",
+    "id": "string",
+    "is_urgent": "boolean",
+    "language": "string",
+    "last_review": "object",
+    "media": "array<object>",
+    "media[].bytes": "integer",
+    "media[].duration_s": "integer?",
+    "media[].height": "integer",
+    "media[].id": "string",
+    "media[].kind": "string",
+    "media[].poster_url": "string?",
+    "media[].thumb_url": "string",
+    "media[].url": "string",
+    "media[].width": "integer",
+    "posted_as": "object",
+    "published_at": "string?",
+    "share_url": "string?",
+    "status": "string",
+    "submitted_at": "string?",
+    "target_area": "object",
+    "target_level": "string",
+    "targets": "array<object>",
+    "targets[].id": "integer",
+    "targets[].level": "string",
+    "targets[].name": "string",
+    "targets[].path": "string",
+    "title": "string",
+    "translation": "object",
+    "updated_at": "string"
+   },
+   "201": {
+    "allowed_actions": "array<string>",
+    "author": "object",
+    "body": "string",
+    "category": "object",
+    "category.key": "string",
+    "category.name": "string",
+    "category.order": "integer",
+    "category.short_name": "string",
+    "citizen": "object",
+    "created_at": "string",
+    "decided_at": "string?",
+    "decided_by": "object",
+    "escalated": "boolean",
+    "escalated_at": "string?",
+    "escalation_level": "any|string",
+    "event": "object",
+    "id": "string",
+    "is_urgent": "boolean",
+    "language": "string",
+    "last_review": "object",
+    "media": "array<object>",
+    "media[].bytes": "integer",
+    "media[].duration_s": "integer?",
+    "media[].height": "integer",
+    "media[].id": "string",
+    "media[].kind": "string",
+    "media[].poster_url": "string?",
+    "media[].thumb_url": "string",
+    "media[].url": "string",
+    "media[].width": "integer",
+    "posted_as": "object",
+    "published_at": "string?",
+    "share_url": "string?",
+    "status": "string",
+    "submitted_at": "string?",
+    "target_area": "object",
+    "target_level": "string",
+    "targets": "array<object>",
+    "targets[].id": "integer",
+    "targets[].level": "string",
+    "targets[].name": "string",
+    "targets[].path": "string",
+    "title": "string",
+    "translation": "object",
+    "updated_at": "string"
+   }
+  }
+ },
+ "POST /api/v1/posts/targets/check/": {
+  "request": {
+   "targets": "array<object>",
+   "targets[].id": "integer",
+   "targets[].level": "string"
+  },
+  "required": [
+   "targets"
+  ],
+  "responses": {
+   "200": {
+    "publishes_at_once": "boolean"
+   }
+  }
+ },
+ "POST /api/v1/posts/{id}/block-citizen/": {
+  "request": {
+   "comment": "string",
+   "days": "integer"
+  },
+  "required": [
+   "comment",
+   "days"
+  ],
+  "responses": {
+   "200": {
+    "allowed_actions": "array<string>",
+    "author": "object",
+    "body": "string",
+    "category": "object",
+    "category.key": "string",
+    "category.name": "string",
+    "category.order": "integer",
+    "category.short_name": "string",
+    "citizen": "object",
+    "created_at": "string",
+    "decided_at": "string?",
+    "decided_by": "object",
+    "escalated": "boolean",
+    "escalated_at": "string?",
+    "escalation_level": "any|string",
+    "event": "object",
+    "id": "string",
+    "is_urgent": "boolean",
+    "language": "string",
+    "last_review": "object",
+    "media": "array<object>",
+    "media[].bytes": "integer",
+    "media[].duration_s": "integer?",
+    "media[].height": "integer",
+    "media[].id": "string",
+    "media[].kind": "string",
+    "media[].poster_url": "string?",
+    "media[].thumb_url": "string",
+    "media[].url": "string",
+    "media[].width": "integer",
+    "posted_as": "object",
+    "published_at": "string?",
+    "share_url": "string?",
+    "status": "string",
+    "submitted_at": "string?",
+    "target_area": "object",
+    "target_level": "string",
+    "targets": "array<object>",
+    "targets[].id": "integer",
+    "targets[].level": "string",
+    "targets[].name": "string",
+    "targets[].path": "string",
+    "title": "string",
+    "translation": "object",
+    "updated_at": "string"
+   }
+  }
+ },
+ "POST /api/v1/posts/{id}/discard-citizen-posts/": {
+  "request": {
+   "comment": "string"
+  },
+  "required": [
+   "comment"
+  ],
+  "responses": {
+   "200": {}
+  }
+ },
+ "POST /api/v1/posts/{id}/media/": {
+  "request": {
+   "duration_s": "number",
+   "file": "string",
+   "kind": "string",
+   "poster": "string"
+  },
+  "required": [
+   "file"
+  ],
+  "responses": {
+   "201": {
+    "bytes": "integer",
+    "duration_s": "integer?",
+    "height": "integer",
+    "id": "string",
+    "kind": "string",
+    "poster_url": "string?",
+    "thumb_url": "string",
+    "url": "string",
+    "width": "integer"
+   }
+  }
+ },
+ "POST /api/v1/posts/{id}/review/": {
+  "request": {
+   "action": "string",
+   "comment": "string",
+   "to_status": "string"
+  },
+  "required": [
+   "action"
+  ],
+  "responses": {
+   "200": {
+    "allowed_actions": "array<string>",
+    "author": "object",
+    "body": "string",
+    "category": "object",
+    "category.key": "string",
+    "category.name": "string",
+    "category.order": "integer",
+    "category.short_name": "string",
+    "citizen": "object",
+    "created_at": "string",
+    "decided_at": "string?",
+    "decided_by": "object",
+    "escalated": "boolean",
+    "escalated_at": "string?",
+    "escalation_level": "any|string",
+    "event": "object",
+    "id": "string",
+    "is_urgent": "boolean",
+    "language": "string",
+    "last_review": "object",
+    "media": "array<object>",
+    "media[].bytes": "integer",
+    "media[].duration_s": "integer?",
+    "media[].height": "integer",
+    "media[].id": "string",
+    "media[].kind": "string",
+    "media[].poster_url": "string?",
+    "media[].thumb_url": "string",
+    "media[].url": "string",
+    "media[].width": "integer",
+    "posted_as": "object",
+    "published_at": "string?",
+    "share_url": "string?",
+    "status": "string",
+    "submitted_at": "string?",
+    "target_area": "object",
+    "target_level": "string",
+    "targets": "array<object>",
+    "targets[].id": "integer",
+    "targets[].level": "string",
+    "targets[].name": "string",
+    "targets[].path": "string",
+    "title": "string",
+    "translation": "object",
+    "updated_at": "string"
+   }
+  }
+ },
+ "POST /api/v1/posts/{id}/submit/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "allowed_actions": "array<string>",
+    "author": "object",
+    "body": "string",
+    "category": "object",
+    "category.key": "string",
+    "category.name": "string",
+    "category.order": "integer",
+    "category.short_name": "string",
+    "citizen": "object",
+    "created_at": "string",
+    "decided_at": "string?",
+    "decided_by": "object",
+    "escalated": "boolean",
+    "escalated_at": "string?",
+    "escalation_level": "any|string",
+    "event": "object",
+    "id": "string",
+    "is_urgent": "boolean",
+    "language": "string",
+    "last_review": "object",
+    "media": "array<object>",
+    "media[].bytes": "integer",
+    "media[].duration_s": "integer?",
+    "media[].height": "integer",
+    "media[].id": "string",
+    "media[].kind": "string",
+    "media[].poster_url": "string?",
+    "media[].thumb_url": "string",
+    "media[].url": "string",
+    "media[].width": "integer",
+    "posted_as": "object",
+    "published_at": "string?",
+    "share_url": "string?",
+    "status": "string",
+    "submitted_at": "string?",
+    "target_area": "object",
+    "target_level": "string",
+    "targets": "array<object>",
+    "targets[].id": "integer",
+    "targets[].level": "string",
+    "targets[].name": "string",
+    "targets[].path": "string",
+    "title": "string",
+    "translation": "object",
+    "updated_at": "string"
+   }
+  }
+ },
+ "POST /api/v1/posts/{id}/unblock-citizen/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "allowed_actions": "array<string>",
+    "author": "object",
+    "body": "string",
+    "category": "object",
+    "category.key": "string",
+    "category.name": "string",
+    "category.order": "integer",
+    "category.short_name": "string",
+    "citizen": "object",
+    "created_at": "string",
+    "decided_at": "string?",
+    "decided_by": "object",
+    "escalated": "boolean",
+    "escalated_at": "string?",
+    "escalation_level": "any|string",
+    "event": "object",
+    "id": "string",
+    "is_urgent": "boolean",
+    "language": "string",
+    "last_review": "object",
+    "media": "array<object>",
+    "media[].bytes": "integer",
+    "media[].duration_s": "integer?",
+    "media[].height": "integer",
+    "media[].id": "string",
+    "media[].kind": "string",
+    "media[].poster_url": "string?",
+    "media[].thumb_url": "string",
+    "media[].url": "string",
+    "media[].width": "integer",
+    "posted_as": "object",
+    "published_at": "string?",
+    "share_url": "string?",
+    "status": "string",
+    "submitted_at": "string?",
+    "target_area": "object",
+    "target_level": "string",
+    "targets": "array<object>",
+    "targets[].id": "integer",
+    "targets[].level": "string",
+    "targets[].name": "string",
+    "targets[].path": "string",
+    "title": "string",
+    "translation": "object",
+    "updated_at": "string"
+   }
+  }
+ },
+ "POST /api/v1/posts/{id}/urgent/": {
+  "request": {
+   "is_urgent": "boolean"
+  },
+  "required": [
+   "is_urgent"
+  ],
+  "responses": {
+   "200": {
+    "allowed_actions": "array<string>",
+    "author": "object",
+    "body": "string",
+    "category": "object",
+    "category.key": "string",
+    "category.name": "string",
+    "category.order": "integer",
+    "category.short_name": "string",
+    "citizen": "object",
+    "created_at": "string",
+    "decided_at": "string?",
+    "decided_by": "object",
+    "escalated": "boolean",
+    "escalated_at": "string?",
+    "escalation_level": "any|string",
+    "event": "object",
+    "id": "string",
+    "is_urgent": "boolean",
+    "language": "string",
+    "last_review": "object",
+    "media": "array<object>",
+    "media[].bytes": "integer",
+    "media[].duration_s": "integer?",
+    "media[].height": "integer",
+    "media[].id": "string",
+    "media[].kind": "string",
+    "media[].poster_url": "string?",
+    "media[].thumb_url": "string",
+    "media[].url": "string",
+    "media[].width": "integer",
+    "posted_as": "object",
+    "published_at": "string?",
+    "share_url": "string?",
+    "status": "string",
+    "submitted_at": "string?",
+    "target_area": "object",
+    "target_level": "string",
+    "targets": "array<object>",
+    "targets[].id": "integer",
+    "targets[].level": "string",
+    "targets[].name": "string",
+    "targets[].path": "string",
+    "title": "string",
+    "translation": "object",
+    "updated_at": "string"
+   }
+  }
+ },
+ "POST /api/v1/public/contact-messages/": {
+  "request": {
+   "language": "string",
+   "message": "string",
+   "mobile": "string",
+   "name": "string",
+   "village_text": "string",
+   "website": "string"
+  },
+  "required": [
+   "message",
+   "mobile",
+   "name",
+   "village_text"
+  ],
+  "responses": {
+   "201": {
+    "created_at": "string",
+    "id": "integer"
+   }
+  }
+ },
+ "POST /api/v1/users/": {
+  "request": {
+   "area": "object",
+   "area.id": "integer",
+   "area.level": "string",
+   "current_password": "string",
+   "email": "string",
+   "mobile": "string",
+   "name": "string",
+   "name_te": "string",
+   "password": "string",
+   "preferred_language": "string",
+   "role": "string",
+   "username": "string"
+  },
+  "required": [
+   "area",
+   "name",
+   "role",
+   "username"
+  ],
+  "responses": {
+   "201": {
+    "temporary_password": "string",
+    "user": "object",
+    "user.allowed_actions": "array<string>",
+    "user.created_at": "string",
+    "user.created_by": "object",
+    "user.email": "string",
+    "user.email_masked": "string",
+    "user.id": "string",
+    "user.is_active": "boolean",
+    "user.last_login_at": "string",
+    "user.locked_out": "boolean",
+    "user.mobile": "string",
+    "user.mobile_last4": "string",
+    "user.must_change_password": "boolean",
+    "user.name": "string",
+    "user.name_te": "string",
+    "user.preferred_language": "string",
+    "user.role_assignments": "array<object>",
+    "user.status": "string",
+    "user.username": "string"
+   }
+  }
+ },
+ "POST /api/v1/users/{id}/block/": {
+  "request": {
+   "reason": "string"
+  },
+  "required": [],
+  "responses": {
+   "200": {
+    "allowed_actions": "array<string>",
+    "created_at": "string",
+    "created_by": "object",
+    "email": "string",
+    "email_masked": "string",
+    "id": "string",
+    "is_active": "boolean",
+    "last_login_at": "string",
+    "locked_out": "boolean",
+    "mobile": "string",
+    "mobile_last4": "string",
+    "must_change_password": "boolean",
+    "name": "string",
+    "name_te": "string",
+    "preferred_language": "string",
+    "role_assignments": "array<object>",
+    "role_assignments[].area": "object",
+    "role_assignments[].assigned_at": "string",
+    "role_assignments[].created_at": "string",
+    "role_assignments[].group": "object",
+    "role_assignments[].id": "string",
+    "role_assignments[].is_active": "boolean",
+    "role_assignments[].role": "string",
+    "status": "string",
+    "username": "string"
+   }
+  }
+ },
+ "POST /api/v1/users/{id}/reset-password/": {
+  "request": {
+   "password": "string"
+  },
+  "required": [],
+  "responses": {
+   "200": {
+    "temporary_password": "string",
+    "user": "object",
+    "user.allowed_actions": "array<string>",
+    "user.created_at": "string",
+    "user.created_by": "object",
+    "user.email": "string",
+    "user.email_masked": "string",
+    "user.id": "string",
+    "user.is_active": "boolean",
+    "user.last_login_at": "string",
+    "user.locked_out": "boolean",
+    "user.mobile": "string",
+    "user.mobile_last4": "string",
+    "user.must_change_password": "boolean",
+    "user.name": "string",
+    "user.name_te": "string",
+    "user.preferred_language": "string",
+    "user.role_assignments": "array<object>",
+    "user.status": "string",
+    "user.username": "string"
+   }
+  }
+ },
+ "POST /api/v1/users/{id}/unblock/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "allowed_actions": "array<string>",
+    "created_at": "string",
+    "created_by": "object",
+    "email": "string",
+    "email_masked": "string",
+    "id": "string",
+    "is_active": "boolean",
+    "last_login_at": "string",
+    "locked_out": "boolean",
+    "mobile": "string",
+    "mobile_last4": "string",
+    "must_change_password": "boolean",
+    "name": "string",
+    "name_te": "string",
+    "preferred_language": "string",
+    "role_assignments": "array<object>",
+    "role_assignments[].area": "object",
+    "role_assignments[].assigned_at": "string",
+    "role_assignments[].created_at": "string",
+    "role_assignments[].group": "object",
+    "role_assignments[].id": "string",
+    "role_assignments[].is_active": "boolean",
+    "role_assignments[].role": "string",
+    "status": "string",
+    "username": "string"
+   }
+  }
+ },
+ "POST /api/v1/users/{id}/unlock/": {
+  "request": {},
+  "required": [],
+  "responses": {
+   "200": {
+    "allowed_actions": "array<string>",
+    "created_at": "string",
+    "created_by": "object",
+    "email": "string",
+    "email_masked": "string",
+    "id": "string",
+    "is_active": "boolean",
+    "last_login_at": "string",
+    "locked_out": "boolean",
+    "mobile": "string",
+    "mobile_last4": "string",
+    "must_change_password": "boolean",
+    "name": "string",
+    "name_te": "string",
+    "preferred_language": "string",
+    "role_assignments": "array<object>",
+    "role_assignments[].area": "object",
+    "role_assignments[].assigned_at": "string",
+    "role_assignments[].created_at": "string",
+    "role_assignments[].group": "object",
+    "role_assignments[].id": "string",
+    "role_assignments[].is_active": "boolean",
+    "role_assignments[].role": "string",
+    "status": "string",
+    "username": "string"
+   }
+  }
+ },
+ "POST /api/v1/users/{user_pk}/role-assignments/": {
+  "request": {
+   "area": "object",
+   "area.id": "integer",
+   "area.level": "string",
+   "current_password": "string",
+   "role": "string"
+  },
+  "required": [
+   "area",
+   "role"
+  ],
+  "responses": {
+   "201": {
+    "area": "object",
+    "assigned_at": "string",
+    "created_at": "string",
+    "group": "object",
+    "id": "string",
+    "is_active": "boolean",
+    "role": "string"
+   }
+  }
+ }
+}
