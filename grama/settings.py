@@ -32,7 +32,33 @@ DEBUG = env.bool("DEBUG", default=True)
 _RUNNING_TESTS = ("pytest" in sys.modules and "PYTEST_VERSION" in os.environ) or (
     len(sys.argv) > 1 and sys.argv[1] == "test"
 )
- 
+
+
+def env_file_says_production(path: Path) -> bool:
+    """True when the .env file at `path` sets DEBUG to false: the checkout belongs to a server.
+
+    It reads the file, not the environment, so a test that passes DEBUG=False to a subprocess on a
+    laptop or in CI is not mistaken for a server. The last DEBUG line wins, as when the file is loaded."""
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return False
+    value = None
+    for line in lines:
+        found = re.match(r"\s*(?:export\s+)?DEBUG\s*=\s*['\"]?([^'\"#\s]*)", line)
+        if found:
+            value = found.group(1).lower()
+    return value in {"false", "0", "no", "off", "f", "n"}
+
+
+# The test suite never runs on a server. On 2026-11-25 a run on the qa server let one test's subprocess
+# read the server's .env and migrate its real database backwards. Tests belong on laptops and in CI.
+if _RUNNING_TESTS and env_file_says_production(BASE_DIR / ".env"):
+    raise ImproperlyConfigured(
+        "Refusing to run the tests: this checkout's .env says DEBUG=False, so it belongs to a server. "
+        "Run the tests on a laptop or in CI, never on a server."
+    )
+
  
 # ==============================================================================
 # 1. CORE SECURITY & HOSTS (DEV vs PROD)

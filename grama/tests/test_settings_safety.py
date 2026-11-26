@@ -90,3 +90,53 @@ def test_tests_take_only_their_own_database_url():
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.split() == ["django.db.backends.postgresql", "grama_ci", "127.0.0.1"]
+
+
+# --- The suite never runs on a server (qa incident of 2026-11-25) ----------------------------------
+
+
+@pytest.mark.parametrize(
+    "text, server",
+    [
+        ("DEBUG=False\nDATABASE_URL=mysql://x\n", True),
+        ("DEBUG = false  # production\n", True),
+        ('export DEBUG="0"\n', True),
+        ("DEBUG=True\n", False),
+        ("# DEBUG=False\nSECRET_KEY=x\n", False),  # a comment is not a setting
+        ("DEBUG=False\nDEBUG=True\n", False),  # the last line wins, as when the file is loaded
+        ("SECRET_KEY=x\n", False),  # no DEBUG line: development mode
+    ],
+)
+def test_a_server_env_file_is_recognised(tmp_path, text, server):
+    from grama.settings import env_file_says_production
+
+    env_file = tmp_path / ".env"
+    env_file.write_text(text, encoding="utf-8")
+    assert env_file_says_production(env_file) is server
+
+
+def test_no_env_file_is_a_laptop_or_ci(tmp_path):
+    from grama.settings import env_file_says_production
+
+    assert env_file_says_production(tmp_path / ".env") is False
+
+
+@pytest.mark.parametrize("debug, refused", [("False", True), ("True", False)])
+def test_the_tests_refuse_to_run_in_a_server_checkout(tmp_path, debug, refused):
+    """A copy of the settings beside a server's .env, imported as pytest would import it."""
+    (tmp_path / "grama").mkdir()
+    (tmp_path / "grama" / "settings.py").write_bytes((REPO / "grama" / "settings.py").read_bytes())
+    (tmp_path / ".env").write_text(
+        f"DEBUG={debug}\nSECRET_KEY={secrets.token_urlsafe(50)}\nALLOWED_HOSTS=localhost\n", encoding="utf-8"
+    )
+    code = (
+        "import importlib.util, sys, pytest; "
+        f"spec = importlib.util.spec_from_file_location('copy_settings', {str(tmp_path / 'grama' / 'settings.py')!r}); "
+        "module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module); print('loaded')"
+    )
+    result = settings_in_subprocess(code, {"PYTEST_VERSION": "9"})
+    if refused:
+        assert result.returncode != 0
+        assert "Refusing to run the tests" in result.stderr
+    else:
+        assert "Refusing to run the tests" not in result.stderr
