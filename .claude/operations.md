@@ -28,7 +28,11 @@ Linux or macOS: the same with `python3 -m venv .venv` and `source .venv/bin/acti
 | Task | Command |
 |---|---|
 | Tests | `python -m pytest -q -p no:logging` |
-| Tests by category, with a report | `python -m grama.testsuite all` (or one category; `--list`, `--check`; `--coverage` adds line coverage per app). Writes `test-reports/BE_TESTS_<scope>_<date>.md` and `.json` (git-ignored) |
+| Tests by category, with a report | `python -m grama.testsuite all` (or one category; `--list`, `--check`; `--coverage` adds line coverage per app). Writes `test-reports/BE_TESTS_<scope>_<date>.md`, `.json` and `.html`, and the dashboard `backend-test-dashboard-<date>.html` (health score, coverage, known bugs; git-ignored) |
+| Tests by marker | `python -m pytest -q -p no:logging -m rbac` (or `unit`, `integration`, `contract`, `security`, `db`, `concurrency`, `jobs`, `errors`, or a category's key) |
+| RBAC matrix (who may call what) | Edit `grama/tests/config/rbac-matrix.json` after the contract; `grama/tests/test_rbac_matrix.py` runs every endpoint × role |
+| API schema snapshot, after an agreed API change | `UPDATE_SCHEMA_SNAPSHOT=1 python -m pytest grama/tests/test_schema_snapshot.py`, commit `grama/tests/config/openapi-snapshot.json` with the contract change |
+| Every migration to zero and back (slow, about 1 h 45 min) | `RUN_MIGRATION_ROUND_TRIP=1 python -m pytest grama/tests/test_migrations_both_ways.py` |
 | Missing migrations | `python manage.py makemigrations --check --dry-run` |
 | Telugu messages (after adding or changing a `_()` message) | `python manage.py translations` (updates `locale/te/LC_MESSAGES/django.po`, builds `django.mo`); `--check` only checks. No GNU gettext needed; commit both files |
 | Background worker | `python manage.py qcluster` |
@@ -55,13 +59,18 @@ Linux or macOS: the same with `python3 -m venv .venv` and `source .venv/bin/acti
 
 ## Load test
 
-`deploy/loadtest/locustfile.py` exercises the citizen feed and the login endpoint. Install with `pip install -r requirements.txt`, load sample data, then:
+`deploy/loadtest/locustfile.py` is the realistic mix: citizens (village picker, feed, scrolling, post detail, Contacts), a staging official (login, refresh, notifications, post list, a draft written and deleted again) and failed logins. Run it through the runner, against **staging only** (BVTGC-38), with Gunicorn behind Nginx:
 
 ```
-locust -f deploy/loadtest/locustfile.py --host http://127.0.0.1:8000 --users [EXPECTED USERS] --spawn-rate 20 --run-time 5m --headless --csv deploy/loadtest/results/run
+cp .env.test.example .env.test        # git-ignored: LOADTEST_BASE_URL, optionally a staging official and a metrics address
+python -m grama.perftest load --check # checks the config and the target, runs nothing
+python -m grama.perftest load         # 1, 5, 10, 25, 50 users in turn
+python -m grama.perftest stress       # more users each round until the error rate or P95 crosses the limit
+python -m grama.perftest spike        # 0 to 50 users at once, and the recovery time
+python -m grama.perftest soak         # 10 minutes sustained
 ```
 
-Run it against the production-sized server with Gunicorn, not `runserver`, for real numbers.
+Profiles, the SLA and the refused hosts (production and qa) are in `deploy/loadtest/profiles.json`. Each run writes `test-reports/<kind>-report-<date>.json` and `.html`; the test dashboard shows the newest. `--smoke` is a 20-second trial of the runner itself (2 users), for a laptop server.
 
 ## Deploying
 

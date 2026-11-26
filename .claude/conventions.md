@@ -52,7 +52,10 @@
 - Every permission rule gets a test, including the "outside the area" case. Follow the matrix style in `apps/accounts/tests/test_matrix.py` (every group × every permission × the same area, the parent, a sibling and another district) and `apps/posts/tests/test_access.py`: work out the expected answer in the test from the rules, not by calling the code under test.
 - Shared fixtures are in the root `conftest.py`: a small map (2 districts, 4 mandals, 8 villages) and one official per role and area (`world`, `api`). Put app-only fixtures in that app's `tests/conftest.py`.
 - Push is checked with the `push_outbox` fixture in `apps/notifications/tests/conftest.py`.
-- Every new test file goes into one category of `grama/tests/suite.json` (permissions, auth, posts, citizens, privacy, notifications, content, performance, database, api, security); `grama/tests/test_suite_layout.py` fails until it does. `python -m grama.testsuite all` runs the suite by category and writes a report to `test-reports/`.
+- Every new test file goes into one category of `grama/tests/suite.json` (permissions, auth, posts, citizens, privacy, notifications, content, performance, database, api, security); `grama/tests/test_suite_layout.py` fails until it does. `python -m grama.testsuite all` runs the suite by category and writes a report and a dashboard to `test-reports/`. Markers come from the category (`pytest -m rbac`, `-m unit` and so on).
+- A new list endpoint gets a row in `grama/tests/config/rbac-matrix.json` (`test_rbac_matrix.py` fails until it does). An agreed API change refreshes `grama/tests/config/openapi-snapshot.json` (`UPDATE_SCHEMA_SNAPSHOT=1`); a breaking change fails `test_schema_snapshot.py` until then.
+- A test that finds a bug it is not the place to fix is marked `xfail(strict=True, reason="<finding ID>: …")`, and the finding goes in the report; the strict mark fails once the bug is fixed, so the mark is removed then.
+- Load tests run only through `python -m grama.perftest`, against staging; it refuses production and qa.
 
 ## API changes
 

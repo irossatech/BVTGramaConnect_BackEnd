@@ -1,27 +1,30 @@
-"""Load test for the citizen feed and the login endpoint.
+"""Load test: the realistic mix of the app and the console against a STAGING server.
 
-Run against a server that has sample data (python manage.py seed_sample_data):
+Run it through the runner, which checks the config, refuses production and qa, steps the user numbers
+and writes the reports (deploy/loadtest/profiles.json, .env.test):
 
-    locust -f deploy/loadtest/locustfile.py --host http://127.0.0.1:8000 \
-        --users [EXPECTED USERS] --spawn-rate 20 --run-time 5m --headless --csv deploy/loadtest/results/run
+    python -m grama.perftest load      # 1, 5, 10, 25, 50 users in turn
+    python -m grama.perftest stress    # more users each round until it breaks
+    python -m grama.perftest spike     # 0 to 50 users at once, and the recovery time
+    python -m grama.perftest soak      # 10 minutes sustained
 
-Replace [EXPECTED USERS] with the expected number of people using the app at
-the same time. Citizens far outnumber officials, so the user classes are
-weighted 20:1.
+The mix, by user class (weights):
+- Citizen (20): picks a village like the app's picker, opens the feed, scrolls, opens posts, the Contacts tab.
+- Official (2, only with LOADTEST_OFFICIAL_USERNAME and _PASSWORD set): logs in, refreshes the token,
+  reads notifications and the post list, writes a draft post and deletes it again (nothing is published).
+- FailedLogin (1): wrong passwords for made-up usernames. They get 400 invalid_credentials and, once a
+  pair is locked, 429 locked_out; both count as expected. A username also locks from every address after
+  LOGIN_MAX_FAILURES_PER_USERNAME (20) failures in an hour.
 
-Failed logins lock a username + IP pair after LOGIN_MAX_FAILURES (5) tries
-for LOGIN_LOCKOUT_MINUTES (django-axes), on purpose. The login users below
-guess wrong passwords for made-up usernames, so they get 400
-invalid_credentials and, once a pair is locked, 429 locked_out; both count as
-expected, not as failures. A username also locks from every address after
-LOGIN_MAX_FAILURES_PER_USERNAME (20) failures in an hour. To measure the
-login path itself, raise LOGIN_MAX_FAILURES (and set
-LOGIN_MAX_FAILURES_PER_USERNAME=0) on the test server only.
+Tags select parts of the mix: feed, post, contacts, login, refresh, notifications, create.
+No host, user or password is written here: they come from the environment the runner passes.
 """
 
+import os
 import random
 
-from locust import HttpUser, between, task
+from locust import HttpUser, between, tag, task
+from locust.exception import StopUser
 
 API = "/api/v1"
 
@@ -49,7 +52,8 @@ class Citizen(HttpUser):
         self.village_id = random.choice(self.village_ids)
         self.etag = None
 
-    # Weights are ×10 so the Contacts tab can sit at one tenth of the feed (it is opened far less).
+    # Weights are x10 so the Contacts tab can sit at one tenth of the feed (it is opened far less).
+    @tag("feed")
     @task(60)
     def open_feed(self):
         headers = {"If-None-Match": self.etag} if self.etag else {}
@@ -68,6 +72,7 @@ class Citizen(HttpUser):
             else:
                 response.failure(f"status {response.status_code}")
 
+    @tag("feed")
     @task(30)
     def scroll(self):
         next_url = getattr(self, "next_url", None)
@@ -76,6 +81,7 @@ class Citizen(HttpUser):
             if response.ok:
                 self.next_url = response.json().get("next")
 
+    @tag("post")
     @task(20)
     def open_post(self):
         posts = getattr(self, "posts", [])
@@ -83,6 +89,7 @@ class Citizen(HttpUser):
             post = random.choice(posts)
             self.client.get(f"{API}/feed/posts/{post['id']}/", name="feed post detail")
 
+    @tag("contacts")
     @task(6)
     def open_contacts(self):
         """The Contacts tab: one call, cached with an ETag like the feed."""
@@ -99,6 +106,7 @@ class Citizen(HttpUser):
             else:
                 response.failure(f"status {response.status_code}")
 
+    @tag("feed")
     @task(10)
     def change_village(self):
         self.village_id = random.choice(self.village_ids)
@@ -106,19 +114,77 @@ class Citizen(HttpUser):
         self.contacts_etag = None
 
 
-class OfficialLogin(HttpUser):
+class Official(HttpUser):
+    """A staging official: login, token refresh, notifications, the post list, a draft written and deleted."""
+
+    weight = 2
+    wait_time = between(3, 10)
+
+    def on_start(self):
+        username = os.environ.get("LOADTEST_OFFICIAL_USERNAME", "")
+        password = os.environ.get("LOADTEST_OFFICIAL_PASSWORD", "")
+        if not username or not password:
+            raise StopUser()
+        response = self.client.post(f"{API}/auth/login/", json={"username": username, "password": password},
+                                    name="official login")
+        if not response.ok:
+            raise StopUser()
+        tokens = response.json()
+        self.access, self.refresh = tokens["access"], tokens["refresh"]
+        self.target = None
+
+    def headers(self):
+        return {"Authorization": f"Bearer {self.access}"}
+
+    @tag("refresh")
+    @task(2)
+    def renew(self):
+        response = self.client.post(f"{API}/auth/refresh/", json={"refresh": self.refresh}, name="token refresh")
+        if response.ok:
+            self.access = response.json()["access"]
+            self.refresh = response.json().get("refresh", self.refresh)
+
+    @tag("notifications")
+    @task(10)
+    def notifications(self):
+        self.client.get(f"{API}/notifications/", headers=self.headers(), name="notifications")
+
+    @tag("post")
+    @task(8)
+    def post_list(self):
+        self.client.get(f"{API}/posts/", headers=self.headers(), name="official post list")
+
+    @tag("create")
+    @task(2)
+    def create_draft(self):
+        if self.target is None:
+            targets = self.client.get(f"{API}/posts/targets/", headers=self.headers(), name="post targets")
+            options = targets.json() if targets.ok else []
+            options = options.get("results", options) if isinstance(options, dict) else options
+            if not options:
+                return
+            self.target = {"level": options[0]["level"], "id": options[0]["id"]}
+        body = {"category": "news", "language": "te", "title": "లోడ్ పరీక్ష", "body": "పరీక్ష మాత్రమే.",
+                "targets": [self.target], "submit": False}
+        created = self.client.post(f"{API}/posts/", json=body, headers=self.headers(), name="create draft post")
+        if created.status_code == 201:
+            self.client.delete(f"{API}/posts/{created.json()['id']}/", headers=self.headers(), name="delete draft post")
+
+
+class FailedLogin(HttpUser):
     """Tries to log in. Unknown usernames get the same answer as a wrong password."""
 
     weight = 1
     wait_time = between(5, 15)
 
+    @tag("login")
     @task
     def log_in(self):
         username = f"loadtest{random.randint(0, 999_999)}"
         with self.client.post(
             f"{API}/auth/login/",
             json={"username": username, "password": "not-the-password"},
-            name="login",
+            name="failed login",
             catch_response=True,
         ) as response:
             if response.status_code in (400, 429):

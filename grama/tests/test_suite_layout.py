@@ -6,7 +6,7 @@ fail the same way, so a new test file cannot be left out of the category report.
 
 from types import SimpleNamespace
 
-from grama import testsuite, testsuite_plugin
+from grama import testdashboard, testsuite, testsuite_plugin
 
 
 def test_every_test_file_has_exactly_one_category():
@@ -86,6 +86,81 @@ def test_the_report_shows_when_the_run_started_not_when_it_ended(monkeypatch, tm
                                     started=started)
     assert report.name == "BE_TESTS_security_2026-11-24_11-51-00.md"
     assert "| Started | 2026-11-24 11:51:00 IST |" in report.read_text(encoding="utf-8")
+
+
+def test_an_xfail_is_recorded_as_a_known_bug_with_its_finding():
+    nodeid = "grama/tests/test_attack_inputs.py::test_x"
+    xfail = SimpleNamespace(nodeid=nodeid, when="call", duration=0.1, longrepr=None, longreprtext="",
+                            failed=False, skipped=True, wasxfail="BE-TEST-208: an area id too large")
+    results = {}
+    testsuite_plugin.record(results, phase(nodeid, "setup"))
+    testsuite_plugin.record(results, xfail)
+    assert (results[nodeid]["outcome"], results[nodeid]["message"]) == ("xfailed", "BE-TEST-208: an area id too large")
+
+
+def test_every_category_maps_to_stage_markers_and_every_file_gets_its_markers():
+    config = testsuite.load_config()
+    assert set(config["markers"]) == set(config["categories"])
+    stage = {name for names in config["markers"].values() for name in names}
+    assert stage <= {"unit", "integration", "rbac", "contract", "security", "db", "concurrency", "jobs", "errors"}
+    by_file = testsuite_plugin.markers_by_file(config)
+    assert by_file["grama/tests/test_rbac_matrix.py"][:2] == ["permissions", "rbac"]
+    assert set(testsuite_plugin.all_markers(config)) >= {"unit", "rbac", "security", "permissions"}
+
+
+def test_the_dashboard_weights_cover_every_category_and_the_parts_add_up_to_100():
+    board = testsuite.load_config()["dashboard"]
+    assert set(board["weights"]) == set(testsuite.load_config()["categories"])
+    assert sum(board["parts"].values()) == 100
+
+
+def figures(called=2, rbac=1, every=4):
+    rows = [["GET", f"api/v1/r{index}/"] for index in range(every)] + [["GET", "p/{}/"]]  # not under /api/v1/
+    return {"all": rows, "called": rows[:called] + [["GET", "p/{}/"]], "rbac": rows[:rbac]}
+
+
+def test_api_and_rbac_coverage_count_only_the_api():
+    api = testdashboard.api_figures(figures())
+    assert (api["endpoints"], api["called"], api["rbac"]) == (4, 2, 1)
+    assert (api["api_percent"], api["rbac_percent"]) == (50.0, 25.0)
+    assert api["not_called"] == ["GET /api/v1/r2/", "GET /api/v1/r3/"]
+
+
+def test_the_health_score_and_risk():
+    config = testsuite.load_config()
+    everything = testdashboard.api_figures(figures(called=4, rbac=4))
+    perfect = {key: {"tests": 10, "passed": 10} for key in config["categories"]}
+    score = testdashboard.health(config, perfect, {"total": {"percent": 96.0}}, everything)
+    assert score["score"] == 100.0 and score["risk"] == "LOW"
+
+    one_failure = {**perfect, "security": {"tests": 10, "passed": 9, "failed": 1}}
+    score = testdashboard.health(config, one_failure, {"total": {"percent": 96.0}}, everything)
+    assert score["risk"] == "MEDIUM"  # a failed test is never LOW, however high the score
+
+    known_bug = {**perfect, "security": {"tests": 10, "passed": 9, "xfailed": 1}}
+    assert testdashboard.health(config, known_bug, {"total": {"percent": 96.0}}, everything)["score"] < 100
+
+    # Without --coverage the score is out of the other 90 points, scaled to 100: a perfect run is still 100.
+    unmeasured = testdashboard.health(config, perfect, None, everything)
+    assert unmeasured["score"] == 100.0 and not unmeasured["line_measured"] and "line_coverage" not in unmeasured["parts"]
+
+    nothing = {key: {"tests": 10, "passed": 2, "failed": 8} for key in config["categories"]}
+    assert testdashboard.health(config, nothing, None, testdashboard.api_figures(figures(0, 0)))["risk"] == "HIGH"
+
+
+def test_a_run_writes_its_dashboard_and_an_html_copy(monkeypatch, tmp_path):
+    from datetime import datetime
+
+    monkeypatch.setattr(testsuite, "REPORTS", tmp_path)
+    started = datetime(2026, 11, 26, 18, 0, 0, tzinfo=testsuite.IST)
+    result = {"file": "grama/tests/test_y.py", "name": "test_z", "seconds": 1.0, "outcome": "passed", "message": ""}
+    testsuite.write_report("security", testsuite.load_config(), ["security"], [result], 0, 1.0, started=started,
+                           routes=figures())
+    names = sorted(path.name for path in tmp_path.iterdir())
+    assert names == ["BE_TESTS_security_2026-11-26_18-00-00.html", "BE_TESTS_security_2026-11-26_18-00-00.json",
+                     "BE_TESTS_security_2026-11-26_18-00-00.md", "backend-test-dashboard-2026-11-26_18-00-00.html"]
+    page = (tmp_path / "backend-test-dashboard-2026-11-26_18-00-00.html").read_text(encoding="utf-8")
+    assert "Health score" in page and "API coverage" in page and "RBAC matrix" in page
 
 
 def test_a_new_file_without_a_category_is_reported(monkeypatch):
