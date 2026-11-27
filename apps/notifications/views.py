@@ -53,15 +53,34 @@ class DeviceRegisterView(APIView):
             linked = Device.objects.filter(fcm_token=token, user__isnull=False).first()
             if linked:
                 return Response(DeviceSerializer(linked).data, status=status.HTTP_200_OK)
-        try:
-            with transaction.atomic():
-                device, created = Device.objects.update_or_create(fcm_token=token, defaults=values)
-        except IntegrityError:
-            # The same token registered by another request at the same moment (audit BE-DB-014): it exists
-            # now, so update it as the second request would have.
-            Device.objects.filter(fcm_token=token).update(**values)
-            device, created = Device.objects.get(fcm_token=token), False
+        device, created = _save_device(token, values)
         return Response(DeviceSerializer(device).data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+
+def _save_device(token: str, values: dict) -> tuple[Device, bool]:
+    """Update the token's row, or create it; the same token sent by several requests at once ends as one row.
+
+    No update_or_create: its SELECT ... FOR UPDATE on a token that is not there yet takes a gap lock on
+    MySQL and MariaDB, and two such requests then deadlock on their INSERTs (error 1213, a 500). A plain
+    UPDATE, then an INSERT whose duplicate-key error means another request just made the row, never
+    waits on a gap lock held by another transaction (audit BE-DB-014; CI test_concurrency_threads)."""
+    values = {**values, "last_seen": timezone.now()}  # .update() skips auto_now
+
+    def update_existing():
+        if Device.objects.filter(fcm_token=token).update(**values):
+            return Device.objects.get(fcm_token=token)
+        return None
+
+    device = update_existing()
+    if device is not None:
+        return device, False
+    try:
+        with transaction.atomic():
+            return Device.objects.create(fcm_token=token, **values), True
+    except IntegrityError:
+        # The same token registered by another request at the same moment: it exists now, so update it
+        # as this request would have.
+        return update_existing(), False
 
 
 class DeviceDetailView(APIView):
