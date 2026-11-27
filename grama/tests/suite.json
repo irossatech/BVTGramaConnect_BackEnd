@@ -153,6 +153,7 @@
         "apps/notifications/tests/test_notifications.py",
         "apps/notifications/tests/test_push_production.py",
         "apps/notifications/tests/test_scheduled_retry.py",
+        "apps/notifications/tests/test_device_job_budget.py",
         "apps/notifications/tests/test_super_admin_added.py",
         "apps/notifications/tests/test_topic_job_budget.py",
         "apps/notifications/tests/test_unlink_on_session_end.py",

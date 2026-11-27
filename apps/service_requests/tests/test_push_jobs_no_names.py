@@ -93,3 +93,36 @@ def test_the_citizens_status_push_job_gets_no_note_and_a_retry_neither(world, re
     [message] = [m for m in LocmemPushGateway.outbox if m.token == "tok-citizen"]
     assert message.body == NOTE and "Rejected" in message.title  # the push reads as before
     assert message.data == {"type": "SERVICE_REQUEST_UPDATED", "request_id": str(request_id), "status": "REJECTED"}
+
+
+def test_out_of_time_the_officials_devices_left_go_to_a_new_job_with_ids_only(world, request_from, settings, monkeypatch):
+    """Like a post's topic job, the officials' service-request job hands the devices it has not reached
+    to a new job before the worker's time limit, so none gets the push twice (BE-JOB-201). The new job
+    still carries ids only."""
+    import itertools
+    import time
+
+    _phone, request_id = request_from("kolakaluru", name=NAME)
+    names = ["va_kolakaluru", "ma_tenali", "da_guntur", "super"]
+    for name in names:
+        Device.objects.create(fcm_token=f"tok-{name}", platform="android", user=world.users[name])
+    tokens = list(Device.objects.order_by("pk").values_list("fcm_token", flat=True))
+    recipients = [[str(world.users[name].pk), "service_request_new"] for name in names]
+    queued = []
+    monkeypatch.setattr("django_q.tasks.async_task", lambda func, *args, **kwargs: queued.append((func, args)))
+    settings.PUSH_TOPICS_JOB_SECONDS = 60
+    values = itertools.chain([0, 10, 61], itertools.repeat(61))  # time runs out before the third device
+    monkeypatch.setattr(time, "monotonic", lambda: next(values))
+    LocmemPushGateway.outbox.clear()
+
+    assert tasks.send_service_request_pushes(request_id, recipients) == 2
+    assert [m.token for m in LocmemPushGateway.outbox] == tokens[:2]
+    [(func, args)] = queued
+    assert func == tasks.SERVICE_REQUEST_PUSHES_TASK
+    assert args == (request_id, recipients, [str(pk) for pk in Device.objects.order_by("pk").values_list("pk", flat=True)[2:]])
+    assert "Xyzname" not in repr(args) and "రవి" not in repr(args)
+
+    monkeypatch.setattr(time, "monotonic", lambda: 0)
+    assert tasks.send_service_request_pushes(*args) == 2
+    assert sorted(m.token for m in LocmemPushGateway.outbox) == sorted(tokens)
+    assert all(NAME in m.title for m in LocmemPushGateway.outbox)  # every push still names the citizen

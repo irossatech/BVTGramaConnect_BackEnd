@@ -586,6 +586,11 @@ Q_CLUSTER = {
     "timeout": 120,
     "retry": 180,
     "max_attempts": 3,
+    # A job that raised is stored as failed and taken off the queue, not run again from the start after
+    # "retry" seconds: a push job would send again to every device it had already reached (finding
+    # BE-JOB-201). Our jobs retry on their own: push and translation through one-off schedules, the
+    # periodic jobs (escalation, block endings, housekeeping, wallet) at their next run.
+    "ack_failures": True,
     "queue_limit": 50,
     "bulk": 10,
     "catch_up": False,
@@ -746,8 +751,9 @@ if not re.fullmatch(r"[A-Za-z0-9_.~%-]*", FCM_TOPIC_PREFIX):
     raise ImproperlyConfigured("FCM_TOPIC_PREFIX may hold only letters, digits and - _ . ~ %.")
 PUSH_TTL_SECONDS = env.int("PUSH_TTL_SECONDS", default=86400)
 PUSH_ALL_POSTS_HIGH_PRIORITY = env.bool("PUSH_ALL_POSTS_HIGH_PRIORITY", default=True)
-# A post's topic job stops starting new topics after this many seconds and queues the rest as a new
-# job, so it never reaches the worker's time limit (Q_CLUSTER "timeout") and is never re-run.
+# A push job for many topics or devices stops starting new ones after this many seconds and queues the
+# rest as a new job, so it never reaches the worker's time limit (Q_CLUSTER "timeout") and is never
+# re-run from the start, which would push twice to the ones already done (BE-REL-101, BE-JOB-201).
 PUSH_TOPICS_JOB_SECONDS = env.int("PUSH_TOPICS_JOB_SECONDS", default=60)
 if not 0 < PUSH_TOPICS_JOB_SECONDS < Q_CLUSTER["timeout"]:
     raise ImproperlyConfigured("PUSH_TOPICS_JOB_SECONDS must be above 0 and below the job timeout (120).")
