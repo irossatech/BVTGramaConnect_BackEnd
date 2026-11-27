@@ -56,7 +56,9 @@ def together(*calls):
 
 
 def statuses(results) -> list:
-    return sorted(getattr(result, "status_code", repr(result)) for result in results)
+    # A request that crashed comes back as its exception: show it as text, sorted after the status codes.
+    return sorted((getattr(result, "status_code", repr(result)) for result in results),
+                  key=lambda value: (isinstance(value, str), str(value)))
 
 
 def test_two_reviewers_publishing_the_same_post_at_once_one_wins(world, make_post_pending):
