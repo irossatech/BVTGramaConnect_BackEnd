@@ -56,7 +56,7 @@ Top level of the repo: `apps/`, `grama/` (settings, URLs, shared helpers, projec
 | `/media/`, `/static/` | Uploaded files and Django's static files, SERVE_FILES only |
 | `/` | Website files from `WEB_PUBLIC_DIR` (default `../BVTGramaConnect/dist`), SERVE_FILES only; must stay last |
 
-With our own Nginx (`deploy/setup.sh`, not in use yet) Nginx serves `/`, `/console/`, `/static/` and `/media/` directly; `grama/sitefiles.py` answers 404 there because `SERVE_FILES` is off. Production today runs on a hosting panel (`deploy/qa/`): Gunicorn on `127.0.0.1` behind the panel's Nginx, which serves files with an extension from the site folder, while Django serves the website and console pages (`SERVE_FILES` on). The qa server has no Nginx: it runs `runserver` with `DEBUG=False` and `SERVE_FILES` on, so Django serves them all. README "Deployment" compares the two setups. With DEBUG off, an unknown `/api/` address answers the JSON 404 and a crash the JSON 500 (`grama/views.py`), never Django's debug pages.
+In production Nginx serves `/`, `/console/`, `/static/` and `/media/` directly; `grama/sitefiles.py` answers 404 there because `SERVE_FILES` is off. The qa server has no Nginx: it runs `runserver` with `DEBUG=False` and `SERVE_FILES` on, so Django serves them. With DEBUG off, an unknown `/api/` address answers the JSON 404 and a crash the JSON 500 (`grama/views.py`), never Django's debug pages.
 
 ## Background jobs
 

@@ -141,10 +141,9 @@ Apps are imported as `apps.<name>` (for example `from apps.posts.services import
 All settings are in one file, `grama/settings.py`, used by `manage.py`, `wsgi.py`, `asgi.py` and pytest. `DEBUG` in the environment or `.env` picks the mode:
 
 - **Development** (`DEBUG=True` or unset): SQLite (or `DATABASE_URL` when set), Django serves the web parts, cookies work over plain http, Swagger open, Play Integrity off.
-- **Production** (`DEBUG=False`, the qa server too): secure cookies, HSTS, the secret-key check, Swagger for console users only, Django serves the web parts only with `SERVE_FILES=True`. Play Integrity stays off until the app is on Google Play; `.env` turns it on with `CITIZEN_INTEGRITY_REQUIRED=True` (`manage.py check` warns `citizens.W001` while it is off).
-- **Tests** (pytest): always SQLite and `.test-media/`, whatever `.env` says.
+- **Production** (`DEBUG=False`): secure cookies, HSTS, the secret-key check, Swagger for console users only, Play Integrity on, Django serves the web parts only with `SERVE_FILES=True`.
 
-There is no `grama/settings/` package and no separate base, dev, prod or test module. The old names `grama.settings.dev`, `.prod`, `.test` and `.base` are aliases that load this same file, so existing `.env` files and scripts keep working; they change nothing. The deploy scripts still write `DJANGO_SETTINGS_MODULE=grama.settings.prod`, only as their marker for a production `.env`.
+The old names `grama.settings.dev`, `.prod`, `.test` and `.base` still load the same file, so existing `.env` files and scripts keep working; they no longer change anything.
 
 With `DEBUG=False` these environment variables are required, and the server refuses to start without them:
 
@@ -172,21 +171,8 @@ gunicorn grama.wsgi:application --bind 127.0.0.1:8001 --workers 3
 python manage.py qcluster
 ```
 
-`migrate` also brings the role groups and their permissions in line with `apps/accounts/role_matrix.py`. With our own Nginx (the root setup below), Nginx serves the public website at `/`, the console at `/console/`, `/static/` and `/media/`, and proxies the rest to Gunicorn; Django does not serve the web parts there. On the hosting panel, which qa and production use today, Django serves the website and console pages itself (`SERVE_FILES=True`); see Deployment.
+`migrate` also brings the role groups and their permissions in line with `apps/accounts/role_matrix.py`. Nginx serves the public website at `/`, the console at `/console/`, `/static/` and `/media/`, and proxies `/api/` and `/django-admin/` to Gunicorn. Django does not serve the web parts outside development.
 
 ## Deployment
 
-The repo has two ways to run a server. Only the second is in use today.
-
-| | Server with root (`deploy/`) | Hosting panel account without root (`deploy/qa/`) |
-|---|---|---|
-| Used by | Not in use yet | **qa** and **production** (www.gramaconnect.com) |
-| Set up and release | `sudo bash deploy/setup.sh config.env`, then `deploy/deploy.sh` ([deploy/README.md](deploy/README.md)) | `bash BVT-deploy.sh` in the site folder ([deploy/qa/README.md](deploy/qa/README.md)) |
-| Web server | Gunicorn on a unix socket behind our own Nginx ([deploy/templates/](deploy/templates/)) | qa: Django's `runserver` on a public port, no Nginx. Production: Gunicorn on `127.0.0.1:PORT` (3 workers) behind the panel's Nginx, which holds the certificate |
-| Website, console, `/media/` | Nginx serves them; `SERVE_FILES` off | The panel's Nginx serves files with an extension from the site folder; Django serves the pages (`SERVE_FILES=True`). qa: Django serves everything |
-| Processes | systemd services, restarted by systemd | `BVT-start.sh` starts the web server and `qcluster` with `setsid nohup`; a crontab keep-alive restarts them every minute |
-| Hardening | ufw, fail2ban, Let's Encrypt, the Nginx rate limits and upload caps | Whatever the panel provides; the panel's Nginx settings are not in this repo (BVTGC-183) |
-| Database | MySQL or PostgreSQL, installed by `setup.sh` | The account's MySQL or MariaDB database |
-| Backups | Nightly, encrypted, from a systemd timer (`deploy/backup.sh`) | Nightly from the account's crontab (`BVT-backup.sh`); encryption and the off-site copy are optional (BVTGC-188) |
-
-Which setup production should end on, and which database, are still open (BVTGC-183, BVTGC-38). Operations for the root setup are in [deploy/RUNBOOK.md](deploy/RUNBOOK.md); moving seed data from SQLite is in [deploy/DATA_MOVE.md](deploy/DATA_MOVE.md).
+[deploy/README.md](deploy/README.md) sets up an Ubuntu LTS server with one command (`sudo bash deploy/setup.sh config.env`): hardening, MySQL or PostgreSQL, systemd services, Nginx with Let's Encrypt, and nightly encrypted backups. Releases go out with `deploy/deploy.sh`. Operations are in [deploy/RUNBOOK.md](deploy/RUNBOOK.md); moving seed data from SQLite is in [deploy/DATA_MOVE.md](deploy/DATA_MOVE.md).
