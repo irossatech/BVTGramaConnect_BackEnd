@@ -1,4 +1,4 @@
-"""Django admin for developers (/django-admin/, office IP addresses only).
+"""Django admin for developers (/django-admin/, laptops only: off on every server, lead's decision of 2026-11-11).
 
 Groups, role groups and role assignments decide what officials may do, so
 only users who hold accounts.manage_groups platform-wide (the Super Admin

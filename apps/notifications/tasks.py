@@ -31,6 +31,8 @@ DEVICE_TASK = "apps.notifications.tasks.send_push_to_device"
 CITIZEN_TASK = "apps.notifications.tasks.send_push_to_citizen"
 SERVICE_REQUEST_DEVICE_TASK = "apps.notifications.tasks.send_service_request_push_to_device"
 SERVICE_REQUEST_UPDATE_TASK = "apps.notifications.tasks.send_service_request_update"
+USERS_TASK = "apps.notifications.tasks.send_push_to_users"
+SERVICE_REQUEST_PUSHES_TASK = "apps.notifications.tasks.send_service_request_pushes"
 #: The longest Retry-After from FCM a retry honours.
 MAX_RETRY_AFTER_SECONDS = 3600
 
@@ -123,6 +125,28 @@ def send_push_to_topics(topics: list[str], title: str, body: str, data: dict, pr
     return sent
 
 
+def _devices_within_budget(devices, send, hand_off) -> int:
+    """Send to each of `devices` in turn; returns how many got it.
+
+    After PUSH_TOPICS_JOB_SECONDS the job starts no new device and calls hand_off(ids of the rest),
+    which queues them as a new job, as send_push_to_topics does with topics. An event for many
+    officials while Firebase is slow could otherwise pass the worker's time limit, and the job would
+    be stopped and run again from the start, pushing twice to the devices already done (BE-JOB-201).
+    The first device is always sent, so a job always moves on.
+    """
+    import time
+
+    devices = list(devices)
+    deadline = time.monotonic() + settings.PUSH_TOPICS_JOB_SECONDS
+    sent = 0
+    for index, device in enumerate(devices):
+        if index and time.monotonic() >= deadline:
+            hand_off([str(rest.pk) for rest in devices[index:]])
+            break
+        sent += send(device)
+    return sent
+
+
 def send_push_to_citizen(device_id: str, title: str, body: str, data: dict, attempt: int = 1) -> bool:
     """Push to the phone that wrote a citizen post. An unregistered token is forgotten."""
     from apps.citizens.models import CitizenDevice
@@ -199,12 +223,15 @@ def _service_request_to_device(gateway, device: Device, request_id, template_key
         return False
 
 
-def send_service_request_pushes(request_id, recipients: list[list[str]]) -> int:
+def send_service_request_pushes(request_id, recipients: list[list[str]], device_ids: list[str] | None = None) -> int:
     """Pushes about one service request to officials; recipients is [[user_id, template_key], ...].
 
     The texts are written here, each in the device owner's language, so the citizen's name is never an
-    argument of this job or of its retries (BVTGC-78). Returns how many devices got it.
+    argument of this job or of its retries (BVTGC-78). `device_ids` is set only on a job that continues
+    one that ran out of time: just those devices. Returns how many devices got it.
     """
+    from django_q.tasks import async_task
+
     from apps.service_requests.models import ServiceRequest
 
     from . import services
@@ -216,14 +243,21 @@ def send_service_request_pushes(request_id, recipients: list[list[str]]) -> int:
     if request is None:
         return 0
     template_of = {str(user_id): template_key for user_id, template_key in recipients}
+    devices = Device.objects.filter(user_id__in=list(template_of)).select_related("user").order_by("pk")
+    if device_ids is not None:
+        devices = devices.filter(pk__in=device_ids)
     parts = {}  # (template_key, language) -> (title, body, data)
-    sent = 0
-    for device in Device.objects.filter(user_id__in=list(template_of)).select_related("user"):
+
+    def send(device) -> bool:
         key = (template_of[str(device.user_id)], device.user.preferred_language)
         if key not in parts:
             parts[key] = services.service_request_push(request, *key)
-        sent += _service_request_to_device(gateway, device, request.pk, key[0], parts[key])
-    return sent
+        return _service_request_to_device(gateway, device, request.pk, key[0], parts[key])
+
+    def hand_off(rest: list[str]) -> None:
+        async_task(SERVICE_REQUEST_PUSHES_TASK, request_id, recipients, rest, group="push")
+
+    return _devices_within_budget(devices, send, hand_off)
 
 
 def send_service_request_push_to_device(device_id: str, request_id, template_key: str, attempt: int = 1) -> bool:
@@ -265,15 +299,26 @@ def send_service_request_update(request_id, status: str, attempt: int = 1) -> bo
         return False
 
 
-def send_push_to_users(messages: list[list[str]], body: str, data: dict) -> int:
+def send_push_to_users(messages: list[list[str]], body: str, data: dict, device_ids: list[str] | None = None) -> int:
     """The same event for many officials in one job.
 
     `messages` is [[user_id, title], ...], each title in that official's language. One gateway, so
-    one FCM session, serves all of them. Returns how many devices got it.
+    one FCM session, serves all of them. `device_ids` is set only on a job that continues one that ran
+    out of time: just those devices. Returns how many devices got it.
     """
+    from django_q.tasks import async_task
+
     gateway = get_push_gateway()
     if not gateway.enabled or not messages:
         return 0
     titles = {str(user_id): title for user_id, title in messages}
-    devices = Device.objects.filter(user_id__in=list(titles))
-    return sum(_send_to_device(gateway, device, titles[str(device.user_id)], body, data) for device in devices)
+    devices = Device.objects.filter(user_id__in=list(titles)).order_by("pk")
+    if device_ids is not None:
+        devices = devices.filter(pk__in=device_ids)
+
+    def hand_off(rest: list[str]) -> None:
+        async_task(USERS_TASK, messages, body, data, rest, group="push")
+
+    return _devices_within_budget(
+        devices, lambda device: _send_to_device(gateway, device, titles[str(device.user_id)], body, data), hand_off,
+    )
