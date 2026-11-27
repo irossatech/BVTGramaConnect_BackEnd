@@ -594,6 +594,12 @@ SPECTACULAR_SETTINGS = {
         "NotificationKindEnum": "apps.notifications.models.NotificationKind",
         "ServiceIconEnum": "apps.service_requests.models.ICONS",
         "BillIconEnum": "apps.bills.models.ICONS",
+        # Finding BE-CFG-203: the last four generated names (Level360Enum, LanguageD54Enum, KindA59Enum,
+        # Status650Enum). Names only: values, fields and answers stay exactly as they are.
+        "AreaLevelCodeEnum": ["STATE", "DISTRICT", "MANDAL", "VILLAGE"],
+        "LanguageCodeEnum": ["te", "en"],
+        "WalletEntryKindEnum": "apps.wallet.models.WalletEntry.Kind",
+        "WalletEntryStatusEnum": "apps.wallet.models.WalletEntry.Status",
     },
 }
  

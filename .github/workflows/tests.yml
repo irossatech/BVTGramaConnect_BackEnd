@@ -38,7 +38,9 @@ jobs:
         run: python -m pytest -q -p no:logging
 
   # The same suite on the server databases (BVTGC-17): MariaDB as on the qa server, and PostgreSQL, the
-  # other choice open in BVTGC-38. Django creates and drops its own test_grama database in each container.
+  # other choice open in BVTGC-38. Django creates and drops its own test_grama database in the container.
+  # Each job starts only its own database (finding BE-CI-201): the image, port and health check come from
+  # the matrix; each image reads only its own variables below and ignores the other's.
   real-database:
     name: pytest on ${{ matrix.db }}
     runs-on: ubuntu-24.04
@@ -49,26 +51,25 @@ jobs:
         include:
           - db: MariaDB 11.4
             url: mysql://root:ci@127.0.0.1:3306/grama
+            image: mariadb:11.4
+            port: "3306:3306"
+            health: healthcheck.sh --connect --innodb_initialized
           - db: PostgreSQL 17
             url: postgres://postgres:ci@127.0.0.1:5432/grama
+            image: postgres:17
+            port: "5432:5432"
+            health: pg_isready -U postgres
     services:
-      mariadb:
-        image: mariadb:11.4
+      database:
+        image: ${{ matrix.image }}
         env:
           MARIADB_ROOT_PASSWORD: ci
           MARIADB_DATABASE: grama
-        ports: ["3306:3306"]
-        options: >-
-          --health-cmd "healthcheck.sh --connect --innodb_initialized"
-          --health-interval 5s --health-timeout 5s --health-retries 20
-      postgres:
-        image: postgres:17
-        env:
           POSTGRES_PASSWORD: ci
           POSTGRES_DB: grama
-        ports: ["5432:5432"]
+        ports: ["${{ matrix.port }}"]
         options: >-
-          --health-cmd "pg_isready -U postgres"
+          --health-cmd "${{ matrix.health }}"
           --health-interval 5s --health-timeout 5s --health-retries 20
     env:
       TEST_DATABASE_URL: ${{ matrix.url }}

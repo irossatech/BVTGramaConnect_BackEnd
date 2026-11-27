@@ -11,6 +11,8 @@ db.sqlite3
 db.sqlite3-journal
 db.sqlite3-wal
 db.sqlite3-shm
+# Local copies of the database kept before a risky step (BE-SEC-210), e.g. db.sqlite3.before-audit.
+db.sqlite3.before-*
 media/
 media-private/
 staticfiles/
