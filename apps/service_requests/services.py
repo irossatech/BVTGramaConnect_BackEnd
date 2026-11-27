@@ -14,7 +14,8 @@
   with only service_requests.view_service_requests (a Panchayat member) sees
   the requests assigned to them inside their area.
 - Only the assignee changes a request: any status, a note, and passing it on
-  to another official of the area. Everyone else reads it. A request nobody
+  to another official of the village itself (Village Admin or Panchayat
+  member there; never a Mandal, District or Super Admin). Everyone else reads it. A request nobody
   holds (no Village Admin, or the assignee was blocked or lost their role
   there) may only be assigned, by an official managing requests over it.
 - Rejecting and completing need a note for the citizen.
@@ -409,13 +410,24 @@ def cancel_request(device, request_id, reason: str = "") -> ServiceRequest:
 # --- Officials ------------------------------------------------------------------------------------
 
 
+def _works_in_village(official, request: ServiceRequest) -> bool:
+    """Sees requests through an assignment on exactly the request's village (the Village Admin, a Panchayat
+    member there), temporary password or not. A Mandal, District or Super Admin only oversees them."""
+    village = area_of(request)
+    return any(
+        not grant.platform_wide and grant.area == village
+        for grant in authz.grants_for(official, VIEW, village, pending_change_ok=True)
+    )
+
+
 def _assignee_or_raise(user_id, request: ServiceRequest):
-    """An active official whose area contains the request's village, temporary password or not."""
+    """An active official of the request's village itself. Requests are handled in the village; the levels
+    above see them and assign one nobody holds, to someone there (the app and the console offer only them)."""
     from apps.accounts.models import User
 
     assignee = User.objects.filter(pk=user_id, is_active=True).first()
-    if assignee is None or not _can_view(assignee, request):
-        raise _validation("assigned_to", _("Assign the request to an active official of this area."))
+    if assignee is None or not _works_in_village(assignee, request):
+        raise _validation("assigned_to", _("Assign the request to an active official of this village."))
     return assignee
 
 

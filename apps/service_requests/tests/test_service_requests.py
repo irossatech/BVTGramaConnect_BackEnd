@@ -299,7 +299,8 @@ def test_the_new_assignee_is_told(api, world, request_from, django_capture_on_co
         patch(api, world, "pm_kolakaluru", request_id, assigned_to=None)  # nobody holds it now
     before = Notification.objects.count()
     with django_capture_on_commit_callbacks(execute=True):
-        patch(api, world, "ma_tenali", request_id, assigned_to=str(world.users["ma_tenali"].id))
+        response = patch(api, world, "va_kolakaluru", request_id, assigned_to=str(world.users["va_kolakaluru"].id))
+    assert response.status_code == 200
     assert Notification.objects.count() == before  # assigning yourself tells nobody
 
 
@@ -338,11 +339,27 @@ def test_blocked_unknown_or_malformed_users_cannot_be_assigned(api, world, reque
         assert response.status_code == 400 and "assigned_to" in response.json()["error"]["fields"], value
 
 
-def test_the_assignee_may_pass_it_up_to_a_higher_official(api, world, request_from):
+@pytest.mark.parametrize("higher", ["ma_tenali", "da_guntur", "super"])
+def test_a_request_is_never_passed_up_to_a_higher_official(english, api, world, request_from, higher):
+    # Requests are handled in the village: the Mandal and District Admins and the Super Admin over it see
+    # them, but only its Village Admin and Panchayat members can hold one (as the app and the console offer).
     _citizen, request_id = request_from()
-    assert patch(api, world, "va_kolakaluru", request_id, assigned_to=str(world.users["ma_tenali"].id)).status_code == 200
-    assert patch(api, world, "ma_tenali", request_id, assigned_to=str(world.users["da_guntur"].id)).status_code == 200
-    assert ServiceRequest.objects.get(pk=request_id).assigned_to == world.users["da_guntur"]
+    response = patch(api, world, "va_kolakaluru", request_id, assigned_to=str(world.users[higher].id))
+    assert response.status_code == 400
+    assert response.json()["error"]["fields"]["assigned_to"] == ["Assign the request to an active official of this village."]
+    assert ServiceRequest.objects.get(pk=request_id).assigned_to == world.users["va_kolakaluru"]
+    assert ServiceRequestEvent.objects.count() == 1  # only the automatic assignment
+
+
+def test_a_request_a_higher_official_already_holds_can_go_back_to_the_village(api, world, request_from):
+    # Requests passed up before the rule changed stay with their holder, who can still act and hand them back.
+    _citizen, request_id = request_from()
+    ServiceRequest.objects.filter(pk=request_id).update(assigned_to=world.users["ma_tenali"])
+    assert actions(api, world, "ma_tenali", request_id) == ["set_status", "assign"]
+    assert patch(api, world, "ma_tenali", request_id, status="APPROVED").status_code == 200
+    assert patch(api, world, "ma_tenali", request_id, assigned_to=str(world.users["da_guntur"].id)).status_code == 400
+    assert patch(api, world, "ma_tenali", request_id, assigned_to=str(world.users["va_kolakaluru"].id)).status_code == 200
+    assert actions(api, world, "va_kolakaluru", request_id) == ["set_status", "assign"]
 
 
 def test_rejecting_needs_a_reason_the_citizen_then_sees(english, api, world, request_from):
@@ -426,27 +443,21 @@ def test_a_panchayat_member_it_is_passed_to_holds_it_and_the_admin_only_reads(ap
     assert detail(api, world, "pm_kolakaluru", request_id).status_code == 404
 
 
-def test_a_higher_admin_changes_it_only_once_it_is_theirs(api, world, request_from):
-    _citizen, request_id = request_from()
-    assert patch(api, world, "va_kolakaluru", request_id, assigned_to=str(world.users["ma_tenali"].id)).status_code == 200
-    assert actions(api, world, "ma_tenali", request_id) == ["set_status", "assign"]
-    assert patch(api, world, "ma_tenali", request_id, status="APPROVED").status_code == 200
-    assert actions(api, world, "va_kolakaluru", request_id) == []
-    assert refused_everything(api, world, "va_kolakaluru", request_id)
-    assert actions(api, world, "da_guntur", request_id) == []
-
-
 def test_a_request_nobody_holds_may_only_be_assigned(api, world, request_from):
     RoleAssignment.objects.filter(user=world.users["va_kolakaluru"]).update(is_active=False)
     _citizen, request_id = request_from()
     for name in HIGHER:
         assert actions(api, world, name, request_id) == ["assign"], name
         for body in ({"status": "APPROVED"}, {"note": "Visiting tomorrow"},
-                     {"status": "APPROVED", "assigned_to": str(world.users[name].id)}):
+                     {"status": "APPROVED", "assigned_to": str(world.users["pm_kolakaluru"].id)}):
             response = patch(api, world, name, request_id, **body)
             assert response.status_code == 403 and code(response) == "permission_denied", (name, body)
-    assert patch(api, world, "da_guntur", request_id, assigned_to=str(world.users["ma_tenali"].id)).status_code == 200
-    assert actions(api, world, "ma_tenali", request_id) == ["set_status", "assign"]
+        # They assign it to someone in the village, never to themselves or another higher official.
+        for other in HIGHER:
+            response = patch(api, world, name, request_id, assigned_to=str(world.users[other].id))
+            assert response.status_code == 400 and "assigned_to" in response.json()["error"]["fields"], (name, other)
+    assert patch(api, world, "da_guntur", request_id, assigned_to=str(world.users["pm_kolakaluru"].id)).status_code == 200
+    assert actions(api, world, "pm_kolakaluru", request_id) == ["set_status", "assign"]
     assert actions(api, world, "da_guntur", request_id) == []
 
 
@@ -460,8 +471,9 @@ def test_a_request_whose_assignee_left_is_not_stuck(api, world, request_from, go
         RoleAssignment.objects.filter(user=admin).update(is_active=False)
     assert actions(api, world, "ma_tenali", request_id) == ["assign"]
     assert patch(api, world, "ma_tenali", request_id, status="APPROVED").status_code == 403
-    assert patch(api, world, "ma_tenali", request_id, assigned_to=str(world.users["ma_tenali"].id)).status_code == 200
-    assert actions(api, world, "ma_tenali", request_id) == ["set_status", "assign"]
+    assert patch(api, world, "ma_tenali", request_id, assigned_to=str(world.users["ma_tenali"].id)).status_code == 400
+    assert patch(api, world, "ma_tenali", request_id, assigned_to=str(world.users["pm_kolakaluru"].id)).status_code == 200
+    assert actions(api, world, "pm_kolakaluru", request_id) == ["set_status", "assign"]
 
 
 # --- The assigned Panchayat member ------------------------------------------------------------------
@@ -496,13 +508,14 @@ def test_status_counts_and_filters(api, world, request_from):
     _c, second = request_from(ip="10.3.3.3", name="Ravi Kumar", phone="9123456780")
     _c, third = request_from(ip="10.4.4.4", name="Sita", phone="9000000001")
     admin = api(world.users["ma_tenali"])
-    patch(api, world, "va_kolakaluru", second, status="APPROVED", assigned_to=str(world.users["ma_tenali"].id))
+    patch(api, world, "va_kolakaluru", second, status="APPROVED", assigned_to=str(world.users["pm_kolakaluru"].id))
     patch(api, world, "va_kolakaluru", third, status="REJECTED", note="Duplicate")
 
     data = admin.get(f"{LIST}?status=APPROVED").json()
     assert [row["id"] for row in data["results"]] == [second]
     assert data["status_counts"] == {"NEW": 1, "APPROVED": 1, "IN_PROGRESS": 0, "COMPLETED": 0, "REJECTED": 1, "CANCELLED": 0}
-    assert [row["id"] for row in admin.get(f"{LIST}?assigned=me").json()["results"]] == [second]
+    assert admin.get(f"{LIST}?assigned=me").json()["results"] == []
+    assert [row["id"] for row in api(world.users["pm_kolakaluru"]).get(f"{LIST}?assigned=me").json()["results"]] == [second]
     assert [row["id"] for row in admin.get(f"{LIST}?q=ravi").json()["results"]] == [second]
     assert [row["id"] for row in admin.get(f"{LIST}?q=98765").json()["results"]] == [first]
     assert admin.get(f"{LIST}?q=ravi").json()["status_counts"]["APPROVED"] == 1
