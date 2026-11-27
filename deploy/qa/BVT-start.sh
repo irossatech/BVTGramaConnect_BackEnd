@@ -13,6 +13,7 @@
 # setups still end every process of a login at logout, so a crontab line runs the keep-alive every
 # minute: cron is not part of any login, and it also brings them back after a crash or a reboot.
 # BVT-stop.sh leaves a "stopped" mark that the keep-alive respects until the next BVT-start.sh.
+# Each run also rotates the logs over 20 MB (rotate_logs in qa-lib.sh), keeping 5 older copies.
 # Settings come from the backend's .env: grama/settings.py with DEBUG=False (production mode)
 # and the database in DATABASE_URL (deploy/qa/README.md). PID files, the port and the logs are in ~/.bvt-grama.
 set -euo pipefail
@@ -29,11 +30,7 @@ esac
 start_one() {
   local name="$1" log="$LOG_DIR/$1.log"
   shift
-  # Keep logs small: move a log over 20 MB aside, replacing the previous one.
-  if [[ -f "$log" ]] && (( $(stat -c %s "$log") > 20 * 1024 * 1024 )); then
-    mv -f "$log" "$log.1"
-  fi
-  echo "=== $(date '+%Y-%m-%d %H:%M:%S') starting $name: ${*#"$BACKEND_DIR/"}" >>"$log"
+  echo "===$(date '+%Y-%m-%d %H:%M:%S') starting $name: ${*#"$BACKEND_DIR/"}" >>"$log"
   (
     cd "$BACKEND_DIR"
     # 9>&-: the processes must not inherit the start lock, or they would hold it for ever.
@@ -46,6 +43,8 @@ start_one() {
 
 mkdir -p "$LOG_DIR"
 chmod 700 "$STATE_DIR"
+# Keep logs small, also while everything runs: the keep-alive comes here every minute (BE-OBS-202).
+rotate_logs
 
 # One start at a time: a deploy's start and the keep-alive never overlap.
 exec 9>"$STATE_DIR/start.lock"

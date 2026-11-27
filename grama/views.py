@@ -1,16 +1,19 @@
+import logging
 from datetime import timedelta
 
 from django.conf import settings
-from django.db import connection
+from django.db import DatabaseError, connection
 from django.http import JsonResponse
 from django.utils import timezone
 from django.utils.translation import gettext as _
 from django.views import defaults
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+
+logger = logging.getLogger("grama.health")
 
 
 def worker_state(now) -> str:
@@ -30,29 +33,58 @@ def worker_state(now) -> str:
     return "late" if now - next_run > timedelta(minutes=settings.ESCALATION_CHECK_MINUTES) else "ok"
 
 
+def failed_jobs(now) -> int:
+    """Background jobs that failed in the last 24 hours (finding BE-OBS-204).
+
+    django-q2 keeps each failed job (housekeeping deletes them after HOUSEKEEPING_KEEP_DAYS) and writes
+    it to the worker log at ERROR; Django admin is off on servers, so this count is where they show.
+    """
+    from django_q.models import Failure
+
+    return Failure.objects.filter(stopped__gte=now - timedelta(hours=24)).count()
+
+
 @extend_schema(
     summary="Health check",
-    responses=inline_serializer(
-        name="Health",
-        fields={
-            "status": serializers.CharField(),
-            "time": serializers.DateTimeField(),
-            "worker": serializers.ChoiceField(choices=["ok", "late", "not_scheduled"]),
-        },
-    ),
+    parameters=[OpenApiParameter("strict", bool, description="1: answer 503 while the worker is not running.")],
+    responses={
+        200: inline_serializer(
+            name="Health",
+            fields={
+                "status": serializers.ChoiceField(choices=["ok", "worker_down"]),
+                "time": serializers.DateTimeField(),
+                "worker": serializers.ChoiceField(choices=["ok", "late", "not_scheduled"]),
+                "failed_jobs_24h": serializers.IntegerField(),
+            },
+        ),
+        503: inline_serializer(
+            name="HealthDown",
+            fields={"status": serializers.ChoiceField(choices=["database_down", "worker_down"]), "time": serializers.DateTimeField()},
+        ),
+    },
 )
 @api_view(["GET"])
 @authentication_classes([])
 @permission_classes([AllowAny])
 def health(request):
-    """Answers 200 when Django is up and the database answers.
+    """For the deploy scripts and an uptime monitor (finding BE-OBS-201).
 
-    `worker` tells whether background jobs (pushes, escalation, translation) are running. It does
-    not change the status code: deploys check this address before they start the worker.
+    200 while Django is up and the database answers; 503 `database_down` when it does not. `worker`
+    tells whether background jobs (pushes, escalation, translation) are running; it changes the status
+    code only with `?strict=1`, the address for an uptime monitor, because the deploy scripts call
+    health/ before they start the worker. `failed_jobs_24h` counts failed jobs (BE-OBS-204).
     """
-    connection.ensure_connection()
     now = timezone.now()
-    return Response({"status": "ok", "time": now, "worker": worker_state(now)})
+    try:
+        connection.ensure_connection()
+        worker = worker_state(now)
+        failed = failed_jobs(now)
+    except DatabaseError:
+        logger.error("Health check: the database does not answer.")
+        return Response({"status": "database_down", "time": now}, status=503)
+    if request.query_params.get("strict") == "1" and worker != "ok":
+        return Response({"status": "worker_down", "time": now, "worker": worker, "failed_jobs_24h": failed}, status=503)
+    return Response({"status": "ok", "time": now, "worker": worker, "failed_jobs_24h": failed})
 
 
 # --- Error pages once DEBUG is off (handler404 / handler500 in grama/urls.py) -----------------

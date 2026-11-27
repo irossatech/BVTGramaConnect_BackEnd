@@ -245,6 +245,11 @@ DJANGO_ADMIN_ENABLED = env.bool("DJANGO_ADMIN_ENABLED", default=DEBUG)
 # (300 by default), so a flood of made-up logins could push a decoy out and its 60-second wait would vanish,
 # telling a registered login apart again. Kept high; each write counts the rows, which stays cheap here.
 THROTTLE_CACHE_MAX_ENTRIES = env.int("THROTTLE_CACHE_MAX_ENTRIES", default=200000)
+# "names" keeps the Telugu name suggestions (apps/web_admin/transliteration.py) for every server process
+# alike, so a name typed once is not sent to Google again by another worker (finding BE-PERF-202). Its own
+# table, so the suggestions never crowd the decoys out of "throttle"; when full, a third is dropped and
+# those names are simply asked again.
+NAMES_CACHE_MAX_ENTRIES = env.int("NAMES_CACHE_MAX_ENTRIES", default=50000)
 
 if not DEBUG:
     CACHES = {
@@ -254,11 +259,17 @@ if not DEBUG:
             "LOCATION": "grama_throttle_cache",
             "OPTIONS": {"MAX_ENTRIES": THROTTLE_CACHE_MAX_ENTRIES},
         },
+        "names": {
+            "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+            "LOCATION": "grama_names_cache",
+            "OPTIONS": {"MAX_ENTRIES": NAMES_CACHE_MAX_ENTRIES},
+        },
     }
 else:  # DEV
     CACHES = {
         "default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"},
         "throttle": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache", "LOCATION": "throttle"},
+        "names": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache", "LOCATION": "names"},
     }
 # "throttle" counts the Telugu name suggestions' rate (TRANSLITERATION_RATE) and holds the citizen code
 # decoys (BVTGC-152). The per-IP login throttle

@@ -72,7 +72,8 @@ main() {
 
   step "Python packages"
   [[ -x "$PYTHON" ]] || "$python_bin" -m venv "$BACKEND_DIR/.venv"
-  "$PYTHON" -m pip install --quiet --upgrade pip
+  # pip pinned too, as in deploy/deploy.sh, so every server installs the same way (BE-CFG-202).
+  "$PYTHON" -m pip install --quiet "pip==26.3"
   "$PYTHON" -m pip install --quiet -r "$BACKEND_DIR/requirements.txt"
 
   step "Settings (.env)"

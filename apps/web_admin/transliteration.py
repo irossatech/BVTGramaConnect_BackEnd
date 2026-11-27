@@ -7,7 +7,10 @@ TRANSLITERATION_PROVIDER picks it:
 
 It is the spelling, not a translation: "Water Bill" gives "వాటర్ బిల్", not "నీటి బిల్లు".
 The text can be a person's name: it is never logged, errors never carry it, and the cache
-key is a hash, so the cache never holds a name in clear.
+key is a hash, so the typed text is never kept; the cached value is its Telugu spelling, for
+TRANSLITERATION_CACHE_S (names are not treated as sensitive, owner decision of 2026-11-14).
+The cache is CACHES["names"], a database table on servers, shared by every process, so a name
+is sent to Google once, not once per worker (finding BE-PERF-202).
 """
 
 from __future__ import annotations
@@ -17,7 +20,7 @@ import logging
 
 import requests
 from django.conf import settings
-from django.core.cache import cache
+from django.core.cache import caches
 from django.utils.module_loading import import_string
 
 logger = logging.getLogger("grama.transliteration")
@@ -69,6 +72,7 @@ def to_telugu(text: str) -> str:
     # Hashed key: the cache never holds the name in clear. The provider is part of it, so
     # switching providers does not keep serving the old one's answers.
     key = CACHE_PREFIX + hashlib.sha256(f"{name}\n{text.lower()}".encode()).hexdigest()
+    cache = caches["names"]
     hit = cache.get(key)
     if hit is not None:
         return hit

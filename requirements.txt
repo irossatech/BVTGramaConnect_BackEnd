@@ -43,3 +43,69 @@ locust==2.47.0
 
 # django-cors-headers is not installed: Django serves both web parts on the
 # same origin in development. Add it only if a web part gets its own dev server.
+
+# --- Indirect packages ---------------------------------------------------------------------------
+# Every package the ones above pull in, pinned too, so every server, laptop and CI run installs the same
+# versions (finding BE-CFG-202). Not imported by our code; change them only with the package above that
+# needs them. Platform conditions after ";" keep Windows-only packages off the servers. Made for Linux,
+# Windows and macOS on Python 3.12 and 3.13 with:
+#   uv pip compile requirements.txt --universal --python-version 3.12 --no-header --no-annotate
+# (uv, in a separate environment, is not a dependency), then the lines of the packages above removed.
+# Dependabot updates these lines as well.
+argon2-cffi-bindings==26.1.0
+asgiref==3.13.0
+attrs==26.1.0
+bidict==0.24.1
+blinker==1.9.0
+brotli==1.2.1
+certifi==2026.10.23
+cffi==2.1.1
+charset-normalizer==3.5.2
+click==8.5.1
+colorama==0.4.6 ; sys_platform == 'win32'
+configargparse==1.9.0
+cryptography==50.0.2
+django-picklefield==3.4.0
+flask==3.1.3
+flask-cors==6.0.5
+flask-login==0.6.3
+gevent==26.9.0
+geventhttpclient==2.6.1
+greenlet==3.5.6 ; platform_python_implementation == 'CPython'
+h11==0.16.0
+idna==3.20
+inflection==0.5.1
+iniconfig==2.3.1
+itsdangerous==2.2.0
+jinja2==3.1.6
+jsonschema==4.26.0
+jsonschema-specifications==2025.9.1
+markupsafe==3.0.4
+msgpack==1.2.4
+packaging==26.3
+pluggy==1.7.0
+psutil==7.2.2
+psycopg-binary==3.3.6 ; implementation_name != 'pypy'
+pyasn1==0.6.5
+pyasn1-modules==0.4.2
+pycparser==3.12 ; implementation_name != 'PyPy'
+pygments==2.21.0
+pyjwt==2.15.1
+python-engineio==4.15.1
+python-socketio==5.18.1
+pywin32==312 ; sys_platform == 'win32'
+pyyaml==6.0.3
+pyzmq==27.3.0
+referencing==0.37.0
+rpds-py==2026.9.1
+simple-websocket==1.1.0
+sqlparse==0.6.1
+typing-extensions==4.16.0 ; python_full_version < '3.13'
+tzdata==2026.6 ; sys_platform == 'win32'
+uritemplate==4.2.0
+urllib3==2.8.0
+websocket-client==1.9.2
+werkzeug==3.1.9
+wsproto==1.3.2
+zope-event==6.2
+zope-interface==8.7

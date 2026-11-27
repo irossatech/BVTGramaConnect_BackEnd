@@ -26,7 +26,7 @@ Contents:
 
 ### Base URL and format
 - Base path `/api/v1/`. Django serves it behind Nginx on the same origin as the website (`/`) and the console (`/console/`), so the web parts need no CORS. The mobile app calls the absolute URL.
-- Health check: `GET /health/`, public, `200 {"status": "ok", "time"}` while Django and the database answer. For uptime monitors and the deploy scripts; no client calls it.
+- Health check: `GET /health/`, public, `200 {"status": "ok", "time", "worker": "ok"|"late"|"not_scheduled", "failed_jobs_24h"}` while Django and the database answer; `503 {"status": "database_down", "time"}` when the database does not. `worker` says whether the background jobs run; `failed_jobs_24h` counts background jobs that failed in the last 24 hours (2026-11-27, BE-OBS-204). `GET /health/?strict=1` also answers `503 {"status": "worker_down", …}` while `worker` is not `ok`: that is the address for an uptime monitor (2026-11-27, BE-OBS-201). The deploy scripts use the plain address, since they call it before the worker starts. No client calls it.
 - OpenAPI schema: `GET /api/schema/`. Swagger UI: `/api/docs/`. Open to everyone on laptops and the QA server (`API_DOCS_PUBLIC`); in production only for console users (a Super Admin's console session or token): anyone else gets `401` or `403`.
 - JSON in UTF-8 both ways. Telugu is sent as raw UTF-8, not `\u` escapes; a Telugu letter costs 3 bytes instead of 6, which matters on 2G. Nginx compresses JSON with gzip.
 - Field names are `snake_case`. Enum values are `UPPER_CASE`, except category keys and language codes.
