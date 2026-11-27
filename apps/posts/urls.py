@@ -6,7 +6,7 @@ Mounted under /api/v1/.
 from django.urls import path
 from rest_framework.routers import SimpleRouter
 
-from . import views
+from . import hidden_media, views
 
 app_name = "posts"
 
@@ -16,6 +16,8 @@ router.register("admin/categories", views.AdminCategoryViewSet, basename="admin-
 
 urlpatterns = [
     path("categories/", views.CategoryListView.as_view(), name="categories"),
+    # A photo or video of a taken-down or discarded post, through a signed link that expires (BVTGC-192).
+    path("media/hidden/<str:token>/", hidden_media.serve, name="hidden-media"),
     path("app-config/", views.AppConfigView.as_view(), name="app-config"),
     path("review/queue/", views.ReviewQueueView.as_view(), name="review-queue"),
     path("stats/", views.StatsView.as_view(), name="stats"),

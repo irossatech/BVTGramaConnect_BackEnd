@@ -109,7 +109,7 @@ The website and the console used to be two repos, cloned to `/srv/gramaconnect/p
 
 ## Backups
 
-- Nightly at 02:30 India time, `backup.sh` dumps the database (`mysqldump --single-transaction` with utf8mb4, or `pg_dump` in custom format), archives `/var/media`, encrypts both with AES-256 (gpg, passphrase file) and writes `/var/backups/gramaconnect/gramaconnect-<time>.tar.gpg`.
+- Nightly at 02:30 India time, `backup.sh` dumps the database (`mysqldump --single-transaction` with utf8mb4, or `pg_dump` in custom format), archives `/var/media` and `/var/media-private` (photos of taken-down and discarded posts, BVTGC-192), encrypts them with AES-256 (gpg, passphrase file) and writes `/var/backups/gramaconnect/gramaconnect-<time>.tar.gpg`.
 - It copies the file to `BACKUP_TARGET` (`rclone:`, `rsync:` or `local:`) and deletes copies older than 14 days in both places.
 - Run one now: `sudo bash /srv/gramaconnect/backend/deploy/backup.sh`.
 - For an rclone target, set up the remote once as root: `sudo rclone config`. For an rsync target, root needs an SSH key accepted by the backup host.
@@ -122,7 +122,7 @@ sudo bash /srv/gramaconnect/backend/deploy/restore.sh --db-only <file>
 sudo bash /srv/gramaconnect/backend/deploy/restore.sh --media-only <file>
 ```
 
-The script decrypts, checks checksums, asks you to type the domain, stops the app, replaces the database and/or `/var/media` (the old media folder is kept as `/var/media.before-restore-<time>`), starts the app and checks the API.
+The script decrypts, checks checksums, asks you to type the domain, stops the app, replaces the database and/or `/var/media` and `/var/media-private` (the old folders are kept as `<folder>.before-restore-<time>`), starts the app and checks the API. A backup made before BVTGC-192 has no private folder: the hidden posts' files are then in `/var/media`, and the daily housekeeping moves them out again.
 
 ### Monthly restore drill
 

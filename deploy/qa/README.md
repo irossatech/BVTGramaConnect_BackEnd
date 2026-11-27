@@ -143,6 +143,15 @@ restore the backup taken before that release (`~/bvt-backups-before-deploy/`, "R
 below) and run `bash BVT-deploy.sh --rollback` again. The next `bash BVT-deploy.sh` brings the branch's
 latest code back, so fix or revert the bad commit on the branch first.
 
+## Private media (BVTGC-192)
+
+Photos and videos of taken-down and discarded posts move out of `media/` into `PRIVATE_MEDIA_ROOT`,
+by default `~/.bvt-grama/private-media`: outside `~/htdocs`, because the panel's nginx serves any file
+with a picture extension from the site folder. Never point it inside `~/htdocs`; the server refuses to
+start then (check `posts.E001`). Officials see those files through signed links that expire after an
+hour. `BVT-backup.sh` saves the folder as `private-media.tgz`; restore it to the same place. The daily
+housekeeping moves the files of posts taken down before this release out of `media/`.
+
 ## Backups
 
 `bash BVT-backup.sh --install` runs one every night. The data dump holds password hashes and

@@ -31,6 +31,7 @@ Contents:
 - JSON in UTF-8 both ways. Telugu is sent as raw UTF-8, not `\u` escapes; a Telugu letter costs 3 bytes instead of 6, which matters on 2G. Nginx compresses JSON with gzip.
 - Field names are `snake_case`. Enum values are `UPPER_CASE`, except category keys and language codes.
 - **Links to uploaded files are absolute** in every endpoint: photos, videos, posters, thumbnails, ad images, service and bill logos, for example `https://<site>/media/posts/2026/10/<id>-0.webp` (BVTGC-68, 2026-11-23; before, the feed and the citizen's own posts sent the path `/media/...` only). Clients use the link as it is.
+- **Photos and videos of a taken-down or discarded post** (`UNPUBLISHED`, `DISCARDED`, and the old `BLOCKED`) are no longer under `/media/` (BVTGC-192, decision of 2026-11-27): a link seen before stops working (404). Where the API still shows such a post (officials' posts and review lists, the citizen's own posts), every link of its media (`url`, `poster_url`, `thumb_url`, and the citizen's `photos` and `videos`) is a **signed link** instead, `https://<site>/api/v1/media/hidden/<token>/`, that works for `HIDDEN_MEDIA_LINK_SECONDS` (an hour) and then answers 404; ask the API again for a fresh one. It needs no login header, so `<img>` and `Image.network` load it as before: **no client change**. The link names no person. When a reversal shows the post again, its links are the `/media/` ones again. The WhatsApp preview picture of a hidden post is removed too.
 
 ### Versions and changes (BVTGC-96; agreed by the backend, web and mobile teams on 2026-11-25)
 
@@ -255,7 +256,7 @@ Admin endpoints add `id`, `name_te`, `name_en`, `short_name_te`, `short_name_en`
 ```json
 {"id": "6f1c…", "kind": "image", "url": "https://<site>/media/posts/2026/10/6f1c-1280.webp", "thumb_url": "https://<site>/media/posts/2026/10/6f1c-320.webp", "width": 1280, "height": 853, "bytes": 84213}
 ```
-- Images: the server checks type and size, turns the photo upright, strips EXIF, converts to WebP and keeps three sizes: at most 1280 px (also the feed's `image_url`), 640 px (the feed's `medium_url` since 2026-11-25, for cards) and 320 px on the long side. The original is not kept. Media objects keep their shape: `url` is the 1280 px file and `thumb_url` the 320 px one. URLs are absolute (section 1).
+- Images: the server checks type and size, turns the photo upright, strips EXIF, converts to WebP and keeps three sizes: at most 1280 px (also the feed's `image_url`), 640 px (the feed's `medium_url` since 2026-11-25, for cards) and 320 px on the long side. The original is not kept. Media objects keep their shape: `url` is the 1280 px file and `thumb_url` the 320 px one. URLs are absolute (section 1). A hidden post's media (taken down, discarded) get signed links that expire after an hour instead (section 1, BVTGC-192).
 - Video: `{"id", "kind": "video", "url", "poster_url", "thumb_url", "width", "height", "duration_s", "bytes"}`. `url` is the MP4, `poster_url` the poster frame as WebP (at most 1280 px), `thumb_url` its 320 px thumbnail, `width` and `height` the poster's size, `bytes` the video's size. Photo media carry `"poster_url": null` and `"duration_s": null`.
 - `focus_y` (0 to 1) is the crop focus the prototypes use for cover images. Optional.
 

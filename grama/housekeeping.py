@@ -17,6 +17,9 @@
   unfinished sign-ups past 24 hours, email codes older than a week, app-use days
   older than 60 days, and deleted accounts' fingerprints after CITIZEN_DELETED_KEEP_DAYS.
   None of these are records: an unfinished form, a code, a counter, a fingerprint.
+- Not a deletion: the files of taken-down and discarded posts are moved out of the public
+  media folder, and those of posts shown again back in (apps.posts.hidden_media.reconcile,
+  BVTGC-192). Nothing is deleted.
 
 Push devices, citizen phones, contact messages, posts, service requests and the
 audit log are never deleted here (owner decision).
@@ -79,7 +82,16 @@ def run_housekeeping(now=None) -> dict:
         "login_failures": login_failures,
         "read_notifications": _delete_old_read_notifications(now),
         **_citizen_wallet(now),
+        "hidden_media_moved": _hidden_media(),
     }
+
+
+def _hidden_media() -> int:
+    """Files of taken-down and discarded posts out of the public folder, shown ones back in (BVTGC-192):
+    the first run after the deploy hides those of posts hidden before; later runs finish a cut-short move."""
+    from apps.posts.hidden_media import reconcile
+
+    return reconcile()
 
 
 def _citizen_wallet(now) -> dict:

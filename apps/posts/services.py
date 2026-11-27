@@ -51,7 +51,7 @@ from apps.geography.areas import DEPTH, AreaRef, ancestries, within_q
 from apps.geography.models import MODEL_BY_LEVEL, AreaLevel
 from grama.exceptions import ApiError, out_of_area, permission_denied
 
-from . import signals
+from . import hidden_media, signals
 from .models import CITIZEN_ROLE, Category, Post, PostStatus, PostTarget, ReviewAction, SettingOverride
 from .sharing import publish_with_share_code
 from .translation import detect_language
@@ -814,6 +814,8 @@ def review(user, post: Post, action: str, comment: str = "", to_status: str | No
             raise invalid_transition(current, VERBS[action])
         post = _reload(post)
         _log(post, logged_action, from_status, new_status, user, reviewer.key, comment)
+        if hidden_media.is_hidden(new_status):  # taken down or discarded: its files leave /media/ (BVTGC-192)
+            hidden_media.sync_after_commit(post.pk)
         _after_commit(signals.post_decided, post=post, action=action, actor=user)
         if new_status == PostStatus.PUBLISHED:
             _after_commit(signals.post_published, post=post)
@@ -858,6 +860,8 @@ def _reverse(user, reviewer: Grant, post: Post, comment: str, to_status: str | N
         from_status = post.status
         post = _reload(post)
         _log(post, ReviewAction.Action.REVERSE, from_status, to_status, user, reviewer.key, comment)
+        if hidden_media.is_hidden(from_status) != hidden_media.is_hidden(to_status):
+            hidden_media.sync_after_commit(post.pk)  # hidden now, or shown again: move its files (BVTGC-192)
         _after_commit(signals.post_decided, post=post, action="reverse", actor=user)
         if to_status == PostStatus.PUBLISHED:
             _after_commit(signals.post_published, post=post)

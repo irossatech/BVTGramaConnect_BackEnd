@@ -5,7 +5,7 @@
 #   sudo bash /srv/gramaconnect/backend/deploy/backup.sh
 #
 # Writes /var/backups/gramaconnect/gramaconnect-YYYYmmdd-HHMMSS.tar.gpg
-# (database dump + /var/media, encrypted with the passphrase file), copies it
+# (database dump + /var/media + /var/media-private, encrypted with the passphrase file), copies it
 # to BACKUP_TARGET and deletes copies older than BACKUP_RETENTION_DAYS in both places.
 set -euo pipefail
 
@@ -41,6 +41,9 @@ fi
 
 log "Archiving $GC_MEDIA"
 tar -C "$(dirname "$GC_MEDIA")" -czf "$WORK/media.tar.gz" "$(basename "$GC_MEDIA")"
+# The files of taken-down and discarded posts (BVTGC-192); an empty folder until the first one.
+[[ -d "$GC_PRIVATE_MEDIA" ]] || install -d -m 700 -o "$APP_USER" -g "$APP_USER" "$GC_PRIVATE_MEDIA"
+tar -C "$(dirname "$GC_PRIVATE_MEDIA")" -czf "$WORK/private-media.tar.gz" "$(basename "$GC_PRIVATE_MEDIA")"
 
 cat > "$WORK/MANIFEST" <<EOF
 created=$(date -Iseconds)
@@ -50,12 +53,13 @@ db_engine=$DB_ENGINE
 db_name=$DB_NAME
 dump=$DUMP_FILE
 media=media.tar.gz
+private_media=private-media.tar.gz
 backend_commit=$(git -C "$BACKEND_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)
 EOF
-(cd "$WORK" && sha256sum "$DUMP_FILE" media.tar.gz > SHA256SUMS)
+(cd "$WORK" && sha256sum "$DUMP_FILE" media.tar.gz private-media.tar.gz > SHA256SUMS)
 
 log "Encrypting to $OUT"
-tar -C "$WORK" -cf - MANIFEST SHA256SUMS "$DUMP_FILE" media.tar.gz \
+tar -C "$WORK" -cf - MANIFEST SHA256SUMS "$DUMP_FILE" media.tar.gz private-media.tar.gz \
   | gpg --batch --yes --quiet --pinentry-mode loopback --passphrase-file "$BACKUP_PASSPHRASE_FILE" \
         --symmetric --cipher-algo AES256 --compress-algo none -o "$OUT.partial"
 mv "$OUT.partial" "$OUT"

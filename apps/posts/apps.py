@@ -7,4 +7,4 @@ class PostsConfig(AppConfig):
     label = "posts"
 
     def ready(self):
-        from . import receivers  # noqa: F401  (translation on publish)
+        from . import checks, receivers  # noqa: F401  (private media check; translation on publish)
