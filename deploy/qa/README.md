@@ -84,6 +84,12 @@ crash, after a reboot. It does nothing while they run, or while a start is under
 is never interrupted; the next `BVT-start.sh` removes it. What the keep-alive did is in
 `~/.bvt-grama/logs/keepalive.log`; `crontab -l` shows the line.
 
+The same run also keeps the logs in `~/.bvt-grama/logs/` small: a log over 20 MB is copied to
+`<name>.log.1` and emptied in place, older copies move up to `.5` and the oldest is dropped, so the
+logs never take more than about 120 MB each. Web and worker keep running and keep writing; no root
+or logrotate is needed (finding BE-OBS-202). `LOG_MAX_MB` and `LOG_KEEP` in the crontab line's
+environment change the size and the number of copies.
+
 ## Every release
 
 ```

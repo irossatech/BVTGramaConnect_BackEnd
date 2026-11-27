@@ -61,6 +61,23 @@ stop_one() {
   rm -f "$pidfile"
 }
 
+# Rotate every log in LOG_DIR that has grown past LOG_MAX_MB (20): its lines move to <log>.1, older
+# copies shift up to <log>.LOG_KEEP (5) and the oldest is dropped. Copy, then empty in place
+# (logrotate's copytruncate): web and worker keep writing to the same open file, so nothing needs a
+# restart and no root is needed. Run by the keep-alive every minute (finding BE-OBS-202), so the disk
+# cannot fill between restarts. A line written between the copy and the emptying can be lost.
+rotate_logs() {
+  local max=$(( ${LOG_MAX_MB:-20} * 1024 * 1024 )) keep="${LOG_KEEP:-5}" log n
+  for log in "$LOG_DIR"/*.log; do
+    [[ -f "$log" ]] && (( $(stat -c %s "$log") > max )) || continue
+    for (( n = keep - 1; n >= 1; n-- )); do
+      [[ -f "$log.$n" ]] && mv -f "$log.$n" "$log.$(( n + 1 ))"
+    done
+    cp -p "$log" "$log.1" && : >"$log"
+  done
+  return 0
+}
+
 # Replace this account's crontab line carrying TAG with LINE (an empty LINE only removes it).
 set_cron_line() {
   local tag="$1" line="$2"

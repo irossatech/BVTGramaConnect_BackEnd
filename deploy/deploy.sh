@@ -219,7 +219,8 @@ update_repo "${REPO_WEB:-}" "$WEB_REPO_DIR"
 [[ -x "$VENV/bin/python" ]] || python3 -m venv "$VENV"
 PY="$VENV/bin/python"
 log "Installing Python packages"
-"$PY" -m pip install --quiet --upgrade pip wheel
+# pip and wheel themselves pinned too, so every server builds the same way (finding BE-CFG-202).
+"$PY" -m pip install --quiet "pip==26.3" "wheel==0.48.0"
 # One requirements file for every environment: it includes Gunicorn and the
 # drivers for both MySQL and PostgreSQL.
 "$PY" -m pip install --quiet -r "$BACKEND_DIR/requirements.txt"

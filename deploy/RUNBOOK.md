@@ -38,7 +38,8 @@ gc showmigrations
 | Background jobs log | `journalctl -u gramaconnect-qcluster -f` |
 | Nginx logs | `/var/log/nginx/gramaconnect.access.log`, `gramaconnect.error.log` |
 | Restart the app | `sudo systemctl restart gramaconnect-gunicorn gramaconnect-qcluster` |
-| Health | `curl -s https://<domain>/api/v1/health/` (`"worker": "late"` means the background jobs stopped: restart qcluster) |
+| Health | `curl -s https://<domain>/api/v1/health/` (`"worker": "late"` means the background jobs stopped: restart qcluster; `failed_jobs_24h` above 0: read the background jobs log for `Failed`) |
+| Uptime alert | Point an uptime monitor (any service that checks a URL and alerts by email or SMS) at `https://<domain>/api/v1/health/?strict=1`. It answers 503 when the database does not answer (`database_down`) or the background jobs stopped (`worker_down`), so one check covers both (BE-OBS-201). Never give the deploy scripts this address: they call health before the worker starts. |
 | Last backups | `systemctl list-timers gramaconnect-backup.timer` and `journalctl -u gramaconnect-backup -n 50` |
 | Banned IPs (SSH) | `sudo fail2ban-client status sshd` |
 | Unban an IP | `sudo fail2ban-client set sshd unbanip <ip>` |

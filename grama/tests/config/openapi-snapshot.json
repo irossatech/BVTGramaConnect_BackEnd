@@ -1059,6 +1059,7 @@
   "required": [],
   "responses": {
    "200": {
+    "failed_jobs_24h": "integer",
     "status": "string",
     "time": "string",
     "worker": "string"

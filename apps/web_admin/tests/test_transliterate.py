@@ -5,7 +5,7 @@ import os
 
 import pytest
 import requests
-from django.core.cache import cache
+from django.core.cache import caches
 
 from apps.accounts.models import User
 from apps.web_admin import transliteration
@@ -13,6 +13,7 @@ from apps.web_admin.transliteration import LocmemTransliterator
 
 pytestmark = pytest.mark.django_db
 URL = "/api/v1/admin/transliterate/"
+cache = caches["names"]  # shared by every server process (BE-PERF-202)
 
 
 @pytest.fixture(autouse=True)
@@ -126,3 +127,30 @@ def test_a_failure_log_never_carries_the_text(admin, locmem):
 def test_live_google_input_tools(settings):
     settings.TRANSLITERATION_PROVIDER = "google_input_tools"
     assert transliteration.to_telugu("Ravi Kumar") == "రవి కుమార్"
+
+
+def test_suggestions_are_kept_in_the_shared_names_cache_not_per_process(admin, locmem, settings):
+    """On servers CACHES["names"] is a database table every worker reads (BE-PERF-202), so a name
+    typed in one worker is not sent to Google again by another; the per-process default cache is unused."""
+    from django.core.cache import caches as all_caches
+
+    all_caches["default"].clear()
+    ask(admin, "Ravi Kumar")
+    assert list(cache._cache.keys())  # in "names"
+    assert not list(all_caches["default"]._cache.keys())
+    assert "names" in settings.CACHES
+
+
+def test_on_servers_the_names_cache_is_a_database_table_that_keeps_telugu(settings):
+    """The server setting (DEBUG off): a DatabaseCache table, made by migration web_admin 0002."""
+    from django.core.cache import caches as all_caches
+    from django.core.management import call_command
+    from django.db import connection
+
+    settings.CACHES = {**settings.CACHES, "names": {
+        "BACKEND": "django.core.cache.backends.db.DatabaseCache", "LOCATION": "grama_names_cache"}}
+    call_command("createcachetable", verbosity=0)
+    assert "grama_names_cache" in connection.introspection.table_names()
+    names = all_caches["names"]
+    names.set("translit:te:abc", "రవి కుమార్", 60)
+    assert names.get("translit:te:abc") == "రవి కుమార్"
