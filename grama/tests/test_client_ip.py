@@ -1,8 +1,9 @@
-"""Security finding BE-SEC-101: X-Real-IP is believed only from the server's own network.
+"""Security findings BE-SEC-101 and BE-SEC-212: X-Real-IP is believed only from our own proxy.
 
 grama.http.client_ip. The expected answers come from the rule, worked out here: with TRUST_X_REAL_IP on,
-the header counts only when the connection came from loopback, a unix socket (no address) or a private
-network, and the header holds one valid IP. Anything else: the connection's own address."""
+the header counts only when the connection came from an address in TRUSTED_PROXIES (by default this
+machine: 127.0.0.1 and ::1) or a unix socket (no address), and the header holds one valid IP. Anything
+else, a private network neighbour included: the connection's own address."""
 
 import pytest
 from django.test import RequestFactory
@@ -25,6 +26,7 @@ def ip(remote, real_ip=None):
 @pytest.fixture
 def trusting(settings):
     settings.TRUST_X_REAL_IP = True
+    settings.TRUSTED_PROXIES = ["127.0.0.1", "::1"]  # the default
 
 
 # --- The attack in BE-SEC-101 ------------------------------------------------------------
@@ -43,21 +45,54 @@ def test_changing_the_fake_header_does_not_change_who_is_counted(trusting):
     assert seen == {PUBLIC_CALLER}
 
 
-# --- Our own nginx, whatever the server's layout ----------------------------------------
+# --- Our own nginx on this machine (the default) ----------------------------------------
 
 
 @pytest.mark.parametrize("proxy", [
-    "127.0.0.1",        # nginx and the app on one machine
-    "::1",              # the same, over IPv6
-    "",                 # a unix socket: Gunicorn reports no address
-    "10.0.0.5",         # nginx on another machine in a private network
+    "127.0.0.1",          # nginx and the app on one machine (production on the panel)
+    "::1",                # the same, over IPv6
+    "",                   # a unix socket: Gunicorn reports no address (the root setup)
+    "::ffff:127.0.0.1",   # loopback written as IPv6
+])
+def test_the_header_from_this_machine_is_used(trusting, proxy):
+    assert ip(proxy, USER) == USER
+
+
+# --- BE-SEC-212: a private network is no longer trusted by default ----------------------
+
+
+@pytest.mark.parametrize("neighbour", [
+    "10.0.0.5",         # another machine in a private network
     "172.17.0.1",       # Docker
     "192.168.1.10",     # a private LAN
     "::ffff:10.0.0.5",  # a private IPv4 address written as IPv6
     "fd00::5",          # a private IPv6 network
+    "127.0.0.2",        # loopback, but not the listed address
 ])
-def test_the_header_from_the_servers_own_network_is_used(trusting, proxy):
+def test_a_fake_header_from_a_private_neighbour_is_ignored(trusting, neighbour):
+    assert ip(neighbour, FAKE) == neighbour  # its own address, as the connection gave it
+
+
+@pytest.mark.parametrize("proxy, listed", [
+    ("10.0.0.5", "10.0.0.5"),          # one proxy machine
+    ("172.17.0.1", "172.16.0.0/12"),   # a network, e.g. Docker
+    ("::ffff:10.0.0.5", "10.0.0.5"),   # the same proxy written as IPv6
+    ("fd00::5", "fd00::/8"),           # an IPv6 network
+])
+def test_a_proxy_on_another_machine_is_trusted_once_listed(trusting, settings, proxy, listed):
+    settings.TRUSTED_PROXIES = ["127.0.0.1", "::1", listed]
     assert ip(proxy, USER) == USER
+
+
+def test_a_listed_proxy_does_not_make_its_neighbours_trusted(trusting, settings):
+    settings.TRUSTED_PROXIES = ["127.0.0.1", "10.0.0.5"]
+    assert ip("10.0.0.6", FAKE) == "10.0.0.6"
+
+
+def test_a_misspelt_entry_is_ignored_not_a_crash(trusting, settings):
+    settings.TRUSTED_PROXIES = ["127.0.0.1", "not-an-address", " ::1 "]
+    assert ip("::1", USER) == USER
+    assert ip("10.0.0.5", FAKE) == "10.0.0.5"
 
 
 def test_an_ipv6_user_is_reported_in_its_short_form(trusting):

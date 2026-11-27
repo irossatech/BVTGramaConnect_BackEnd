@@ -3,15 +3,18 @@
 Security finding BE-SEC-101: X-Real-IP is a header anyone can send. It is believed only when it came
 from our own reverse proxy, never from a caller on the internet.
 
-No proxy address is written here or in the settings, because each server is set up differently.
-Instead the rule is: a connection from the same machine (loopback), a unix socket (no address) or a
-private network can only come from the server's own nginx or its neighbours; a connection from a
-public internet address cannot be the proxy, so its X-Real-IP is ignored and its real address counts.
+Which connections count as our proxy is TRUSTED_PROXIES (audit BE-SEC-212): by default only this
+machine (127.0.0.1 and ::1), plus a unix socket, which has no address. Before, any private network
+address was believed too, so a neighbour on a shared network could fake its address. A proxy on
+another machine is named in .env (grama/settings.py).
 """
 
 import ipaddress
+import logging
 
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_ip(value: str):
@@ -25,24 +28,43 @@ def _parse_ip(value: str):
     return mapped or address
 
 
-def _from_own_network(remote: str) -> bool:
-    """True when the connection itself came from the server or its private network, not the internet.
+_cache: tuple[tuple, list] = ((), [])
+
+
+def _trusted_networks() -> list:
+    """TRUSTED_PROXIES as networks; an entry that is not an address or a network is left out and logged."""
+    global _cache
+    configured = tuple(settings.TRUSTED_PROXIES)
+    if _cache[0] != configured:
+        networks = []
+        for entry in configured:
+            try:
+                networks.append(ipaddress.ip_network(entry.strip(), strict=False))
+            except ValueError:
+                logger.warning("TRUSTED_PROXIES: %r is not an IP address or network; it is ignored.", entry)
+        _cache = (configured, networks)
+    return _cache[1]
+
+
+def _from_trusted_proxy(remote: str) -> bool:
+    """True when the connection itself came from one of our proxies, never from the internet.
 
     No address (a unix socket) counts as the server's own. An unreadable address does not."""
     if not remote:
         return True
     address = _parse_ip(remote)
-    return address is not None and not address.is_global
+    return address is not None and any(address in network for network in _trusted_networks()
+                                       if network.version == address.version)
 
 
 def client_ip(request) -> str | None:
     """The caller's IP.
 
-    X-Real-IP is used only when TRUST_X_REAL_IP is on, the connection came from the server's own
-    network (above), and the header holds one valid IP address. Otherwise the connection's own
-    address (REMOTE_ADDR) is used, exactly as before."""
+    X-Real-IP is used only when TRUST_X_REAL_IP is on, the connection came from a trusted proxy (above),
+    and the header holds one valid IP address. Otherwise the connection's own address (REMOTE_ADDR) is
+    used, exactly as before."""
     remote = (request.META.get("REMOTE_ADDR") or "").strip()
-    if settings.TRUST_X_REAL_IP and _from_own_network(remote):
+    if settings.TRUST_X_REAL_IP and _from_trusted_proxy(remote):
         forwarded = _parse_ip(request.META.get("HTTP_X_REAL_IP") or "")
         if forwarded is not None:
             return str(forwarded)

@@ -217,7 +217,13 @@ HIDDEN_MEDIA_LINK_SECONDS = env.int("HIDDEN_MEDIA_LINK_SECONDS", default=3600)
 # ==============================================================================
 # 4. HTTPS, COOKIES & REVERSE PROXY (DEV vs PROD)
 # ==============================================================================
- 
+
+# The reverse proxies whose X-Real-IP is believed (with TRUST_X_REAL_IP on), as addresses or networks
+# (audit BE-SEC-212). By default only this machine: nginx in front of Gunicorn on the same server
+# (127.0.0.1 or ::1; a unix socket, with no address, counts too). A proxy on another machine, a load
+# balancer or Docker is added in .env, e.g. TRUSTED_PROXIES=127.0.0.1,::1,10.0.0.5 (grama/http.py).
+TRUSTED_PROXIES = env.list("TRUSTED_PROXIES", default=["127.0.0.1", "::1"])
+
 if not DEBUG:
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
