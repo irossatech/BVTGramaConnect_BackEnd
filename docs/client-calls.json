@@ -78,6 +78,18 @@
       }
     },
     {
+      "method": "DELETE",
+      "path": "/api/v1/admin/categories/{}/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/remote.dart"
+        ],
+        "web": [
+          "src/console/logic/settings.ts"
+        ]
+      }
+    },
+    {
       "method": "PATCH",
       "path": "/api/v1/admin/categories/{}/",
       "used_by": {
@@ -299,6 +311,30 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/admin/referrals/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/wallet_admin.dart"
+        ],
+        "web": [
+          "src/console/logic/wallet.ts"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/referrals/{}/{}/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/wallet_admin.dart"
+        ],
+        "web": [
+          "src/console/logic/wallet.ts"
+        ]
+      }
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/admin/reports/admin-activity/",
       "used_by": {
         "web": [
@@ -368,7 +404,8 @@
           "lib/features/grama/state/remote.dart"
         ],
         "web": [
-          "src/console/logic/settings.ts"
+          "src/console/logic/settings.ts",
+          "src/console/logic/wallet.ts"
         ]
       }
     },
@@ -397,8 +434,62 @@
       }
     },
     {
+      "method": "GET",
+      "path": "/api/v1/admin/wallet/entries/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/wallet_admin.dart"
+        ],
+        "web": [
+          "src/console/logic/wallet.ts"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/wallet/export/",
+      "used_by": {
+        "web": [
+          "src/console/logic/wallet.ts"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/wallets/{}/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/wallet_admin.dart"
+        ],
+        "web": [
+          "src/console/logic/wallet.ts"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/wallets/{}/adjust/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/wallet_admin.dart"
+        ],
+        "web": [
+          "src/console/logic/wallet.ts"
+        ]
+      }
+    },
+    {
       "method": "POST",
       "path": "/api/v1/admin/{}/order/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/service_catalog.dart"
+        ]
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/admin/{}/{}/",
       "used_by": {
         "app": [
           "lib/features/grama/state/service_catalog.dart"
@@ -532,6 +623,141 @@
         "web": [
           "src/console/logic/settings.ts",
           "src/website/Site.tsx"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/citizen/account/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/wallet_session.dart"
+        ]
+      }
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/citizen/account/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/wallet_session.dart"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/citizen/account/delete/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/wallet_session.dart"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/citizen/account/email/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/wallet_session.dart"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/citizen/account/email/verify/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/wallet_session.dart"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/citizen/account/mobile/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/wallet_session.dart"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/citizen/account/password/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/wallet_session.dart"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/citizen/auth/delete/",
+      "used_by": {
+        "web": [
+          "src/website/Site.tsx"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/citizen/auth/delete/code/",
+      "used_by": {
+        "web": [
+          "src/website/Site.tsx"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/citizen/auth/login/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/wallet_session.dart"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/citizen/auth/password/forgot/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/wallet_session.dart"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/citizen/auth/password/reset/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/wallet_session.dart"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/citizen/auth/signup/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/wallet_session.dart"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/citizen/auth/signup/resend/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/wallet_session.dart"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/citizen/auth/signup/verify/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/wallet_session.dart"
         ]
       }
     },
@@ -1280,6 +1506,15 @@
           "src/console/logic/users.ts"
         ]
       }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/wallet/",
+      "used_by": {
+        "app": [
+          "lib/features/grama/state/wallet_session.dart"
+        ]
+      }
     }
   ],
   "unchecked": [
@@ -1334,9 +1569,19 @@
       "code": "uploadAll(path"
     },
     {
+      "client": "app",
+      "file": "lib/features/grama/state/wallet_admin.dart",
+      "code": "get(_accounts"
+    },
+    {
       "client": "web",
       "file": "src/console/Console.tsx",
       "code": "del(o.url(ids[i])"
+    },
+    {
+      "client": "web",
+      "file": "src/console/logic/services.ts",
+      "code": "del(c.path + g.key + '/'"
     },
     {
       "client": "web",
@@ -1367,6 +1612,51 @@
       "client": "web",
       "file": "src/console/logic/services.ts",
       "code": "upload(path"
+    },
+    {
+      "client": "web",
+      "file": "src/console/logic/settings.ts",
+      "code": "patch(path"
+    },
+    {
+      "client": "web",
+      "file": "src/console/logic/settings.ts",
+      "code": "upload(path"
+    },
+    {
+      "client": "web",
+      "file": "src/console/logic/wallet.ts",
+      "code": "get(ACCOUNTS"
+    },
+    {
+      "client": "web",
+      "file": "src/console/logic/wallet.ts",
+      "code": "post(ACCOUNTS + 'find/'"
+    },
+    {
+      "client": "web",
+      "file": "src/console/logic/wallet.ts",
+      "code": "post(url + 'block/'"
+    },
+    {
+      "client": "web",
+      "file": "src/console/logic/wallet.ts",
+      "code": "post(url + 'delete/'"
+    },
+    {
+      "client": "web",
+      "file": "src/console/logic/wallet.ts",
+      "code": "post(url + 'email/'"
+    },
+    {
+      "client": "web",
+      "file": "src/console/logic/wallet.ts",
+      "code": "post(url + 'release-mobile/'"
+    },
+    {
+      "client": "web",
+      "file": "src/console/logic/wallet.ts",
+      "code": "post(url + 'unblock/'"
     }
   ]
 }
