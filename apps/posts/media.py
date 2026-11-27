@@ -345,6 +345,12 @@ def _local_path(upload, suffix: str):
         upload.seek(0)
 
 
+# Audit BE-SEC-207: ffprobe and ffmpeg read an upload only as MP4/MOV (one demuxer serves both;
+# _sniff_video has already refused anything else) and only from the local file, never a network
+# address or another protocol a crafted file could point at. These go before the input path.
+_INPUT_OPTIONS = ["-protocol_whitelist", "file", "-f", "mov"]
+
+
 def probe_duration(path: str) -> float | None:
     """Length in seconds from ffprobe, or None when ffprobe is not installed.
 
@@ -354,7 +360,7 @@ def probe_duration(path: str) -> float | None:
     if not ffprobe:
         return None
     result = _run_tool(
-        [ffprobe, "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", path],
+        [ffprobe, "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", *_INPUT_OPTIONS, path],
         settings.VIDEO_PROBE_TIMEOUT_S,
         capture_output=True,
         text=True,
@@ -371,7 +377,7 @@ def extract_poster(path: str, at_seconds: float) -> bytes | None:
     if not ffmpeg:
         return None
     result = _run_tool(
-        [ffmpeg, "-v", "error", "-ss", f"{at_seconds:.2f}", "-i", path, "-frames:v", "1", "-f", "image2pipe", "-vcodec", "png", "-"],
+        [ffmpeg, "-v", "error", "-ss", f"{at_seconds:.2f}", *_INPUT_OPTIONS, "-i", path, "-frames:v", "1", "-f", "image2pipe", "-vcodec", "png", "-"],
         settings.VIDEO_POSTER_TIMEOUT_S,
         capture_output=True,
     )
@@ -394,7 +400,7 @@ def strip_metadata(path: str, container: str) -> File | None:
     os.close(handle)
     try:
         result = _run_tool(
-            [ffmpeg, "-v", "error", "-y", "-i", path, "-map", "0:v", "-map", "0:a?", "-c", "copy",
+            [ffmpeg, "-v", "error", "-y", *_INPUT_OPTIONS, "-i", path, "-map", "0:v", "-map", "0:a?", "-c", "copy",
              "-map_metadata", "-1", "-map_chapters", "-1", "-movflags", "+faststart", "-f", container, out],
             settings.VIDEO_STRIP_TIMEOUT_S,
             capture_output=True,

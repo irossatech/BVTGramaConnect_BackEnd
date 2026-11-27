@@ -69,7 +69,8 @@ def test_the_copy_drops_metadata_without_re_encoding(fake_ffmpeg, tmp_path):
     assert stripped.read() == STRIPPED and stripped.size == len(STRIPPED)
     args = fake_ffmpeg["args"]
     assert args[args.index("-map_metadata") + 1] == "-1" and args[args.index("-c") + 1] == "copy"
-    assert "-map_chapters" in args and "+faststart" in args and args[args.index("-f") + 1] == "mp4"
+    output_format = len(args) - 1 - args[::-1].index("-f")  # the last -f is the output's, the first the input's
+    assert "-map_chapters" in args and "+faststart" in args and args[output_format + 1] == "mp4"
     assert "0:d" not in args  # only video and audio are mapped: data streams (GPS tracks) stay behind
     assert not os.path.exists(args[-1])  # the named temporary file is gone
 
@@ -87,6 +88,38 @@ def test_a_video_ffmpeg_cannot_copy_is_refused(fake_ffmpeg, tmp_path, returncode
     with pytest.raises(media_service.ApiError) as error:
         media_service.strip_metadata(str(source), "mp4")
     assert error.value.error_code == "unsupported_media"
+
+
+@pytest.mark.parametrize("step", ["probe", "poster", "strip"])
+@pytest.mark.parametrize("container", ["mp4", "mov"])
+def test_the_tools_read_only_mp4_or_mov_from_the_local_file(monkeypatch, tmp_path, step, container):
+    """BE-SEC-207: every ffprobe and ffmpeg run names the input format and allows only the file protocol,
+    before the input path, so a crafted upload cannot pick another demuxer or reach the network."""
+    commands = []
+
+    def run(args, **kwargs):
+        commands.append(args)
+        if step == "strip":
+            with open(args[-1], "wb") as out:
+                out.write(STRIPPED)
+        return subprocess.CompletedProcess(args, 0, "12.0" if step == "probe" else b"", b"")
+
+    monkeypatch.setattr(media_service.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(media_service.subprocess, "run", run)
+    source = tmp_path / f"in.{container}"
+    source.write_bytes(UPLOADED)
+    path = str(source)
+    {
+        "probe": lambda: media_service.probe_duration(path),
+        "poster": lambda: media_service.extract_poster(path, 1.0),
+        "strip": lambda: media_service.strip_metadata(path, container),
+    }[step]()
+
+    (args,) = commands
+    where = args.index(path)
+    before = args[:where]
+    assert before[before.index("-protocol_whitelist") + 1] == "file"
+    assert before[before.index("-f") + 1] == "mov"  # the MP4/MOV demuxer, for both containers
 
 
 # --- What gets stored --------------------------------------------------------------------------
