@@ -918,8 +918,8 @@ Roles are Django groups and actions are Django permissions. The full group × pe
 | Services list (section 16) | `service_requests.manage_services` | yes | no | no | no | no | sees the shown services, public |
 | Bills & Recharges list (section 18) | `bills.manage_bills` | yes | no | no | no | no | sees the shown bills, public |
 | See service requests (section 16) | `service_requests.view_service_requests` | all | inside the district | inside the mandal | the village | only those assigned to them, in the village | their own phone's, with the posting token |
-| Change status, assign on, write a note | being the request's **assignee** (any official of the area) | when assigned to them | when assigned to them | when assigned to them | when assigned to them | when assigned to them | no |
-| Assign a request nobody holds | `service_requests.manage_service_requests` | any | inside the district | inside the mandal | the village | no | no |
+| Change status, assign on, write a note | being the request's **assignee** (only an official of the village itself can be one, since 2026-11-27) | when it was assigned to them before 2026-11-27 | when it was assigned to them before 2026-11-27 | when it was assigned to them before 2026-11-27 | when assigned to them | when assigned to them | no |
+| Assign a request nobody holds (to an official of the village itself) | `service_requests.manage_service_requests` | any | inside the district | inside the mandal | the village | no | no |
 | Web console login | `web_admin.access_web_console` | yes | no | no | no | no | no |
 | Groups and role assignments in Django admin | `accounts.manage_groups` | yes | no | no | no | no | no |
 
@@ -1251,7 +1251,7 @@ Built (`apps.service_requests`), from the mobile and web team's plan of 2026-10-
 - The Super Admin manages the **services** (**More → Services** in the app, **Services** in the console): add, edit, hide and reorder.
 - A citizen's **Home → Services** row shows the shown services in order. Tapping one opens a form: name, phone, optional email, and address.
 - The request belongs to the phone's village. It is **assigned to that village's Village Admin automatically**, and the Mandal and District Admins of the area and the Super Admin see it too.
-- **Only the official it is assigned to changes it**: approve, reject (with a reason), start work, complete it (with a note for the citizen), or pass it on. Every other official who sees it only reads it.
+- **Only the official it is assigned to changes it**: approve, reject (with a reason), start work, complete it (with a note for the citizen), or pass it on to another official of the same village (the Village Admin or a Panchayat member there). Every other official who sees it only reads it. **Requests are handled in the village**: Mandal and District Admins and the Super Admin oversee them but are never assignees (2026-11-27).
 - The citizen sees the status and the latest note under **Profile → My service requests**.
 - The citizen side uses the phone's posting token from section 15 (no login).
 
@@ -1373,8 +1373,8 @@ Permission `service_requests.manage_services` (Super Admin only); everyone else 
 
 | Who | `allowed_actions` |
 |---|---|
-| The assignee (the Village Admin at first, then whoever it is passed to, of any group) | `set_status`, `assign` |
-| An admin of the area, or the Super Admin, when **nobody holds** the request | `assign` only, so it is not stuck |
+| The assignee (the Village Admin at first, then the village's official it is passed to) | `set_status`, `assign` |
+| An admin of the area, or the Super Admin, when **nobody holds** the request | `assign` only (to an official of the village), so it is not stuck |
 | Everyone else who sees it (including the Village Admin after passing it on) | `[]` |
 
 - **Nobody holds it** when it was never assigned (the village has no Village Admin), or its assignee was later blocked or lost their role over the village. A new official who has not yet changed their temporary password still holds it, and may be chosen as the assignee; they act on it after their first login.
@@ -1383,7 +1383,7 @@ Permission `service_requests.manage_services` (Super Admin only); everyone else 
 - **Statuses:** `NEW` (default), `APPROVED`, `IN_PROGRESS`, `COMPLETED`, `REJECTED`, and `CANCELLED` (2026-11-18). The assignee may set any of the first five; the app suggests NEW → APPROVED → IN_PROGRESS → COMPLETED. **Only the citizen cancels** (section above): an official sending `status` `CANCELLED` gets `400`, `fields.status`.
 - **A cancelled request is final:** `allowed_actions` is `[]` for everyone, and any `PATCH` (status, note or assignee) answers `409 invalid_transition` ("The citizen cancelled this request; it cannot be changed."), also when the cancel lands while the change is on its way.
 - **`REJECTED` and `COMPLETED` need a `note`**: the reason, or what the citizen should do next. Otherwise `400`, `fields.note`. A note sent with another status is saved too; the app does not ask for one.
-- **Assign to:** an active official whose area contains the request's village (any group holding the view permission there, including the caller themselves or a higher admin); otherwise `400`, `fields.assigned_to`, which is also the answer to an id that is not a user id. The app and the console pick from `GET /users/`. Whoever passes it on can no longer change it; the new assignee can hand it back.
+- **Assign to:** an active official of **the request's village itself**: someone holding the view permission through a role assignment on exactly that village (the Village Admin or a Panchayat member there), the caller included when that is them. A Mandal, District or Super Admin is never an assignee (2026-11-27; until then the server also took a higher admin, which neither client offered). Otherwise `400`, `fields.assigned_to` ("Assign the request to an active official of this village."), which is also the answer to an id that is not a user id. The app and the console pick from `GET /users/` (the village's officials). Whoever passes it on can no longer change it; the new assignee can hand it back. A request a higher admin already held before 2026-11-27 stays theirs: they may still change it and hand it back to the village.
 - **Notes:** `note` becomes the request's latest note, which the citizen sees, and is kept in the history.
 
 ### Notifications and audit
