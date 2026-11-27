@@ -84,7 +84,9 @@ def area_of(request: ServiceRequest) -> AreaRef:
 
 def _holder_id(request: ServiceRequest):
     """The assignee while they can still act on the request; None when nobody can (never assigned,
-    or the assignee was blocked or lost their role over the village), so it is not stuck.
+    or the assignee was blocked or lost their role over the village), so an admin of the area may assign
+    it to an official of the village. A village with no official at all keeps it until one is created
+    there (contract section 16, 2026-11-27).
 
     A new official still on their temporary password holds it too: their admin made them for this area,
     and they act on it once they have chosen their own password."""

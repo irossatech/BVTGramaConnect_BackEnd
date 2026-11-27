@@ -541,3 +541,23 @@ def test_the_citizen_gets_a_push_on_each_status_change(api, world, phone, django
     assert message.title == "Your Aadhaar Services request: Rejected" and message.body == "Apply at Mee Seva"
     assert message.data == {"type": "SERVICE_REQUEST_UPDATED", "request_id": str(request_id), "status": "REJECTED"}
     assert not any(value in message.title + message.body for value in PERSONAL)
+
+
+def test_a_village_with_no_official_keeps_its_request_until_one_is_created(api, world, request_from):
+    """Chinakakani has no Village Admin and no Panchayat member. Its request stays NEW and unassigned: the
+    Mandal Admin sees it and may only assign it, to an official of the village, never to themselves
+    (2026-11-27, option a, contract section 16). Once the village has an official, it moves on."""
+    from conftest import make_official
+    from apps.accounts.roles import Role
+
+    _citizen, request_id = request_from("chinakakani")
+    request = ServiceRequest.objects.get(pk=request_id)
+    assert request.assigned_to is None and request.status == "NEW"
+    assert actions(api, world, "ma_mangalagiri", request_id) == ["assign"]
+    assert patch(api, world, "ma_mangalagiri", request_id, assigned_to=str(world.users["ma_mangalagiri"].id)).status_code == 400
+    assert patch(api, world, "ma_mangalagiri", request_id, status="APPROVED").status_code == 403
+
+    world.users["pm_chinakakani"] = make_official(world, "pm_chinakakani", Role.PANCHAYAT_MEMBER, "chinakakani", "9000099999")
+    assert patch(api, world, "ma_mangalagiri", request_id, assigned_to=str(world.users["pm_chinakakani"].id)).status_code == 200
+    assert actions(api, world, "pm_chinakakani", request_id) == ["set_status", "assign"]
+    assert patch(api, world, "pm_chinakakani", request_id, status="APPROVED").status_code == 200
