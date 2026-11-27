@@ -6,9 +6,10 @@ from django.utils.translation import gettext_lazy as _
 from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
 
-from apps.feed.serializers import AreaSlimSerializer, AreaTargetSerializer, media_url
+from apps.feed.serializers import AreaSlimSerializer, AreaTargetSerializer
 from apps.geography.areas import AreaDescriber, AreaRef
 from apps.geography.models import AreaLevel
+from apps.posts import hidden_media
 from apps.posts.models import Category, MediaKind, PostStatus, ReviewAction
 from apps.posts.serializers import PersonSerializer, TranslationSerializer, describe_targets, translation_of
 from grama.params import DbIdField
@@ -277,21 +278,27 @@ class CitizenPostSerializer(serializers.Serializer):
     def get_targets(self, obj):
         return describe_targets(_describer(self.context), obj)
 
+    def _file_link(self, obj):
+        """The phone's own post: public links while shown, signed ones once taken down or discarded (BVTGC-192)."""
+        return lambda name: hidden_media.file_url(self.context, obj.status, name)
+
     @extend_schema_field(CitizenPhotoSerializer(many=True))
     def get_photos(self, obj):
+        link = self._file_link(obj)
         return [
-            {"url": media_url(self.context, item.image.name), "thumb_url": media_url(self.context, item.thumbnail.name)}
+            {"url": link(item.image.name), "thumb_url": link(item.thumbnail.name)}
             for item in obj.media.all()
             if item.kind == MediaKind.IMAGE
         ]
 
     @extend_schema_field(CitizenVideoSerializer(many=True))
     def get_videos(self, obj):
+        link = self._file_link(obj)
         return [
             {
-                "url": media_url(self.context, item.video.name),
-                "poster_url": media_url(self.context, item.image.name),
-                "thumb_url": media_url(self.context, item.thumbnail.name),
+                "url": link(item.video.name),
+                "poster_url": link(item.image.name),
+                "thumb_url": link(item.thumbnail.name),
                 "duration_s": item.duration_s,
             }
             for item in obj.media.all()

@@ -9,8 +9,10 @@
 #   data.json.gz   every data table, the same dump as a server copy (deploy/DATA_MOVE.md); it
 #                  holds password hashes and personal data
 #   media.tgz      photos, videos, logos and banners
-# With a passphrase file (BACKUP_PASSPHRASE_FILE, default ~/secrets/backup.passphrase) both are
-# encrypted with gpg (AES256) as data.json.gz.gpg and media.tgz.gpg, and only those are kept.
+#   private-media.tgz  photos and videos of taken-down and discarded posts (BVTGC-192), from
+#                  PRIVATE_MEDIA_ROOT (default ~/.bvt-grama/private-media); restore it to the same folder
+# With a passphrase file (BACKUP_PASSPHRASE_FILE, default ~/secrets/backup.passphrase) every file is
+# encrypted with gpg (AES256) as <file>.gpg, and only those are kept.
 # Keep a copy of the passphrase somewhere other than this server: without it, no restore.
 # With BACKUP_RCLONE_REMOTE (an rclone remote and folder, e.g. "gdrive:bvt-backups") a finished,
 # encrypted backup is also copied there, so losing this server does not lose the backups.
@@ -58,6 +60,13 @@ cd "$BACKEND_DIR"
   | gzip -9 >"$partial/data.json.gz"
 if [[ -d media ]]; then
   tar -czf "$partial/media.tgz" media
+fi
+# The files of taken-down and discarded posts (BVTGC-192), outside the site folder: the panel's nginx
+# would serve them from inside it. PRIVATE_MEDIA_ROOT in .env, else the settings' default.
+private_media="$(sed -n 's/^PRIVATE_MEDIA_ROOT=//p' .env 2>/dev/null | tail -n 1 | tr -d '"'"'"' \r')"
+private_media="${private_media:-$STATE_DIR/private-media}"
+if [[ -d "$private_media" ]]; then
+  tar -C "$(dirname "$private_media")" -czf "$partial/private-media.tgz" "$(basename "$private_media")"
 fi
 
 encrypted=0

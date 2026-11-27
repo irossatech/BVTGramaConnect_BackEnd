@@ -10,6 +10,7 @@ from grama.params import DbIdField
 
 from .models import Category, EventKind, MediaKind, Post, PostMedia, PostStatus, ReviewAction
 from .services import REVERSE_TARGETS, allowed_actions
+from . import hidden_media
 from .sharing import share_url
 
 DECISION_ACTIONS = {
@@ -115,8 +116,11 @@ class MediaSerializer(serializers.ModelSerializer):
         fields = ["id", "kind", "url", "poster_url", "thumb_url", "width", "height", "duration_s", "bytes"]
 
     def _absolute(self, field) -> str:
-        request = self.context.get("request")
-        return request.build_absolute_uri(field.url) if request else field.url
+        """Public /media/ link while the post is shown; a signed link that expires while it is taken down
+        or discarded (BVTGC-192). The post's status comes from the context when the post serializer
+        passes it, else from the row."""
+        status = self.context.get("post_status") or field.instance.post.status
+        return hidden_media.file_url(self.context, status, field.name)
 
     def get_url(self, obj) -> str:
         return self._absolute(obj.video if obj.kind == MediaKind.VIDEO else obj.image)
@@ -253,7 +257,7 @@ class PostSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(MediaSerializer(many=True))
     def get_media(self, obj):
-        return MediaSerializer(obj.media.all(), many=True, context=self.context).data
+        return MediaSerializer(obj.media.all(), many=True, context={**self.context, "post_status": obj.status}).data
 
     @extend_schema_field(PersonSerializer)
     def get_author(self, obj):

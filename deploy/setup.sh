@@ -185,6 +185,8 @@ systemctl enable --now unattended-upgrades >/dev/null
 log "Folders under $APP_ROOT and $GC_MEDIA"
 install -d -m 2750 -o "$APP_USER" -g www-data "$APP_ROOT" "$STATIC_ROOT" "$WWW_DIR" "$WWW_DIR/public" "$WWW_DIR/console"
 install -d -m 2750 -o "$APP_USER" -g www-data "$GC_MEDIA"
+# Not www-data: Nginx must never read the files of taken-down and discarded posts (BVTGC-192).
+install -d -m 700 -o "$APP_USER" -g "$APP_USER" "$GC_PRIVATE_MEDIA"
 install -d -m 700 -o root -g root "$GC_BACKUP_DIR"
 install -d -m 755 /var/www/letsencrypt
 # Nginx keeps the cached citizen feed here (proxy_cache_path gc_feed); it makes gc_feed itself.
@@ -284,6 +286,7 @@ set_env "$GC_APP_ENV" ALLOWED_HOSTS "$ALLOWED_HOSTS"
 set_env "$GC_APP_ENV" CSRF_TRUSTED_ORIGINS "$CSRF_TRUSTED_ORIGINS"
 set_env "$GC_APP_ENV" DATABASE_URL "$DATABASE_URL"
 set_env "$GC_APP_ENV" MEDIA_ROOT "$GC_MEDIA"
+set_env "$GC_APP_ENV" PRIVATE_MEDIA_ROOT "$GC_PRIVATE_MEDIA"
 set_env "$GC_APP_ENV" STATIC_ROOT "$STATIC_ROOT"
 set_env "$GC_APP_ENV" WEB_PUBLIC_DIR "$WWW_DIR/public"
 set_env "$GC_APP_ENV" WEB_ADMIN_DIR "$WWW_DIR/console"

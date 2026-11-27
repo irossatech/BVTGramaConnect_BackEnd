@@ -239,11 +239,10 @@ class PostMedia(models.Model):
         ordering = ["order", "created_at"]
 
     def delete(self, *args, **kwargs):
-        files = (self.image, self.medium, self.thumbnail, self.video)
+        from .hidden_media import delete_files  # the files may sit in the private folder (BVTGC-192)
+
         result = super().delete(*args, **kwargs)
-        for field in files:
-            if field:
-                field.storage.delete(field.name)
+        delete_files(self)
         return result
 
 

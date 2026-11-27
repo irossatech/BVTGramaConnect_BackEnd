@@ -197,6 +197,21 @@ else:  # DEV
     MEDIA_ROOT = BASE_DIR / "media"
     STATIC_ROOT = BASE_DIR / "staticfiles"
     SERVE_FILES = env.bool("SERVE_FILES", default=True)   # Django serves files in dev
+
+# Photos and videos of a taken-down or discarded post (finding BE-SEC-208, decision of 2026-11-27): they
+# move out of MEDIA_ROOT into this folder, which no web server serves, and officials and the citizen see
+# them through signed links that expire (apps/posts/hidden_media.py). Never inside MEDIA_ROOT, STATIC_ROOT,
+# the web folders or a hosting panel's htdocs: the panel's nginx serves any file with a picture extension
+# from the site folder (check posts.E001). Servers built with setup.sh set it; on a hosting account (qa,
+# the panel) the default is the scripts' own folder, ~/.bvt-grama/private-media (mode 700).
+if _RUNNING_TESTS:
+    PRIVATE_MEDIA_ROOT = BASE_DIR / ".test-media-private"
+elif not DEBUG:
+    PRIVATE_MEDIA_ROOT = Path(env.str("PRIVATE_MEDIA_ROOT", default=str(Path.home() / ".bvt-grama" / "private-media")))
+else:  # DEV
+    PRIVATE_MEDIA_ROOT = Path(env.str("PRIVATE_MEDIA_ROOT", default=str(BASE_DIR / "media-private")))
+# How long a signed link to such a file works. Long enough to open a post and play its video.
+HIDDEN_MEDIA_LINK_SECONDS = env.int("HIDDEN_MEDIA_LINK_SECONDS", default=3600)
  
  
 # ==============================================================================

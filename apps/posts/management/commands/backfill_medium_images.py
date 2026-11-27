@@ -7,10 +7,13 @@ Reads each stored 1280 px WebP and writes `…-640.webp` next to it, in batches
 of 200. Safe to run again: rows that already have the file are skipped. Until
 a row has it, the feed's image_url sends the 1280 px file, so nothing breaks
 while it runs. A missing or unreadable large file is reported and left alone.
+Photos of taken-down or discarded posts are skipped: their files sit in the private folder
+(BVTGC-192); they get theirs once a reversal shows the post again and this runs.
 """
 
 from django.core.management.base import BaseCommand
 
+from apps.posts.hidden_media import HIDDEN
 from apps.posts.media import add_medium
 from apps.posts.models import PostMedia
 
@@ -24,7 +27,7 @@ class Command(BaseCommand):
         parser.add_argument("--dry-run", action="store_true", help="Only count the rows that need the file.")
 
     def handle(self, *args, dry_run, **options):
-        missing = PostMedia.objects.filter(medium="")
+        missing = PostMedia.objects.filter(medium="").exclude(post__status__in=HIDDEN)
         if dry_run:
             self.stdout.write(f"{missing.count()} photo(s) or poster(s) need the medium file. Nothing written.")
             return

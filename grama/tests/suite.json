@@ -133,6 +133,7 @@
         "apps/audit/tests/test_audit.py",
         "apps/audit/tests/test_audit_atomic.py",
         "apps/posts/tests/test_category_audit_via.py",
+        "apps/posts/tests/test_hidden_media.py",
         "apps/audit/tests/test_audit_window.py",
         "apps/audit/tests/test_mask_migration.py",
         "apps/audit/tests/test_record_limits.py",

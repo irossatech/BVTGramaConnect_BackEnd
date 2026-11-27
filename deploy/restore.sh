@@ -119,6 +119,17 @@ if (( DO_MEDIA )); then
   chown -R "$APP_USER:www-data" "$GC_MEDIA"
   find "$GC_MEDIA" -type d -exec chmod 2750 {} +
   find "$GC_MEDIA" -type f -exec chmod 640 {} +
+  # The files of taken-down and discarded posts (BVTGC-192). A backup made before it has none: those
+  # files are then in media.tar.gz, and the daily housekeeping moves them back out of /media/.
+  if [[ -f "$WORK/backup/private-media.tar.gz" ]]; then
+    log "Restoring $GC_PRIVATE_MEDIA"
+    if [[ -d "$GC_PRIVATE_MEDIA" ]]; then
+      mv "$GC_PRIVATE_MEDIA" "$GC_PRIVATE_MEDIA.before-restore-$(date +%Y%m%d-%H%M%S)"
+    fi
+    tar -C "$(dirname "$GC_PRIVATE_MEDIA")" -xzf "$WORK/backup/private-media.tar.gz"
+    chown -R "$APP_USER:$APP_USER" "$GC_PRIVATE_MEDIA"
+    chmod -R go-rwx "$GC_PRIVATE_MEDIA"
+  fi
 fi
 
 log "Starting the app"
