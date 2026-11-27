@@ -86,7 +86,10 @@ def test_taking_down_moves_every_file_out_of_media_and_gives_officials_signed_li
     old_link = default_storage.url(names(published)[0])
     before = client.get(old_link)
     assert before.status_code == 200  # public while published
-    before.close()  # Windows cannot move a file that is still open
+    # Read it to the end: the test client then closes the file itself (Windows cannot move an open file).
+    # Never call response.close() in a test: it sends request_finished, which closes the database
+    # connection; SQLite ignores that, MariaDB and PostgreSQL then fail with "server has gone away".
+    assert b"".join(before.streaming_content)
     post = take_down(world, published, django_capture_on_commit_callbacks)
     assert post.status == PostStatus.UNPUBLISHED
     assert not any(public(post)) and all(private(post))
