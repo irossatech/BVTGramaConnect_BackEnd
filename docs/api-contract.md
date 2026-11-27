@@ -1374,10 +1374,11 @@ Permission `service_requests.manage_services` (Super Admin only); everyone else 
 | Who | `allowed_actions` |
 |---|---|
 | The assignee (the Village Admin at first, then the village's official it is passed to) | `set_status`, `assign` |
-| An admin of the area, or the Super Admin, when **nobody holds** the request | `assign` only (to an official of the village), so it is not stuck |
+| An admin of the area, or the Super Admin, when **nobody holds** the request | `assign` only, to an official of the village, so it moves on as soon as the village has one |
 | Everyone else who sees it (including the Village Admin after passing it on) | `[]` |
 
 - **Nobody holds it** when it was never assigned (the village has no Village Admin), or its assignee was later blocked or lost their role over the village. A new official who has not yet changed their temporary password still holds it, and may be chosen as the assignee; they act on it after their first login.
+- **A village with no official at all** (no Village Admin and no Panchayat member): its requests stay `NEW` and unassigned, and nobody can change them, since a Mandal, District or Super Admin is never an assignee (2026-11-27). They see the request and assign it once an official of that village exists; creating a Village Admin there is the way to move them on. New requests are still accepted from such a village (decision of 2026-11-27, option a).
 - Without the action: `403 permission_denied`. A `status` or a `note` needs `set_status`; `assigned_to` needs `assign`.
 - Permissions: `service_requests.view_service_requests` (the four admin groups and Panchayat members) and `service_requests.manage_service_requests` (the four admin groups), each over the request's village. `manage_service_requests` now only means "may assign a request nobody holds".
 - **Statuses:** `NEW` (default), `APPROVED`, `IN_PROGRESS`, `COMPLETED`, `REJECTED`, and `CANCELLED` (2026-11-18). The assignee may set any of the first five; the app suggests NEW → APPROVED → IN_PROGRESS → COMPLETED. **Only the citizen cancels** (section above): an official sending `status` `CANCELLED` gets `400`, `fields.status`.
