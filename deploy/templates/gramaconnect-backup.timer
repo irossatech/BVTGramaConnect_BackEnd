@@ -1,0 +1,12 @@
+# Managed by BVT Grama Connect deploy/setup.sh. Edit the template, not this file.
+# Every night at 02:30 India time (setup.sh sets the server clock to Asia/Kolkata).
+[Unit]
+Description=Nightly BVT Grama Connect backup
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+RandomizedDelaySec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

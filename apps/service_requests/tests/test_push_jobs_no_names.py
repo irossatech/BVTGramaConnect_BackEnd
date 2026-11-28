@@ -1,0 +1,128 @@
+"""A citizen's name never sits in the push job tables (BVTGC-78, audit CROSS-PII-001).
+
+Officials' pushes about a service request name the citizen ("Ravi sent a new … request"). The job
+is queued with the request id, the officials' ids and the template key only, and writes the text
+itself when it sends; a retry is scheduled the same way. The pushes read exactly as before.
+"""
+
+import ast
+
+import pytest
+from django_q.models import Schedule
+
+from apps.notifications import services as notification_services
+from apps.notifications import tasks
+from apps.notifications.models import Device
+from apps.notifications.push import LocmemPushGateway
+
+pytestmark = pytest.mark.django_db
+NAME = "రవి కుమార్ Xyzname"
+
+
+@pytest.fixture
+def queued(monkeypatch):
+    """Every async_task the notification services queue: (func, args), and the job still runs."""
+    calls = []
+    original = notification_services.async_task
+
+    def record(func, *args, **kwargs):
+        calls.append((func, args))
+        return original(func, *args, **kwargs)
+
+    monkeypatch.setattr(notification_services, "async_task", record)
+    return calls
+
+
+@pytest.fixture
+def admin_phone(world):
+    LocmemPushGateway.outbox.clear()
+    LocmemPushGateway.failures.clear()
+    return Device.objects.create(fcm_token="tok-va", platform="android", user=world.users["va_kolakaluru"])
+
+
+def test_the_job_gets_ids_only_and_the_push_still_names_the_citizen(world, request_from, queued, admin_phone):
+    _phone, request_id = request_from("kolakaluru", name=NAME)
+    jobs = [(func, args) for func, args in queued if func == notification_services.SERVICE_REQUEST_PUSHES_TASK]
+    assert jobs, "the service-request push job was queued"
+    for _func, args in jobs:
+        assert args[0] == request_id
+        assert "Xyzname" not in repr(args) and "రవి" not in repr(args)
+    sent = [message for message in LocmemPushGateway.outbox if message.token == "tok-va"]
+    assert sent and NAME in sent[0].title  # the Village Admin's push reads as before
+    assert sent[0].data["request_id"] == str(request_id)
+
+
+def test_a_retry_carries_ids_only_and_writes_the_text_again(world, request_from, admin_phone, settings):
+    settings.DELIVERY_RETRY_BASE_SECONDS = 1.0  # a passing failure becomes a scheduled retry
+    LocmemPushGateway.failures.append(RuntimeError("503"))
+    _phone, request_id = request_from("kolakaluru", name=NAME)
+    retry = Schedule.objects.get(func=tasks.SERVICE_REQUEST_DEVICE_TASK)
+    assert "Xyzname" not in retry.args and "రవి" not in retry.args
+    device_id, scheduled_request, template_key, attempt = ast.literal_eval(retry.args)
+    assert (device_id, scheduled_request, attempt) == (str(admin_phone.pk), request_id, 2)
+
+    assert tasks.send_service_request_push_to_device(*ast.literal_eval(retry.args)) is True
+    [message] = [m for m in LocmemPushGateway.outbox if m.token == "tok-va"]
+    assert NAME in message.title and message.data["request_id"] == str(request_id)
+    assert template_key in {"service_request_new", "service_request_assigned_you"}
+
+
+NOTE = "Call Xyznote at 98765"
+
+
+def test_the_citizens_status_push_job_gets_no_note_and_a_retry_neither(world, request_from, queued, settings):
+    # BE-JOB-201: the official's note is free text; the job and its retries get the id and the status only.
+    from apps.service_requests.models import ServiceRequest
+
+    _phone, request_id = request_from("kolakaluru")
+    request = ServiceRequest.objects.select_related("service", "device").get(pk=request_id)
+    type(request.device).objects.filter(pk=request.device_id).update(fcm_token="tok-citizen", language="en")
+    ServiceRequest.objects.filter(pk=request_id).update(status="REJECTED", note=NOTE)
+    request = ServiceRequest.objects.select_related("service", "device").get(pk=request_id)
+    settings.DELIVERY_RETRY_BASE_SECONDS = 1.0
+    LocmemPushGateway.outbox.clear()
+    LocmemPushGateway.failures.append(RuntimeError("503"))  # the first try fails: a retry is scheduled
+
+    assert notification_services.tell_citizen_service_request(request) is True
+    [(func, args)] = [(f, a) for f, a in queued if f == notification_services.SERVICE_REQUEST_UPDATE_TASK]
+    assert args == (request_id, "REJECTED")
+    retry = Schedule.objects.get(func=tasks.SERVICE_REQUEST_UPDATE_TASK)
+    assert "Xyznote" not in retry.args and ast.literal_eval(retry.args) == (request_id, "REJECTED", 2)
+
+    assert tasks.send_service_request_update(*ast.literal_eval(retry.args)) is True
+    [message] = [m for m in LocmemPushGateway.outbox if m.token == "tok-citizen"]
+    assert message.body == NOTE and "Rejected" in message.title  # the push reads as before
+    assert message.data == {"type": "SERVICE_REQUEST_UPDATED", "request_id": str(request_id), "status": "REJECTED"}
+
+
+def test_out_of_time_the_officials_devices_left_go_to_a_new_job_with_ids_only(world, request_from, settings, monkeypatch):
+    """Like a post's topic job, the officials' service-request job hands the devices it has not reached
+    to a new job before the worker's time limit, so none gets the push twice (BE-JOB-201). The new job
+    still carries ids only."""
+    import itertools
+    import time
+
+    _phone, request_id = request_from("kolakaluru", name=NAME)
+    names = ["va_kolakaluru", "ma_tenali", "da_guntur", "super"]
+    for name in names:
+        Device.objects.create(fcm_token=f"tok-{name}", platform="android", user=world.users[name])
+    tokens = list(Device.objects.order_by("pk").values_list("fcm_token", flat=True))
+    recipients = [[str(world.users[name].pk), "service_request_new"] for name in names]
+    queued = []
+    monkeypatch.setattr("django_q.tasks.async_task", lambda func, *args, **kwargs: queued.append((func, args)))
+    settings.PUSH_TOPICS_JOB_SECONDS = 60
+    values = itertools.chain([0, 10, 61], itertools.repeat(61))  # time runs out before the third device
+    monkeypatch.setattr(time, "monotonic", lambda: next(values))
+    LocmemPushGateway.outbox.clear()
+
+    assert tasks.send_service_request_pushes(request_id, recipients) == 2
+    assert [m.token for m in LocmemPushGateway.outbox] == tokens[:2]
+    [(func, args)] = queued
+    assert func == tasks.SERVICE_REQUEST_PUSHES_TASK
+    assert args == (request_id, recipients, [str(pk) for pk in Device.objects.order_by("pk").values_list("pk", flat=True)[2:]])
+    assert "Xyzname" not in repr(args) and "రవి" not in repr(args)
+
+    monkeypatch.setattr(time, "monotonic", lambda: 0)
+    assert tasks.send_service_request_pushes(*args) == 2
+    assert sorted(m.token for m in LocmemPushGateway.outbox) == sorted(tokens)
+    assert all(NAME in m.title for m in LocmemPushGateway.outbox)  # every push still names the citizen

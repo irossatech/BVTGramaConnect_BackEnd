@@ -1,0 +1,460 @@
+"""The user-management permission matrix (CLAUDE.md "Roles", docs/authorization.md).
+
+Expected outcomes are worked out here from the rules as written in CLAUDE.md
+and from the map's parent links in conftest.py. They do not call the code
+under test, so a bug in accounts.authz or the role matrix cannot hide itself.
+
+Every official on the map is tried against every combination:
+- creating each role in each area (allowed, wrong role, outside the area),
+- which users appear in their list,
+- reading and blocking every other official.
+"""
+
+import itertools
+
+import pytest
+
+from apps.accounts.models import RoleAssignment, User
+from apps.accounts.roles import Role
+from conftest import OFFICIALS, TEST_PASSWORD, assign, inside
+
+pytestmark = pytest.mark.django_db
+
+# CLAUDE.md, "Roles": who creates and blocks whom. A Super Admin also makes other Super Admins,
+# confirming with their own password (super-admin plan of 2026-11-06); no other role has peers.
+CAN_MANAGE = {
+    Role.SUPER_ADMIN: {Role.SUPER_ADMIN, Role.DISTRICT_ADMIN, Role.MANDAL_ADMIN, Role.VILLAGE_ADMIN, Role.PANCHAYAT_MEMBER},
+    Role.DISTRICT_ADMIN: {Role.MANDAL_ADMIN, Role.VILLAGE_ADMIN, Role.PANCHAYAT_MEMBER},
+    Role.MANDAL_ADMIN: {Role.VILLAGE_ADMIN, Role.PANCHAYAT_MEMBER},
+    Role.VILLAGE_ADMIN: {Role.PANCHAYAT_MEMBER},
+    Role.PANCHAYAT_MEMBER: set(),
+}
+
+AREAS_BY_ROLE = {
+    Role.SUPER_ADMIN: ["ap"],
+    Role.DISTRICT_ADMIN: ["guntur", "krishna"],
+    Role.MANDAL_ADMIN: ["tenali", "mangalagiri", "gannavaram"],
+    Role.VILLAGE_ADMIN: ["kolakaluru", "nandivelugu", "kaza", "nidamanuru"],
+    Role.PANCHAYAT_MEMBER: ["kolakaluru", "nandivelugu", "kaza", "nidamanuru"],
+}
+
+ACTORS = list(OFFICIALS)
+CREATE_CASES = [
+    (actor, role, area)
+    for actor in ACTORS
+    for role, areas in AREAS_BY_ROLE.items()
+    for area in areas
+]
+
+
+def expected_outcome(actor: str, role: str, area: str) -> tuple[int, str | None]:
+    actor_role, actor_area = OFFICIALS[actor]
+    if not CAN_MANAGE[actor_role]:
+        return 403, "permission_denied"
+    if role not in CAN_MANAGE[actor_role]:
+        return 403, "permission_denied"
+    if actor_role != Role.SUPER_ADMIN and not inside(area, actor_area):
+        return 403, "out_of_area"
+    return 201, None
+
+
+def may_manage(actor: str, target: str) -> bool:
+    if actor == target:
+        return False
+    actor_role, actor_area = OFFICIALS[actor]
+    role, area = OFFICIALS[target]
+    if role not in CAN_MANAGE[actor_role]:
+        return False
+    return actor_role == Role.SUPER_ADMIN or inside(area, actor_area)
+
+
+def assert_outcome(response, status: int, code: str | None):
+    assert response.status_code == status, response.content
+    if code:
+        assert response.json()["error"]["code"] == code
+
+
+# --- Creating users ------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("actor, role, area", CREATE_CASES)
+def test_create_user_matrix(api, world, actor, role, area):
+    response = api(world.users[actor]).post(
+        "/api/v1/users/",
+        {"name": "New Official", "username": "new.official", "role": role, "area": world.area_json(area),
+         "current_password": TEST_PASSWORD},
+        format="json",
+    )
+    status, code = expected_outcome(actor, role, area)
+    assert_outcome(response, status, code)
+    created = User.objects.filter(username="new.official")
+    assert created.exists() == (status == 201)
+    if status == 201:
+        assignment = created.get().role_assignments.get()
+        assert (assignment.role, assignment.area_level, assignment.area_id) == (
+            role, world.ref(area).level, world.ref(area).id,
+        )
+        assert created.get().created_by == world.users[actor]
+
+
+# --- Who sees whom -------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("actor", ACTORS)
+def test_list_shows_exactly_the_users_an_admin_may_manage(api, world, actor):
+    response = api(world.users[actor]).get("/api/v1/users/?page_size=100")
+    if not CAN_MANAGE[OFFICIALS[actor][0]]:
+        assert_outcome(response, 403, "permission_denied")
+        return
+    assert response.status_code == 200
+    seen = {row["name"] for row in response.json()["results"]}
+    expected = {target for target in OFFICIALS if may_manage(actor, target)}
+    assert seen == expected
+    assert response.json()["count"] == len(expected)
+
+
+@pytest.mark.parametrize("actor, target", list(itertools.product(ACTORS, ACTORS)))
+def test_read_user_matrix(api, world, actor, target):
+    response = api(world.users[actor]).get(f"/api/v1/users/{world.users[target].id}/")
+    if not CAN_MANAGE[OFFICIALS[actor][0]]:
+        assert_outcome(response, 403, "permission_denied")
+    elif may_manage(actor, target):
+        assert response.status_code == 200
+        assert response.json()["name"] == target
+    else:
+        assert_outcome(response, 404, "not_found")
+
+
+@pytest.mark.parametrize("actor, target", list(itertools.product(ACTORS, ACTORS)))
+def test_block_user_matrix(api, world, actor, target):
+    victim = world.users[target]
+    response = api(world.users[actor]).post(f"/api/v1/users/{victim.id}/block/", {}, format="json")
+    victim.refresh_from_db()
+    if not CAN_MANAGE[OFFICIALS[actor][0]]:
+        assert_outcome(response, 403, "permission_denied")
+        assert victim.is_active
+    elif may_manage(actor, target):
+        assert response.status_code == 200
+        assert not victim.is_active
+        assert victim.token_version == 1
+    else:
+        assert_outcome(response, 404, "not_found")
+        assert victim.is_active
+        assert victim.token_version == 0
+
+
+@pytest.mark.parametrize(
+    "actor, target, allowed",
+    [
+        ("va_kolakaluru", "pm_kolakaluru", True),
+        ("va_kolakaluru", "pm_nandivelugu", False),
+        ("ma_tenali", "va_kolakaluru", True),
+        ("ma_tenali", "va_kaza", False),
+        ("da_guntur", "ma_tenali", True),
+        ("da_guntur", "ma_gannavaram", False),
+        ("da_guntur", "da_krishna", False),
+        ("super", "da_krishna", True),
+    ],
+)
+def test_unblock_and_rename_follow_the_same_rule(api, world, actor, target, allowed):
+    victim = world.users[target]
+    User.objects.filter(pk=victim.pk).update(is_active=False)
+    client = api(world.users[actor])
+    unblock = client.post(f"/api/v1/users/{victim.id}/unblock/", {}, format="json")
+    rename = client.patch(f"/api/v1/users/{victim.id}/", {"name_te": "కొత్త పేరు"}, format="json")
+    victim.refresh_from_db()
+    if allowed:
+        assert unblock.status_code == 200 and rename.status_code == 200
+        assert victim.is_active and victim.name_te == "కొత్త పేరు"
+    else:
+        assert unblock.status_code == 404 and rename.status_code == 404
+        assert not victim.is_active and victim.name_te != "కొత్త పేరు"
+
+
+# --- Users with several assignments ---------------------------------------------------------
+
+
+def add_assignment(world, name, role, area):
+    assign(world, name, role, area)
+
+
+@pytest.mark.parametrize(
+    "actor, visible",
+    [
+        ("va_kolakaluru", False),  # the Kaza membership is outside the village
+        ("ma_tenali", False),      # Kaza is in Mangalagiri mandal
+        ("da_guntur", True),       # both villages are in Guntur
+        ("da_krishna", False),
+        ("super", True),
+    ],
+)
+def test_every_assignment_must_be_inside_the_admins_reach(api, world, actor, visible):
+    add_assignment(world, "pm_kolakaluru", Role.PANCHAYAT_MEMBER, "kaza")
+    target = world.users["pm_kolakaluru"]
+    response = api(world.users[actor]).get(f"/api/v1/users/{target.id}/")
+    assert response.status_code == (200 if visible else 404)
+
+
+def test_a_user_who_is_also_an_admin_is_out_of_reach_of_peers(api, world):
+    """pm_nandivelugu also becomes Mandal Admin of Tenali: Village Admins lose them."""
+    add_assignment(world, "pm_nandivelugu", Role.MANDAL_ADMIN, "tenali")
+    target = world.users["pm_nandivelugu"]
+    assert api(world.users["va_nandivelugu"]).get(f"/api/v1/users/{target.id}/").status_code == 404
+    assert api(world.users["ma_tenali"]).get(f"/api/v1/users/{target.id}/").status_code == 404
+    assert api(world.users["da_guntur"]).get(f"/api/v1/users/{target.id}/").status_code == 200
+
+
+def test_actor_with_two_assignments_combines_them(api, world):
+    """Mandal Admin of Tenali who is also Village Admin of Kaza."""
+    add_assignment(world, "ma_tenali", Role.VILLAGE_ADMIN, "kaza")
+    client = api(world.users["ma_tenali"])
+
+    def create(username, role, area):
+        return client.post(
+            "/api/v1/users/",
+            {"name": "X", "username": username, "role": role, "area": world.area_json(area)},
+            format="json",
+        )
+
+    assert create("new.x1", Role.PANCHAYAT_MEMBER, "kaza").status_code == 201
+    assert create("new.x2", Role.VILLAGE_ADMIN, "nandivelugu").status_code == 201
+    assert_outcome(create("new.x3", Role.VILLAGE_ADMIN, "kaza"), 403, "out_of_area")
+    assert_outcome(create("new.x4", Role.PANCHAYAT_MEMBER, "chinakakani"), 403, "out_of_area")
+
+
+# --- Role assignments -------------------------------------------------------------------------
+
+
+def assignments_url(world, name):
+    return f"/api/v1/users/{world.users[name].id}/role-assignments/"
+
+
+def assignment_url(world, name):
+    assignment = world.users[name].role_assignments.get()
+    return f"{assignments_url(world, name)}{assignment.id}/"
+
+
+@pytest.mark.parametrize(
+    "actor, role, area, status, code",
+    [
+        ("ma_tenali", Role.PANCHAYAT_MEMBER, "nandivelugu", 201, None),
+        ("ma_tenali", Role.PANCHAYAT_MEMBER, "kaza", 403, "out_of_area"),
+        ("ma_tenali", Role.MANDAL_ADMIN, "tenali", 403, "permission_denied"),
+        ("va_kolakaluru", Role.VILLAGE_ADMIN, "kolakaluru", 403, "permission_denied"),
+        ("va_kolakaluru", Role.PANCHAYAT_MEMBER, "kolakaluru", 409, "duplicate"),
+        ("va_nandivelugu", Role.PANCHAYAT_MEMBER, "nandivelugu", 404, "not_found"),
+        ("da_guntur", Role.VILLAGE_ADMIN, "kaza", 201, None),
+        ("da_krishna", Role.PANCHAYAT_MEMBER, "nidamanuru", 404, "not_found"),
+        ("pm_nandivelugu", Role.PANCHAYAT_MEMBER, "nandivelugu", 403, "permission_denied"),
+    ],
+)
+def test_add_role_assignment(api, world, actor, role, area, status, code):
+    response = api(world.users[actor]).post(
+        assignments_url(world, "pm_kolakaluru"), {"role": role, "area": world.area_json(area)}, format="json"
+    )
+    assert_outcome(response, status, code)
+    expected = 2 if status == 201 else 1
+    assert world.users["pm_kolakaluru"].role_assignments.count() == expected
+
+
+@pytest.mark.parametrize(
+    "actor, area, status, code",
+    [
+        ("ma_tenali", "nandivelugu", 200, None),
+        ("ma_tenali", "kaza", 403, "out_of_area"),
+        ("va_kolakaluru", "nandivelugu", 403, "out_of_area"),
+        ("da_guntur", "chinakakani", 200, None),
+        ("da_krishna", "nidamanuru", 404, "not_found"),
+        ("ma_tenali", "tenali", 400, "validation_error"),
+    ],
+)
+def test_reassign_area(api, world, actor, area, status, code):
+    response = api(world.users[actor]).patch(
+        assignment_url(world, "pm_kolakaluru"), {"area": world.area_json(area)}, format="json"
+    )
+    assert_outcome(response, status, code)
+    assignment = world.users["pm_kolakaluru"].role_assignments.get()
+    moved_to = world.ref(area) if status == 200 else world.ref("kolakaluru")
+    assert (assignment.area_level, assignment.area_id) == (moved_to.level, moved_to.id)
+
+
+@pytest.mark.parametrize(
+    "actor, status",
+    [("va_kolakaluru", 204), ("ma_tenali", 204), ("va_nandivelugu", 404), ("ma_mangalagiri", 404), ("pm_kolakaluru", 403)],
+)
+def test_remove_assignment(api, world, actor, status):
+    response = api(world.users[actor]).delete(assignment_url(world, "pm_kolakaluru"))
+    assert response.status_code == status
+    assert world.users["pm_kolakaluru"].role_assignments.exists() == (status != 204)
+
+
+@pytest.mark.parametrize("actor, target", [(a, t) for a in ACTORS for t in ACTORS if a != t])
+def test_removing_a_role_follows_the_same_rule_as_giving_it(api, world, actor, target):
+    """Web audit WEB-SEC-016 (BVTGC-110): removing needs no permission of its own because each role's
+    manage permission is "give, move and remove" that role (accounts/models.py). So an actor removes a
+    role exactly where they could give it: a role below theirs, inside their area. Worked out from
+    CAN_MANAGE and the map, as above: no manage rights at all 403, an official out of reach 404."""
+    actor_role, _area = OFFICIALS[actor]
+    response = api(world.users[actor]).delete(assignment_url(world, target))
+    if not CAN_MANAGE[actor_role]:
+        expected = 403
+    elif may_manage(actor, target):
+        expected = 204
+    else:
+        expected = 404
+    assert response.status_code == expected, response.content
+    assert world.users[target].role_assignments.exists() == (expected != 204)
+
+
+def test_cannot_touch_an_assignment_of_another_user_through_this_one(api, world):
+    other = world.users["pm_nandivelugu"].role_assignments.get()
+    url = f"{assignments_url(world, 'pm_kolakaluru')}{other.id}/"
+    assert api(world.users["ma_tenali"]).delete(url).status_code == 404
+    assert RoleAssignment.objects.filter(pk=other.pk).exists()
+
+
+# --- Creating: validation and the temporary password ------------------------------------------
+
+
+def create_as(api, world, actor, **body):
+    payload = {"name": "Lakshmi", "username": "lakshmi", "role": Role.PANCHAYAT_MEMBER, "area": world.area_json("kolakaluru")}
+    payload.update(body)
+    return api(world.users[actor]).post("/api/v1/users/", payload, format="json")
+
+
+@pytest.mark.parametrize("field", ["mobile", "username"])
+def test_mobile_and_username_must_be_unique(api, world, field):
+    response = create_as(api, world, "va_kolakaluru", **{field: getattr(world.users["pm_kaza"], field)})
+    assert_outcome(response, 409, "duplicate")
+    assert response.json()["error"]["fields"][field]
+
+
+def test_username_is_unique_without_regard_to_case(api, world):
+    assert_outcome(create_as(api, world, "va_kolakaluru", username="PM_Kaza"), 409, "duplicate")
+
+
+def test_email_is_only_a_contact_field(api, world):
+    """Two officials may share an office email; nobody logs in with it."""
+    response = create_as(api, world, "va_kolakaluru", email=world.users["pm_kaza"].email)
+    assert response.status_code == 201
+    assert response.json()["user"]["email"] == world.users["pm_kaza"].email
+
+
+def test_new_official_gets_a_generated_temporary_password_shown_once(api, world):
+    response = create_as(api, world, "va_kolakaluru", username="Lakshmi.K")
+    assert response.status_code == 201
+    body = response.json()
+    assert set(body) == {"user", "temporary_password"}
+    user = body["user"]
+    assert user["username"] == "lakshmi.k" and user["must_change_password"] is True and user["email"] is None
+    created = User.objects.get(username="lakshmi.k")
+    assert created.check_password(body["temporary_password"])
+    assert created.groups.get().role_group.key == "PANCHAYAT_MEMBER"
+    from apps.audit.models import AuditLog
+
+    entry = AuditLog.objects.get(action="user.created")
+    assert entry.data == {"role": "PANCHAYAT_MEMBER", "password": "generated"}
+    assert body["temporary_password"] not in str(entry.data)
+
+
+def test_admin_may_choose_the_temporary_password(api, world):
+    response = create_as(api, world, "va_kolakaluru", password="Kolakaluru-Start-1")
+    assert response.status_code == 201 and "temporary_password" not in response.json()
+    assert User.objects.get(username="lakshmi").check_password("Kolakaluru-Start-1")
+
+
+@pytest.mark.parametrize("password", ["short", "12345678", "password1", "lakshmi123"])
+def test_chosen_temporary_password_must_pass_the_rules(api, world, password):
+    response = create_as(api, world, "va_kolakaluru", password=password)
+    assert_outcome(response, 400, "validation_error")
+    assert response.json()["error"]["fields"]["password"]
+    assert not User.objects.filter(username="lakshmi").exists()
+
+
+def test_role_must_match_the_area_level(api, world):
+    response = create_as(api, world, "ma_tenali", role=Role.VILLAGE_ADMIN, area=world.area_json("tenali"))
+    assert_outcome(response, 400, "validation_error")
+    assert "area" in response.json()["error"]["fields"]
+
+
+def test_area_must_exist_and_be_active(api, world):
+    missing = create_as(api, world, "super", area={"level": "VILLAGE", "id": 999999})
+    assert_outcome(missing, 400, "validation_error")
+    world.areas["kolakaluru"].is_active = False
+    world.areas["kolakaluru"].save()
+    inactive = create_as(api, world, "super")
+    assert_outcome(inactive, 400, "validation_error")
+
+
+def test_only_a_super_admin_creates_super_admins(api, world):
+    """The rest of the Super Admin rules are in test_super_admin_peers.py."""
+    for actor in ("da_guntur", "ma_tenali", "va_kolakaluru", "pm_kolakaluru"):
+        response = create_as(api, world, actor, role=Role.SUPER_ADMIN, area=world.area_json("ap"),
+                             current_password=TEST_PASSWORD)
+        assert_outcome(response, 403, "permission_denied")
+
+
+def test_creating_needs_a_login(api, world):
+    response = api().post("/api/v1/users/", {}, format="json")
+    assert_outcome(response, 401, "not_authenticated")
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("name", "   "), ("email", "not-an-email"), ("mobile", "12345"), ("username", "a!b"), ("username", "ab"), ("username", ""),
+        ("role", "KING"), ("area", {"level": "CITY", "id": 1}),
+    ],
+)
+def test_create_validation(api, world, field, value):
+    response = create_as(api, world, "super", **{field: value})
+    assert_outcome(response, 400, "validation_error")
+    assert field in response.json()["error"]["fields"]
+
+
+# --- List filters and counts ---------------------------------------------------------------------
+
+
+def listed(api, world, actor, query=""):
+    return api(world.users[actor]).get(f"/api/v1/users/?page_size=100{query}").json()
+
+
+def test_list_filters_and_counts(api, world):
+    User.objects.filter(pk=world.users["pm_kaza"].pk).update(is_active=False)
+    data = listed(api, world, "da_guntur")
+    assert data["counts"] == {
+        "total": 8,
+        "active": 7,
+        "blocked": 1,
+        "by_role": {"MANDAL_ADMIN": 2, "VILLAGE_ADMIN": 3, "PANCHAYAT_MEMBER": 3},
+    }
+
+    members = listed(api, world, "da_guntur", "&role=PANCHAYAT_MEMBER")
+    assert {row["name"] for row in members["results"]} == {"pm_kolakaluru", "pm_nandivelugu", "pm_kaza"}
+    assert members["counts"]["total"] == 8  # counts ignore the role and status filters
+
+    blocked = listed(api, world, "da_guntur", "&status=blocked")
+    assert [row["name"] for row in blocked["results"]] == ["pm_kaza"]
+
+    tenali = listed(api, world, "super", f"&level=MANDAL&area_id={world.areas['tenali'].id}")
+    assert {row["name"] for row in tenali["results"]} == {
+        "ma_tenali", "va_kolakaluru", "va_nandivelugu", "pm_kolakaluru", "pm_nandivelugu",
+    }
+
+    krishna = listed(api, world, "super", f"&district={world.areas['krishna'].id}")
+    assert {row["name"] for row in krishna["results"]} == {"da_krishna", "ma_gannavaram", "va_nidamanuru", "pm_nidamanuru"}
+
+    search = listed(api, world, "super", f"&q={world.users['va_kaza'].mobile[-5:]}")
+    assert [row["name"] for row in search["results"]] == ["va_kaza"]
+
+
+def test_a_filter_cannot_widen_the_list(api, world):
+    """Asking for Krishna as a Guntur admin returns nobody, not Krishna's users."""
+    data = listed(api, world, "da_guntur", f"&district={world.areas['krishna'].id}")
+    assert data["results"] == []
+
+
+def test_list_rows_show_areas_and_allowed_actions(api, world):
+    row = next(r for r in listed(api, world, "va_kolakaluru")["results"] if r["name"] == "pm_kolakaluru")
+    assert row["role_assignments"][0]["area"]["path"] == "కొలకలూరు · తెనాలి · గుంటూరు"
+    assert row["allowed_actions"] == ["edit", "block", "reset_password", "add_assignment", "reassign", "remove_assignment"]

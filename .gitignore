@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local settings and data
+.env
+.env.test
+db.sqlite3
+db.sqlite3-journal
+db.sqlite3-wal
+db.sqlite3-shm
+# Local copies of the database kept before a risky step (BE-SEC-210), e.g. db.sqlite3.before-audit.
+db.sqlite3.before-*
+media/
+media-private/
+staticfiles/
+.test-media/
+.test-media-private/
+
+# Tools
+.pytest_cache/
+.coverage
+htmlcov/
+.idea/
+.vscode/
+
+# Load-test output
+deploy/loadtest/results/
+
+# Manual API test runs and the documents made from them: they hold live tokens and
+# test passwords (security gap G16). Never commit or share them unchecked.
+test_execution_results*.json
+run_api_tests.py
+build_word_doc.py
+add_business_requirements.py
+*_with_Screenshots.docx
+swagger_screens/
+
+# Test suite reports (python -m grama.testsuite), local only
+test-reports/

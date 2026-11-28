@@ -1,0 +1,341 @@
+"""Posts, their photos, their review history, translations, categories and runtime settings.
+
+Post.status changes only through posts.services. The target area is stored as
+(target_level, target_area_id), like role assignments, so containment checks
+use geography.areas.within_q(level_field="target_level", id_field="target_area_id").
+"""
+
+import hashlib
+import uuid
+
+from django.conf import settings
+from django.db import models
+from django.utils.translation import get_language
+from django.utils.translation import gettext_lazy as _
+
+from apps.accounts.roles import Role
+from apps.geography.areas import AreaRef
+from apps.geography.models import AreaLevel
+
+#: posted_as_role of a citizen post (contract section 15): posting needs no account. Since BVTGC-121 it is
+#: also the key of the group of citizens' wallet accounts (role_matrix), which never posts as an official.
+CITIZEN_ROLE = "CITIZEN"
+
+
+def category_icon_path(instance, filename):
+    return f"categories/{filename}"
+
+
+class Category(models.Model):
+    key = models.SlugField(max_length=20, unique=True)
+    name_te = models.CharField(max_length=60)
+    name_en = models.CharField(max_length=60)
+    short_name_te = models.CharField(max_length=40, blank=True)
+    short_name_en = models.CharField(max_length=40, blank=True)
+    is_active = models.BooleanField(default=True)
+    order = models.PositiveSmallIntegerField(default=0)
+    #: Optional icon the Super Admin uploaded, re-encoded as WebP by grama.logos (BVTGC-91).
+    #: Empty: the apps show their own picture for the key, or a default one.
+    icon = models.FileField(upload_to=category_icon_path, max_length=200, blank=True)
+
+    class Meta:
+        ordering = ["order", "id"]
+        verbose_name_plural = _("categories")
+        permissions = [("manage_categories", "Add, rename and switch off categories")]
+
+    def __str__(self):
+        return self.name_en
+
+    def display_name(self, language=None, short=False):
+        telugu = (language or get_language() or "te").startswith("te")
+        if short:
+            value = self.short_name_te if telugu else self.short_name_en
+            if value:
+                return value
+        return self.name_te if telugu else self.name_en
+
+
+class EventKind(models.TextChoices):
+    """What a post's optional date is about (owner decision Q7)."""
+
+    DEADLINE = "deadline", _("Deadline")
+    CAMP = "camp", _("Camp")
+    DISTRIBUTION = "distribution", _("Distribution")
+    CLOSURE = "closure", _("Closure")
+    MEETING = "meeting", _("Meeting")
+
+
+class PostStatus(models.TextChoices):
+    DRAFT = "DRAFT", _("Draft")
+    PENDING = "PENDING", _("Pending")
+    PUBLISHED = "PUBLISHED", _("Published")
+    RECHECK = "RECHECK", _("Recheck")
+    DISCARDED = "DISCARDED", _("Discarded")
+    UNPUBLISHED = "UNPUBLISHED", _("Taken down")
+    #: A citizen's pending post, closed because the Super Admin blocked the phone that wrote it
+    #: (decision of 2026-11-20). Final, like DISCARDED; the citizen's own API still says DISCARDED.
+    BLOCKED = "BLOCKED", _("Blocked")
+
+
+class Post(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    #: The official who wrote it; empty for a citizen post, which has `citizen` instead.
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="posts"
+    )
+    #: The phone that wrote a citizen post (docs/api-contract.md, section 15); empty for officials' posts.
+    citizen = models.ForeignKey(
+        "citizens.CitizenDevice", on_delete=models.PROTECT, null=True, blank=True, related_name="posts"
+    )
+    #: A group key, or CITIZEN_ROLE for a citizen post.
+    posted_as_role = models.CharField(max_length=20, choices=Role.choices)
+    posted_as_level = models.CharField(max_length=10, choices=AreaLevel.choices)
+    posted_as_area_id = models.PositiveIntegerField()
+    category = models.ForeignKey(Category, on_delete=models.PROTECT, related_name="posts")
+    language = models.CharField(max_length=2, choices=[("te", "తెలుగు"), ("en", "English")], default="te")
+    title = models.CharField(max_length=150)
+    body = models.TextField(max_length=5000)
+    target_level = models.CharField(max_length=10, choices=AreaLevel.choices)
+    target_area_id = models.PositiveIntegerField()
+    status = models.CharField(max_length=12, choices=PostStatus.choices, default=PostStatus.DRAFT)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    published_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    decided_at = models.DateTimeField(null=True, blank=True)
+    decided_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    decided_by_role = models.CharField(max_length=20, blank=True)
+    escalated_at = models.DateTimeField(null=True, blank=True)
+    escalation_level = models.CharField(max_length=10, choices=AreaLevel.choices, blank=True)
+    # Optional event date (owner decision Q7): kind plus a start and an optional end date.
+    event_kind = models.CharField(max_length=12, choices=EventKind.choices, blank=True)
+    event_start = models.DateField(null=True, blank=True)
+    event_end = models.DateField(null=True, blank=True)
+    # Admins flag time-critical posts (owner decision Q19): pinned in the app, high-priority push.
+    is_urgent = models.BooleanField(default=False)
+    # The random part of the post's public link (/p/<code>/), set the first time it is published and
+    # never changed (apps.posts.sharing). Random, so nobody can walk through the posts by number.
+    share_code = models.CharField(max_length=10, unique=True, null=True, blank=True, editable=False)
+    # The app's random id for this create (MOB-ERR-004): the same id from the same author or phone is a
+    # repeat after a lost answer, and gets this post back instead of a second one. Empty for older apps
+    # and the console. Unique per author and per phone below; any number of empty ones are allowed.
+    client_ref = models.UUIDField(null=True, blank=True, editable=False)
+
+    class Meta:
+        ordering = ["-created_at"]
+        # The feed finds a post's areas in PostTarget, so no index on target_level/target_area_id (audit BE-DB-007).
+        indexes = [
+            models.Index(fields=["status", "published_at"]),  # the citizen feed, newest first
+            models.Index(fields=["created_at"]),  # officials' posts list order, reports' window
+            models.Index(fields=["status", "submitted_at"]),
+            models.Index(fields=["author", "status"]),
+            models.Index(fields=["status", "event_start"]),
+            models.Index(fields=["status", "is_urgent", "published_at"]),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(event_end__isnull=True) | models.Q(event_end__gte=models.F("event_start")),
+                name="post_event_end_after_start",
+            ),
+            # Exactly one of: an official author, or a citizen's phone.
+            models.CheckConstraint(
+                condition=models.Q(author__isnull=False, citizen__isnull=True)
+                | models.Q(author__isnull=True, citizen__isnull=False),
+                name="post_author_or_citizen",
+            ),
+            # No condition: MySQL has no partial indexes, and every database already lets rows with an
+            # empty column share a unique index (the console's posts, older apps, the other kind of post).
+            models.UniqueConstraint(fields=["author", "client_ref"], name="post_author_client_ref"),
+            models.UniqueConstraint(fields=["citizen", "client_ref"], name="post_citizen_client_ref"),
+        ]
+        # Checked per area by accounts.authz (docs/authorization.md).
+        permissions = [
+            ("create_post", "Write posts for the area"),
+            ("submit_post", "Send own posts on for review or publishing"),
+            ("review_post", "See the posts of the area that are not drafts"),
+            ("publish_post", "Publish posts, and publish own posts without review"),
+            ("recheck_post", "Send posts back to the author for recheck"),
+            ("discard_post", "Discard posts"),
+            ("takedown_post", "Take down published posts"),
+            ("reverse_decision", "Reverse a decision taken at a lower level"),
+            ("view_review_queue", "See the review queue of the area"),
+            ("mark_urgent", "Mark posts urgent"),
+            ("view_stats", "See the counts for an area dashboard"),
+            ("block_citizen", "Block or unblock the phone that wrote a citizen post"),
+        ]
+
+    def __str__(self):
+        return self.title
+
+    @property
+    def target(self) -> AreaRef:
+        """The first of the post's areas; `targets` holds all of them (owner decision of 2026-10-28)."""
+        return AreaRef(self.target_level, self.target_area_id)
+
+    @property
+    def target_refs(self) -> list[AreaRef]:
+        """Every area the post is for, in the order chosen. Lists prefetch "targets"."""
+        return [AreaRef(row.area_level, row.area_id) for row in self.targets.all()] or [self.target]
+
+    @property
+    def posted_as(self) -> AreaRef:
+        return AreaRef(self.posted_as_level, self.posted_as_area_id)
+
+    @property
+    def event(self) -> dict | None:
+        if not self.event_kind or self.event_start is None:
+            return None
+        return {
+            "kind": self.event_kind,
+            "start_date": self.event_start.isoformat(),
+            "end_date": self.event_end.isoformat() if self.event_end else None,
+        }
+
+    @property
+    def source_hash(self) -> str:
+        """SHA-256 of the title and body: a translation of other text is stale."""
+        return hashlib.sha256(f"{self.title}\n\n{self.body}".encode()).hexdigest()
+
+    @property
+    def other_language(self) -> str:
+        return "en" if self.language == "te" else "te"
+
+
+def media_upload_path(instance, filename):
+    return f"posts/{instance.post.created_at:%Y/%m}/{filename}"
+
+
+class MediaKind(models.TextChoices):
+    IMAGE = "image", _("Photo")
+    VIDEO = "video", _("Video")
+
+
+class PostMedia(models.Model):
+    """A photo, or a video (owner decision Q8).
+
+    Photo: `image` is the WebP at most 1280 px on the long side (also the feed's image_url),
+    `medium` 640 px (the feed's medium_url, for cards; BVTGC-95), `thumbnail` 320 px.
+    Video: `video` is the MP4 as uploaded; `image`, `medium` and `thumbnail` hold its poster frame.
+    `medium` is empty on media uploaded before it existed until `backfill_medium_images` runs.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="media")
+    kind = models.CharField(max_length=5, choices=MediaKind.choices, default=MediaKind.IMAGE)
+    image = models.FileField(upload_to=media_upload_path, max_length=200)
+    medium = models.FileField(upload_to=media_upload_path, max_length=200, blank=True)
+    video = models.FileField(upload_to=media_upload_path, max_length=200, blank=True)
+    duration_s = models.PositiveSmallIntegerField(null=True, blank=True)
+    thumbnail = models.FileField(upload_to=media_upload_path, max_length=200)
+    width = models.PositiveIntegerField()
+    height = models.PositiveIntegerField()
+    bytes = models.PositiveIntegerField()
+    order = models.PositiveSmallIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["order", "created_at"]
+
+    def delete(self, *args, **kwargs):
+        from .hidden_media import delete_files  # the files may sit in the private folder (BVTGC-192)
+
+        result = super().delete(*args, **kwargs)
+        delete_files(self)
+        return result
+
+
+class ReviewAction(models.Model):
+    class Action(models.TextChoices):
+        SUBMIT = "SUBMIT"
+        RESUBMIT = "RESUBMIT"
+        PUBLISH = "PUBLISH"
+        AUTO_PUBLISH = "AUTO_PUBLISH"
+        RECHECK = "RECHECK"
+        DISCARD = "DISCARD"
+        UNPUBLISH = "UNPUBLISH"
+        ESCALATE = "ESCALATE"
+        REVERSE = "REVERSE"
+        BLOCK = "BLOCK"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="review_actions")
+    action = models.CharField(max_length=14, choices=Action.choices)
+    from_status = models.CharField(max_length=12, choices=PostStatus.choices, blank=True)
+    to_status = models.CharField(max_length=12, choices=PostStatus.choices)
+    comment = models.TextField(max_length=500, blank=True)
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    actor_role = models.CharField(max_length=20, blank=True, help_text=_("Empty means the system acted."))
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["post", "created_at"])]
+
+
+class PostTarget(models.Model):
+    """One area a post is for: the whole state ("Everyone"), or any districts, mandals and villages.
+
+    Written only by posts.services, after it removed duplicates and areas inside another chosen one.
+    A post shows in a village's feed, and waits in a reviewer's queue, when any of its areas is that
+    village or above it, or inside the reviewer's area. Post.target_level and target_area_id keep the
+    first one for older readers.
+    """
+
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="targets")
+    area_level = models.CharField(max_length=10, choices=AreaLevel.choices)
+    area_id = models.PositiveIntegerField()
+
+    class Meta:
+        ordering = ["id"]
+        constraints = [
+            models.UniqueConstraint(fields=["post", "area_level", "area_id"], name="post_target_once_per_area")
+        ]
+        indexes = [models.Index(fields=["area_level", "area_id", "post"])]  # the feed
+
+    @property
+    def area(self) -> AreaRef:
+        return AreaRef(self.area_level, self.area_id)
+
+
+class PostTranslation(models.Model):
+    """A published post's machine translation into the language it is not written in.
+
+    Written only by tasks.translate_post. `source_hash` is the post's source_hash when
+    it was translated; after an edit they differ and the API sends no translation until
+    the re-published post is translated again.
+    """
+
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="translations")
+    language = models.CharField(max_length=2, choices=[("te", "తెలుగు"), ("en", "English")])
+    #: Longer than the post's 150: a translation can be longer than its original.
+    title = models.CharField(max_length=200)
+    body = models.TextField()
+    #: The service that translated it: "google" or "bhashini"; "manual" is kept for corrections by hand.
+    provider = models.CharField(max_length=20)
+    source_hash = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["post", "language"], name="post_translation_one_per_language")]
+
+
+class SettingOverride(models.Model):
+    """A runtime value that overrides the Django setting of the same name."""
+
+    key = models.CharField(max_length=60, unique=True)
+    value = models.JSONField()
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        permissions = [("manage_settings", "Change platform settings")]
+
+    def __str__(self):
+        return f"{self.key} = {self.value!r}"

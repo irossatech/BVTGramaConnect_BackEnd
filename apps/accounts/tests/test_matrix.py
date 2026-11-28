@@ -1,0 +1,397 @@
+"""The authorization matrix through the API: every group x every permission x where.
+
+For each group one official on the map acts (conftest.OFFICIALS). For each
+permission a probe calls the endpoint that needs it, against an area in a
+position relative to the official's own area:
+
+    same     the official's own area
+    below    an area inside it
+    parent   the area above it (for user and role probes: somewhere under the
+             parent but outside the official's area)
+    sibling  the next area at the same level under the same parent
+    other    an area in the other district
+    platform endpoints with no area (Super Admin screens)
+
+Expected: allowed exactly when the group holds the permission (role_matrix.py,
+with SUPER_ADMIN_CAN_POST off) and the area lies inside the official's area,
+or the group is platform-wide. Posting is the exception: whoever may post may
+post to any area (owner decision of 2026-10-28), so writing and sending a post
+on need only the permission. test_authz.py checks the dict itself against
+the brief, so this file checks that the API enforces it everywhere.
+"""
+
+from __future__ import annotations
+
+import uuid
+
+import pytest
+from axes.models import AccessAttempt
+from django.test import Client
+from django.utils import timezone
+from rest_framework.test import APIClient
+
+from apps.accounts.lockout import login_key
+from apps.accounts.models import RoleAssignment, User
+from apps.accounts.role_matrix import ALL_PERMISSIONS, ROLE_GROUPS
+from apps.accounts.sync import wanted_permissions
+from apps.citizens.models import CitizenAccount, CitizenDevice
+from apps.posts.models import CITIZEN_ROLE, Category, Post, PostStatus
+from apps.service_requests.models import ServiceRequest
+from apps.wallet.models import Wallet
+from conftest import MAP, PARENT, TEST_PASSWORD, inside, make_bare_post
+
+pytestmark = pytest.mark.django_db
+
+ACTOR = {
+    "SUPER_ADMIN": "super",
+    "DISTRICT_ADMIN": "da_guntur",
+    "MANDAL_ADMIN": "ma_tenali",
+    "VILLAGE_ADMIN": "va_kolakaluru",
+    "PANCHAYAT_MEMBER": "pm_kolakaluru",
+    # A citizen's wallet account (BVTGC-121), made in the test: it is not an official of the world fixture.
+    "CITIZEN": "citizen_kolakaluru",
+}
+HOME = {
+    "super": "ap", "da_guntur": "guntur", "ma_tenali": "tenali", "va_kolakaluru": "kolakaluru",
+    "pm_kolakaluru": "kolakaluru", "citizen_kolakaluru": "kolakaluru",
+}
+POSITIONS = {
+    "ap": {"same": "ap", "below": "guntur"},
+    "guntur": {"same": "guntur", "below": "tenali", "parent": "ap", "sibling": "krishna"},
+    "tenali": {"same": "tenali", "below": "kolakaluru", "parent": "guntur", "sibling": "mangalagiri", "other": "gannavaram"},
+    "kolakaluru": {"same": "kolakaluru", "parent": "tenali", "sibling": "nandivelugu", "other": "nidamanuru"},
+}
+
+LEVELS = ["STATE", "DISTRICT", "MANDAL", "VILLAGE"]
+ALL_KEYS = ["ap", *PARENT]
+
+
+def level_of(key: str) -> str:
+    depth, current = 0, key
+    while current in PARENT:
+        current, depth = PARENT[current], depth + 1
+    return LEVELS[depth]
+
+
+def area_at(level: str, position: str, where: str, home: str) -> str | None:
+    """An area at `level` inside `where`; for the parent position, outside the official's own area."""
+    found = [key for key in ALL_KEYS if level_of(key) == level and inside(key, where)]
+    if position == "parent":
+        found = [key for key in found if not inside(key, home)]
+    return found[0] if found else None
+
+
+ROLE_LEVEL = {key: spec["level"] for key, spec in ROLE_GROUPS.items()}
+MANAGE_ROLE = {spec["manage_permission"]: key for key, spec in ROLE_GROUPS.items() if spec["manage_permission"]}
+USER_PROBES = {"accounts.block_user", "accounts.reset_password", "accounts.unlock_user", "accounts.reassign_user"}
+PLATFORM_PROBES = {
+    "accounts.manage_groups": "admin",
+    "geography.manage_master_data": "/api/v1/geo/tree/",
+    "audit.view_audit_log": "/api/v1/audit/",
+    "audit.export_audit_log": "/api/v1/audit/export/?format=csv",
+    "web_admin.access_web_console": "session",
+    "web_admin.view_dashboard": "/api/v1/admin/dashboard/",
+    "web_admin.view_reports": "/api/v1/admin/reports/summary/",
+    "notifications.manage_templates": "/api/v1/admin/notification-templates/",
+    "web_public.manage_contact_messages": "/api/v1/admin/contact-messages/",
+    "contacts.manage_contact_types": "/api/v1/admin/contact-types/",
+    "posts.manage_categories": "/api/v1/admin/categories/",
+    "posts.manage_settings": "/api/v1/admin/settings/",
+    "ads.manage_ad": "/api/v1/admin/ads/",
+    "service_requests.manage_services": "/api/v1/admin/services/",
+    "bills.manage_bills": "/api/v1/admin/bills/",
+    # The Super Admin's wallet tools (contract section 21, BVTGC-128), through the API since BVTGC-130.
+    "accounts.manage_citizen_accounts": "/api/v1/admin/citizen-accounts/",
+    "wallet.view_wallets": "/api/v1/admin/wallet/export/?type=referrals&format=csv",
+    "wallet.adjust_points": "adjust",
+    "wallet.review_referrals": "/api/v1/admin/referrals/",
+}
+#: Held means allowed, whatever the area (one case per group).
+HELD_PROBES = {
+    # Every official: the Telugu name suggestions need any official role (BVTGC-121).
+    "accounts.use_official_api": "/api/v1/admin/transliterate/?text=ravi",
+    # A citizen account's own wallet (BVTGC-126), through the API since BVTGC-130.
+    "wallet.use_wallet": "/api/v1/wallet/",
+}
+
+
+#: Probes whose target is always a village: a member's village, or a citizen post's village.
+VILLAGE_PROBES = USER_PROBES | {
+    "posts.block_citizen",
+    "service_requests.view_service_requests",
+    "service_requests.manage_service_requests",
+}
+
+
+def target_for(perm: str, position: str, home: str) -> str | None:
+    where = POSITIONS[home][position]
+    if perm in MANAGE_ROLE:
+        return area_at(ROLE_LEVEL[MANAGE_ROLE[perm]], position, where, home)
+    if perm in VILLAGE_PROBES:
+        return area_at("VILLAGE", position, where, home)
+    return where
+
+
+CASES = []
+for _key, _name in ACTOR.items():
+    for _perm in ALL_PERMISSIONS:
+        if _perm in PLATFORM_PROBES:
+            CASES.append((_key, _perm, "platform"))
+            continue
+        if _perm in HELD_PROBES:
+            CASES.append((_key, _perm, "held"))
+            continue
+        for _position in POSITIONS[HOME[_name]]:
+            if target_for(_perm, _position, HOME[_name]) is not None:
+                CASES.append((_key, _perm, _position))
+
+
+# --- Probes -----------------------------------------------------------------------------------------
+
+def outcome(response, ok=(200, 201)) -> bool:
+    if response.status_code in ok:
+        return True
+    assert response.status_code in (403, 404), (response.status_code, response.content[:300])
+    return False
+
+
+def post_at(world, area_key: str, status: str, *, author: str = "pm_nidamanuru", decided_by_role: str = "") -> Post:
+    target = world.ref(area_key)
+    now = timezone.now()
+    decided = status not in (PostStatus.DRAFT, PostStatus.PENDING)
+    return make_bare_post(
+        author=world.users[author],
+        posted_as_role="PANCHAYAT_MEMBER",
+        posted_as_level="VILLAGE",
+        posted_as_area_id=world.ref("nidamanuru").id,
+        category=Category.objects.get(key="announce"),
+        title="Probe",
+        body="Probe text.",
+        target_level=target.level,
+        target_area_id=target.id,
+        status=status,
+        submitted_at=now,
+        published_at=now if status == PostStatus.PUBLISHED else None,
+        decided_at=now if decided else None,
+        decided_by_role=decided_by_role,
+    )
+
+
+def citizen_post_at(world, village_key: str, status: str = PostStatus.PENDING) -> Post:
+    """A citizen post (contract section 15) in that village, from a fresh phone; pending unless told."""
+    village = world.ref(village_key)
+    now = timezone.now()
+    published = status == PostStatus.PUBLISHED
+    phone = CitizenDevice.objects.create(
+        token_hash=uuid.uuid4().hex, platform="android", village_id=village.id, nonce=uuid.uuid4().hex
+    )
+    return make_bare_post(
+        citizen=phone,
+        posted_as_role=CITIZEN_ROLE,
+        posted_as_level=village.level,
+        posted_as_area_id=village.id,
+        category=Category.objects.get(key="announce"),
+        title="Citizen probe",
+        body="Probe text.",
+        target_level=village.level,
+        target_area_id=village.id,
+        status=status,
+        submitted_at=now,
+        published_at=now if published else None,
+        decided_at=now if published else None,
+    )
+
+
+def service_request_at(world, village_key: str, assigned_to=None) -> ServiceRequest:
+    """A NEW service request (contract section 16) from a fresh phone in that village."""
+    village = world.ref(village_key)
+    phone = CitizenDevice.objects.create(
+        token_hash=uuid.uuid4().hex, platform="android", village_id=village.id, nonce=uuid.uuid4().hex
+    )
+    return ServiceRequest.objects.create(
+        service_id="aadhaar", name="Probe", phone="9876543210", address="Probe street", village_id=village.id,
+        device=phone, assigned_to=assigned_to,
+    )
+
+
+def member_at(world, village_key: str) -> User:
+    user = User.objects.create_user(username="probe.member", name="Probe Member", password=TEST_PASSWORD)
+    RoleAssignment.objects.assign(user, "PANCHAYAT_MEMBER", world.ref(village_key))
+    return User.objects.get(pk=user.pk)
+
+
+def review(client, post, action, **extra):
+    return client.post(f"/api/v1/posts/{post.id}/review/", {"action": action, "comment": "probe", **extra}, format="json")
+
+
+def citizen_account_at(world, village_key: str) -> User:
+    """A citizen's wallet account with the Citizen role in that village (BVTGC-121)."""
+    return citizen_account(world, village_key, "citizen_kolakaluru", "MATRIX01")
+
+
+def citizen_account(world, village_key: str, username: str, code: str) -> User:
+    user = User.objects.create_user(username=username, name="Citizen Probe", password=TEST_PASSWORD)
+    now = timezone.now()
+    account = CitizenAccount.objects.create(
+        user=user, village_id=world.ref(village_key).id, age_confirmed_at=now, consent_version="v1",
+        consent_at=now, referral_code=code,
+    )
+    Wallet.objects.create(account=account)
+    RoleAssignment.objects.assign(user, "CITIZEN", world.ref(village_key))
+    return User.objects.get(pk=user.pk)
+
+
+def probe(world, client, actor: User, perm: str, area_key: str | None) -> bool:
+    if perm in HELD_PROBES:
+        return outcome(client.get(HELD_PROBES[perm]))
+    if perm in PLATFORM_PROBES:
+        how = PLATFORM_PROBES[perm]
+        if how == "adjust":
+            # Another citizen's wallet: a correction of one point, with a reason.
+            target = citizen_account(world, "nandivelugu", "citizen_probe_target", "MATRIX02")
+            body = {"points": 1, "reason": "probe"}
+            return outcome(client.post(f"/api/v1/admin/wallets/{target.pk}/adjust/", body, format="json"))
+        if how == "session":
+            response = APIClient().post(
+                "/api/v1/auth/session/login/", {"username": actor.username, "password": TEST_PASSWORD}, format="json"
+            )
+            if response.status_code == 400 and response.json()["error"]["code"] == "invalid_credentials":
+                return False  # a citizen account: refused like a wrong password (BVTGC-121)
+            return outcome(response)
+        if how == "admin":
+            User.objects.filter(pk=actor.pk).update(is_staff=True)
+            browser = Client()
+            browser.force_login(actor)
+            return outcome(browser.get("/django-admin/auth/group/"))
+        return outcome(client.get(how))
+
+    area = world.ref(area_key)
+    if perm == "posts.create_post":
+        body = {"category": "announce", "title": "T", "body": "B", "target": world.area_json(area_key), "submit": False}
+        return outcome(client.post("/api/v1/posts/", body, format="json"))
+    if perm == "posts.submit_post":
+        draft = post_at(world, area_key, PostStatus.DRAFT, author=actor.username)
+        return outcome(client.post(f"/api/v1/posts/{draft.id}/submit/", {}, format="json"))
+    if perm == "posts.review_post":
+        return outcome(client.get(f"/api/v1/posts/{post_at(world, area_key, PostStatus.PENDING).id}/"))
+    if perm == "posts.publish_post":
+        return outcome(review(client, post_at(world, area_key, PostStatus.PENDING), "publish"))
+    if perm == "posts.recheck_post":
+        return outcome(review(client, post_at(world, area_key, PostStatus.PENDING), "recheck"))
+    if perm == "posts.discard_post":
+        return outcome(review(client, post_at(world, area_key, PostStatus.PENDING), "discard"))
+    if perm == "posts.takedown_post":
+        # A citizen post: every holder may take those down in its area (owner's rule of 2026-11-17), so
+        # this probes permission and area only. Whose posts each role may take down: posts/tests/test_transitions.py.
+        return outcome(review(client, citizen_post_at(world, area_key, PostStatus.PUBLISHED), "unpublish"))
+    if perm == "posts.reverse_decision":
+        decided = post_at(world, area_key, PostStatus.DISCARDED, decided_by_role="PANCHAYAT_MEMBER")
+        return outcome(review(client, decided, "reverse", to_status="PUBLISHED"))
+    if perm == "posts.view_review_queue":
+        pending = post_at(world, area_key, PostStatus.PENDING)
+        response = client.get("/api/v1/review/queue/?page_size=100")
+        if not outcome(response):
+            return False
+        return str(pending.id) in {row["id"] for row in response.json()["results"]}
+    if perm == "posts.mark_urgent":
+        published = post_at(world, area_key, PostStatus.PUBLISHED)
+        return outcome(client.post(f"/api/v1/posts/{published.id}/urgent/", {"is_urgent": True}, format="json"))
+    if perm == "posts.view_stats":
+        return outcome(client.get(f"/api/v1/stats/?level={area.level}&area_id={area.id}"))
+    if perm == "service_requests.view_service_requests":
+        # Assigned to the actor: a Panchayat member sees exactly those, inside their own area.
+        request = service_request_at(world, area_key, assigned_to=actor)
+        response = client.get("/api/v1/service-requests/?page_size=100")
+        if not outcome(response):
+            return False
+        return request.id in {row["id"] for row in response.json()["results"]}
+    if perm == "service_requests.manage_service_requests":
+        # It only lets an admin assign a request nobody holds, to an official of the village itself;
+        # changing it is the assignee's (section 16).
+        request = service_request_at(world, area_key)
+        body = {"assigned_to": str(member_at(world, area_key).id)}
+        return outcome(client.patch(f"/api/v1/service-requests/{request.id}/", body, format="json"))
+    if perm == "posts.block_citizen":
+        citizen_post = citizen_post_at(world, area_key)
+        body = {"comment": "probe", "days": 7}
+        return outcome(client.post(f"/api/v1/posts/{citizen_post.id}/block-citizen/", body, format="json"))
+    if perm == "contacts.manage_contact":
+        if area.level == "STATE":
+            body = {"type": "health", "name": "Ambulance", "phone": "108"}
+        else:
+            body = {"type": "official", "name": "Probe office", "phone": "08644222333"}
+        return outcome(client.post("/api/v1/admin/contacts/", {**body, "area": world.area_json(area_key)}, format="json"))
+    if perm in MANAGE_ROLE:
+        # current_password: giving the Super Admin role needs the actor's own (ignored for other roles).
+        body = {"name": "Probe", "username": "probe.new", "role": MANAGE_ROLE[perm], "area": world.area_json(area_key),
+                "current_password": TEST_PASSWORD}
+        return outcome(client.post("/api/v1/users/", body, format="json"))
+    target = member_at(world, area_key)
+    if perm == "accounts.block_user":
+        return outcome(client.post(f"/api/v1/users/{target.id}/block/", {}, format="json"))
+    if perm == "accounts.reset_password":
+        return outcome(client.post(f"/api/v1/users/{target.id}/reset-password/", {}, format="json"))
+    if perm == "accounts.unlock_user":
+        AccessAttempt.objects.create(
+            username=login_key(target.username), ip_address="10.0.0.9", user_agent="probe", failures_since_start=5,
+            attempt_time=timezone.now(), get_data="", post_data="", http_accept="", path_info="/api/v1/auth/login/",
+        )
+        return outcome(client.post(f"/api/v1/users/{target.id}/unlock/", {}, format="json"))
+    if perm == "accounts.reassign_user":
+        assignment = target.role_assignments.get()
+        url = f"/api/v1/users/{target.id}/role-assignments/{assignment.id}/"
+        return outcome(client.patch(url, {"area": world.area_json(area_key)}, format="json"))
+    raise AssertionError(f"No probe for {perm}")
+
+
+#: Held anywhere means allowed for every area: a post may be for any area (owner decision of 2026-10-28).
+ANY_AREA_PROBES = {"posts.create_post", "posts.submit_post"}
+
+
+def expected(key: str, perm: str, area_key: str | None, home: str) -> bool:
+    spec = ROLE_GROUPS[key]
+    held = wanted_permissions(spec)
+    if perm not in held:
+        return False
+    if perm in HELD_PROBES:
+        return True
+    if perm in PLATFORM_PROBES:
+        return spec["platform_wide"]
+    if perm in ANY_AREA_PROBES:
+        return True
+    if perm in USER_PROBES and "accounts.manage_panchayat_member" not in held:
+        return False  # the target is a Panchayat member: the actor must manage them too
+    return spec["platform_wide"] or inside(area_key, home)
+
+
+def test_every_permission_has_a_probe_and_every_group_is_tried():
+    assert {perm for _key, perm, _pos in CASES} == set(ALL_PERMISSIONS)
+    assert {key for key, _perm, _pos in CASES} == set(ROLE_GROUPS)
+    positions = {pos for _key, _perm, pos in CASES}
+    assert positions == {"same", "below", "parent", "sibling", "other", "platform", "held"}
+
+
+@pytest.mark.parametrize("key, perm, position", CASES)
+def test_matrix(api, world, settings, key, perm, position):
+    settings.WALLET_ENABLED = True  # the citizen wallet's endpoints answer 404 while it is off
+    name = ACTOR[key]
+    home = HOME[name]
+    area_key = None if position in ("platform", "held") else target_for(perm, position, home)
+    if key == "CITIZEN":
+        world.users[name] = citizen_account_at(world, home)
+    actor = world.users[name]
+    assert probe(world, api(actor), actor, perm, area_key) == expected(key, perm, area_key, home)
+
+
+def test_matrix_covers_the_map():
+    """The positions are what the docstring says, worked out from conftest.MAP."""
+    assert set(MAP) == {"guntur", "krishna"}
+    assert POSITIONS["tenali"]["other"] not in ("guntur",) and not inside(POSITIONS["tenali"]["other"], "guntur")
+    assert not inside(POSITIONS["kolakaluru"]["other"], "guntur")
+    for home, places in POSITIONS.items():
+        assert inside(places["same"], home)
+        if "below" in places:
+            assert inside(places["below"], home) and places["below"] != home
+        for position in ("parent", "sibling", "other"):
+            if position in places:
+                assert not inside(places[position], home)

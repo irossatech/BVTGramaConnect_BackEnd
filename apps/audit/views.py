@@ -1,0 +1,260 @@
+"""Audit log API for Super Admins: list with filters, CSV export. Contract section 8."""
+
+import io
+import json
+from datetime import date, datetime, time
+from functools import partial
+
+from django.conf import settings
+from django.core.paginator import Paginator
+from django.db.models import Count, Q
+from django.http import HttpResponse
+from django.utils import timezone
+from django.utils.dateparse import parse_date
+from django.utils.translation import gettext as _
+from django.utils.translation import gettext_lazy
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
+from rest_framework import generics, serializers
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.renderers import BaseRenderer
+from rest_framework.views import APIView
+
+from apps.accounts.serializers import describer_from
+from apps.geography.areas import AreaRef
+from grama.csvsafe import safe_writer
+from grama.exceptions import ApiError
+from grama.params import uuid_or_none
+from grama.renderers import JSONRenderer
+from apps.accounts import authz
+from apps.accounts.authentication import client_via
+from apps.accounts.permissions import HasPerm
+
+from .labels import action_label
+from .models import AuditLog, AuditType
+from .services import record
+
+FILTERS = [
+    OpenApiParameter("q", OpenApiTypes.STR, description="Actor name, action, target or role"),
+    OpenApiParameter("type", OpenApiTypes.STR, enum=[t.value for t in AuditType]),
+    OpenApiParameter("actor", OpenApiTypes.UUID),
+    OpenApiParameter("action", OpenApiTypes.STR),
+    OpenApiParameter("from", OpenApiTypes.DATE),
+    OpenApiParameter("to", OpenApiTypes.DATE),
+]
+
+
+class AuditEntrySerializer(serializers.ModelSerializer):
+    at = serializers.DateTimeField(source="created_at")
+    actor = serializers.SerializerMethodField()
+    target = serializers.SerializerMethodField()
+    area = serializers.SerializerMethodField()
+    action_label = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AuditLog
+        fields = ["id", "at", "actor", "action", "action_label", "type", "target_label", "target", "area", "via", "data"]
+
+    def get_action_label(self, obj) -> str:
+        """The action in words, in the request's language (BVTGC-100)."""
+        return action_label(obj.action)
+
+    def get_actor(self, obj) -> dict:
+        if obj.actor_id is None and not obj.actor_name:
+            return {"id": None, "name": "System", "role": "SYSTEM"}
+        return {"id": str(obj.actor_id) if obj.actor_id else None, "name": obj.actor_name, "role": obj.actor_role}
+
+    def get_target(self, obj) -> dict | None:
+        if not obj.target_type:
+            return None
+        return {"type": obj.target_type.split(".")[-1], "id": obj.target_id}
+
+    def get_area(self, obj) -> dict | None:
+        if not obj.area_level or obj.area_id is None:
+            return None
+        return describer_from(self.context).describe(AreaRef(obj.area_level, obj.area_id))
+
+
+def _date(value: str, name: str) -> date:
+    try:
+        day = parse_date(value)
+    except ValueError:  # well formed but impossible, such as 2026-13-40
+        day = None
+    if day is None:
+        raise ApiError("validation_error", _("Use a date like 2026-10-14."), fields={name: [_("Invalid date.")]})
+    return day
+
+
+def _moment(day: date, end: bool = False):
+    return timezone.make_aware(datetime.combine(day, time.max if end else time.min))
+
+
+def audit_window(params) -> tuple[date | None, date | None]:
+    """The first and last day shown (None: no limit that side). Contract section 8, "Which days are shown".
+
+    Decision of 2026-11-20 (replaces the 180-day default of 2026-11-19): no dates, every entry, newest
+    first, in pages; with dates (a range or a month), exactly those days. Nothing is hidden by age.
+    """
+    start = _date(params["from"], "from") if params.get("from") else None
+    end = _date(params["to"], "to") if params.get("to") else None
+    return start, end
+
+
+def window_shown(start: date | None, end: date | None) -> dict:
+    """The answer's "window": the days actually covered. Only `to` given: from the oldest entry."""
+    if start is None:
+        first = AuditLog.objects.order_by("created_at").values_list("created_at", flat=True).first()
+        start = timezone.localdate(first) if first else (end or timezone.localdate())
+    return {"from": start.isoformat(), "to": (end or timezone.localdate()).isoformat()}
+
+
+def filtered(request, *, with_type: bool = True):
+    params = request.query_params
+    start, end = audit_window(params)
+    queryset = AuditLog.objects.all()
+    if start is not None:
+        queryset = queryset.filter(created_at__gte=_moment(start))
+    if end is not None:
+        queryset = queryset.filter(created_at__lte=_moment(end, end=True))
+    query = params.get("q", "").strip()
+    if query:
+        queryset = queryset.filter(
+            Q(actor_name__icontains=query)
+            | Q(action__icontains=query)
+            | Q(target_label__icontains=query)
+            | Q(actor_role__icontains=query)
+        )
+    if params.get("actor"):
+        actor = uuid_or_none(params["actor"])
+        if actor is None:
+            raise ApiError("validation_error", _("Give a user id."), fields={"actor": [_("Not a user id.")]})
+        queryset = queryset.filter(actor_id=actor)
+    if params.get("action"):
+        queryset = queryset.filter(action=params["action"])
+    if with_type and params.get("type"):
+        queryset = queryset.filter(type=params["type"])
+    return queryset
+
+
+VIEW = "audit.view_audit_log"
+EXPORT = "audit.export_audit_log"
+
+
+def in_reach(request, queryset, perm: str):
+    """Entries inside the areas where the user holds `perm`; entries without an area need it platform-wide."""
+    scope = authz.area_q(request.user, perm)
+    if not authz.can(request.user, perm, authz.PLATFORM):
+        scope &= ~Q(area_level="")
+    return queryset.filter(scope)
+
+
+class KnownCountPaginator(Paginator):
+    """A Django paginator told its row count, so it never runs a COUNT(*) of its own."""
+
+    def __init__(self, *args, count: int, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._known_count = count
+
+    @property
+    def count(self) -> int:
+        return self._known_count
+
+
+class AuditListView(generics.ListAPIView):
+    permission_classes = [IsAuthenticated, HasPerm(VIEW, message=gettext_lazy("Only Super Admins can read the audit log."))]
+    serializer_class = AuditEntrySerializer
+
+    def get_queryset(self):
+        return in_reach(self.request, filtered(self.request), VIEW).order_by("-created_at")
+
+    @extend_schema(summary="Audit log", parameters=FILTERS)
+    def get(self, request, *args, **kwargs):
+        # One grouped count per page view. It gives the tabs' counts and, from them, the page total:
+        # the same filters without the type tab, so the total is one tab's count or the sum of all.
+        rows = in_reach(request, filtered(request, with_type=False), VIEW).order_by().values("type").annotate(n=Count("id"))
+        found = {row["type"]: row["n"] for row in rows}
+        wanted = request.query_params.get("type")
+        total = found.get(wanted, 0) if wanted else sum(found.values())
+        self.paginator.django_paginator_class = partial(KnownCountPaginator, count=total)
+
+        page = self.paginate_queryset(self.get_queryset())
+        context = self.get_serializer_context()
+        describer_from(context).prime(
+            [AreaRef(e.area_level, e.area_id) for e in page if e.area_level and e.area_id is not None]
+        )
+        response = self.get_paginated_response(AuditEntrySerializer(page, many=True, context=context).data)
+        by_type = {t.value: 0 for t in AuditType}
+        by_type.update(found)
+        response.data["counts_by_type"] = by_type
+        response.data["window"] = window_shown(*audit_window(request.query_params))
+        return response
+
+
+class CSVRenderer(BaseRenderer):
+    """Lets ?format=csv through DRF's content negotiation. Errors still go out as JSON text."""
+
+    media_type = "text/csv"
+    format = "csv"
+    charset = "utf-8"
+
+    def render(self, data, accepted_media_type=None, renderer_context=None):
+        if isinstance(data, (dict, list)):
+            return json.dumps(data, ensure_ascii=False).encode("utf-8")
+        return data
+
+
+#: The export's columns, in file order. Its row limit is settings.AUDIT_EXPORT_MAX_ROWS.
+EXPORT_COLUMNS = (
+    "created_at", "actor_name", "actor_role", "action", "type", "target_label", "area_level", "area_id", "via",
+)
+
+
+def too_many_rows(limit: int) -> ApiError:
+    message = _("More than %(n)d entries match. Choose a shorter date range.") % {"n": limit}
+    return ApiError("validation_error", message, fields={"from": [message], "to": [message]})
+
+
+#: Filters whose values hold no personal data; they are kept in the export's audit entry.
+PLAIN_FILTERS = ("type", "actor", "action", "from", "to", "format")
+
+
+def export_filters(params) -> dict:
+    """What the export was filtered by. A search text (q) can be an email or mobile number, and the
+    audit log is never cleaned, so only the fact that one was given is kept, never its value."""
+    filters = {name: params.get(name) for name in PLAIN_FILTERS if params.get(name)}
+    if params.get("q"):
+        filters["q"] = "(given)"
+    return filters
+
+
+class AuditExportView(APIView):
+    permission_classes = [IsAuthenticated, HasPerm(EXPORT, message=gettext_lazy("Only Super Admins can download the audit log."))]
+    renderer_classes = [JSONRenderer, CSVRenderer]
+
+    @extend_schema(summary="Audit log as CSV", parameters=[*FILTERS, OpenApiParameter("format", OpenApiTypes.STR, enum=["csv"])], responses={(200, "text/csv"): OpenApiTypes.BINARY})
+    def get(self, request):
+        if request.query_params.get("format", "csv") != "csv":
+            raise ApiError("validation_error", _("Only CSV export is available."), fields={"format": ["csv"]})
+        limit = settings.AUDIT_EXPORT_MAX_ROWS
+        matching = in_reach(request, filtered(request), EXPORT).order_by("-created_at")
+        # Never a silently cut file (owner decision of 2026-11-11): too many rows is a 400, and nothing is audited.
+        if matching[: limit + 1].count() > limit:
+            raise too_many_rows(limit)
+        # Only the columns the file holds (never the JSON `data`), read in chunks rather than all at once.
+        rows = matching.values_list(*EXPORT_COLUMNS)[:limit].iterator(chunk_size=2000)
+        buffer = io.StringIO()
+        writer = safe_writer(buffer)  # names and titles never run as spreadsheet formulas
+        # "what_happened" (BVTGC-100) is the action in words, in the request's language; added last so
+        # the existing columns keep their places.
+        writer.writerow(["time", "user", "role", "action", "type", "target", "area_level", "area_id", "via", "what_happened"])
+        for created_at, actor_name, actor_role, action, kind, target_label, area_level, area_id, via in rows:
+            writer.writerow([
+                timezone.localtime(created_at).strftime("%Y-%m-%d %H:%M:%S"),
+                actor_name or "System", actor_role, action, kind,
+                target_label, area_level, area_id or "", via, action_label(action),
+            ])
+        record("report.exported", actor=request.user, via=client_via(request),
+               data={"report": "audit", "filters": export_filters(request.query_params)})
+        response = HttpResponse("﻿" + buffer.getvalue(), content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = f'attachment; filename="audit-{timezone.localdate():%Y%m%d}.csv"'
+        return response

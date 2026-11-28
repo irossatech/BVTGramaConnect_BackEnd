@@ -1,0 +1,85 @@
+# The whole test suite and the migration check on every pull request into dev (audit BE_01, BE-CI-001).
+# .claude/conventions.md: "Every pull request keeps the whole suite green" and
+# "Before every pull request run python manage.py makemigrations --check --dry-run".
+# Make this job a required check in the dev branch protection, with the three security scans.
+name: Tests
+
+on:
+  pull_request:
+    branches: [dev]
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    name: pytest and migrations (Python ${{ matrix.python }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      # mysqlclient in requirements.txt builds from source on Linux.
+      - run: sudo apt-get update && sudo apt-get install -y pkg-config default-libmysqlclient-dev
+      - run: python -m pip install -r requirements.txt
+      - name: No model change without its migration
+        run: python manage.py makemigrations --check --dry-run
+      - name: Test suite (SQLite)
+        run: python -m pytest -q -p no:logging
+
+  # The same suite on the server databases (BVTGC-17): MariaDB as on the qa server, and PostgreSQL, the
+  # other choice open in BVTGC-38. Django creates and drops its own test_grama database in the container.
+  # Each job starts only its own database (finding BE-CI-201): the image, port and health check come from
+  # the matrix; each image reads only its own variables below and ignores the other's.
+  real-database:
+    name: pytest on ${{ matrix.db }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - db: MariaDB 11.4
+            url: mysql://root:ci@127.0.0.1:3306/grama
+            image: mariadb:11.4
+            port: "3306:3306"
+            health: healthcheck.sh --connect --innodb_initialized
+          - db: PostgreSQL 17
+            url: postgres://postgres:ci@127.0.0.1:5432/grama
+            image: postgres:17
+            port: "5432:5432"
+            health: pg_isready -U postgres
+    services:
+      database:
+        image: ${{ matrix.image }}
+        env:
+          MARIADB_ROOT_PASSWORD: ci
+          MARIADB_DATABASE: grama
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: grama
+        ports: ["${{ matrix.port }}"]
+        options: >-
+          --health-cmd "${{ matrix.health }}"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      TEST_DATABASE_URL: ${{ matrix.url }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: sudo apt-get update && sudo apt-get install -y pkg-config default-libmysqlclient-dev
+      - run: python -m pip install -r requirements.txt
+      - name: Test suite (${{ matrix.db }})
+        run: python -m pytest -q -p no:logging

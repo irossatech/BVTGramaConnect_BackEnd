@@ -1,0 +1,14 @@
+# Managed by BVT Grama Connect deploy/setup.sh. Edit the template, not this file.
+[DEFAULT]
+bantime  = 1h
+findtime = 10m
+maxretry = 5
+ignoreip = 127.0.0.1/8 ::1
+
+[sshd]
+enabled  = true
+port     = @SSH_PORT@
+backend  = systemd
+
+# No Nginx jail: Nginx's own limit_req zones (gramaconnect-locations.conf, put back by BVTGC-105) answer
+# 429 themselves, and Django locks out failed logins (django-axes). fail2ban watches SSH only.

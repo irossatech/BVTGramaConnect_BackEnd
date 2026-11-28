@@ -1,0 +1,70 @@
+"""Listen to posts.signals and accounts.signals.super_admin_added. Both are sent after commit; a
+receiver must never raise, because the change it reports has already been saved."""
+
+import logging
+
+from django.conf import settings
+from django.dispatch import receiver
+from django_q.tasks import async_task
+
+from apps.accounts.signals import super_admin_added
+from apps.posts.signals import post_decided, post_escalated, post_published, post_submitted
+
+from . import services
+from .models import NotificationKind
+
+logger = logging.getLogger("grama.notifications")
+
+
+def _safely(func, *args, **kwargs):
+    try:
+        func(*args, **kwargs)
+    except Exception:
+        logger.exception("Notification step %s failed", func.__name__)
+
+
+@receiver(post_published, dispatch_uid="notifications.post_published")
+def on_post_published(sender, post, **kwargs):
+    _safely(services.announce_to_citizens, post)
+
+
+@receiver(post_submitted, dispatch_uid="notifications.post_submitted")
+def on_post_submitted(sender, post, **kwargs):
+    def notify():
+        services.notify_users(
+            services.reviewers_for(post),
+            post=post,
+            kind=NotificationKind.REVIEW_PENDING,
+            template_key="review_pending",
+        )
+
+    _safely(notify)
+
+
+@receiver(post_decided, dispatch_uid="notifications.post_decided")
+def on_post_decided(sender, post, action=None, actor=None, **kwargs):
+    _safely(services.tell_author, post, actor)
+    _safely(services.tell_citizen, post)
+
+
+def _escalation_hours() -> int:
+    try:
+        from apps.posts.services import runtime
+
+        return int(runtime("REVIEW_ESCALATION_HOURS"))
+    except Exception:
+        return int(settings.REVIEW_ESCALATION_HOURS)
+
+
+@receiver(post_escalated, dispatch_uid="notifications.post_escalated")
+def on_post_escalated(sender, post, level=None, **kwargs):
+    # A job per post: the escalation run stays short, and one post's alerts never hold up the others'.
+    _safely(
+        async_task, "apps.notifications.tasks.alert_escalation", str(post.pk), level, _escalation_hours(),
+        group="alerts",
+    )
+
+
+@receiver(super_admin_added, dispatch_uid="notifications.super_admin_added")
+def on_super_admin_added(sender, actor, user, **kwargs):
+    _safely(services.tell_super_admins, actor, user)

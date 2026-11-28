@@ -1,0 +1,6 @@
+{% autoescape off %}Subject: Your Grama Connect email was changed
+Your account's email was changed to {{ new_email_hint }}. This address will no longer get codes.
+
+If this wasn't you, call the help line in the app at once.
+
+Please don't reply; this mailbox isn't read.{% endautoescape %}

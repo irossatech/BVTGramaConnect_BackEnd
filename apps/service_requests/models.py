@@ -1,0 +1,163 @@
+"""Services and citizens' service requests. docs/api-contract.md, section 16.
+
+The Super Admin manages the list of services (Service) the app shows on Home.
+A citizen's phone (citizens.CitizenDevice, no login) asks for one of them; the
+request belongs to the phone's village and is assigned to that village's
+Village Admin automatically. The admins of the village, its mandal and district
+and the Super Admin handle it. Every change is kept in ServiceRequestEvent;
+`note` is the latest note, which the citizen sees.
+
+The first version (fixed service list) was removed in migration 0002; this one
+starts at 0003.
+"""
+
+from django.conf import settings
+from django.db import models
+from django.utils import translation
+from django.utils.translation import gettext_lazy as _
+
+from apps.geography.models import AreaLevel
+
+#: Icons the app draws (the server only checks the key).
+ICONS = [
+    "aadhaar", "eci", "id_badge", "card",
+    "certificate", "document", "scheme", "loan",
+    "land", "farmer", "house", "ration",
+    "health", "education", "pension", "women",
+    "job", "water", "power", "police",
+    "help", "services",
+]
+COLORS = ["orange", "blue", "green", "purple", "teal"]
+#: The icon a service gets when the Super Admin picks none (a logo usually replaces it).
+DEFAULT_ICON = "services"
+
+
+def service_logo_path(instance, filename):
+    return f"services/{filename}"
+
+
+class Service(models.Model):
+    """One service on the citizen's Home, hidden with is_active. Deleted only while hidden and unused by any
+    request, such as one added by mistake (2026-11-26); edited only while hidden.
+
+    The app shows `logo` (an image the Super Admin uploaded) when there is one, else draws `icon`.
+    """
+
+    #: Made by the server from name_en on create; never changes. Requests refer to it.
+    key = models.SlugField(max_length=40, unique=True)
+    name_en = models.CharField(max_length=60)
+    name_te = models.CharField(max_length=60, blank=True)
+    #: The grey example in the citizen's request box ("e.g. apply for a new PAN card"). Empty: the app shows its own.
+    hint_en = models.CharField(max_length=100, blank=True, default="")
+    hint_te = models.CharField(max_length=100, blank=True, default="")
+    icon = models.CharField(max_length=30, choices=[(icon, icon) for icon in ICONS], default=DEFAULT_ICON)
+    #: Optional uploaded logo, re-encoded as WebP by services.process_logo. Empty: the app draws `icon`.
+    logo = models.FileField(upload_to=service_logo_path, max_length=200, blank=True)
+    color = models.CharField(max_length=10, choices=[(color, color) for color in COLORS])
+    is_active = models.BooleanField(default=True)
+    order = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["order", "id"]
+        permissions = [("manage_services", "Add, change, hide and reorder the services citizens ask for")]
+
+    def __str__(self):
+        return self.name_en
+
+    def display_name(self, language: str) -> str:
+        """Telugu when asked for and filled in, else English."""
+        if (language or "te").startswith("te") and self.name_te:
+            return self.name_te
+        return self.name_en
+
+
+class RequestStatus(models.TextChoices):
+    NEW = "NEW", _("New")
+    APPROVED = "APPROVED", _("Approved")
+    IN_PROGRESS = "IN_PROGRESS", _("In progress")
+    COMPLETED = "COMPLETED", _("Completed")
+    REJECTED = "REJECTED", _("Rejected")
+    #: Set only by the citizen who sent it, while it is still open (owner's decision of 2026-11-18). Final.
+    CANCELLED = "CANCELLED", _("Cancelled")
+
+
+#: A citizen may cancel a request in these statuses; Completed, Rejected and Cancelled are final for them.
+CANCELLABLE = (RequestStatus.NEW, RequestStatus.APPROVED, RequestStatus.IN_PROGRESS)
+
+def status_label(status: str, language: str) -> str:
+    """The status's name in the push recipient's language, Telugu or English (locale/te: the Telugu)."""
+    with translation.override(language or "te"):
+        return str(RequestStatus(status).label)
+
+
+class ServiceRequest(models.Model):
+    service = models.ForeignKey(
+        Service, to_field="key", db_column="service", on_delete=models.PROTECT, related_name="requests"
+    )
+    name = models.CharField(max_length=100)
+    phone = models.CharField(max_length=10)
+    email = models.EmailField(blank=True)
+    address = models.TextField(max_length=300)
+    details = models.TextField(max_length=500, blank=True)
+    #: The phone's village when the request was made.
+    village = models.ForeignKey("geography.Village", on_delete=models.PROTECT, related_name="service_requests")
+    #: Always VILLAGE: with village_id it is the (level, id) pair authz.area_q filters on.
+    area_level = models.CharField(max_length=10, default=AreaLevel.VILLAGE, editable=False)
+    device = models.ForeignKey("citizens.CitizenDevice", on_delete=models.PROTECT, related_name="service_requests")
+    status = models.CharField(max_length=12, choices=RequestStatus.choices, default=RequestStatus.NEW)
+    assigned_to = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="service_requests"
+    )
+    #: The latest note to the citizen.
+    note = models.TextField(max_length=500, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    # The app's random id for this create (MOB-ERR-004): the same id from the same install is a repeat
+    # after a lost answer and gets this request back. Empty for older apps.
+    client_ref = models.UUIDField(null=True, blank=True, editable=False)
+
+    class Meta:
+        ordering = ["-updated_at", "-id"]
+        # No condition (MySQL has no partial indexes); rows with an empty client_ref never clash.
+        constraints = [models.UniqueConstraint(fields=["device", "client_ref"], name="svcreq_device_client_ref")]
+        indexes = [
+            models.Index(fields=["village", "status"]),
+            models.Index(fields=["assigned_to", "status"]),
+            models.Index(fields=["device", "created_at"]),
+            models.Index(fields=["updated_at"]),  # officials' list order, newest change first (audit BE-DB-007)
+        ]
+        # Checked per area by accounts.authz (docs/authorization.md).
+        permissions = [
+            ("view_service_requests", "See citizens' service requests of the area, or those assigned to you"),
+            ("manage_service_requests", "Change the status of, assign and answer service requests of the area"),
+        ]
+
+    def __str__(self):
+        return f"{self.service_id} request {self.pk}"
+
+
+class ServiceRequestEvent(models.Model):
+    """One change to a request: a new status, a new assignee, a note, or several at once.
+
+    `by` is empty for the system (the automatic assignment on create) and for the citizen, who has no
+    user account: `by_citizen` tells the citizen's cancel apart (its `note` is their reason).
+    """
+
+    request = models.ForeignKey(ServiceRequest, on_delete=models.CASCADE, related_name="history")
+    at = models.DateTimeField(auto_now_add=True)
+    by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    by_citizen = models.BooleanField(default=False)
+    #: The key of the group the official acted under, for display.
+    by_role = models.CharField(max_length=20, blank=True)
+    #: Empty when the status did not change.
+    status = models.CharField(max_length=12, choices=RequestStatus.choices, blank=True)
+    assigned_changed = models.BooleanField(default=False)
+    assigned_to = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    note = models.TextField(max_length=500, blank=True)
+
+    class Meta:
+        ordering = ["at", "id"]

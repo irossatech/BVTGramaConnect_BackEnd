@@ -1,0 +1,309 @@
+"""Public website API, docs/api-contract.md section 9.
+
+- GET  /public/site-config/        contact details, store links, website link, help lines
+- GET  /public/showcase/           live posts for the home page's phone picture
+- POST /public/contact-messages/   the Contact page form
+- GET/PATCH /admin/contact-messages/  Super Admins read and close them in the console
+  (GET with contact=0: rows without the mobile and message; GET {id}/: one message in full)
+"""
+
+
+from django.conf import settings
+from django.db import transaction
+from django.db.models import Count, Q
+from django.utils import timezone
+from django.utils.decorators import method_decorator
+from django.utils.translation import gettext as _
+from django.utils.translation import gettext_lazy
+from django.views.decorators.cache import cache_control
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
+from rest_framework import generics, serializers, status
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from apps.accounts.serializers import MobileField
+from apps.audit.services import record
+from apps.feed.serializers import FeedItemSerializer
+from apps.feed.views import describer_with, published_posts, targets_for_village
+from apps.geography.areas import AreaRef
+from apps.geography.models import AreaLevel, Village
+from apps.posts.sharing import invite_url
+from apps.accounts.authentication import client_via
+from apps.accounts.permissions import PLATFORM, HasPerm
+from grama.exceptions import ApiError
+
+from .models import ContactMessage
+
+
+class SiteConfigSerializer(serializers.Serializer):
+    play_store_url = serializers.CharField(allow_blank=True)
+    website_url = serializers.CharField()
+    invite_url = serializers.CharField(allow_null=True, help_text="PUBLIC_BASE_URL + app/; null until it is set")
+    helplines = serializers.ListField(child=serializers.DictField())
+
+
+class ContactMessageSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=120)
+    mobile = MobileField()
+    #: Required, as on the website's form: a script cannot leave it out either.
+    village_text = serializers.CharField(max_length=200)
+    message = serializers.CharField(max_length=2000)
+    language = serializers.ChoiceField(choices=[("te", "te"), ("en", "en")], default="te")
+    #: Honeypot. The website keeps this hidden and empty; bots fill it in.
+    website = serializers.CharField(required=False, allow_blank=True, default="")
+
+    def validate_name(self, value):
+        value = " ".join(value.split())
+        if not value:
+            raise serializers.ValidationError(_("Enter your name."))
+        return value
+
+    def validate_village_text(self, value):
+        value = " ".join(value.split())
+        if not value:
+            raise serializers.ValidationError(_("Enter your village."))
+        return value
+
+    def validate_message(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError(_("Enter a message."))
+        return value
+
+
+class PublicView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes: list = []
+
+
+def helplines() -> list[dict]:
+    """The state's helplines from apps.contacts; SITE_HELPLINES while none are loaded."""
+    from apps.contacts.selectors import statewide_helplines
+    from apps.contacts.services import default_state
+
+    state = default_state()
+    rows = sorted(
+        statewide_helplines(state.id if state else None),
+        key=lambda c: (c.sort_order, c.type.sort_order, c.name.casefold()),
+    )
+    if not rows:
+        return settings.SITE_HELPLINES
+    return [{"number": c.phone, "label_te": c.name_te or c.type.name_te, "label_en": c.name} for c in rows]
+
+
+@method_decorator(cache_control(public=True, max_age=300), name="dispatch")
+class SiteConfigView(PublicView):
+    @extend_schema(summary="Store, website and invite links and helplines", responses=SiteConfigSerializer)
+    def get(self, request):
+        return Response(
+            {
+                "play_store_url": settings.PLAY_STORE_URL,
+                "website_url": settings.SITE_WEBSITE_URL,
+                "invite_url": invite_url(),
+                "helplines": helplines(),
+            }
+        )
+
+
+class ContactMessageView(PublicView):
+    @extend_schema(
+        summary="Send a message from the website's Contact page",
+        request=ContactMessageSerializer,
+        responses={201: inline_serializer("ContactMessageCreated", {"id": serializers.IntegerField(), "created_at": serializers.DateTimeField()})},
+    )
+    def post(self, request):
+        data = ContactMessageSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        values = data.validated_data
+        # No limit on how many messages one address sends (decision of 2026-11-20), and the sender's
+        # IP address is not stored (BVTGC-103). The hidden `website` field still stops simple bots.
+
+        if values["website"]:
+            # Pretend success so bots learn nothing; store nothing.
+            return Response({"id": 0, "created_at": timezone.now()}, status=status.HTTP_201_CREATED)
+
+        message = ContactMessage.objects.create(
+            name=values["name"],
+            mobile=values["mobile"],
+            village_text=values["village_text"].strip(),
+            message=values["message"],
+            language=values["language"],
+        )
+        return Response({"id": message.id, "created_at": message.created_at}, status=status.HTTP_201_CREATED)
+
+
+# --- Showcase: live posts for the home page's phone picture (owner decision Q16) ---------
+
+
+@method_decorator(cache_control(public=True, max_age=60), name="dispatch")
+class ShowcaseView(PublicView):
+    @extend_schema(
+        summary="Live posts for the home page's phone picture",
+        responses=inline_serializer(
+            "Showcase",
+            {
+                "location": serializers.DictField(allow_null=True),
+                "featured": FeedItemSerializer(allow_null=True),
+                "items": FeedItemSerializer(many=True),
+            },
+        ),
+    )
+    def get(self, request):
+        location = None
+        posts = []
+        village_id = settings.SITE_SHOWCASE_VILLAGE_ID
+        if village_id and Village.objects.active().filter(id=village_id).exists():
+            location = AreaRef(AreaLevel.VILLAGE, village_id)
+            posts = list(published_posts().filter(targets_for_village(village_id)).order_by("-published_at", "-id")[:10])
+        if not posts:
+            location = None
+            posts = list(published_posts().order_by("-published_at", "-id")[:10])
+        with_photo = [post for post in posts if post.thumbnail_name]
+        featured = with_photo[0] if with_photo else (posts[0] if posts else None)
+        items = [post for post in posts if post is not featured][:2]
+        if featured is not None and location is None:
+            location = featured.target
+        shown = [post for post in [featured, *items] if post is not None]
+        describer = describer_with(shown)
+        if location is not None:
+            describer.prime([location])
+        place = describer.describe(location) if location is not None else None
+        context = {"request": request, "describer": describer}
+        return Response(
+            {
+                "location": {key: place[key] for key in ("level", "id", "name")} if place else None,
+                "featured": FeedItemSerializer(featured, context=context).data if featured else None,
+                "items": FeedItemSerializer(items, many=True, context=context).data,
+            }
+        )
+
+
+# --- Contact messages in the console (owner decision Q16) ------------------------------
+
+
+MANAGE_CONTACT = HasPerm("web_public.manage_contact_messages", PLATFORM, gettext_lazy("Only Super Admins can do this."))
+
+
+class ContactMessageAdminSerializer(serializers.ModelSerializer):
+    handled_by = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ContactMessage
+        fields = [
+            "id", "name", "mobile", "village_text", "message", "language",
+            "created_at", "handled", "handled_at", "handled_by",
+        ]
+
+    def get_handled_by(self, obj) -> dict | None:
+        if obj.handled_by_id is None:
+            return None
+        return {"id": str(obj.handled_by_id), "name": obj.handled_by.name}
+
+
+class ContactMessageRowSerializer(ContactMessageAdminSerializer):
+    """A list row for the console's table (`contact=0`, audit WEB-DP-001): no full mobile and no message,
+    only the mobile's last 4 digits. GET /admin/contact-messages/{id}/ has everything."""
+
+    mobile_last4 = serializers.SerializerMethodField()
+
+    class Meta(ContactMessageAdminSerializer.Meta):
+        fields = [
+            *(name for name in ContactMessageAdminSerializer.Meta.fields if name not in ("mobile", "message")),
+            "mobile_last4",
+        ]
+
+    def get_mobile_last4(self, obj) -> str:
+        return (obj.mobile or "")[-4:]
+
+
+class ContactHandledSerializer(serializers.Serializer):
+    handled = serializers.BooleanField()
+
+
+class ContactMessageListView(generics.ListAPIView):
+    permission_classes = [IsAuthenticated, MANAGE_CONTACT]
+    serializer_class = ContactMessageAdminSerializer
+
+    def _searched(self):
+        """Every message, however old (decision of 2026-11-20: nothing is hidden by age), narrowed by `q` only."""
+        queryset = ContactMessage.objects.select_related("handled_by").order_by("-created_at", "-id")
+        query = self.request.query_params.get("q", "").strip()
+        if query:
+            queryset = queryset.filter(
+                Q(name__icontains=query) | Q(mobile__contains=query)
+                | Q(village_text__icontains=query) | Q(message__icontains=query)
+            )
+        return queryset
+
+    def get_queryset(self):
+        queryset = self._searched()
+        wanted = self.request.query_params.get("status", "").strip().lower()
+        if wanted == "new":
+            queryset = queryset.filter(handled=False)
+        elif wanted == "handled":
+            queryset = queryset.filter(handled=True)
+        elif wanted:
+            raise ApiError("validation_error", _("Status is new or handled."), fields={"status": ["new", "handled"]})
+        return queryset
+
+    @extend_schema(
+        summary="Website contact messages, newest first",
+        parameters=[OpenApiParameter("contact", OpenApiTypes.STR, enum=["0"],
+                                     description="0: rows without the mobile and the message, with mobile_last4")],
+    )
+    def get(self, request, *args, **kwargs):
+        response = super().get(request, *args, **kwargs)
+        # The pills' numbers (2026-11-20): every filter but `status`, as GET /posts/ does. One query.
+        counts = self._searched().order_by().aggregate(
+            all=Count("id"), new=Count("id", filter=Q(handled=False)), handled=Count("id", filter=Q(handled=True)),
+        )
+        response.data["status_counts"] = {"new": counts["new"], "handled": counts["handled"], "all": counts["all"]}
+        return response
+
+    def get_serializer_class(self):
+        # The console's table shows a masked mobile and no message; its View panel reads one message.
+        # The app's list (no contact=0) is unchanged.
+        if self.request.query_params.get("contact") == "0":
+            return ContactMessageRowSerializer
+        return ContactMessageAdminSerializer
+
+
+class ContactMessageDetailView(APIView):
+    permission_classes = [IsAuthenticated, MANAGE_CONTACT]
+
+    @extend_schema(summary="One contact message, with the full mobile and message", responses=ContactMessageAdminSerializer)
+    def get(self, request, pk):
+        message = ContactMessage.objects.select_related("handled_by").filter(pk=pk).first()
+        if message is None:
+            raise ApiError("not_found", _("No such message."), status=404)
+        return Response(ContactMessageAdminSerializer(message).data)
+
+    @extend_schema(summary="Mark a contact message handled, or open it again", request=ContactHandledSerializer, responses=ContactMessageAdminSerializer)
+    def patch(self, request, pk):
+        message = ContactMessage.objects.select_related("handled_by").filter(pk=pk).first()
+        if message is None:
+            raise ApiError("not_found", _("No such message."), status=404)
+        data = ContactHandledSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        handled = data.validated_data["handled"]
+        # One conditional UPDATE and its audit entry in one transaction: two admins clicking at the same
+        # moment change it once and audit it once, and a failed audit undoes the change (BE-ARC-202).
+        with transaction.atomic():
+            changed = ContactMessage.objects.filter(pk=message.pk, handled=not handled).update(
+                handled=handled,
+                handled_at=timezone.now() if handled else None,
+                handled_by=request.user if handled else None,
+            )
+            if changed:
+                record(
+                    "contact.handled" if handled else "contact.reopened",
+                    actor=request.user,
+                    target=message,
+                    target_label=f"#{message.id}",  # never the sender's name or number
+                    via=client_via(request),
+                )
+        message = ContactMessage.objects.select_related("handled_by").get(pk=message.pk)
+        return Response(ContactMessageAdminSerializer(message).data)
+

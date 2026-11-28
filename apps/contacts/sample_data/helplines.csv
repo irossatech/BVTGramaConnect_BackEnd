@@ -1,0 +1,7 @@
+type,name,name_te,phone,sort_order
+emergency,Emergency,అత్యవసరం,112,10
+health,Ambulance,అంబులెన్స్,108,20
+police,Cyber fraud,సైబర్ మోసం,1930,30
+women,Women helpline,మహిళా హెల్ప్‌లైన్,181,40
+women,Child helpline,బాలల హెల్ప్‌లైన్,1098,50
+power,Electricity,విద్యుత్,1912,60

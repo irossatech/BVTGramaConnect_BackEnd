@@ -1,0 +1,340 @@
+"""A phone gets its posting token: challenge, Play Integrity, limits. Contract section 15."""
+
+import hashlib
+import time
+
+import pytest
+from rest_framework.test import APIClient
+
+from apps.audit.models import AuditLog
+from apps.citizens import integrity
+from apps.citizens.models import CitizenDevice
+from apps.geography.models import Village
+
+from .conftest import CHALLENGE, ME, REGISTER, nonce, register
+
+pytestmark = pytest.mark.django_db
+
+
+def code(response):
+    return response.json()["error"]["code"]
+
+
+def test_challenge_gives_a_fresh_single_use_nonce():
+    data = APIClient().post(CHALLENGE).json()
+    assert data["expires_in"] == 300
+    assert integrity.nonce_is_fresh(data["nonce"])
+    assert set(data["nonce"]) <= set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")  # base64url
+
+
+def test_register_returns_the_token_once_and_stores_only_its_hash(world):
+    response = register(world)
+    assert response.status_code == 201
+    data = response.json()
+    token = data["token"]
+    assert len(token) >= 40
+    assert data["device"]["village"] == {"level": "VILLAGE", "id": world.areas["kolakaluru"].id, "name": "కొలకలూరు"}
+    assert data["device"]["blocked"] is False and data["device"]["posts_per_day"] == 5
+    assert data["device"]["block_reason"] is None and data["device"]["blocked_until"] is None
+    device = CitizenDevice.objects.get()
+    assert device.token_hash == hashlib.sha256(token.encode()).hexdigest()
+    assert token not in str(CitizenDevice.objects.values().get())
+    assert device.integrity_checked is False  # dev and tests: CITIZEN_INTEGRITY_REQUIRED off
+    me = APIClient(HTTP_X_CITIZEN_TOKEN=token).get(ME)
+    assert me.status_code == 200 and me.json()["id"] == str(device.id)
+
+
+def test_registration_is_audited_without_ip_or_token(world):
+    token = register(world).json()["token"]
+    entry = AuditLog.objects.get(action="citizen.registered")
+    assert entry.via == "citizen" and entry.actor is None
+    assert entry.data == {"platform": "android", "integrity_checked": False, "reinstall": False}
+    assert "10.20.30.40" not in str(entry.__dict__) and token not in str(entry.__dict__)
+
+
+def test_the_android_id_is_stored_only_hashed_and_marks_a_reinstall(world):
+    register(world, android_id="a1b2c3d4e5f60718")
+    register(world, android_id="A1B2C3D4E5F60718", ip="10.9.9.9")  # same phone after a reinstall
+    first, second = CitizenDevice.objects.order_by("created_at")
+    assert first.android_id_hash == second.android_id_hash and len(first.android_id_hash) == 64
+    assert "a1b2c3d4e5f60718" not in str(CitizenDevice.objects.values().first()).lower()
+    entries = list(AuditLog.objects.filter(action="citizen.registered").order_by("created_at").values_list("data", flat=True))
+    assert [e["reinstall"] for e in entries] == [False, True]
+
+
+def test_push_token_and_language_at_registration_and_later(world):
+    token = register(world, fcm_token="fcm-abc", language="en").json()["token"]
+    device = CitizenDevice.objects.get()
+    assert (device.fcm_token, device.language) == ("fcm-abc", "en")
+    client = APIClient(HTTP_X_CITIZEN_TOKEN=token)
+    response = client.patch(ME, {"fcm_token": "fcm-new", "language": "te"}, format="json")
+    assert response.status_code == 200 and response.json()["language"] == "te"
+    device.refresh_from_db()
+    assert (device.fcm_token, device.language) == ("fcm-new", "te")
+
+
+def test_a_nonce_works_once(world):
+    used = nonce()
+    body = {"nonce": used, "platform": "android", "village_id": world.areas["kolakaluru"].id}
+    assert APIClient().post(REGISTER, body, format="json").status_code == 201
+    again = APIClient().post(REGISTER, body, format="json")
+    assert again.status_code == 400 and "nonce" in again.json()["error"]["fields"]
+
+
+@pytest.mark.parametrize("bad", ["", "not-a-nonce", "A" * 86])
+def test_forged_nonces_are_refused(world, bad):
+    body = {"nonce": bad or "x", "platform": "android", "village_id": world.areas["kolakaluru"].id}
+    response = APIClient().post(REGISTER, body, format="json")
+    assert response.status_code == 400 and "nonce" in response.json()["error"]["fields"]
+
+
+def test_an_old_nonce_is_refused(world):
+    old = integrity.new_nonce(now=time.time() - 301)
+    body = {"nonce": old, "platform": "android", "village_id": world.areas["kolakaluru"].id}
+    assert APIClient().post(REGISTER, body, format="json").status_code == 400
+
+
+def test_the_village_must_be_active(world):
+    Village.objects.filter(pk=world.areas["kolakaluru"].pk).update(is_active=False)
+    response = register(world)
+    assert response.status_code == 400 and "village_id" in response.json()["error"]["fields"]
+    assert register(world, village="nandivelugu").status_code == 201
+
+
+def test_no_registration_limit_by_default(world):
+    for _ in range(12):
+        assert register(world, ip="10.0.0.1").status_code == 201
+    assert CitizenDevice.objects.count() == 12
+
+
+def test_a_registration_limit_per_ip_can_be_switched_on(world, settings):
+    settings.CITIZEN_REGISTRATIONS_PER_IP_PER_DAY = 5
+    for _ in range(5):
+        assert register(world, ip="10.0.0.1").status_code == 201
+    sixth = register(world, ip="10.0.0.1")
+    assert sixth.status_code == 429 and code(sixth) == "throttled"
+    assert 86000 < sixth.json()["error"]["retry_after_s"] <= 86401 and sixth["Retry-After"]
+    assert register(world, ip="10.0.0.2").status_code == 201  # another network is not affected
+    assert not CitizenDevice.objects.filter(registered_ip_hash="").exists()
+    assert "10.0.0.1" not in str(list(CitizenDevice.objects.values_list("registered_ip_hash", flat=True)))
+
+
+# --- Play Integrity required (production) ---------------------------------------------------------
+
+
+class Verifier:
+    calls = []
+    failure = None
+
+    def verify(self, integrity_token, nonce):
+        Verifier.calls.append((integrity_token, nonce))
+        if Verifier.failure:
+            raise integrity.IntegrityFailed(Verifier.failure)
+
+
+@pytest.fixture
+def required(settings):
+    settings.CITIZEN_INTEGRITY_REQUIRED = True
+    settings.CITIZEN_INTEGRITY_VERIFIER = "apps.citizens.tests.test_registration.Verifier"
+    Verifier.calls, Verifier.failure = [], None
+    return Verifier
+
+
+def test_genuine_app_gets_a_token(world, required):
+    response = register(world)
+    assert response.status_code == 201
+    assert required.calls and required.calls[0][0] == "play-token"
+    assert CitizenDevice.objects.get().integrity_checked is True
+
+
+def test_failed_verdict_gets_nothing(world, required):
+    required.failure = "Verdict failed: device"
+    response = register(world)
+    assert response.status_code == 403 and code(response) == "integrity_failed"
+    assert "device" not in response.json()["error"]["message"]  # the reason stays in the server log
+    assert not CitizenDevice.objects.exists()
+
+
+class GoogleDown:
+    def verify(self, integrity_token, nonce):
+        raise ConnectionError("playintegrity.googleapis.com unreachable")
+
+
+def test_google_unreachable_answers_try_again_later_not_a_server_error(world, required, settings):
+    """BE_02, BE-ERR-103 (decision of 2026-11-11): 503 integrity_unavailable, never a 500."""
+    settings.CITIZEN_INTEGRITY_VERIFIER = "apps.citizens.tests.test_registration.GoogleDown"
+    nonce = APIClient(REMOTE_ADDR="10.0.0.5").post(CHALLENGE).json()["nonce"]
+    body = {"nonce": nonce, "integrity_token": "play-token", "platform": "android", "village_id": world.areas["kolakaluru"].id}
+
+    response = APIClient().post(REGISTER, body, format="json")
+    assert response.status_code == 503
+    assert code(response) == "integrity_unavailable"
+    assert response.json()["error"]["retry_after_s"] == 60
+    assert response["Retry-After"] == "60"
+    assert "googleapis" not in response.json()["error"]["message"]
+    assert not CitizenDevice.objects.exists()
+
+    # Once Google answers again, the same challenge still works: it was not used up.
+    settings.CITIZEN_INTEGRITY_VERIFIER = "apps.citizens.tests.test_registration.Verifier"
+    assert APIClient().post(REGISTER, body, format="json").status_code == 201
+
+
+def test_iphones_wait_for_app_attest_while_integrity_is_required(world, required):
+    response = register(world, platform="ios")
+    assert response.status_code == 403 and code(response) == "integrity_failed"
+    assert not required.calls
+
+
+# --- The verdict itself -----------------------------------------------------------------------------
+
+
+# ANDROID_CERT_SHA256's default fingerprint, as Google writes it in the verdict (unpadded base64url).
+OUR_KEY_DIGEST = "JxYTxlzNvjpFl-BUTs0JykSR4MsHY7NebtBCidWKiXk"
+
+
+def verdict(nonce_value, **changes):
+    payload = {
+        "requestDetails": {
+            "requestPackageName": "com.bvt.app", "nonce": nonce_value,
+            "timestampMillis": str(int(time.time() * 1000)),
+        },
+        "appIntegrity": {
+            "appRecognitionVerdict": "PLAY_RECOGNIZED", "packageName": "com.bvt.app",
+            "certificateSha256Digest": [OUR_KEY_DIGEST],
+        },
+        "deviceIntegrity": {"deviceRecognitionVerdict": ["MEETS_DEVICE_INTEGRITY"]},
+    }
+    for path, value in changes.items():
+        section, key = path.split("__")
+        payload[section][key] = value
+    return payload
+
+
+@pytest.fixture
+def play(settings, monkeypatch):
+    settings.PLAY_INTEGRITY_PACKAGE = "com.bvt.app"
+    verifier = integrity.PlayIntegrityVerifier()
+    box = {}
+    monkeypatch.setattr(verifier, "decode", lambda token: box["payload"])
+    return verifier, box
+
+
+def test_a_genuine_verdict_passes(play):
+    verifier, box = play
+    box["payload"] = verdict("n-1")
+    verifier.verify("token", "n-1")
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"requestDetails__nonce": "another"},
+        {"requestDetails__requestPackageName": "com.fake.app"},
+        {"appIntegrity__packageName": "com.fake.app"},
+        {"appIntegrity__appRecognitionVerdict": "UNRECOGNIZED_VERSION"},
+        {"deviceIntegrity__deviceRecognitionVerdict": []},
+        {"deviceIntegrity__deviceRecognitionVerdict": ["MEETS_VIRTUAL_INTEGRITY"]},
+        {"requestDetails__timestampMillis": str(int((time.time() - 3600) * 1000))},
+        {"requestDetails__timestampMillis": "soon"},
+        {"appIntegrity__certificateSha256Digest": ["c29tZW9uZS1lbHNlcy1rZXk"]},  # re-signed by someone else
+        {"appIntegrity__certificateSha256Digest": []},
+    ],
+)
+def test_any_doubt_fails_the_verdict(play, changes):
+    verifier, box = play
+    box["payload"] = verdict("n-1", **changes)
+    with pytest.raises(integrity.IntegrityFailed):
+        verifier.verify("token", "n-1")
+
+
+def test_a_refusal_from_google_keeps_its_reply_out_of_the_log(settings, monkeypatch):
+    """BE_02, BE-SEC-108: only the status code is kept, never Google's reply text."""
+    import google.auth.transport.requests as google_requests
+    from google.oauth2 import service_account
+
+    class Refused:
+        status_code = 400
+        text = '{"error": "bad token tok-SECRET-123 for nonce n-1"}'
+
+    class Session:
+        def __init__(self, credentials):
+            pass
+
+        def post(self, *args, **kwargs):
+            return Refused()
+
+    settings.PLAY_INTEGRITY_PACKAGE = "com.bvt.app"
+    settings.PLAY_INTEGRITY_CREDENTIALS_FILE = "unused.json"
+    monkeypatch.setattr(service_account.Credentials, "from_service_account_file", lambda *a, **k: object())
+    monkeypatch.setattr(google_requests, "AuthorizedSession", Session)
+    with pytest.raises(integrity.IntegrityFailed) as failure:
+        integrity.PlayIntegrityVerifier().decode("tok-SECRET-123")
+    assert str(failure.value) == "Google answered 400"
+    assert "SECRET" not in str(failure.value)
+
+
+@pytest.mark.parametrize("google_status", [429, 500, 503])
+def test_google_failing_is_unavailable_not_a_verdict_about_the_phone(settings, monkeypatch, google_status):
+    # BE-ERR-203: Google's own trouble is 503 integrity_unavailable ("try again"), not 403 ("not genuine").
+    from google.auth.transport import requests as google_requests
+    from google.oauth2 import service_account
+
+    class Failing:
+        status_code = google_status
+        text = "busy"
+
+    class Session:
+        def __init__(self, credentials):
+            pass
+
+        def post(self, *args, **kwargs):
+            return Failing()
+
+    settings.PLAY_INTEGRITY_PACKAGE = "com.bvt.app"
+    settings.PLAY_INTEGRITY_CREDENTIALS_FILE = "unused.json"
+    monkeypatch.setattr(service_account.Credentials, "from_service_account_file", lambda *a, **k: object())
+    monkeypatch.setattr(google_requests, "AuthorizedSession", Session)
+    with pytest.raises(integrity.IntegrityUnavailable):
+        integrity.PlayIntegrityVerifier().decode("tok")
+    assert not issubclass(integrity.IntegrityUnavailable, integrity.IntegrityFailed)  # so register answers 503
+
+
+def test_unconfigured_play_integrity_fails_closed(settings):
+    settings.PLAY_INTEGRITY_PACKAGE = ""
+    with pytest.raises(integrity.IntegrityFailed, match="not configured"):
+        integrity.PlayIntegrityVerifier().verify("token", "n-1")
+
+
+def test_prod_settings_leave_integrity_off_until_google_play():
+    """Production (DEBUG=False) needs its env to import, so read the file. Off by default until the app is
+    on Google Play (owner 2026-11-04, lead 2026-11-18); .env turns it on with CITIZEN_INTEGRITY_REQUIRED=True."""
+    from pathlib import Path
+
+    text = (Path(__file__).resolve().parents[3] / "grama" / "settings.py").read_text(encoding="utf-8")
+    prod = text.split("if not DEBUG:\n    SESSION_COOKIE_SECURE = True", 1)[1].split("else:  # DEV", 1)[0]
+    assert 'CITIZEN_INTEGRITY_REQUIRED = env.bool("CITIZEN_INTEGRITY_REQUIRED", default=False)' in prod
+
+
+def test_check_warns_while_integrity_is_off_on_a_server(settings):
+    from apps.citizens.checks import integrity_off_on_server
+
+    settings.DEBUG = False
+    settings.CITIZEN_INTEGRITY_REQUIRED = False
+    warnings = integrity_off_on_server(None)
+    assert [w.id for w in warnings] == ["citizens.W001"]
+
+    settings.CITIZEN_INTEGRITY_REQUIRED = True
+    assert integrity_off_on_server(None) == []
+    settings.DEBUG = True
+    settings.CITIZEN_INTEGRITY_REQUIRED = False
+    assert integrity_off_on_server(None) == []  # laptops: off is normal, no warning
+
+
+def test_integrity_warning_is_not_a_security_check():
+    """The deploy scripts run `check --deploy --tag security --fail-level WARNING`; this warning must not stop them."""
+    from django.core.checks import registry
+
+    from apps.citizens.checks import integrity_off_on_server
+
+    assert integrity_off_on_server in registry.registry.get_checks()  # a plain `manage.py check` runs it
+    assert "security" not in integrity_off_on_server.tags

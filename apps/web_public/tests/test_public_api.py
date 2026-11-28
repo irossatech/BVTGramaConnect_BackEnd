@@ -1,0 +1,107 @@
+"""Public website API: site config and contact messages."""
+
+
+import pytest
+
+from apps.web_public.models import ContactMessage
+
+pytestmark = pytest.mark.django_db
+
+CONTACT = "/api/v1/public/contact-messages/"
+
+
+def send(api, **overrides):
+    body = {"name": "రవి", "mobile": "9876543210", "village_text": "కొలకలూరు, తెనాలి", "message": "మా గ్రామాన్ని చేర్చండి", "language": "te"}
+    body.update(overrides)
+    return api().post(CONTACT, body, format="json", REMOTE_ADDR=overrides.pop("ip", "10.9.9.9"))
+
+
+def test_site_config_has_every_field_and_the_prototype_defaults(api):
+    response = api().get("/api/v1/public/site-config/")
+    assert response.status_code == 200
+    data = response.json()
+    # Office details and the App Store link are the website's own now, not the API's.
+    assert set(data) == {"play_store_url", "website_url", "invite_url", "helplines"}
+    assert data["invite_url"] is None  # PUBLIC_BASE_URL is not set
+    assert data["play_store_url"] == ""
+    assert data["website_url"] == "https://example.in/"
+    assert [line["number"] for line in data["helplines"]] == ["112", "108", "1930", "181", "1098", "1912"]
+    assert data["helplines"][0] == {"number": "112", "label_te": "అత్యవసరం", "label_en": "Emergency"}
+    assert data["helplines"][3]["label_te"] == "మహిళా హెల్ప్‌లైన్"
+    assert "public" in response["Cache-Control"]
+
+
+def test_website_link_and_help_lines_come_from_settings(api, settings):
+    settings.SITE_WEBSITE_URL = "https://gramaconnect.example.in/"
+    settings.SITE_HELPLINES = [{"number": "100", "label_te": "పోలీస్", "label_en": "Police"}]
+    data = api().get("/api/v1/public/site-config/").json()
+    assert data["website_url"] == "https://gramaconnect.example.in/"
+    assert data["helplines"] == [{"number": "100", "label_te": "పోలీస్", "label_en": "Police"}]
+
+
+def test_store_links_come_from_settings(api, settings):
+    settings.PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=in.bvt.gramaconnect"
+    assert api().get("/api/v1/public/site-config/").json()["play_store_url"].startswith("https://play.google.com/")
+
+
+def test_contact_message_is_stored_with_telugu_intact(api):
+    response = send(api)
+    assert response.status_code == 201
+    message = ContactMessage.objects.get(pk=response.json()["id"])
+    assert message.name == "రవి"
+    assert message.village_text == "కొలకలూరు, తెనాలి"
+    assert message.message == "మా గ్రామాన్ని చేర్చండి"
+
+
+def test_the_senders_ip_address_is_not_stored(api):
+    """BVTGC-103: no IP address column, and the address sent appears in no stored value."""
+    response = send(api, ip="10.9.9.9")
+    assert response.status_code == 201
+    assert "ip_address" not in {field.name for field in ContactMessage._meta.get_fields()}
+    stored = ContactMessage.objects.filter(pk=response.json()["id"]).values().get()
+    assert "10.9.9.9" not in str(stored)
+
+
+@pytest.mark.parametrize("village", ["", "   "])
+def test_village_is_required(api, village):
+    response = send(api, village_text=village)
+    assert response.status_code == 400
+    assert "village_text" in response.json()["error"]["fields"]
+    assert not ContactMessage.objects.exists()
+
+
+def test_a_missing_village_is_refused(api):
+    body = {"name": "రవి", "mobile": "9876543210", "message": "మా గ్రామాన్ని చేర్చండి", "language": "te"}
+    response = api().post(CONTACT, body, format="json")
+    assert response.status_code == 400
+    assert "village_text" in response.json()["error"]["fields"]
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [("name", "   "), ("message", "  "), ("mobile", "12345"), ("mobile", ""), ("language", "hi")],
+)
+def test_same_validation_as_the_page(api, field, value):
+    response = send(api, **{field: value})
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "validation_error"
+    assert field in response.json()["error"]["fields"]
+    assert ContactMessage.objects.count() == 0
+
+
+def test_mobile_with_country_code_is_accepted(api):
+    assert send(api, mobile="+91 98765 43210").status_code == 201
+    assert ContactMessage.objects.get().mobile == "9876543210"
+
+
+def test_honeypot_pretends_success_and_stores_nothing(api):
+    response = send(api, website="http://spam.example")
+    assert response.status_code == 201
+    assert ContactMessage.objects.count() == 0
+
+
+def test_no_limit_on_messages_per_address(api):
+    """Decision of 2026-11-20: one address may send any number of messages; every one is stored."""
+    for _ in range(12):
+        assert send(api).status_code == 201
+    assert ContactMessage.objects.count() == 12

@@ -1,0 +1,106 @@
+"""Citizen phones and their posts (docs/api-contract.md, section 15)."""
+
+import io
+
+import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
+from PIL import Image
+from rest_framework.test import APIClient
+
+CHALLENGE = "/api/v1/citizen/challenge/"
+REGISTER = "/api/v1/citizen/register/"
+ME = "/api/v1/citizen/me/"
+POSTS = "/api/v1/citizen/posts/"
+
+
+@pytest.fixture
+def clock(monkeypatch):
+    """A clock the test moves by hand (`clock[0] += timedelta(...)`), so two logins meet the same times."""
+    from django.utils import timezone
+
+    now = [timezone.now()]
+    monkeypatch.setattr("django.utils.timezone.now", lambda: now[0])
+    return now
+
+
+@pytest.fixture
+def code_journey(api, mailoutbox, clock):
+    """Everything a caller can see of one login in a code flow (BVTGC-152): a code, another at once, six
+    typed codes, then a code a minute until the day's limit. Returns one tuple per step, so the journeys
+    of a registered login and of an unknown, blocked or deleted one can be compared whole."""
+    import json
+    import re
+    from datetime import timedelta
+
+    def answer(response) -> tuple:
+        body = response.json()
+        error = body.get("error")
+        if error is None:
+            return (response.status_code, json.dumps(body, sort_keys=True))
+        return (response.status_code, error["code"], error["message"], error.get("attempts_left"), error.get("retry_after_s"))
+
+    def run(login: str, send_url: str, check_url: str, **extra) -> list[tuple]:
+        def send():
+            return answer(api().post(send_url, {"login": login}, format="json"))
+
+        seen = len(mailoutbox)
+        steps = [send(), send()]
+        real = re.search(r"\b(\d{6})\b", mailoutbox[-1].subject).group(1) if len(mailoutbox) > seen else None
+        wrong = "000000" if real != "000000" else "111111"
+        for _ in range(6):
+            steps.append(answer(api().post(check_url, {"login": login, "code": wrong, **extra}, format="json")))
+        for _ in range(5):
+            clock[0] += timedelta(seconds=61)
+            steps.append(send())
+        return steps
+
+    return run
+
+
+@pytest.fixture
+def media_root(settings, tmp_path):
+    settings.MEDIA_ROOT = tmp_path / "media"
+    return settings.MEDIA_ROOT
+
+
+def photo(size=(1600, 1200), name="photo.jpg") -> SimpleUploadedFile:
+    buffer = io.BytesIO()
+    Image.new("RGB", size, (31, 138, 59)).save(buffer, "JPEG")
+    return SimpleUploadedFile(name, buffer.getvalue(), content_type="image/jpeg")
+
+
+def nonce(ip="10.20.30.40") -> str:
+    return APIClient(REMOTE_ADDR=ip).post(CHALLENGE).json()["nonce"]
+
+
+def register(world, village="kolakaluru", ip="10.20.30.40", **extra):
+    """POST /citizen/register/ from `ip`; returns the response."""
+    body = {"nonce": nonce(ip), "integrity_token": "play-token", "platform": "android",
+            "village_id": world.areas[village].id, "app_version": "1.4.0", **extra}
+    return APIClient(REMOTE_ADDR=ip).post(REGISTER, body, format="json")
+
+
+class Phone:
+    """A registered citizen phone: phone.client sends its X-Citizen-Token."""
+
+    def __init__(self, token: str, device_id: str):
+        self.token = token
+        self.device_id = device_id
+        self.client = APIClient(HTTP_X_CITIZEN_TOKEN=token)
+
+    def post(self, title="తాగునీటి పైపు పగిలింది", body="మెయిన్ రోడ్డు దగ్గర నీరు వృథా అవుతోంది.", photos=(), **extra):
+        data = {"category": "news", "language": "te", "title": title, "body": body, **extra}
+        if photos:
+            data["photos"] = list(photos)
+        return self.client.post(POSTS, data, format="multipart")
+
+
+@pytest.fixture
+def phone(world):
+    """make_phone("kolakaluru") registers a phone for that village."""
+
+    def make(village="kolakaluru", ip="10.20.30.40", **extra) -> Phone:
+        data = register(world, village, ip, **extra).json()
+        return Phone(data["token"], data["device"]["id"])
+
+    return make

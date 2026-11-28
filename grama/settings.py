@@ -1,0 +1,871 @@
+"""Unified Django Settings for GramaConnect.
+ 
+One file; DEBUG in .env picks the mode (the old names grama.settings.base/.dev/.prod/.test are aliases):
+- DEV (default): DEBUG=True in .env (or unset). Uses SQLite, local file serving.
+- PROD: DEBUG=False in .env, also the qa server. Enforces strict security, MySQL/Postgres, HSTS,
+  Nginx serving (qa serves the files itself, SERVE_FILES).
+- Tests (pytest running): always SQLite and .test-media/, whatever DEBUG says.
+"""
+ 
+from __future__ import annotations
+ 
+import os
+import re
+import sys
+from datetime import timedelta
+from pathlib import Path
+ 
+import environ
+from django.core.exceptions import ImproperlyConfigured
+ 
+# Build paths inside the project: BASE_DIR / 'subdir'.
+# BASE_DIR is the repository root (two levels up from grama/settings.py).
+BASE_DIR = Path(__file__).resolve().parent.parent
+ 
+env = environ.Env()
+environ.Env.read_env(BASE_DIR / ".env")
+ 
+# In production, set DEBUG=False in .env; defaults to True for local development.
+DEBUG = env.bool("DEBUG", default=True)
+ 
+# Tests: pytest is imported AND has set PYTEST_VERSION (pytest 8.2+ sets it for the run), or
+# `manage.py test`. Both pytest signals are needed, so a server process that merely imports pytest
+# never switches to the test settings (MD5 hashing, no push).
+_RUNNING_TESTS = ("pytest" in sys.modules and "PYTEST_VERSION" in os.environ) or (
+    len(sys.argv) > 1 and sys.argv[1] == "test"
+)
+
+
+def env_file_says_production(path: Path) -> bool:
+    """True when the .env file at `path` sets DEBUG to false: the checkout belongs to a server.
+
+    It reads the file, not the environment, so a test that passes DEBUG=False to a subprocess on a
+    laptop or in CI is not mistaken for a server. The last DEBUG line wins, as when the file is loaded."""
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return False
+    value = None
+    for line in lines:
+        found = re.match(r"\s*(?:export\s+)?DEBUG\s*=\s*['\"]?([^'\"#\s]*)", line)
+        if found:
+            value = found.group(1).lower()
+    return value in {"false", "0", "no", "off", "f", "n"}
+
+
+# The test suite never runs on a server. On 2026-11-25 a run on the qa server let one test's subprocess
+# read the server's .env and migrate its real database backwards. Tests belong on laptops and in CI.
+if _RUNNING_TESTS and env_file_says_production(BASE_DIR / ".env"):
+    raise ImproperlyConfigured(
+        "Refusing to run the tests: this checkout's .env says DEBUG=False, so it belongs to a server. "
+        "Run the tests on a laptop or in CI, never on a server."
+    )
+
+ 
+# ==============================================================================
+# 1. CORE SECURITY & HOSTS (DEV vs PROD)
+# ==============================================================================
+ 
+SECRET_KEY = env.str(
+    "SECRET_KEY",
+    default="django-insecure-dev-only-0f3a9c1e7b5d4f2a8e6c9b1d3f5a7c9e" if DEBUG else None,
+)
+ALLOWED_HOSTS = env.list(
+    "ALLOWED_HOSTS",
+    default=["localhost", "127.0.0.1", "[::1]", "10.0.2.2"] if DEBUG else [],
+)
+ 
+if not DEBUG and (
+    SECRET_KEY.startswith("django-insecure-")
+    or len(SECRET_KEY) < 50
+    or len(set(SECRET_KEY)) < 5
+    or "change-me" in SECRET_KEY
+):
+    raise ImproperlyConfigured(
+        "SECRET_KEY is an example value or too weak. Generate one with: "
+        "python3 -c 'import secrets; print(secrets.token_urlsafe(50))'"
+    )
+
+# Key of the keyed hashes that recognise a citizen's phone across installs: its Android ID and its
+# registration IP (apps/citizens/services.py; BE-SEC-109, BVTGC-111). Empty means SECRET_KEY, as before,
+# so stored hashes stay valid. Before SECRET_KEY is ever changed, put its current value here
+# (deploy/RUNBOOK.md, "Rotating secrets"): phones then keep their daily limits and blocks.
+PHONE_HASH_KEY = env.str("PHONE_HASH_KEY", default="")
+if not DEBUG and PHONE_HASH_KEY and (
+    PHONE_HASH_KEY.startswith("django-insecure-")
+    or len(PHONE_HASH_KEY) < 50
+    or len(set(PHONE_HASH_KEY)) < 5
+    or "change-me" in PHONE_HASH_KEY
+):
+    raise ImproperlyConfigured(
+        "PHONE_HASH_KEY is an example value or too weak. Leave it empty, or set it to the previous SECRET_KEY."
+    )
+
+CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
+
+# DEBUG is on unless .env says otherwise, which is right for laptops and wrong for a server whose
+# .env lost its DEBUG=False line. A server is recognised by a domain name in ALLOWED_HOSTS:
+# development mode refuses to start with one. Laptops use localhost and IP addresses.
+_LOCAL_HOST = re.compile(r"^(localhost|\.?[\w-]+\.(localhost|local)|\[[0-9a-fA-F:]+\]|[0-9.]+)$")
+if DEBUG and not _RUNNING_TESTS and not env.bool("DEBUG_ON_PUBLIC_HOST", default=False):
+    _public_hosts = [host for host in ALLOWED_HOSTS if not _LOCAL_HOST.match(host)]
+    if _public_hosts:
+        raise ImproperlyConfigured(
+            f"DEBUG is on (it is unset or True) but ALLOWED_HOSTS names {', '.join(_public_hosts)}. "
+            "A server must set DEBUG=False in its .env. On a laptop, remove those hosts, or set "
+            "DEBUG_ON_PUBLIC_HOST=True if you really mean to run development mode under that name."
+        )
+ 
+ 
+# ==============================================================================
+# 2. DATABASE CONFIGURATION (DEV vs PROD)
+# ==============================================================================
+ 
+#: MySQL and MariaDB only: the strictness rules (sql_mode) every connection uses. TRADITIONAL refuses
+#: bad data (too-long text, zero dates, division by zero in a write) instead of quietly changing it, and
+#: never creates a table without transactions (NO_ENGINE_SUBSTITUTION); ONLY_FULL_GROUP_BY refuses an
+#: unclear GROUP BY, as PostgreSQL does (audit BE-DB-010; it used to be STRICT_TRANS_TABLES alone).
+#: To go back on a server, one .env line: DB_SQL_MODE=STRICT_TRANS_TABLES. Empty: the server's own default.
+DB_SQL_MODE = env.str("DB_SQL_MODE", default="TRADITIONAL,ONLY_FULL_GROUP_BY").strip()
+if not re.fullmatch(r"[A-Z_]*(,[A-Z_]+)*", DB_SQL_MODE):
+    raise ImproperlyConfigured("DB_SQL_MODE must be MySQL mode names in capitals, separated by commas.")
+
+
+def database_config(url: str) -> dict:
+    """Turn a DATABASE_URL into Django's DATABASES['default']."""
+    config = environ.Env.db_url_config(url)
+    if config["ENGINE"] == "django.db.backends.mysql":
+        options = config.setdefault("OPTIONS", {})
+        options.setdefault("charset", "utf8mb4")
+        if DB_SQL_MODE:
+            options.setdefault("init_command", f"SET sql_mode='{DB_SQL_MODE}'")
+        config.setdefault("TEST", {}).update(
+            {"CHARSET": "utf8mb4", "COLLATION": "utf8mb4_unicode_ci"}
+        )
+    config.setdefault("CONN_MAX_AGE", env.int("DB_CONN_MAX_AGE", default=60))
+    config.setdefault("CONN_HEALTH_CHECKS", True)
+    return config
+ 
+ 
+SQLITE_DATABASE = {
+    "ENGINE": "django.db.backends.sqlite3",
+    "NAME": env.str("SQLITE_PATH", default=str(BASE_DIR / "db.sqlite3")),
+    "OPTIONS": {
+        "timeout": 20,
+        "transaction_mode": "IMMEDIATE",
+        "init_command": "PRAGMA journal_mode=WAL;PRAGMA synchronous=NORMAL",
+    },
+}
+ 
+if _RUNNING_TESTS:
+    # Tests run on SQLite, whatever DEBUG and DATABASE_URL say: never on a server's database. CI also runs
+    # them on MariaDB and PostgreSQL (BVTGC-17) through TEST_DATABASE_URL, a variable of its own that no
+    # server's .env sets; Django then works in a throwaway "test_<name>" database and drops it afterwards.
+    _test_db_url = env.str("TEST_DATABASE_URL", default="")
+    DATABASES = {"default": database_config(_test_db_url) if _test_db_url else SQLITE_DATABASE}
+elif not DEBUG:
+    DATABASES = {"default": database_config(env.str("DATABASE_URL"))}
+else:  # DEV
+    _db_url = env.str("DATABASE_URL", default="")
+    DATABASES = {"default": database_config(_db_url) if _db_url else SQLITE_DATABASE}
+ 
+ 
+# ==============================================================================
+# 3. STATIC FILES & MEDIA UPLOADS (DEV vs PROD)
+# ==============================================================================
+ 
+STATIC_URL = "/static/"
+MEDIA_URL = "/media/"
+ 
+def _dir_from_env(name: str, default: str) -> Path:
+    path = Path(env.str(name, default=default))
+    return path if path.is_absolute() else (BASE_DIR / path).resolve()
+ 
+WEB_PUBLIC_DIR = _dir_from_env("WEB_PUBLIC_DIR", "../BVTGramaConnect/dist")
+WEB_ADMIN_DIR = _dir_from_env("WEB_ADMIN_DIR", "../BVTGramaConnect/dist/console")
+ 
+if _RUNNING_TESTS:
+    # Never a server's media folder, whatever DEBUG says.
+    MEDIA_ROOT = BASE_DIR / ".test-media"
+    STATIC_ROOT = BASE_DIR / "staticfiles"
+    SERVE_FILES = env.bool("SERVE_FILES", default=DEBUG)
+elif not DEBUG:
+    MEDIA_ROOT = Path(env.str("MEDIA_ROOT"))
+    STATIC_ROOT = Path(env.str("STATIC_ROOT"))
+    SERVE_FILES = env.bool("SERVE_FILES", default=False)  # Nginx serves files in production
+else:  # DEV
+    MEDIA_ROOT = BASE_DIR / "media"
+    STATIC_ROOT = BASE_DIR / "staticfiles"
+    SERVE_FILES = env.bool("SERVE_FILES", default=True)   # Django serves files in dev
+
+# Photos and videos of a taken-down or discarded post (finding BE-SEC-208, decision of 2026-11-27): they
+# move out of MEDIA_ROOT into this folder, which no web server serves, and officials and the citizen see
+# them through signed links that expire (apps/posts/hidden_media.py). Never inside MEDIA_ROOT, STATIC_ROOT,
+# the web folders or a hosting panel's htdocs: the panel's nginx serves any file with a picture extension
+# from the site folder (check posts.E001). Servers built with setup.sh set it; on a hosting account (qa,
+# the panel) the default is the scripts' own folder, ~/.bvt-grama/private-media (mode 700).
+if _RUNNING_TESTS:
+    PRIVATE_MEDIA_ROOT = BASE_DIR / ".test-media-private"
+elif not DEBUG:
+    PRIVATE_MEDIA_ROOT = Path(env.str("PRIVATE_MEDIA_ROOT", default=str(Path.home() / ".bvt-grama" / "private-media")))
+else:  # DEV
+    PRIVATE_MEDIA_ROOT = Path(env.str("PRIVATE_MEDIA_ROOT", default=str(BASE_DIR / "media-private")))
+# How long a signed link to such a file works. Long enough to open a post and play its video.
+HIDDEN_MEDIA_LINK_SECONDS = env.int("HIDDEN_MEDIA_LINK_SECONDS", default=3600)
+ 
+ 
+# ==============================================================================
+# 4. HTTPS, COOKIES & REVERSE PROXY (DEV vs PROD)
+# ==============================================================================
+
+# The reverse proxies whose X-Real-IP is believed (with TRUST_X_REAL_IP on), as addresses or networks
+# (audit BE-SEC-212). By default only this machine: nginx in front of Gunicorn on the same server
+# (127.0.0.1 or ::1; a unix socket, with no address, counts too). A proxy on another machine, a load
+# balancer or Docker is added in .env, e.g. TRUSTED_PROXIES=127.0.0.1,::1,10.0.0.5 (grama/http.py).
+TRUSTED_PROXIES = env.list("TRUSTED_PROXIES", default=["127.0.0.1", "::1"])
+
+if not DEBUG:
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    TRUST_X_REAL_IP = env.bool("TRUST_X_REAL_IP", default=True)
+    SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=False)
+    SECURE_HSTS_SECONDS = env.int("SECURE_HSTS_SECONDS", default=31536000)
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = env.bool("SECURE_HSTS_INCLUDE_SUBDOMAINS", default=False)
+    SECURE_HSTS_PRELOAD = env.bool("SECURE_HSTS_PRELOAD", default=False)
+    SILENCED_SYSTEM_CHECKS = ["security.W008", "security.W005", "security.W021"]
+    SECURE_REFERRER_POLICY = "same-origin"
+    # Off by default until the app is on Google Play (owner's decision of 2026-11-04, lead's code change
+    # of 2026-11-18): a website-installed APK can never pass Play Integrity. On that day write
+    # CITIZEN_INTEGRITY_REQUIRED=True in .env; until then `manage.py check` warns (citizens.W001).
+    CITIZEN_INTEGRITY_REQUIRED = env.bool("CITIZEN_INTEGRITY_REQUIRED", default=False)
+    API_DOCS_PUBLIC = env.bool("API_DOCS_PUBLIC", default=False)
+else:  # DEV
+    SESSION_COOKIE_SECURE = env.bool("SESSION_COOKIE_SECURE", default=False)
+    CSRF_COOKIE_SECURE = env.bool("CSRF_COOKIE_SECURE", default=False)
+    if env.bool("TRUST_PROXY_HTTPS", default=False):
+        SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    TRUST_X_REAL_IP = env.bool("TRUST_X_REAL_IP", default=False)
+    CITIZEN_INTEGRITY_REQUIRED = env.bool("CITIZEN_INTEGRITY_REQUIRED", default=False)
+    API_DOCS_PUBLIC = env.bool("API_DOCS_PUBLIC", default=True)
+    SILENCED_SYSTEM_CHECKS = []
+    SECURE_HSTS_SECONDS = 0
+
+# /django-admin/ (grama/urls.py): on for laptops (DEBUG on), off on every server, qa included (lead's
+# decision of 2026-11-11). Off, the address does not exist. Server work goes through the console or
+# `manage.py shell`. Turn it on for a server only by writing DJANGO_ADMIN_ENABLED=True in its .env.
+DJANGO_ADMIN_ENABLED = env.bool("DJANGO_ADMIN_ENABLED", default=DEBUG)
+ 
+ 
+# ==============================================================================
+# 5. CACHE & THROTTLING (DEV vs PROD)
+# ==============================================================================
+ 
+# The shared "throttle" cache also holds the citizen code decoys (BVTGC-152, apps/citizens/codes.py), one
+# per unknown login for a day. Django's database cache deletes a third of its rows once it holds MAX_ENTRIES
+# (300 by default), so a flood of made-up logins could push a decoy out and its 60-second wait would vanish,
+# telling a registered login apart again. Kept high; each write counts the rows, which stays cheap here.
+THROTTLE_CACHE_MAX_ENTRIES = env.int("THROTTLE_CACHE_MAX_ENTRIES", default=200000)
+# "names" keeps the Telugu name suggestions (apps/web_admin/transliteration.py) for every server process
+# alike, so a name typed once is not sent to Google again by another worker (finding BE-PERF-202). Its own
+# table, so the suggestions never crowd the decoys out of "throttle"; when full, a third is dropped and
+# those names are simply asked again.
+NAMES_CACHE_MAX_ENTRIES = env.int("NAMES_CACHE_MAX_ENTRIES", default=50000)
+
+if not DEBUG:
+    CACHES = {
+        "default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"},
+        "throttle": {
+            "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+            "LOCATION": "grama_throttle_cache",
+            "OPTIONS": {"MAX_ENTRIES": THROTTLE_CACHE_MAX_ENTRIES},
+        },
+        "names": {
+            "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+            "LOCATION": "grama_names_cache",
+            "OPTIONS": {"MAX_ENTRIES": NAMES_CACHE_MAX_ENTRIES},
+        },
+    }
+else:  # DEV
+    CACHES = {
+        "default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"},
+        "throttle": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache", "LOCATION": "throttle"},
+        "names": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache", "LOCATION": "names"},
+    }
+# "throttle" counts the Telugu name suggestions' rate (TRANSLITERATION_RATE) and holds the citizen code
+# decoys (BVTGC-152). The per-IP login throttle
+# (30 logins an hour) was removed on 2026-11-20 and is not decided yet; the contact form has no per-IP
+# limit (lead's final decision). The IP-wide failed-login cap is back but off by default
+# (LOGIN_IP_MAX_FAILURES=0, BVTGC-105).
+ 
+ 
+# ==============================================================================
+# 6. EMAIL, PUSH NOTIFICATIONS & TEST ACCELERATION
+# ==============================================================================
+ 
+if _RUNNING_TESTS:
+    PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
+    EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+    PUSH_GATEWAY = "apps.notifications.push.LocmemPushGateway"
+    TRANSLITERATION_PROVIDER = "off"
+    DELIVERY_RETRY_BASE_SECONDS = 0
+else:
+    PASSWORD_HASHERS = [
+        "django.contrib.auth.hashers.Argon2PasswordHasher",
+        "django.contrib.auth.hashers.PBKDF2PasswordHasher",
+        "django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher",
+        "django.contrib.auth.hashers.ScryptPasswordHasher",
+    ]
+    # Citizens' wallet codes and notices (BVTGC-122): laptops print them in the terminal, servers send
+    # them through the client's email service by SMTP (C7, BVTGC-143).
+    EMAIL_BACKEND = env.str(
+        "EMAIL_BACKEND",
+        default="django.core.mail.backends.console.EmailBackend" if DEBUG else "django.core.mail.backends.smtp.EmailBackend",
+    )
+    PUSH_GATEWAY = env.str("PUSH_GATEWAY", default="apps.notifications.push.FcmGateway")
+    TRANSLITERATION_PROVIDER = env.str("TRANSLITERATION_PROVIDER", default="google_input_tools")
+    DELIVERY_RETRY_BASE_SECONDS = env.float("DELIVERY_RETRY_BASE_SECONDS", default=1.0)
+ 
+ 
+# The client's email service (C7, BVTGC-143). The only email this server sends is to citizens' wallet
+# accounts: sign-up and password codes and account notices (apps/citizens/emails.py). The password is a
+# secret: each server's .env only. manage.py check warns (citizens.W002) while a server has no host set.
+EMAIL_HOST = env.str("EMAIL_HOST", default="localhost")
+EMAIL_PORT = env.int("EMAIL_PORT", default=587)
+EMAIL_HOST_USER = env.str("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env.str("EMAIL_HOST_PASSWORD", default="")
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
+EMAIL_TIMEOUT = env.int("EMAIL_TIMEOUT", default=10)  # seconds; codes are sent inside the request
+DEFAULT_FROM_EMAIL = env.str("DEFAULT_FROM_EMAIL", default="Grama Connect <no-reply@localhost>")
+
+# ==============================================================================
+# 7. APPLICATIONS & MIDDLEWARE (COMMON)
+# ==============================================================================
+ 
+DJANGO_APPS = [
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+]
+ 
+THIRD_PARTY_APPS = [
+    "axes",
+    "rest_framework",
+    "rest_framework_simplejwt.token_blacklist",
+    "drf_spectacular",
+    "django_q",
+]
+ 
+LOCAL_APPS = [
+    "apps.accounts",
+    "apps.geography",
+    "apps.posts",
+    "apps.feed",
+    "apps.notifications",
+    "apps.audit",
+    "apps.web_public",
+    "apps.web_admin",
+    "apps.contacts",
+    "apps.citizens",
+    "apps.service_requests",
+    "apps.ads",
+    "apps.bills",
+    "apps.share",
+    "apps.wallet",
+]
+ 
+INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
+ 
+MIDDLEWARE = [
+    # First: every answer, even an early error, carries X-Request-ID (grama/request_id.py).
+    "grama.request_id.RequestIdMiddleware",
+    # API answers are "no-store" unless their view marks them public (grama/cache_headers.py, WEB-HDR-002).
+    "grama.cache_headers.PrivateApiAnswersMiddleware",
+    "django.middleware.security.SecurityMiddleware",
+    "django.middleware.http.ConditionalGetMiddleware",
+    "grama.sessions.SessionMiddleware",  # renews on every request except the console's background checks
+    "django.middleware.locale.LocaleMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "axes.middleware.AxesMiddleware",
+]
+ 
+ROOT_URLCONF = "grama.urls"
+WSGI_APPLICATION = "grama.wsgi.application"
+ASGI_APPLICATION = "grama.asgi.application"
+ 
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
+            ],
+        },
+    },
+]
+ 
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+ 
+ 
+# ==============================================================================
+# 8. USERS & AUTHENTICATION (COMMON)
+# ==============================================================================
+ 
+AUTH_USER_MODEL = "accounts.User"
+ 
+AUTHENTICATION_BACKENDS = [
+    "axes.backends.AxesStandaloneBackend",
+    "apps.accounts.backends.OfficialBackend",
+]
+ 
+AUTH_PASSWORD_VALIDATORS = [
+    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    # 12 for every official (2026-11-19), the same as each role's password_min_length (role_matrix.py).
+    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator", "OPTIONS": {"min_length": 12}},
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+    {"NAME": "apps.accounts.validators.PasswordCompositionValidator"},
+]
+ 
+# Lockout (django-axes)
+AXES_FAILURE_LIMIT = env.int("LOGIN_MAX_FAILURES", default=5)
+AXES_COOLOFF_TIME = timedelta(minutes=env.int("LOGIN_LOCKOUT_MINUTES", default=15))
+# Ceiling per username across addresses (WEB-SEC-019, BVTGC-110, lead's decision of 2026-11-25): this many
+# failures for one username within LOGIN_USERNAME_WINDOW_MINUTES, from any addresses, lock the username
+# from every address for LOGIN_LOCKOUT_MINUTES. 0 turns the ceiling off. apps/accounts/lockout.py.
+LOGIN_MAX_FAILURES_PER_USERNAME = env.int("LOGIN_MAX_FAILURES_PER_USERNAME", default=20)
+LOGIN_USERNAME_WINDOW_MINUTES = env.int("LOGIN_USERNAME_WINDOW_MINUTES", default=60)
+# Cap per address against password spraying (one password tried on many usernames; BVTGC-105, put back
+# before go-live by the lead's decision): this many failed logins from one IP within
+# LOGIN_IP_WINDOW_MINUTES, for any usernames, block every login from that IP until the oldest of them
+# leaves the window. 0 turns it off, and 0 is the default: the limits ship switched off until production
+# confirms it sees real visitor addresses (lead's decision, BVTGC-39). Mobile networks put many phones
+# behind one address, and the wallet's citizen logins count too, so a server that turns it on starts high
+# (such as 200). apps/accounts/lockout.py.
+LOGIN_IP_MAX_FAILURES = env.int("LOGIN_IP_MAX_FAILURES", default=0)
+LOGIN_IP_WINDOW_MINUTES = env.int("LOGIN_IP_WINDOW_MINUTES", default=60)
+AXES_LOCKOUT_PARAMETERS = [["username", "ip_address"]]
+AXES_RESET_ON_SUCCESS = True
+AXES_RESET_COOL_OFF_ON_FAILURE_DURING_LOCKOUT = False
+AXES_USERNAME_CALLABLE = "apps.accounts.lockout.axes_username"
+AXES_CLIENT_IP_CALLABLE = "apps.accounts.lockout.axes_client_ip"
+AXES_LOCKOUT_CALLABLE = "apps.accounts.lockout.lockout_response"
+AXES_DISABLE_ACCESS_LOG = True
+AXES_VERBOSE = False
+AXES_ENABLE_ACCESS_FAILURE_LOG = True
+ 
+# Citizens' wallet accounts have their own password rule (D15, BVTGC-123): at least 8 characters of any kind,
+# not a common password, not like the name or email, not the mobile number. The officials' rule above
+# (AUTH_PASSWORD_VALIDATORS: 12 characters with the composition) is never used for them, nor this one for officials.
+CITIZEN_PASSWORD_MIN_LENGTH = env.int("CITIZEN_PASSWORD_MIN_LENGTH", default=8)
+CITIZEN_PASSWORD_VALIDATORS = [
+    {
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
+        "OPTIONS": {"user_attributes": ("name", "email")},
+    },
+    {
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
+        "OPTIONS": {"min_length": CITIZEN_PASSWORD_MIN_LENGTH},
+    },
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+    {"NAME": "apps.citizens.passwords.NotTheMobileNumberValidator"},
+]
+
+PASSWORD_CHANGE_MAX_FAILURES = env.int("PASSWORD_CHANGE_MAX_FAILURES", default=5)
+PASSWORD_CHANGE_WINDOW_MINUTES = env.int("PASSWORD_CHANGE_WINDOW_MINUTES", default=15)
+ 
+CONSOLE_SESSION_IDLE_MINUTES = env.int("CONSOLE_SESSION_IDLE_MINUTES", default=30)
+SESSION_COOKIE_AGE = CONSOLE_SESSION_IDLE_MINUTES * 60
+# Not Django's SESSION_SAVE_EVERY_REQUEST: grama.sessions.SessionMiddleware renews the session on every
+# request except the console's background checks (X-Background-Request: 1), BVTGC-72.
+SESSION_SAVE_EVERY_REQUEST = False
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_HTTPONLY = False
+CSRF_COOKIE_SAMESITE = "Lax"
+ 
+ 
+# ==============================================================================
+# 9. LANGUAGE & TIME (COMMON)
+# ==============================================================================
+ 
+LANGUAGE_CODE = "te"
+LANGUAGES = [
+    ("te", "తెలుగు"),
+    ("en", "English"),
+]
+LOCALE_PATHS = [BASE_DIR / "locale"]
+USE_I18N = True
+TIME_ZONE = "Asia/Kolkata"
+USE_TZ = True
+ 
+ 
+# ==============================================================================
+# 10. REST FRAMEWORK & OPENAPI (COMMON)
+# ==============================================================================
+ 
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "apps.accounts.authentication.GramaJWTAuthentication",
+        "apps.accounts.authentication.GramaSessionAuthentication",
+    ],
+    "EXCEPTION_HANDLER": "grama.exceptions.exception_handler",
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
+    ],
+    "DEFAULT_RENDERER_CLASSES": [
+        "grama.renderers.JSONRenderer",
+    ],
+    "DEFAULT_PARSER_CLASSES": [
+        "rest_framework.parsers.JSONParser",
+        "rest_framework.parsers.FormParser",
+        "rest_framework.parsers.MultiPartParser",
+    ],
+    "DEFAULT_PAGINATION_CLASS": "grama.pagination.PageNumberPagination",
+    "PAGE_SIZE": 20,
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "UNICODE_JSON": True,
+    "TEST_REQUEST_DEFAULT_FORMAT": "json",
+    "DEFAULT_THROTTLE_RATES": {"transliterate": env.str("TRANSLITERATION_RATE", default="60/min")},
+}
+ 
+if DEBUG and not _RUNNING_TESTS:
+    REST_FRAMEWORK["DEFAULT_RENDERER_CLASSES"].append("rest_framework.renderers.BrowsableAPIRenderer")
+ 
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=env.int("JWT_ACCESS_MINUTES", default=15)),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=env.int("JWT_REFRESH_DAYS", default=30)),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+    "UPDATE_LAST_LOGIN": True,
+    "AUTH_HEADER_TYPES": ("Bearer",),
+    "USER_ID_FIELD": "id",
+    "USER_ID_CLAIM": "user_id",
+}
+# The longest an app login lasts, however often it is renewed (BVTGC-73): after this many days since
+# the official typed their password, renewal is refused and the app asks for the login again.
+# 0 = no limit. The console has its own idle limit (CONSOLE_SESSION_IDLE_MINUTES).
+JWT_ABSOLUTE_DAYS = env.int("JWT_ABSOLUTE_DAYS", default=90)
+# A refresh token sent again within this many seconds of its first use (its answer was lost on a weak
+# network) still works while its replacement is unused: the lost replacement ends and a new pair is given
+# (BVTGC-93). The window counts from the first use and never grows. 0 = no second chance.
+JWT_REFRESH_GRACE_SECONDS = env.int("JWT_REFRESH_GRACE_SECONDS", default=60)
+if JWT_ABSOLUTE_DAYS < 0:
+    raise ImproperlyConfigured("JWT_ABSOLUTE_DAYS must be 0 (no limit) or more.")
+
+# App updates (BVTGC-90 / BVTGC-25), sent in GET /app-config/. Values are app versions such as
+# "1.0.0+24"; the app compares only the build number after the "+". Empty = no prompt (the default).
+# APP_LATEST_VERSION: older apps show "Update available" (with Later). APP_MIN_VERSION: older apps show
+# a blocking "Please update the app" screen; raise it only after the new APK is on the website.
+APP_LATEST_VERSION = env.str("APP_LATEST_VERSION", default="").strip()
+APP_MIN_VERSION = env.str("APP_MIN_VERSION", default="").strip()
+_APP_VERSION = re.compile(r"\d+(\.\d+)*\+(\d+)")
+for _name in ("APP_LATEST_VERSION", "APP_MIN_VERSION"):
+    if globals()[_name] and not _APP_VERSION.fullmatch(globals()[_name]):
+        # A slip would only hide the prompt in the app; refusing to start makes it visible at deploy.
+        raise ImproperlyConfigured(f"{_name} must look like 1.0.0+24 (a version with its build number), or be empty.")
+if APP_LATEST_VERSION and APP_MIN_VERSION and (
+    int(_APP_VERSION.fullmatch(APP_MIN_VERSION).group(2)) > int(_APP_VERSION.fullmatch(APP_LATEST_VERSION).group(2))
+):
+    raise ImproperlyConfigured("APP_MIN_VERSION cannot have a higher build number than APP_LATEST_VERSION.")
+ 
+SPECTACULAR_SETTINGS = {
+    "TITLE": "BVT Grama Connect API",
+    "DESCRIPTION": "Village news platform for Andhra Pradesh. Contract: docs/api-contract.md.",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "SERVE_PERMISSIONS": ["apps.accounts.permissions.CanReadApiDocs"],
+    "COMPONENT_SPLIT_REQUEST": True,
+    "SCHEMA_PATH_PREFIX": r"/api/v[0-9]+",
+    # One stable name per choice set used in several places, instead of generated names such as
+    # "Level360Enum" that change when a serializer changes and break generated client code.
+    "ENUM_NAME_OVERRIDES": {
+        "AreaLevelEnum": "apps.geography.models.AreaLevel",
+        "LanguageEnum": "apps.accounts.models.Language",
+        "PostStatusEnum": "apps.posts.models.PostStatus",
+        "ServiceRequestStatusEnum": "apps.service_requests.models.RequestStatus",
+        "DevicePlatformEnum": "apps.notifications.models.Platform",
+        "MediaKindEnum": "apps.posts.models.MediaKind",
+        "NotificationKindEnum": "apps.notifications.models.NotificationKind",
+        "ServiceIconEnum": "apps.service_requests.models.ICONS",
+        "BillIconEnum": "apps.bills.models.ICONS",
+        # Finding BE-CFG-203: the last four generated names (Level360Enum, LanguageD54Enum, KindA59Enum,
+        # Status650Enum). Names only: values, fields and answers stay exactly as they are.
+        "AreaLevelCodeEnum": ["STATE", "DISTRICT", "MANDAL", "VILLAGE"],
+        "LanguageCodeEnum": ["te", "en"],
+        "WalletEntryKindEnum": "apps.wallet.models.WalletEntry.Kind",
+        "WalletEntryStatusEnum": "apps.wallet.models.WalletEntry.Status",
+    },
+}
+ 
+ 
+# ==============================================================================
+# 11. BACKGROUND WORKER (DJANGO-Q2)
+# ==============================================================================
+ 
+Q_CLUSTER = {
+    "name": "grama",
+    "orm": "default",
+    "workers": env.int("Q_WORKERS", default=2),
+    # Seconds between queue checks while idle. django-q2's default, 0.2, asks the database five times a
+    # second all day; 1 keeps pushes prompt at a fifth of the load (audit finding BE-DB-017).
+    "poll": env.float("Q_POLL", default=1.0),
+    "timeout": 120,
+    "retry": 180,
+    "max_attempts": 3,
+    # A job that raised is stored as failed and taken off the queue, not run again from the start after
+    # "retry" seconds: a push job would send again to every device it had already reached (finding
+    # BE-JOB-201). Our jobs retry on their own: push and translation through one-off schedules, the
+    # periodic jobs (escalation, block endings, housekeeping, wallet) at their next run.
+    "ack_failures": True,
+    "queue_limit": 50,
+    "bulk": 10,
+    "catch_up": False,
+    "label": "Background tasks",
+    "sync": _RUNNING_TESTS,
+}
+ 
+ 
+# ==============================================================================
+# 12. PLATFORM RULES & APP SETTINGS (COMMON)
+# ==============================================================================
+ 
+ADMIN_POSTS_AUTO_PUBLISH = env.bool("ADMIN_POSTS_AUTO_PUBLISH", default=True)
+REVIEW_FIRST_DECISION_WINS = env.bool("REVIEW_FIRST_DECISION_WINS", default=True)
+REVIEW_ESCALATION_HOURS = env.int("REVIEW_ESCALATION_HOURS", default=24)
+# Overdue posts escalated per run of the escalation job (every ESCALATION_CHECK_MINUTES), oldest first;
+# the rest wait for the next run, so one run stays well inside the job timeout.
+ESCALATION_BATCH_SIZE = env.int("ESCALATION_BATCH_SIZE", default=200)
+if ESCALATION_BATCH_SIZE < 1:
+    raise ImproperlyConfigured("ESCALATION_BATCH_SIZE must be at least 1.")
+SUPER_ADMIN_CAN_POST = env.bool("SUPER_ADMIN_CAN_POST", default=True)
+MAX_SUPER_ADMINS = env.int("MAX_SUPER_ADMINS", default=5)
+if MAX_SUPER_ADMINS < 0:
+    raise ImproperlyConfigured("MAX_SUPER_ADMINS must be 0 (no limit) or more.")
+ 
+# Media per post, for everyone who posts: citizens, Panchayat members, admins and the Super Admin
+# (lead's decision of 2026-11-13): up to MAX_PHOTOS_PER_POST photos, or one video, never both.
+MAX_PHOTOS_PER_POST = env.int("MAX_PHOTOS_PER_POST", default=3)
+if MAX_PHOTOS_PER_POST < 1:
+    raise ImproperlyConfigured("MAX_PHOTOS_PER_POST must be 1 or more.")
+POST_MAX_TARGETS = env.int("POST_MAX_TARGETS", default=200)
+VIDEO_POSTS_ENABLED = env.bool("VIDEO_POSTS_ENABLED", default=True)
+ 
+NEAREST_VILLAGE_START_KM = env.float("NEAREST_VILLAGE_START_KM", default=5.0)
+NEAREST_VILLAGE_MAX_KM = env.float("NEAREST_VILLAGE_MAX_KM", default=50.0)
+ 
+MAX_IMAGE_UPLOAD_MB = env.int("MAX_IMAGE_UPLOAD_MB", default=10)
+POST_IMAGE_MAX_PX = 1280
+POST_MEDIUM_PX = env.int("POST_MEDIUM_PX", default=640)
+POST_THUMB_PX = 320
+POST_IMAGE_QUALITY = 80
+ 
+# A post's video: at most 60 MB and 60 seconds, for officials and citizens alike (lead's decision
+# of 2026-11-14, replacing "any length" of 2026-11-13). VIDEO_MAX_SECONDS 0 would be any length.
+# Banner videos have their own settings (ADS_VIDEO_MAX_MB 60, ADS_VIDEO_MAX_SECONDS 0: any length).
+# The web console (CF_VIDEO_MAX_S) and the app (kPostVideoMaxSeconds) check the same 60 s.
+MAX_VIDEO_UPLOAD_MB = env.int("MAX_VIDEO_UPLOAD_MB", default=60)
+VIDEO_MAX_SECONDS = env.int("VIDEO_MAX_SECONDS", default=60)
+# How long the server may spend checking uploads (apps.posts.media, audit BE-PERF-003): each
+# ffprobe/ffmpeg step, and all photos and videos of one request together. A step that runs out of
+# time answers 415; a request over the budget answers 400. Keep the budget below Gunicorn's
+# --timeout (GUNICORN_TIMEOUT, 120 s), so a request is refused cleanly instead of being killed.
+VIDEO_PROBE_TIMEOUT_S = env.int("VIDEO_PROBE_TIMEOUT_S", default=15)
+VIDEO_POSTER_TIMEOUT_S = env.int("VIDEO_POSTER_TIMEOUT_S", default=20)
+VIDEO_STRIP_TIMEOUT_S = env.int("VIDEO_STRIP_TIMEOUT_S", default=45)
+MEDIA_PROCESSING_BUDGET_S = env.int("MEDIA_PROCESSING_BUDGET_S", default=90)
+if min(VIDEO_PROBE_TIMEOUT_S, VIDEO_POSTER_TIMEOUT_S, VIDEO_STRIP_TIMEOUT_S, MEDIA_PROCESSING_BUDGET_S) < 1:
+    raise ImproperlyConfigured("VIDEO_*_TIMEOUT_S and MEDIA_PROCESSING_BUDGET_S must be at least 1 second.")
+ESCALATION_CHECK_MINUTES = env.int("ESCALATION_CHECK_MINUTES", default=15)
+HOUSEKEEPING_KEEP_DAYS = env.int("HOUSEKEEPING_KEEP_DAYS", default=30)
+NOTIFICATION_KEEP_DAYS = env.int("NOTIFICATION_KEEP_DAYS", default=90)  # read ones; 0 keeps them all
+# Longest text kept in an audit entry's data; longer text is cut with "…" (apps.audit.services).
+AUDIT_TEXT_MAX_CHARS = env.int("AUDIT_TEXT_MAX_CHARS", default=2000)
+if AUDIT_TEXT_MAX_CHARS < 10:
+    raise ImproperlyConfigured("AUDIT_TEXT_MAX_CHARS must be at least 10.")
+ 
+PLAY_STORE_URL = env.str("PLAY_STORE_URL", default="")
+APP_STORE_URL = env.str("APP_STORE_URL", default="")
+SITE_WEBSITE_URL = env.str("SITE_WEBSITE_URL", default="https://example.in/")
+ 
+PUBLIC_BASE_URL = env.str("PUBLIC_BASE_URL", default="")
+if PUBLIC_BASE_URL and not PUBLIC_BASE_URL.endswith("/"):
+    PUBLIC_BASE_URL += "/"
+if PUBLIC_BASE_URL and not re.match(r"^https?://[^/]+/", PUBLIC_BASE_URL):
+    raise ImproperlyConfigured("PUBLIC_BASE_URL must be an address like https://www.gramaconnect.com/.")
+ 
+ANDROID_PACKAGE = env.str("ANDROID_PACKAGE", default="com.bvt.app")
+ANDROID_CERT_SHA256 = [
+    value.strip().upper()
+    for value in env.list(
+        "ANDROID_CERT_SHA256",
+        default=["27:16:13:C6:5C:CD:BE:3A:45:97:E0:54:4E:CD:09:CA:44:91:E0:CB:07:63:B3:5E:6E:D0:42:89:D5:8A:89:79"],
+    )
+    if value.strip()
+]
+for _fingerprint in ANDROID_CERT_SHA256:
+    if not re.fullmatch(r"[0-9A-F]{2}(:[0-9A-F]{2}){31}", _fingerprint):
+        raise ImproperlyConfigured(f"ANDROID_CERT_SHA256: {_fingerprint!r} is not a SHA-256 fingerprint (32 hex pairs).")
+ 
+SHARE_PAGE_MAX_AGE = env.int("SHARE_PAGE_MAX_AGE", default=300)
+APP_DOWNLOAD_URL = env.str("APP_DOWNLOAD_URL", default="")
+SITE_SHOWCASE_VILLAGE_ID = env.int("SITE_SHOWCASE_VILLAGE_ID", default=0) or None
+ 
+GEO_PUBLIC_MAX_AGE = env.int("GEO_PUBLIC_MAX_AGE", default=600)
+GEO_BOUNDS = {"lat": (12.6, 19.95), "lng": (76.7, 84.8)}
+# geo/villages/import/ reads the whole file into memory: the state's ~18,000 villages are about 3 MB.
+GEO_IMPORT_MAX_BYTES = env.int("GEO_IMPORT_MAX_BYTES", default=20 * 1024 * 1024)
+ 
+CONTACTS_MAX_PER_AREA = env.int("CONTACTS_MAX_PER_AREA", default=200)
+CONTACTS_PUBLIC_MAX_AGE = env.int("CONTACTS_PUBLIC_MAX_AGE", default=300)
+CONTACTS_VERIFY_DAYS = env.int("CONTACTS_VERIFY_DAYS", default=180)
+CONTACTS_REQUIRE_MOBILE_CONSENT = env.bool("CONTACTS_REQUIRE_MOBILE_CONSENT", default=True)
+CONTACTS_IMPORT_MAX_BYTES = env.int("CONTACTS_IMPORT_MAX_BYTES", default=2 * 1024 * 1024)
+CONTACTS_IMPORT_MAX_ROWS = env.int("CONTACTS_IMPORT_MAX_ROWS", default=5000)
+ 
+CITIZEN_POSTS_ENABLED = env.bool("CITIZEN_POSTS_ENABLED", default=True)
+PLAY_INTEGRITY_PACKAGE = env.str("PLAY_INTEGRITY_PACKAGE", default="")
+PLAY_INTEGRITY_CREDENTIALS_FILE = env.str("PLAY_INTEGRITY_CREDENTIALS_FILE", default="")
+CITIZEN_INTEGRITY_VERIFIER = env.str(
+    "CITIZEN_INTEGRITY_VERIFIER", default="apps.citizens.integrity.PlayIntegrityVerifier"
+)
+CITIZEN_CHALLENGE_SECONDS = env.int("CITIZEN_CHALLENGE_SECONDS", default=300)
+CITIZEN_POSTS_PER_DAY = env.int("CITIZEN_POSTS_PER_DAY", default=5)
+# Category keys only officials may post in; a citizen post in one answers 400 (BVTGC-101). The app hides them too.
+CITIZEN_EXCLUDED_CATEGORIES = env.list("CITIZEN_EXCLUDED_CATEGORIES", default=["announce"])
+CITIZEN_REGISTRATIONS_PER_IP_PER_DAY = env.int("CITIZEN_REGISTRATIONS_PER_IP_PER_DAY", default=0)
+ 
+SERVICE_REQUESTS_PER_DAY = env.int("SERVICE_REQUESTS_PER_DAY", default=10)
+SERVICES_PUBLIC_MAX_AGE = env.int("SERVICES_PUBLIC_MAX_AGE", default=300)
+SERVICE_LOGO_MAX_UPLOAD_MB = env.int("SERVICE_LOGO_MAX_UPLOAD_MB", default=2)
+SERVICE_LOGO_MIN_PX = env.int("SERVICE_LOGO_MIN_PX", default=64)
+SERVICE_LOGO_PX = env.int("SERVICE_LOGO_PX", default=256)
+ 
+ADS_MAX_UPLOAD_MB = env.int("ADS_MAX_UPLOAD_MB", default=5)
+ADS_MIN_WIDTH_PX = env.int("ADS_MIN_WIDTH_PX", default=800)
+ADS_IMAGE_MAX_PX = env.int("ADS_IMAGE_MAX_PX", default=1600)
+ADS_VIDEO_MAX_MB = env.int("ADS_VIDEO_MAX_MB", default=60)
+ADS_VIDEO_MAX_SECONDS = env.int("ADS_VIDEO_MAX_SECONDS", default=0)
+# Banners a citizen's Home shows, newest first: 0 = no limit (owner's decision of 2026-11-24, BVTGC-92),
+# N = at most N. The Super Admin changes it in Settings (ads_banner_limit); this is only the starting value.
+ADS_PUBLIC_LIMIT = env.int("ADS_PUBLIC_LIMIT", default=0)
+if ADS_PUBLIC_LIMIT < 0:
+    raise ImproperlyConfigured("ADS_PUBLIC_LIMIT must be 0 (no limit) or more.")
+ADS_PUBLIC_MAX_AGE = env.int("ADS_PUBLIC_MAX_AGE", default=300)
+ 
+SITE_HELPLINES = env.json(
+    "SITE_HELPLINES",
+    default=[
+        {"number": "112", "label_te": "అత్యవసరం", "label_en": "Emergency"},
+        {"number": "108", "label_te": "అంబులెన్స్", "label_en": "Ambulance"},
+        {"number": "1930", "label_te": "సైబర్ మోసం", "label_en": "Cyber fraud"},
+        {"number": "181", "label_te": "మహిళా హెల్ప్‌లైన్", "label_en": "Women helpline"},
+        {"number": "1098", "label_te": "బాలల హెల్ప్‌లైన్", "label_en": "Child helpline"},
+        {"number": "1912", "label_te": "విద్యుత్", "label_en": "Electricity"},
+    ],
+)
+ 
+FEED_PAGE_SIZE = 20
+FEED_UPCOMING_LIMIT = 10
+FEED_URGENT_LIMIT = 5
+FEED_URGENT_DAYS = 7
+FEED_SEARCH_MIN_CHARS = 2
+ 
+FCM_CREDENTIALS_FILE = env.str("FCM_CREDENTIALS_FILE", default="")
+FCM_PROJECT_ID = env.str("FCM_PROJECT_ID", default="")
+FCM_TOPIC_PREFIX = env.str("FCM_TOPIC_PREFIX", default="")
+if not re.fullmatch(r"[A-Za-z0-9_.~%-]*", FCM_TOPIC_PREFIX):
+    raise ImproperlyConfigured("FCM_TOPIC_PREFIX may hold only letters, digits and - _ . ~ %.")
+PUSH_TTL_SECONDS = env.int("PUSH_TTL_SECONDS", default=86400)
+PUSH_ALL_POSTS_HIGH_PRIORITY = env.bool("PUSH_ALL_POSTS_HIGH_PRIORITY", default=True)
+# A push job for many topics or devices stops starting new ones after this many seconds and queues the
+# rest as a new job, so it never reaches the worker's time limit (Q_CLUSTER "timeout") and is never
+# re-run from the start, which would push twice to the ones already done (BE-REL-101, BE-JOB-201).
+PUSH_TOPICS_JOB_SECONDS = env.int("PUSH_TOPICS_JOB_SECONDS", default=60)
+if not 0 < PUSH_TOPICS_JOB_SECONDS < Q_CLUSTER["timeout"]:
+    raise ImproperlyConfigured("PUSH_TOPICS_JOB_SECONDS must be above 0 and below the job timeout (120).")
+ 
+TRANSLATION_PROVIDER = env.str("TRANSLATION_PROVIDER", default="off")
+GOOGLE_TRANSLATE_KEY = env.str("GOOGLE_TRANSLATE_KEY", default="")
+BHASHINI_USER_ID = env.str("BHASHINI_USER_ID", default="")
+BHASHINI_API_KEY = env.str("BHASHINI_API_KEY", default="")
+BHASHINI_PIPELINE_ID = env.str("BHASHINI_PIPELINE_ID", default="")
+TRANSLATION_TIMEOUT_S = env.int("TRANSLATION_TIMEOUT_S", default=20)
+TRANSLATION_RETRY_MINUTES = [1, 5, 15]
+ 
+TRANSLITERATION_TIMEOUT_S = env.float("TRANSLITERATION_TIMEOUT_S", default=4.0)
+TRANSLITERATION_CACHE_S = env.int("TRANSLITERATION_CACHE_S", default=60 * 60 * 24 * 30)
+DELIVERY_RETRY_ATTEMPTS = env.int("DELIVERY_RETRY_ATTEMPTS", default=3)
+
+# Nothing is hidden by age (decision of 2026-11-20): the audit log, contact messages and service
+# requests list every record, however old, in pages. CONTACT_MESSAGES_PER_IP_PER_HOUR,
+# CONTACT_MESSAGES_VISIBLE_DAYS, SERVICE_REQUEST_CLOSED_VISIBLE_DAYS, AUDIT_DEFAULT_DAYS and
+# AUDIT_VISIBLE_DAYS are gone: a leftover line in a server's .env is ignored.
+# An audit export matching more than AUDIT_EXPORT_MAX_ROWS entries answers 400 asking for a shorter
+# date range (apps.audit.views).
+AUDIT_EXPORT_MAX_ROWS = env.int("AUDIT_EXPORT_MAX_ROWS", default=50000)
+if AUDIT_EXPORT_MAX_ROWS < 1:
+    raise ImproperlyConfigured("AUDIT_EXPORT_MAX_ROWS must be at least 1.")
+
+# Citizen wallet (BVTGC-106; docs/api-contract.md, section 21). Off until launch: every wallet endpoint
+# answers 404. While WALLET_PILOT_MANDALS lists mandal ids, sign-up is open only in their villages (D13).
+# BVTGC-129 makes both runtime settings the Super Admin changes in the console.
+WALLET_ENABLED = env.bool("WALLET_ENABLED", default=False)
+WALLET_PILOT_MANDALS = env.list("WALLET_PILOT_MANDALS", cast=int, default=[])
+# Referral rewards and their rules (requirements section 7; suggested starts until the client answers Q2).
+# The hourly job (apps.wallet.tasks) confirms a referral after the hold when the friend opened the app on
+# enough days and the referrer is within the monthly limit (0 = no limit).
+# Deleted wallet accounts keep the fingerprints of their number and email this long, so a new sign-up gets no
+# second welcome bonus (requirements Q9, subject to legal review); then housekeeping clears them. 0 keeps them.
+CITIZEN_DELETED_KEEP_DAYS = env.int("CITIZEN_DELETED_KEEP_DAYS", default=365)
+REFERRAL_REWARD_POINTS = env.int("REFERRAL_REWARD_POINTS", default=50)
+WELCOME_BONUS_POINTS = env.int("WELCOME_BONUS_POINTS", default=20)
+REFERRAL_HOLD_DAYS = env.int("REFERRAL_HOLD_DAYS", default=7)
+REFERRAL_ACTIVE_DAYS = env.int("REFERRAL_ACTIVE_DAYS", default=2)
+REFERRALS_PER_MONTH = env.int("REFERRALS_PER_MONTH", default=30)
+WELCOME_BONUSES_PER_PHONE = env.int("WELCOME_BONUSES_PER_PHONE", default=3)
+# The consent notice a sign-up must name; change it with the privacy policy and terms (C5).
+CITIZEN_CONSENT_VERSION = env.str("CITIZEN_CONSENT_VERSION", default="2026-11-25")
+ 
+ 
+# ==============================================================================
+# 13. LOGGING (COMMON)
+# ==============================================================================
+ 
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    # Every line carries the request's number ("-" in background jobs), the same one the answer
+    # sends in X-Request-ID: search the log for it (grama/request_id.py).
+    "filters": {
+        "request_id": {"()": "grama.request_id.RequestIdFilter"},
+    },
+    "formatters": {
+        "simple": {"format": "{asctime} {levelname} [{request_id}] {name}: {message}", "style": "{"},
+    },
+    "handlers": {
+        "console": {"class": "logging.StreamHandler", "formatter": "simple", "filters": ["request_id"]},
+    },
+    "root": {"handlers": ["console"], "level": env.str("LOG_LEVEL", default="INFO")},
+    "loggers": {
+        "django.request": {"handlers": ["console"], "level": "WARNING", "propagate": False},
+        "axes": {"handlers": ["console"], "level": "WARNING", "propagate": False},
+    },
+}
+ 
+# Backward compatibility shims for legacy submodule imports
+sys.modules.setdefault("grama.settings.base", sys.modules[__name__])
+sys.modules.setdefault("grama.settings.dev", sys.modules[__name__])
+sys.modules.setdefault("grama.settings.prod", sys.modules[__name__])
+sys.modules.setdefault("grama.settings.test", sys.modules[__name__])

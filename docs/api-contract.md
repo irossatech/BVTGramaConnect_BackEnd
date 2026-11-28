@@ -1,0 +1,1758 @@
+# BVT Grama Connect API contract, v1
+
+Status: draft, 2026-10-21. Built from the three prototypes; see `prototype-inventory.md` in this folder.
+
+This contract covers everything the mobile app (all roles), the public website and the Super Admin console need. Where a prototype disagrees with CLAUDE.md, this contract follows CLAUDE.md. A line marked **Pending Qn** depends on open question n in `prototype-inventory.md`, section 8. The contract is written so either answer fits without renaming endpoints.
+
+Contents:
+1. Conventions
+2. Shared objects
+3. accounts: auth, me, users
+4. geography
+5. posts: categories, posts, media, review, stats, settings
+6. feed (public)
+7. notifications: devices, inbox, templates, push
+8. audit: audit log, dashboard, reports
+9. web_public: site config, contact, showcase
+10. Post state machine
+11. Permission matrix
+12. Screen to endpoint map
+13. Limits and throttles
+14. contacts: important numbers
+
+---
+
+## 1. Conventions
+
+### Base URL and format
+- Base path `/api/v1/`. Django serves it behind Nginx on the same origin as the website (`/`) and the console (`/console/`), so the web parts need no CORS. The mobile app calls the absolute URL.
+- Health check: `GET /health/`, public, `200 {"status": "ok", "time", "worker": "ok"|"late"|"not_scheduled", "failed_jobs_24h"}` while Django and the database answer; `503 {"status": "database_down", "time"}` when the database does not. `worker` says whether the background jobs run; `failed_jobs_24h` counts background jobs that failed in the last 24 hours (2026-11-27, BE-OBS-204). `GET /health/?strict=1` also answers `503 {"status": "worker_down", …}` while `worker` is not `ok`: that is the address for an uptime monitor (2026-11-27, BE-OBS-201). The deploy scripts use the plain address, since they call it before the worker starts. No client calls it.
+- OpenAPI schema: `GET /api/schema/`. Swagger UI: `/api/docs/`. Open to everyone on laptops and the QA server (`API_DOCS_PUBLIC`); in production only for console users (a Super Admin's console session or token): anyone else gets `401` or `403`.
+- JSON in UTF-8 both ways. Telugu is sent as raw UTF-8, not `\u` escapes; a Telugu letter costs 3 bytes instead of 6, which matters on 2G. Nginx compresses JSON with gzip.
+- Field names are `snake_case`. Enum values are `UPPER_CASE`, except category keys and language codes.
+- **Links to uploaded files are absolute** in every endpoint: photos, videos, posters, thumbnails, ad images, service and bill logos, for example `https://<site>/media/posts/2026/10/<id>-0.webp` (BVTGC-68, 2026-11-23; before, the feed and the citizen's own posts sent the path `/media/...` only). Clients use the link as it is.
+- **Photos and videos of a taken-down or discarded post** (`UNPUBLISHED`, `DISCARDED`, and the old `BLOCKED`) are no longer under `/media/` (BVTGC-192, decision of 2026-11-27): a link seen before stops working (404). Where the API still shows such a post (officials' posts and review lists, the citizen's own posts), every link of its media (`url`, `poster_url`, `thumb_url`, and the citizen's `photos` and `videos`) is a **signed link** instead, `https://<site>/api/v1/media/hidden/<token>/`, that works for `HIDDEN_MEDIA_LINK_SECONDS` (an hour) and then answers 404; ask the API again for a fresh one. It needs no login header, so `<img>` and `Image.network` load it as before: **no client change**. The link names no person. When a reversal shows the post again, its links are the `/media/` ones again. The WhatsApp preview picture of a hidden post is removed too.
+
+### Versions and changes (BVTGC-96; agreed by the backend, web and mobile teams on 2026-11-25)
+
+Why: the website and the console are deployed together with the server, but app APKs downloaded from the website stay on phones for months. Every change is judged against the **oldest app build still in use**, not only the current one.
+
+**Safe changes** (additive; announce them, no waiting):
+- a new endpoint, or a new method on an existing one;
+- a new field in a response;
+- a new optional field in a request (leaving it out behaves as before);
+- a new error code on a new endpoint or field.
+
+Clients must make these safe: **ignore response fields they do not know**, show an unknown enum value (a new status, category or role) with a neutral fallback rather than crash, and show `error.message` for an error code they do not know (section 1, Errors).
+
+**Breaking changes** (need the steps below):
+- removing or renaming an endpoint, a field or an enum value;
+- changing a field's type, meaning, unit or format (for example a date's format, a path that becomes a full link);
+- making an optional request field required, or refusing a value that was accepted before;
+- changing an error code or status code that clients act on;
+- changing a default, the paging shape or the sort order clients rely on.
+
+**How a breaking change is made, within `/api/v1/`:**
+1. **Add the new way next to the old one** (a new field, value or endpoint) and mark the old one in this contract: "**Deprecated** since <date> (<ticket>), replaced by <new>; removed after <condition>". Announce it to the web developer and the mobile team before merging (`.claude/api.md`).
+2. **Web:** the console and the website switch in the same release as the server or the next one (one domain, deployed together).
+3. **App:** the old way stays until **both** are true: (a) `APP_MIN_VERSION` has been raised past the last build that uses the old way (below), and (b) at least **60 days** have passed since the first build without it was put on the website.
+4. Only then remove the old way: update this contract, refresh `docs/client-calls.json` (`python manage.py client_calls`, BVTGC-97); the contract test fails if a client still calls a removed route.
+
+**Raising `APP_MIN_VERSION`** (the blocking "Please update the app" screen, section 5, `GET /app-config`):
+- only for a reason: retiring a deprecated field or endpoint, a security fix, or a server change old builds cannot follow;
+- the new APK is on the website first, and `APP_LATEST_VERSION` has shown the "Update available" note for at least **14 days**;
+- the Super Admin dashboard's `app_versions` (section 8, phones seen in the last 30 days by build) shows the builds below the new minimum at **under 5%** of phones; the rest see the update screen;
+- the owner or lead agrees, since it blocks everyone on an older build until they update.
+
+**Security fix (the one exception):** the lead may raise `APP_MIN_VERSION` at once for a security fix, without the 14-day and 5% waits. The app is installed from the website, not Google Play, so a forced update is the only way a security fix reaches every phone. The new APK must still be on the website first, so the update screen leads to a download that works.
+
+**`/api/v2/`** is used only when a change cannot be made side by side in `/api/v1/` (for example a new login model or a whole resource redesigned). Then `/api/v1/` keeps working, unchanged, until `APP_MIN_VERSION` has moved past every build that calls it; the two are documented separately. No `/api/v2/` is planned.
+
+**Deprecated now:**
+
+| What | Since | Replaced by | Removed when |
+|---|---|---|---|
+| `capabilities` in `Me` (section 2) | 2026-10-21 | `permissions` | the app no longer reads it and `APP_MIN_VERSION` is past the last build that does (steps above) |
+
+### Identifiers
+- Users, role assignments, posts, media, review actions, notifications, devices, audit entries: UUID strings.
+- States, districts, mandals, villages, categories: integers. Villages may also carry the government `lgd_code` used for master-data import.
+- Ads, service requests, website contact messages and contact types: integers too. Important numbers (`Contact`) are UUIDs. Services and bills are addressed by their `key` (a string that never changes).
+- An area is always addressed as a pair: `level` plus `id`.
+
+### Time
+- Returned in India Standard Time (Asia/Kolkata), ISO 8601 with the offset, for example `2026-10-14T15:00:00+05:30`. Every endpoint does this, whether the time comes from a serializer or straight from a view (`grama/renderers.py`). The database stores UTC (`USE_TZ`). Clients show the time as sent; times they send may carry any offset.
+- Calendar dates such as event days are `YYYY-MM-DD`.
+
+### Language
+- `Accept-Language: te` or `en`. Telugu is the default when the header is missing.
+- It picks the language of server-made text: category names, area names, error messages, notification text.
+- Error messages: `message` and every text in `fields` (also the generic field checks such as "This field is required.") come in that language, from the server's Telugu catalogue (`locale/te`, BVTGC-29, 2026-11-23). The `code` never changes with the language: clients decide on `code`, and show `message`.
+- Area and category objects return `name` in the requested language. Admin endpoints also return `name_te` and `name_en` so both can be edited.
+
+### Status words (glossary, BVTGC-67, 2026-11-23)
+One word per status, everywhere a status is named: the app, the console, push and inbox texts, and server messages. They are the app's words. The API itself always sends the status code; this is only what people read.
+
+| Code | Telugu | English |
+|---|---|---|
+| Post `DRAFT` | డ్రాఫ్ట్ | Draft |
+| Post `PENDING` | పెండింగ్ | Pending |
+| Post `PUBLISHED` | ప్రచురితం | Published |
+| Post `RECHECK` | మళ్ళీ తనిఖీ | Recheck |
+| Post `DISCARDED` | తిరస్కరించారు | Discarded |
+| Post `UNPUBLISHED` | తొలగించారు | Taken down |
+| Post `BLOCKED` (old posts only) | బ్లాక్ అయింది | Blocked |
+| Service request `NEW` | కొత్తది | New |
+| Service request `APPROVED` | ఆమోదించారు | Approved |
+| Service request `IN_PROGRESS` | జరుగుతోంది | In progress |
+| Service request `COMPLETED` | పూర్తయింది | Completed |
+| Service request `REJECTED` | తిరస్కరించారు | Rejected |
+| Service request `CANCELLED` | రద్దు చేయబడింది | Cancelled |
+
+- A list tab that groups statuses has its own name, but each row shows its status word. The posts tab "Rejected" (తిరస్కరించినవి) holds both Discarded and Taken down posts, and each shows which one it is.
+- Push and inbox sentences use the same words in sentence form, for example "మీ పోస్ట్ మళ్ళీ తనిఖీకి వచ్చింది" for RECHECK. A sentence may say "waiting for review" (సమీక్ష కోసం వేచి ఉంది); a status label says Pending (పెండింగ్).
+- Post DISCARDED and service request REJECTED share the Telugu తిరస్కరించారు. They never appear in the same list, so the app's word stays.
+- The server's own labels follow this table (`locale/te`); the Super Admin can still edit push texts in the console.
+- A post is written in one language, Telugu or English, stored in `language` (owner decision Q3). The server sets `language` from the text: the script most of the title's and body's letters are in (Telugu letters U+0C00–U+0C7F against Latin ones), and what the app sent only when there are no letters. So an English post that names one Telugu village stays `en`.
+- **Translation** (owner decision of 2026-10-28, changing Q3; works once `TRANSLATION_PROVIDER` and its key are set on the server): once a post is **published**, the server machine-translates its title and body into the other language in the background. `Post`, `FeedItem`, `FeedPost` and `CitizenPost` carry `translation`:
+  ```jsonc
+  "translation": {"language": "en", "title": "…", "body": "…", "machine": true}   // or null
+  ```
+  - `null` until the translation exists (seconds after publishing, or never when the provider is off or failed), and again after an edit until the re-published post is translated anew. A client never needs to compare languages: `translation.language` is always the one the post is not written in.
+  - `machine` is `false` only for a translation an official corrected (not built yet).
+  - Only published posts' title and body are sent to the provider (Google or Bhashini), never a name, phone number or device id. Show the translation as plain text, like the original.
+
+### Authentication
+Officials log in with a **username and a password**. There is no OTP, no SMS and no email in any login or password flow. The username is unique and ignores case. Email and mobile are optional contact details and never work as a login name. Citizens never log in; every citizen read endpoint is public. `docs/authorization.md` describes the whole flow.
+
+**Mobile app: JWT** from `djangorestframework-simplejwt`.
+- **Access token:** lifetime 15 minutes. Sent as `Authorization: Bearer <access>`.
+- **Refresh token:** lifetime 30 days, rotated on every use, old one blacklisted. Kept in secure storage (Android Keystore, iOS Keychain). The app calls `POST /auth/refresh/` when it gets `401 token_expired`.
+- **Login age (BVTGC-73, 2026-11-24):** a login lasts at most `JWT_ABSOLUTE_DAYS` (**90**) days from the moment the official typed their password, however often it is renewed. The refresh token carries that moment (`auth_time`) and every renewal keeps it; after the limit `POST /auth/refresh/` answers `401 session_revoked`, and the app shows the login screen as for any ended session. Logins from before this change start counting at their first renewal after it. `0` means no limit. The console is not affected (it ends after 30 idle minutes).
+
+**Web console: Django session** with CSRF.
+- `GET /auth/csrf/` sets the readable `csrftoken` cookie. `POST /auth/session/login/` creates the session; the cookie `sessionid` is HttpOnly, SameSite=Lax and Secure on the server.
+- The console sends same-origin cookies and the header `X-CSRFToken` on every POST, PATCH, PUT and DELETE. No `Authorization` header, no tokens.
+- The session ends after `CONSOLE_SESSION_IDLE_MINUTES` (30) without a request: `401 not_authenticated`. Every request renews it, **except** one sent with the header `X-Background-Request: 1`: the console sends it on its automatic checks (new notifications and service requests every 60 seconds), so an unattended console ends on the server too (BVTGC-72). Such a request still works while the session lasts.
+- Only users holding `web_admin.access_web_console` get a session.
+
+**Immediate revocation.** Each user has an integer `token_version`. Every token carries it as claim `tv`, and every console session stores it at login. The server loads the user on every request and refuses a token or session whose version differs, or whose user is blocked: `401 session_revoked`. Blocking, a password change, an admin reset and "log out everywhere" bump `token_version` and blacklist the refresh tokens in one transaction. This meets the CLAUDE.md rule that blocking revokes all sessions at once.
+
+**Permissions are read fresh.** Role assignments and group permissions are loaded on every request, so a change takes effect on the next call.
+
+### Permissions
+Roles are Django groups, and actions are Django permissions such as `posts.publish_post` (`docs/authorization.md`, sections 6 to 8). Every write and every non-public read checks two things on the server, per CLAUDE.md:
+1. One of the actor's active role assignments has a group that grants the permission.
+2. The target sits inside that assignment's area. The target is a post's target area, a user's assignment area, or a geography node. A Super Admin assignment covers every area.
+
+Lists are filtered to the actor's areas on the server. A client filter can narrow a list but never widen it. Objects outside the actor's areas return `404`, not `403`, so their existence is not revealed.
+
+Objects that clients act on carry `allowed_actions`, computed on the server for the current actor. Clients show buttons from it instead of repeating the rules.
+
+### Pagination
+- **Page numbers** for admin lists: `?page=1&page_size=20`, maximum `page_size` 100. Response:
+  ```json
+  {"count": 134, "next": "https://…?page=2", "previous": null, "results": []}
+  ```
+  Some lists add sibling keys next to `results`, such as `status_counts`. Each endpoint says so.
+- **Cursors** for the citizen feed and the notification inbox, so new posts do not shift pages on a slow connection: `?cursor=<opaque>`. The page size is fixed by the server, 20 (`FEED_PAGE_SIZE` for the feed); `page_size` is ignored. Response: `{"next": "<url>|null", "previous": "<url>|null", "results": []}`.
+
+### Caching
+- Feed and public post endpoints send `ETag` and `Cache-Control: public, max-age=60`. Clients send `If-None-Match` and get `304 Not Modified` with an empty body when nothing changed.
+- Geography lists send `ETag` and `Cache-Control: public, max-age=600` (`GEO_PUBLIC_MAX_AGE`), on `GET` only, so a new village shows within minutes. Category lists send `max-age=3600`.
+- The app keeps the last feed page on the device and shows it at once on launch, per CLAUDE.md.
+- **Every other API answer is private:** `Cache-Control: no-store, private` (since 2026-11-16, web audit WEB-HDR-002), errors and CSV exports included, so a browser keeps no copy of `/me/`, users, contact messages, service requests or the audit log on disk. Only the answers above and the others marked `public` in this contract (contacts, contact types, services, bills, ads, app-config, share pages) may be cached. A new endpoint is private unless its view sets its own `Cache-Control`. Clients keep their own saved data (the app's feed) as before.
+
+### Sending again after a lost answer (`client_ref`)
+Since 2026-11-18 (mobile audit MOB-ERR-004). On a weak network a create can be saved while its answer never reaches the phone. `POST /posts`, `POST /citizen/posts/` and `POST /citizen/service-requests/` take an optional **`client_ref`**: a random UUID v4 the client makes for one post or request, and sends again unchanged when the person taps Send again on it.
+- The same `client_ref` again from the **same official** (posts) or the **same install** (citizen posts and requests) creates nothing: the answer is **`200`** with the first one, as it is now (it may have been published or decided since). Nothing is counted against the daily limit, audited, sent for review or pushed again, and files sent with the repeat are not read.
+- A new `client_ref` is a new post or request. Different officials or installs may use the same value without clashing.
+- Without `client_ref` every create is new, as before (older app versions, the console). A value that is not a UUID: `400 validation_error` on `fields.client_ref`. It is set on create only; `PATCH` ignores it.
+- Clients: treat `200` and `201` alike.
+
+### Errors
+All errors share one shape:
+
+```json
+{
+  "error": {
+    "code": "validation_error",
+    "message": "శీర్షిక ఇవ్వండి.",
+    "fields": {"title": ["ఈ ఫీల్డ్ తప్పనిసరి."]}
+  }
+}
+```
+
+**Request number (decision of 2026-11-11).** Every answer, success or error, carries the header `X-Request-ID`, a number for that request. The server's log lines for the request show the same number. A server error (`500 server_error`) also gives it in the body, `"request_id"`, so the app or console can show "Something went wrong (ref. 3f9c…)" and the number can be quoted when reporting it. A client may send its own `X-Request-ID` (letters, digits and dashes, 8 to 64 characters) and gets the same one back; anything else is replaced. Clients may ignore the header.
+
+| HTTP | `code` | When |
+|---|---|---|
+| 400 | `validation_error` | Bad or missing fields; `fields` lists them |
+| 400 | `invalid_credentials` | Wrong username or password (same answer for an unknown username), or wrong current password on a password change |
+| 401 | `not_authenticated` | No token or session, or the console session ended after 30 idle minutes |
+| 401 | `token_expired` | Access token expired; refresh and retry |
+| 401 | `session_revoked` | Token or session version changed (block, reset, password change elsewhere), or refresh token blacklisted |
+| 401 | `citizen_token_invalid` | A citizen endpoint without a valid `X-Citizen-Token` (section 15) |
+| 403 | `citizen_blocked` | The phone was blocked by an official and cannot post (section 15) |
+| 403 | `integrity_failed` | Google Play Integrity did not confirm a genuine app on a real phone (section 15) |
+| 503 | `integrity_unavailable` | Google Play Integrity could not be reached, so the phone could not be checked. Try again later: `retry_after_s` (60) and the `Retry-After` header say when; the challenge (`nonce`) is still valid until it expires (section 15) |
+| 403 | `account_blocked` | Blocked user tries to log in |
+| 403 | `not_console_user` | Console login without `web_admin.access_web_console`; no session is created |
+| 403 | `password_change_required` | The official must choose a new password first; only `GET /me/`, `POST /auth/password/change/`, `/auth/session/logout/`, `/auth/refresh/` and `/auth/logout/` work, for sessions and tokens alike |
+| 403 | `permission_denied` | No group of the actor grants the permission; also a console request without a valid `X-CSRFToken` |
+| 403 | `password_confirmation_required` | Giving the Super Admin role with a wrong `current_password` (section 3); counted with wrong tries on "Change password", so too many give `401 session_revoked` |
+| 403 | `out_of_area` | Target is outside the actor's area, on writes |
+| 404 | `not_found` | Missing, or outside the actor's area on reads. A citizen's village that does not exist or is switched off (`/feed/`, `/feed/upcoming/`, `/feed/urgent/`, `/contacts/`, `/ads/` with `village_id`) also carries `"reason": "village_not_found"` (BVTGC-70, 2026-11-23): forget the saved village **only** on that reason, never on another 404 such as an unknown address during a deploy |
+| 409 | `invalid_transition` | Post state does not allow the action |
+| 409 | `already_decided` | Another reviewer acted first (`REVIEW_FIRST_DECISION_WINS`); `post` included |
+| 409 | `duplicate` | Username, email, mobile or name already used; `fields` says which |
+| 409 | `type_in_use` | A contact type that active numbers use cannot be deleted; `count` gives how many (section 14) |
+| 409 | `switch_off_first` | A post category, a service or a bill is edited (anything but the on/off switch and the order) or deleted only while switched off (2026-11-26) |
+| 409 | `service_in_use` | A service that requests use cannot be deleted (keep it hidden); `count` gives how many (section 16) |
+| 409 | `category_in_use` | A post category that posts use cannot be deleted (switch it off instead); `count` gives how many (section 5, "Categories") |
+| 409 | `protected` | The "Other" contact type cannot be deleted (section 14) |
+| 409 | `last_super_admin` | Blocking a Super Admin, or removing or switching off their role, would leave no active Super Admin (section 3) |
+| 409 | `super_admin_limit` | There are already `MAX_SUPER_ADMINS` active Super Admins (section 3); `limit` gives the number |
+| 409 | `media_conflict` | A post has up to 3 photos or one video, never both: a photo for a post with a video, a second video, or a video for a post with photos (sections 5 and 15) |
+| 413 | `file_too_large` | Upload over the limit |
+| 415 | `unsupported_media` | File type not allowed |
+| 429 | `locked_out` | 5 failed logins for this username from this IP address, or (since 2026-11-25) 20 within an hour for this username from any addresses; `retry_after_s` gives the seconds left. Same answer and message for both |
+| 429 | `throttled` | Rate limit; `retry_after_s` gives the seconds to wait, and the `Retry-After` header is set |
+
+Section 21 (citizen accounts and the wallet) adds its own codes, listed there.
+
+### Enumerations
+
+| Name | Values |
+|---|---|
+| `role` | A group's key: `SUPER_ADMIN`, `DISTRICT_ADMIN`, `MANDAL_ADMIN`, `VILLAGE_ADMIN`, `PANCHAYAT_MEMBER` (`docs/authorization.md`, section 6). Citizens need no account; the optional wallet account of section 21 holds the group `CITIZEN`, which never appears in officials' lists. `CITIZEN` is also the role a citizen post was written under (`posted_as.role`, `source_role`; section 15). `SYSTEM` appears only as an actor in history and audit. |
+| `level` | `STATE`, `DISTRICT`, `MANDAL`, `VILLAGE` |
+| `post.status` | `DRAFT`, `PENDING`, `PUBLISHED`, `RECHECK`, `DISCARDED`, `UNPUBLISHED`, `BLOCKED`. The prototypes call `UNPUBLISHED` "Taken down". `BLOCKED` (added 2026-11-20) is a citizen post closed because the Super Admin blocked its phone (section 15); the citizen API shows it as `DISCARDED`. **Since 2026-11-21** a block changes no post, so no post becomes `BLOCKED` any more; migrations `posts.0013` and `posts.0014` moved the ones there were, and the posts a block discarded before 2026-11-20, back to `PENDING`. Clients keep the value for safety. |
+| `review_action.action` | `SUBMIT`, `RESUBMIT`, `PUBLISH`, `AUTO_PUBLISH`, `RECHECK`, `DISCARD`, `UNPUBLISH`, `ESCALATE`, `REVERSE`, `BLOCK` (a block closed the post, 2026-11-20 to 2026-11-21 only; `last_review` shows it with the block's comment) |
+| `user.status` | `ACTIVE`, `BLOCKED`. Read-only, derived from `is_active`; kept for older clients. |
+| `category.key` | `announce`, `schemes`, `news`, `updates`. The design-system CSS variables `--cat-<key>` depend on these keys. |
+| `event.kind` | `deadline`, `camp`, `distribution`, `closure`, `meeting` (owner decision Q7) |
+| `media.kind` | `image`, `video` (video posts in version 1, owner decision Q8) |
+| `language` | `te`, `en` |
+
+---
+
+## 2. Shared objects
+
+### Area
+```json
+{"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు", "path": "కొలకలూరు · తెనాలి · గుంటూరు"}
+```
+`path` runs from the area up to the district and is in the requested language. Admin endpoints add `name_te` and `name_en`.
+
+### Category
+```json
+{"key": "announce", "name": "గ్రామ చాటింపులు", "short_name": "చాటింపులు", "order": 1, "icon_url": null}
+```
+Admin endpoints add `id`, `name_te`, `name_en`, `short_name_te`, `short_name_en`, `is_active`, `post_count`.
+`icon_url` (added 2026-11-24, BVTGC-91) is the absolute link of the icon the Super Admin uploaded, a WebP of at most 256 px, or `null`: then the apps show their own picture for the key, or a default one. It is in `GET /categories` and `GET /admin/categories`; a post's nested `category` does not carry it (the apps take it from the cached category list).
+
+### Media
+```json
+{"id": "6f1c…", "kind": "image", "url": "https://<site>/media/posts/2026/10/6f1c-1280.webp", "thumb_url": "https://<site>/media/posts/2026/10/6f1c-320.webp", "width": 1280, "height": 853, "bytes": 84213}
+```
+- Images: the server checks type and size, turns the photo upright, strips EXIF, converts to WebP and keeps three sizes: at most 1280 px (also the feed's `image_url`), 640 px (the feed's `medium_url` since 2026-11-25, for cards) and 320 px on the long side. The original is not kept. Media objects keep their shape: `url` is the 1280 px file and `thumb_url` the 320 px one. URLs are absolute (section 1). A hidden post's media (taken down, discarded) get signed links that expire after an hour instead (section 1, BVTGC-192).
+- Video: `{"id", "kind": "video", "url", "poster_url", "thumb_url", "width", "height", "duration_s", "bytes"}`. `url` is the MP4, `poster_url` the poster frame as WebP (at most 1280 px), `thumb_url` its 320 px thumbnail, `width` and `height` the poster's size, `bytes` the video's size. Photo media carry `"poster_url": null` and `"duration_s": null`.
+- `focus_y` (0 to 1) is the crop focus the prototypes use for cover images. Optional.
+
+### RoleAssignment
+```json
+{"id": "a71e…", "role": "VILLAGE_ADMIN", "group": {"key": "VILLAGE_ADMIN", "name": "Village Admin"}, "area": {"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు", "path": "…"}, "is_active": true, "assigned_at": "2026-10-01T10:30:00+05:30", "created_at": "2026-10-01T10:30:00+05:30"}
+```
+`role` repeats `group.key` for older clients.
+
+### Me
+Returned by `GET /me/`, inside the app login response and inside the console session login response.
+```json
+{
+  "id": "0b8e…",
+  "username": "village.kolakaluru",
+  "name": "Suresh Babu",
+  "name_te": "సురేష్ బాబు",
+  "mobile": "9000000003",
+  "email": null,
+  "preferred_language": "te",
+  "is_active": true,
+  "status": "ACTIVE",
+  "must_change_password": false,
+  "groups": [{"key": "VILLAGE_ADMIN", "name": "Village Admin", "level": "VILLAGE", "rank": 3}],
+  "assignments": [{"id": "a71e…", "group": {"key": "VILLAGE_ADMIN", "name": "Village Admin"}, "area": Area, "is_active": true}],
+  "role_assignments": [RoleAssignment],
+  "permissions": ["accounts.block_user", "posts.create_post", "posts.publish_post", "…"],
+  "permissions_by_area": [{"area": Area, "permissions": ["posts.publish_post", "…"]}],
+  "capabilities": {
+    "can_post": true,
+    "can_review": true,
+    "can_manage_users": true,
+    "manageable_roles": ["PANCHAYAT_MEMBER"],
+    "is_super_admin": false
+  },
+  "rules": {
+    "admin_posts_auto_publish": true,
+    "super_admin_can_post": true,
+    "max_photos_per_post": 3,
+    "video_enabled": true,
+    "console_idle_minutes": 30
+  }
+}
+```
+- `permissions` are the effective `app_label.codename` strings the user holds anywhere. `permissions_by_area` says where. Clients decide which screens and buttons to show from them; the server still checks every request.
+- `assignments` lists every assignment, active or not. `role_assignments` lists the active ones in the older shape.
+- In both, each `area` also carries **`parents`** (added 2026-11-19, optional for clients): the ids of the areas above it, by level. A mandal: `"parents": {"STATE": 1, "DISTRICT": 7}`; a village: `{"STATE": 1, "DISTRICT": 7, "MANDAL": 12}`; a district: `{"STATE": 1}`; the state: `{}`. The app opens "Who will see it" at the official's own district and mandal with them. Only in `GET /me/` (and the login responses that contain `Me`); `permissions_by_area` and every other endpoint keep the plain `Area`.
+- `capabilities` is **deprecated**. It is derived from `permissions` and kept so the current app keeps working. `manageable_roles` follows the same rule as the permission checks: a Super Admin's list includes `SUPER_ADMIN` (they manage each other), everyone else's only lower roles (BVTGC-76).
+- `mobile` and `email` may be `null`. When `must_change_password` is true, clients go straight to the change-password screen.
+- `rules.console_idle_minutes`: the console signs out after this many minutes without input, the same time the server ends the session (`CONSOLE_SESSION_IDLE_MINUTES`, 30; BVTGC-72). The console reads it instead of keeping its own number.
+- `rules.max_photos_per_post`: photos per post, **3** (lead's decision of 2026-11-13). A post has up to that many photos, or one video (when `video_enabled`), never both (section 5).
+
+### User (admin view)
+```json
+{
+  "id": "0b8e…",
+  "username": "village.kolakaluru",
+  "email": null,
+  "name": "Suresh Babu",
+  "name_te": "సురేష్ బాబు",
+  "mobile": null,
+  "mobile_last4": "",
+  "email_masked": "",
+  "is_active": true,
+  "status": "ACTIVE",
+  "preferred_language": "te",
+  "must_change_password": true,
+  "role_assignments": [RoleAssignment],
+  "last_login_at": "2026-10-14T09:12:00+05:30",
+  "created_at": "2026-10-01T10:30:00+05:30",
+  "created_by": {"id": "…", "name": "…"},
+  "locked_out": false,
+  "allowed_actions": ["edit", "block", "reset_password", "reassign"]
+}
+```
+`allowed_actions` values: `edit`, `block`, `unblock`, `reset_password`, `unlock` (only while `locked_out`), `add_assignment`, `reassign`, `remove_assignment`. Each one follows the permissions and the rank rule in section 11.
+
+### Post (authoring and review view)
+```json
+{
+  "id": "c2d4…",
+  "status": "PENDING",
+  "category": Category,
+  "language": "te",
+  "title": "గ్రామ సభ సమావేశం – అక్టోబర్ 20",
+  "body": "…",
+  "translation": null,
+  "target_level": "VILLAGE",
+  "target_area": Area,
+  "targets": [Area, …],
+  "event": {"kind": "meeting", "start_date": "2026-10-20", "end_date": null},
+  "is_urgent": false,
+  "media": [Media],
+  "author": {"id": "…", "name": "Ravi Kumar", "role": "PANCHAYAT_MEMBER"},
+  "posted_as": {"role": "PANCHAYAT_MEMBER", "area": Area},
+  "created_at": "2026-10-14T09:48:00+05:30",
+  "updated_at": "2026-10-14T09:48:00+05:30",
+  "submitted_at": "2026-10-14T09:48:00+05:30",
+  "published_at": null,
+  "escalated": false,
+  "escalated_at": null,
+  "last_review": {"action": "RECHECK", "comment": "ఫోటో జోడించండి", "actor": {"name": "Suresh Babu", "role": "VILLAGE_ADMIN"}, "at": "…"},
+  "allowed_actions": ["publish", "recheck", "discard"],
+  "share_url": null
+}
+```
+- `share_url`: the post's public link, `https://<domain>/p/<code>/`, while it is `PUBLISHED`; `null` for any other status and while the server has no `PUBLIC_BASE_URL` (section 20). New on 2026-11-04.
+- `translation`: `null`, or the published post in its other language (section 1, "Language").
+- `targets`: every area the post is for, each `{"level", "id", "name", "path"}` like `target_area`, in the order chosen. `target_level` and `target_area` are the first of them. A client that finds `targets` in a response knows the server takes many areas in one post.
+- `event`: `null` or `{"kind", "start_date", "end_date"}`. `kind` is one of `deadline`, `camp`, `distribution`, `closure`, `meeting`; dates are `YYYY-MM-DD`; `end_date` is `null` for one-day events and never before `start_date` (owner decision Q7).
+- `is_urgent`: set by admins; urgent posts are pinned in the app (owner decision Q19), and their push goes on the app's `urgent` channel (section 7).
+- `posted_as` is the role assignment the author used, so admin posts show under the official role, as the website FAQ promises.
+- `allowed_actions` values: `edit`, `submit`, `delete`, `add_media`, `publish`, `recheck`, `discard`, `unpublish`, `reverse`, `set_urgent`, `block_citizen`, `unblock_citizen`, `discard_citizen_posts`.
+- `citizen`: `null`, or for a citizen post `{"device_id", "blocked", "blocked_until", "posts_total", "posts_discarded"}`; its `author` is then `{"id": null, "name": "", "role": "CITIZEN"}` (section 15).
+- `set_urgent` is offered on citizen posts too: an admin may mark a citizen's post urgent, as any post in their area. Citizens themselves cannot send `is_urgent`.
+
+### FeedPost (public view)
+Lean on purpose, for 2G.
+```json
+{
+  "id": "c2d4…",
+  "category": "announce",
+  "language": "te",
+  "title": "…",
+  "body": "…",
+  "translation": null,
+  "area": Area,
+  "published_at": "2026-10-14T10:32:00+05:30",
+  "event": null,
+  "is_urgent": false,
+  "media": [Media],
+  "source": {"role": "VILLAGE_ADMIN", "office": "కొలకలూరు గ్రామ పంచాయతీ"}
+}
+```
+`category` is the key only; the app has the category list cached. A shared post carries its text plus its `share_url`, which opens the public post page (section 20); without one, the app shares `invite_url` or `website_url` from `GET /public/site-config/` (owner decision Q17). Section 6 has the exact feed shapes.
+
+### ReviewAction (post history)
+```json
+{"id": "…", "action": "RECHECK", "from_status": "PENDING", "to_status": "RECHECK", "comment": "…", "actor": {"id": "…", "name": "Suresh Babu", "role": "VILLAGE_ADMIN"}, "at": "…"}
+```
+`actor` is `{"id": null, "name": "System", "role": "SYSTEM"}` for escalation.
+
+### Notification (logged-in inbox)
+```json
+{"id": "…", "kind": "POST_RECHECK", "title": "…", "body": "…", "post_id": "c2d4…", "service_request_id": null, "area": Area, "created_at": "…", "read_at": null}
+```
+`kind` values: `POST_PUBLISHED`, `POST_RECHECK`, `POST_DISCARDED`, `POST_UNPUBLISHED`, `REVIEW_PENDING`, `ESCALATION`, `ACCOUNT`, `SERVICE_REQUEST` (a citizen's new service request, or one assigned to you; `service_request_id` says which, section 16).
+
+### AuditEntry
+```json
+{"id": "…", "at": "…", "actor": {"id": "…", "name": "Suresh Babu", "role": "VILLAGE_ADMIN"}, "action": "post.published", "action_label": "పోస్ట్‌ను ప్రచురించారు", "type": "posts", "target_label": "గ్రామ సభ సమావేశం – అక్టోబర్ 20", "target": {"type": "post", "id": "c2d4…"}, "area": Area, "via": "app"}
+```
+- `action_label` (new on 2026-11-25, CROSS-CONV-002, BVTGC-100): the action in words, in the `Accept-Language` language (Telugu by default), written to follow the actor's name: "published a post", "registered a citizen phone", "పోస్ట్‌ను ప్రచురించారు". Clients show it instead of their own lists. Every action has one; a code the server does not know yet reads "other action (<code>)". `action` stays as it is, for filters (`?action=`) and older clients.
+- `type` values: `posts`, `users`, `areas`, `logins`, `settings`, `system`.
+- `via` values: `app`, `console`, `system`.
+- `action` keys (the full list with their words is `apps/audit/labels.py`), for example: `auth.login`, `post.submitted`, `post.resubmitted`, `post.published`, `post.auto_published`, `post.recheck`, `post.discarded`, `post.unpublished`, `post.reversed`, `post.escalated`, `post.created`, `post.updated`, `post.deleted`, `user.updated`, `user.username_changed`, `user.created`, `user.blocked`, `user.unblocked`, `user.reassigned`, `user.assignment_added`, `user.assignment_removed`, `area.created`, `area.updated`, `area.deactivated`, `area.reactivated`, `category.created`, `category.updated`, `setting.changed`, `template.updated`, `report.exported`, `post.blocked`, `citizen.blocked`, `citizen.unblocked`, `citizen.block_ended` (actor System: the block's time was up; added 2026-11-21), `citizen.posts_discarded`.
+
+---
+
+## 3. accounts
+
+### Auth
+
+| Method and path | Auth | Request | Response |
+|---|---|---|---|
+| `POST /auth/login/` | public | `{"username", "password"}` (any other key, such as an older app's `"client"`, is ignored) | `200 {"access", "refresh", "user": Me}`. Mobile app. |
+| `POST /auth/refresh/` | refresh token | `{"refresh": "…"}` | `200 {"access", "refresh"}`; `401 session_revoked` once the login is older than `JWT_ABSOLUTE_DAYS` (90). Each refresh token works once, with one exception for a lost answer (BVTGC-93): sent again within `JWT_REFRESH_GRACE_SECONDS` (60) of its first use, while the refresh token that replaced it is still unused (never refreshed, not logged out), it gets `200` with a new pair, and the replacement it got the first time ends. So the app may retry a refresh whose answer never came with the same token. After a block, a reset, "log out everywhere", or outside the window: `401 session_revoked` as before. |
+| `POST /auth/logout/` | bearer | `{"refresh": "…", "all_devices"?: true}` | `204`. Blacklists the refresh token. `all_devices` also bumps `token_version` and unlinks every push device of the user (BVTGC-94); the app registers its phone again at the next login. |
+| `GET /auth/csrf/` | public | — | `200 {"detail": "ok"}` and the `csrftoken` cookie. Console. |
+| `POST /auth/session/login/` | public, `X-CSRFToken` | `{"username", "password"}` | `200 {"user": Me}` and the `sessionid` cookie. Console; needs `web_admin.access_web_console`. |
+| `POST /auth/session/logout/` | session, `X-CSRFToken` | — | `204`. The session is flushed. |
+| `POST /auth/password/change/` | bearer or session | `{"current_password", "new_password"}` | App: `200 {"access", "refresh"}`. Console: `200 {"user": Me}`, and the current session stays (Swagger shows both as `PasswordChangeResult`). Every other session and token ends, and every push device of the user is unlinked (BVTGC-94): the app sends `POST /devices/` again with its new token right after the change, so only the phone in hand gets the alerts. A wrong `current_password`: `400 invalid_credentials`. The `PASSWORD_CHANGE_MAX_FAILURES`-th (5) wrong one within `PASSWORD_CHANGE_WINDOW_MINUTES` (15) ends **every** session of the user, this one too: `401 session_revoked`, and the next try needs a real login, where the lockout applies. Each wrong try is audited (`auth.password_change_failed`, then `auth.password_change_locked`), never the password. |
+| `GET /me/` | bearer or session | — | `200 Me` |
+| `PATCH /me/` | bearer or session | `{"name"?, "name_te"?, "preferred_language"?}` | `200 Me` |
+
+Login rules:
+- `username` matches the username only, ignoring case, surrounding spaces and extra spaces between words: `" Ravi  Kumar"` finds `ravi kumar`. Usernames are stored in lower case.
+- **Usernames** (owner's decision of 2026-11-17): 3 to 150 characters; letters, digits, `@ . _ + -` and single spaces between words, e.g. `ravi kumar`. The server trims, lower-cases and collapses spaces before checking, on create, on change and at login. Otherwise `400 validation_error` on `username` ("Use 3 to 150 letters, digits, spaces or @ . _ + - characters.").
+- A wrong password and an unknown username give the same `400 invalid_credentials`.
+- **Lockout** (django-axes): 5 failures for one username from one IP address lock that pair for 15 minutes. Every try then answers `429 locked_out` with `retry_after_s`, even with the right password. A success clears the count. An admin can unlock early (`POST /users/{id}/unlock/`).
+- **Ceiling per username** (WEB-SEC-019, lead's decision of 2026-11-25): 20 failures for one username within an hour, from any addresses, lock that username from every address for 15 minutes after the last of them, with the same `429 locked_out` and `retry_after_s`. Tries during it are not counted. A success, an unlock or a password reset clears it, and `locked_out` on the user shows it too. No client change is needed.
+- **Cap per address** (back since 2026-11-25, BVTGC-105; **off by default**, a server may switch it on): when on, a set number of failed logins from one IP address within an hour, for any usernames, block every login from that address with the same `429 locked_out` and `retry_after_s` until the oldest of them is an hour old. No client change is needed. The login throttle (30 logins an hour per IP) is not back, so the login endpoints do not answer `429 throttled`; clients may keep their `throttled` message.
+- On the server, Nginx also allows at most 10 login or password-change requests a minute per address (a few more in a burst); past that it answers `429` itself, with Nginx's own short page instead of the JSON error shape. Clients treat any `429` from these addresses as "too many tries, wait a minute".
+- After the password check: blocked → `403 account_blocked`; no active role → `403 permission_denied`; console login without `web_admin.access_web_console` → `403 not_console_user`, and no session.
+- A successful login updates `last_login_at` and writes `auth.login` with `via` (`app` or `console`). Failures write `auth.login_failed`, refusals `auth.login_refused`, lockouts `auth.locked_out` (`"scope": "username"` for the ceiling per username). (`auth.ip_locked_out` entries written before 2026-11-20 stay in the audit log.)
+
+Passwords:
+- Hashed with Argon2. New passwords pass Django's validators: at least 12 characters for every official, Panchayat members included (since 2026-11-19; it was 8 for Panchayat members), not common, not all digits, not like the username, and at least one capital letter, one small letter, one number and one special character (anything not a letter, number or space, such as `@ # $ % & * ! ?`). Generated temporary passwords follow the same rules (12 characters). Existing passwords keep working until next changed, except that a login with a password shorter than the person's roles need answers with `must_change_password: true`, and the app or console shows the change-password screen as for a temporary password. A new password must differ from the current one. Errors come as `400 validation_error` with `fields.new_password` (or `fields.password` for admin-set passwords).
+- New and reset accounts carry `must_change_password`. Until they choose a new password, every endpoint except `GET /me/`, `POST /auth/password/change/`, the logouts and `/auth/refresh/` answers `403 password_change_required`.
+- Changing a password ends every other session and token. Audited as `user.password_changed`.
+- Nothing is emailed or texted. Temporary passwords are handed over by the admin in person.
+
+### Users
+
+| Method and path | Needs | Request | Response |
+|---|---|---|---|
+| `GET /users/` | any `accounts.manage_*` | Query: `role`, `status=ACTIVE\|BLOCKED`, `level` + `area_id`, `district`, `q` (name, Telugu name, username, email, mobile), `contact=0` (optional), `page` | Page of `User` inside the actor's areas, plus `"counts": {"total", "active", "blocked", "by_role": {"VILLAGE_ADMIN": 5}}` over the same filters except `role` and `status`. **`contact=0` (BVTGC-75, 2026-11-23):** each row leaves out `mobile` and `email` (the keys are absent) and keeps `mobile_last4` (the last 4 digits, `""` without a mobile) and `email_masked` (`"r***@example.org"`, `""` without an email); `q` still searches both. The console and the app send it for their lists and read the full values from `GET /users/{id}/`. Without it the rows still carry `mobile` and `email` for older clients; that default is to be dropped once both clients send `contact=0`. |
+| `POST /users/` | the group's manage permission over the area | `{"name", "name_te"?, "username", "mobile"?, "email"?, "preferred_language"?, "role", "area": {"level", "id"}, "password"?, "current_password"?}` | `201 {"user": User, "temporary_password"?}`. Without `password`, the server generates one and returns it once as `temporary_password`. `must_change_password` is set. A taken username, email or mobile gives `409 duplicate` with the field. With `role: SUPER_ADMIN`, `current_password` (the actor's own) is required: see "Super Admins" below. |
+| `GET /users/{id}/` | managing the user | — | `User` |
+| `PATCH /users/{id}/` | managing the user | `{"username"?, "name"?, "name_te"?, "preferred_language"?, "email"?, "mobile"?}` | `User`. A new `username` (2026-11-17, the console's Edit details) follows the username rule above; taken by someone else, in any case: `409 duplicate` on `username`, as on create. Audited as `user.username_changed` with `{"from", "to"}`; the other fields as `user.updated`. Sessions and tokens stay valid; the person signs in with the new name next time (tell them in person). An active lockout under the old name does not carry over. A user cannot change their own username (`PATCH /me/` does not take it). |
+| `POST /users/{id}/reset-password/` | `accounts.reset_password` | `{"password"?}` | `200 {"user": User, "temporary_password"?}`. Generated when `password` is left out, shown once. Sets `must_change_password`, bumps `token_version` and unlinks every push device of the user, so their phones get no more of their alerts (BVTGC-94). Audited as `user.password_reset`. |
+| `POST /users/{id}/unlock/` | `accounts.unlock_user` | — | `200 User`. Clears the lockout for that username. Audited as `user.unlocked`. |
+| `POST /users/{id}/block/` | `accounts.block_user` | `{"reason"?}` | `User`. `is_active` false and `token_version` bumped: every session ends at once, and every push device of the user is unlinked. |
+| `POST /users/{id}/unblock/` | `accounts.block_user` | — | `User` |
+| `POST /users/{id}/role-assignments/` | the group's manage permission over the area | `{"role", "area": {"level", "id"}, "current_password"?}` | `201 RoleAssignment`. This is how a second role is added. With `role: SUPER_ADMIN`, `current_password` is required, as for `POST /users/`. |
+| `PATCH /users/{id}/role-assignments/{ra_id}/` | `accounts.reassign_user` | `{"area"?: {"level", "id"}, "is_active"?}` | `RoleAssignment`. "Reassign area". Pending reviews stay with the old area. |
+| `DELETE /users/{id}/role-assignments/{ra_id}/` | managing the user | — | `204`. A user with no active assignment left cannot log in. |
+
+Rules:
+- An admin acts on a user only when the permission's assignment covers every one of that user's assignment areas, and every one of the user's groups ranks strictly below the admin's group. This applies to editing, blocking, resetting, unlocking, reassigning and removing. The one exception is Super Admins, who act on each other (below).
+- Giving a role needs that group's manage permission over the area (`accounts.manage_village_admin` and so on) and a group strictly above it. Nobody can give a group at or above their own rank, except a Super Admin giving the Super Admin role.
+- The role must be at the area's level: `SUPER_ADMIN` on the state, `DISTRICT_ADMIN` on a district, `MANDAL_ADMIN` on a mandal, `VILLAGE_ADMIN` and `PANCHAYAT_MEMBER` on a village.
+- Inactive areas cannot receive new assignments. Admins cannot block themselves.
+
+**Super Admins** (plan of 2026-11-06):
+- **The first one** is made on the server with `python manage.py create_super_admin --username <name> --name "<full name>"`, which prints a temporary password once (see deploy/RUNBOOK.md).
+- **After that, any Super Admin may make another one**, with `POST /users/` or `POST /users/{id}/role-assignments/`, `"role": "SUPER_ADMIN"` and `"area": {"level": "STATE", "id": <state id>}`. Only Super Admins hold `accounts.manage_super_admin`, which `GET /me/` lists in `permissions`; clients show the Super Admin choice only then. The new Super Admin gets a temporary password, must change it at first login, and has console access.
+- **Own password:** `current_password` (the actor's own password) is required for that role. Missing: `400 validation_error` on `current_password`. Wrong: `403 password_confirmation_required` ("Your password is not correct."). Wrong tries count with those on "Change password": too many end every session (`401 session_revoked`).
+- **Peers:** a Super Admin may block, unblock, unlock, reset the password of, and remove or switch off the role of **another** Super Admin, never their own. Other Super Admins appear in `GET /users/` with those `allowed_actions`.
+- **Never zero:** a change that would leave no active Super Admin answers `409 last_super_admin` ("There must always be at least one active Super Admin.").
+- **Limit:** at most `MAX_SUPER_ADMINS` active Super Admins (default 5; 0 means no limit). One more, by creating, adding the role, switching it on or unblocking, answers `409 super_admin_limit` ("The limit of Super Admins is reached.") with `limit`. Blocked Super Admins do not count.
+- **Audit:** `user.super_admin_created`, `user.super_admin_role_added`, `user.super_admin_role_removed`, with the actor; never a password.
+- **The others are told:** every other active Super Admin gets an inbox item and a push from template `super_admin_added` ("{actor} added {name} as a Super Admin"), `kind: ACCOUNT`, push data `{"type": "ACCOUNT", "user_id"}`. The giver and the new Super Admin are not told.
+
+---
+
+## 4. geography
+
+| Method and path | Who | Request | Response |
+|---|---|---|---|
+| `GET /geo/states` | public | — | `[{"id", "name"}]` |
+| `GET /geo/districts?state={id}` | public | — | `[{"id", "name", "state_id"}]`: active districts with at least one active mandal, so a citizen never opens an empty list. The console's `geo/tree/` still shows the rest. |
+| `GET /geo/mandals?district={id}` | public | — | `[{"id", "name", "district_id"}]` |
+| `GET /geo/villages?mandal={id}&q=` | public | `q` searches English and Telugu names | `[{"id", "name", "mandal_id", "pin_code"}]` |
+| `GET /geo/villages/{id}` | public | — | `{"id", "name", "pin_code", "latitude": "16.238100", "longitude": "80.592400", "mandal": {"id", "name"}, "district": {"id", "name"}, "state": {"id", "name"}, "path"}` |
+| `GET /geo/nearest?lat=&lng=` | public | Decimal degrees | `{"village": <village detail>, "distance_km": 1.8}`, or `404 not_found` when nothing lies within `NEAREST_VILLAGE_MAX_KM` (default 50). The search box starts at `NEAREST_VILLAGE_START_KM` (5) and doubles until a village is found. |
+
+Public lists are unpaged and return active areas only, sorted by name in the requested language.
+
+Reads for Super Admins, including inactive areas:
+
+| Method and path | Response |
+|---|---|
+| `GET /geo/tree?villages=1` | `[State]`, each with `districts: [District]`, each with `mandals: [Mandal]`. Every row has `id`, `level`, `name_en`, `name_te`, `lgd_code`, `is_active`; districts add `mandal_count` and `village_count`, mandals add `village_count`. With `villages=1` each mandal also carries `villages: [Village]` (`latitude`, `longitude` as 6-decimal strings or null, `pin_code`). Leave it out for large data and load villages per mandal. |
+| `GET /geo/admin/villages?mandal={id}` | `[Village]` of one mandal, same fields |
+
+Writes, Super Admin only (`geography.manage_master_data`). `apps/geography/services.py` is the only writer; the CSV import uses it too. Each write answers with the area row above plus `"warnings"` (below) and writes an audit entry with the old and new values (`area.created`, `area.updated`, `area.deactivated`, `area.reactivated`; the import writes one `area.imported` with counts). An edit that changes nothing writes no entry. The district, mandal and village list URLs take both the public `GET` and the Super Admin `POST`; only the `GET` is cached.
+
+| Method and path | Request |
+|---|---|
+| `POST /geo/districts` | `{"state_id", "name_en", "name_te"?, "lgd_code"?}` |
+| `PATCH /geo/districts/{id}` | `{"name_en"?, "name_te"?, "lgd_code"?, "is_active"?}` |
+| `POST /geo/mandals` | `{"district_id", "name_en", "name_te"?, "lgd_code"?}` |
+| `PATCH /geo/mandals/{id}` | same as districts |
+| `POST /geo/villages` | `{"mandal_id", "name_en", "name_te"?, "latitude", "longitude", "pin_code"?, "lgd_code"?}` |
+| `PATCH /geo/villages/{id}` | any of the above plus `is_active` |
+| `POST /geo/villages/import` | multipart `file` (UTF-8 CSV, same columns as `manage.py import_geography`, at most `GEO_IMPORT_MAX_BYTES`, 20 MB; larger: `413 file_too_large`); `?dry_run=1` saves nothing. `200 {"ok", "dry_run", "rows", "errors", "warnings", "counts": {"state"\|"district"\|"mandal"\|"village": {"created", "updated", "unchanged"}}, "missing_coordinates": [first 200], "missing_coordinates_count", "missing_coordinates_total", "missing_telugu"}`. `missing_coordinates` and `missing_coordinates_count` are the file's villages that still have no coordinates; `missing_coordinates_total` is every active village in the database without coordinates after the import (on a dry run, what the import would leave). "Use my location" (`GET /geo/nearest/`) can never find those villages, so the console should show the total. Any error: `400 validation_error` with the same object in `error.report`, and nothing is saved. |
+
+Every write answers, for example:
+```json
+{
+  "id": 77, "level": "VILLAGE", "name_en": "Chebrolu", "name_te": "చేబ్రోలు", "lgd_code": null,
+  "is_active": true, "latitude": "16.196000", "longitude": "80.525000", "pin_code": "110001", "mandal_id": 12,
+  "warnings": [{"code": "pin_outside_state", "message": "Andhra Pradesh PIN codes start with 5."}]
+}
+```
+
+| Status | `code` | When |
+|---|---|---|
+| `201` / `200` | — | Created / updated. Check `warnings`. |
+| `400` | `validation_error` | Missing or bad field (`fields` lists them); unknown parent (`fields.state_id`, `district_id` or `mandal_id`) |
+| `401` | `not_authenticated`, `token_expired` | No or expired login (writes only) |
+| `403` | `permission_denied` | Not a Super Admin. A console session write without `X-CSRFToken` is refused too. |
+| `404` | `not_found` | PATCH of an id that does not exist |
+| `409` | `duplicate` | Same name under the same parent (`fields.name_en`), also when another admin added it a moment earlier; the same Telugu name under the same parent (`fields.name_te`, checked only when `name_te` is sent); or the LGD code is already used (`fields.lgd_code`) |
+
+Warnings never block a save: `parent_inactive` (the parent is switched off), `name_te_missing` (no Telugu name, or the same as the English one), `name_te_not_telugu`, `coordinates_swapped`, `outside_state` (outside the `GEO_BOUNDS` box of Andhra Pradesh), `pin_outside_state` (not starting with 5). The CSV import lists them in its `warnings`, except `name_te_missing`, which `missing_telugu` counts.
+
+Rules:
+- `name_en` is required and unique among siblings, ignoring case and extra spaces; `409 duplicate` otherwise. The database enforces it (unique constraints, migration `geography.0003`), so two admins adding the same name at once cannot both succeed. A missing `name_te` copies `name_en`.
+- `lgd_code` is digits only, at most 20, and unique per level.
+- `latitude` is between -90 and 90 and `longitude` between -180 and 180, each with at most 6 decimals. `pin_code` is 6 digits.
+- Before migrating a server to `geography.0003`, run `python manage.py geo_duplicates` (read-only). It must print "No duplicates."; fix any it lists with the owner first.
+- **No two villages of one mandal share a name, in English or in Telugu.** English is a database constraint. Telugu is refused on every write that sets it (API `409 fields.name_te`, CSV import error), not by a constraint, so an old duplicate never blocks other edits; `python manage.py geo_duplicates` (read-only) lists both kinds.
+- **Census tags:** `python manage.py geo_clean_names` lists, and with `--apply` makes, the renames: `(Ct)`, `(Og)`, `(Part)` removed; `(R)`, `(Rural)` become "Rural"; `(Near)`, `(East)`, `(West)` plain words. The census spelling is kept in the village's `census_name`, and the CSV import matches on it too, so a later census file neither duplicates a village nor brings the tag back. A rename that would clash with another village of the mandal is listed for a person instead.
+- **Before switching an area off:** `python manage.py geo_area_usage DISTRICT 6` (read-only) counts what still uses it: areas below, role assignments, post areas, posts sent from it, important numbers, ads, service requests, citizen phones.
+- Villages without coordinates are never returned by `GET /geo/nearest/`. `python manage.py geo_coordinates` (read-only) counts the active ones per district; `--csv PATH` lists them with the import's columns and empty `latitude` and `longitude`, to fill in and import back; `--fail-above 0` fails the release check while any is left.
+- Areas are never deleted. Deactivating an area hides it from public lists and blocks new users and posts there and in every area below it. Existing posts stay visible.
+- Nearest village: bounding-box filter in the ORM, then haversine distance in Python, per CLAUDE.md.
+
+---
+
+## 5. posts
+
+### Categories
+
+| Method and path | Who | Response |
+|---|---|---|
+| `GET /categories` | public | `[Category]`, active only, in display order |
+| `GET /admin/categories` | Super Admin | `[Category with admin fields]` |
+| `POST /admin/categories` | Super Admin | `{"key", "name_te", "name_en", "short_name_te"?, "short_name_en"?}` → `201` (Pending Q6). JSON, or multipart with an optional `icon` image file |
+| `PATCH /admin/categories/{id}` | Super Admin | `{"name_te"?, "name_en"?, "short_name_te"?, "short_name_en"?, "is_active"?, "order"?}` (Pending Q6). Multipart with `icon` replaces the icon; `"icon": null` (or an empty `icon` form field) removes it. The `key` never changes once added: a different `key` answers `400 validation_error` on `key` (2026-11-26; the same key is accepted). Names, short names and the icon change only while the category is switched off; switched on, only `is_active` and `order` may change, else `409 switch_off_first` (values sent unchanged are fine). Audited as `category.updated`. The console's Edit (2026-11-26) |
+| `DELETE /admin/categories/{id}` | Super Admin | `204`. Only for a switched-off category no post uses, such as one added by mistake (2026-11-26). Checked in this order: a switched-on category answers `409 switch_off_first`, whether posts use it or not; then, posts being kept permanently with their category, a switched-off category with posts answers `409 category_in_use` with `count` ("N posts use this category… Switch the category off instead.") and stays. Audited as `category.deleted` with the key and names; an uploaded icon file is removed after the delete is saved. The key may then be used again |
+
+**Category icon** (2026-11-24, BVTGC-91): the same checks as service and bill logos (section 16). JPEG, PNG or WebP, judged from the content; at most `SERVICE_LOGO_MAX_UPLOAD_MB` (2 MB) and at least `SERVICE_LOGO_MIN_PX` (64) pixels a side; stored as WebP with the longest side at most 256 px, transparency kept, EXIF removed. A bad file answers `400 validation_error` with `fields.icon`, and nothing is saved. Every new icon gets a new file name (phones cache `/media/`); a replaced or removed file is deleted once the change is saved. The audit entry says `"icon": true` on `category.created` and `"icon": "replaced"` or `"removed"` on `category.updated`. `GET /categories` is cached for up to an hour, so a new icon reaches the apps within the hour.
+
+A disabled category disappears from the compose form and from feed filters. Its published posts are hidden from the feed and the public pages until it is switched on again (`/feed/`, `/feed/upcoming/`, `/feed/urgent/`, `/feed/posts/?ids=`, `/public/showcase/`; `/feed/posts/{id}/` answers `404`). Officials still see them in their lists. Changed on 2026-10-31; before, they stayed visible.
+
+### Posts
+
+| Method and path | Who | Request | Response |
+|---|---|---|---|
+| `GET /posts` | officials | Query: `status` (comma list), `mine=1`, `author`, `category`, `district`, `level` + `area_id`, `target_level`, `escalated=1`, `source` (`official` or `citizen`), `q` (title and body), `citizen` (Super Admin only, added 2026-11-21: the id of any install of a phone, as the blocked citizens list gives it; every post of that phone, all its installs; anyone else `403 permission_denied`, an unknown id `404 not_found`), `page` | Page of `Post`, plus `"status_counts": {"ALL": 15, "PENDING": 5, …}` over the same filters except `status`. `ALL` excludes drafts. **Added 2026-11-20:** `"source_counts": {"official": 9, "citizen": 6}` over the same filters except `source` (the status included), so it matches the list under the chosen status tab; for the app's All / Officials / Citizens switch (All is the sum). Query `source=official|citizen` narrows the list and `status_counts`, never `source_counts`. For Panchayat members, this returns their own posts plus published citizen posts in their village (with `unpublish` in `allowed_actions`); `mine=1` returns only their own posts. **Since 2026-11-20:** every official also sees the published posts for any area that is or contains their own (their village, mandal, district, the state: Everyone), as the citizens of their area see them, read only: such a post carries no new `allowed_actions`, and an action on it answers `403` (`out_of_area` or `permission_denied`) instead of `404`. Pending, recheck, discarded, taken-down and blocked posts above their area stay hidden from them; the review queue is unchanged. |
+| `POST /posts` | posting roles | `{"category": "announce", "language": "te", "title", "body", "targets": [{"level", "id"}, …], "event"?: {"kind", "start_date", "end_date"?}, "is_urgent"?: false, "submit": true, "client_ref"?: "<uuid>"}`. Older clients send one `"target": {"level", "id"}` instead; `targets` wins when both come. | `201 Post`, with `targets`. `200 Post` for a repeat of this official's earlier `client_ref` (section 1, "Sending again after a lost answer"). |
+| `GET /posts/{id}` | officials | — | `Post` |
+| `PATCH /posts/{id}` | author | same fields as create, all optional; `targets` replaces every area | `Post`. Only in `DRAFT` or `RECHECK`. |
+| `DELETE /posts/{id}` | author | — | `204`. Only in `DRAFT`. |
+| `POST /posts/{id}/submit` | author | — | `Post`. `DRAFT` to `PENDING` (action `SUBMIT`), or `RECHECK` to `PENDING` (action `RESUBMIT`). |
+| `GET /posts/{id}/history` | officials | — | `[ReviewAction]`, newest first |
+| `GET /posts/targets/` | posting roles | — | Suggested areas around this official's own (below). Since 2026-10-28 any area may be chosen; the app's picker reads `geo/*` instead. |
+| `POST /posts/targets/check/` | posting roles | `{"targets": [{"level", "id"}, …]}`, the areas the official is about to send a post for (the same as `targets` on `POST /posts/`) | `200 {"publishes_at_once": bool}`: `true` = the post goes live when sent; `false` = it goes to review (an area outside the official's own, or Everyone; or `ADMIN_POSTS_AUTO_PUBLISH` off; always for Panchayat members). Changes nothing. `400 validation_error` for the same area problems as `POST /posts/`; `403 permission_denied` for a role that cannot post (BVTGC-26, 2026-11-25). |
+| `POST /posts/{id}/urgent/` | reviewers whose area contains the post | `{"is_urgent": true\|false}` | `Post`. Panchayat members: `403 permission_denied`; outside the area: `404`. Audited as `post.urgent_set` or `post.urgent_cleared`. |
+
+What `POST /posts` does:
+- `submit` defaults to `true`, so the prototype flow, which has no draft step, works unchanged. With `submit: false` the post stays `DRAFT` (Pending Q4).
+- **Who will see it (owner decision of 2026-10-28, replacing Q5's "up to your own level, one target"):** every poster chooses **Everyone** (`[{"level": "STATE", "id": <state id>}]`) or **any districts, mandals and villages anywhere**, in any mix, in one post. There is no `out_of_area` for posting any more.
+  - 1 to `POST_MAX_TARGETS` (200) areas. Each must exist and be active (and its parents too), else `400 validation_error` with `fields.targets`, and nothing is saved. More than 200: the same `400`.
+  - The server drops duplicates and any area inside another chosen one (a village inside a chosen district adds nothing; Everyone with anything else is Everyone). It never merges children into their parent: two villages stay two villages, even when they are a whole mandal.
+  - The order is kept; the first area is also `target_level` and `target_area`, for older readers.
+- Panchayat members' posts go to `PENDING`, wherever they go.
+- District, Mandal and Village Admins' posts go straight to `PUBLISHED` (action `AUTO_PUBLISH`) while `ADMIN_POSTS_AUTO_PUBLISH=True` **only when every area the post is for lies inside their own area** (Admin's decision of 2026-11-25, BVTGC-26). One area outside it, or Everyone, and the **whole post** goes to `PENDING`: the admins of those areas (and the levels above) review it, and a post for Everyone is reviewed by the Super Admin. The Super Admin's area is the whole state, so their posts go live at once anywhere (while `SUPER_ADMIN_CAN_POST`). Nobody reviews their own post. The same rule applies when an admin resubmits a post after a recheck. Before 2026-11-25 admins' posts went live at once wherever they went.
+- `POST /posts/targets/check/` tells the app before sending which of the two it will be, so it can say "This post will go to review" (BVTGC-104).
+- Super Admins may post only when `SUPER_ADMIN_CAN_POST=True`; otherwise `403 permission_denied`.
+- **Review:** a pending post is in the queue of, and may be decided by, every admin whose area contains **any** of its areas (the admins of that area and the areas above it), and the Super Admin. A post to Everyone is therefore reviewed by Super Admins only. The first decision counts for the whole post; a second reviewer gets `409 already_decided`.
+- **Alerts:** the admins over each area get one `REVIEW_PENDING` inbox item and push each. Super Admins are alerted only for a post to Everyone (otherwise they see the queue).
+- **Escalation** climbs from the post's lowest area (village, then mandal, then district, then state). Each area is alerted on its own ladder: a post for [village V, district D] first alerts V's Mandal Admins and, for D, the state; next V's District Admins; then the state.
+- **Pushes to citizens:** one job pushes to the topic of each area; a phone hears it once.
+- Lists, stats and reports filter and count by **any** area: a post for three villages counts once in each village (and in each mandal and district they reach), and once in totals.
+- `event` and `is_urgent` are optional on create and `PATCH`. Only admins may set `is_urgent: true`; from a Panchayat member it answers `403 permission_denied`.
+
+`GET /posts/targets/` answers, for example for a District Admin of Guntur:
+```json
+{"levels": [
+  {"level": "DISTRICT", "areas": [{"level": "DISTRICT", "id": 3, "name": "గుంటూరు", "path": "గుంటూరు"}]},
+  {"level": "MANDAL", "areas": [{"level": "MANDAL", "id": 12, "name": "తెనాలి", "path": "తెనాలి · గుంటూరు"}]},
+  {"level": "VILLAGE", "areas": [], "pick_via": "geo"}
+]}
+```
+- Levels come highest first. Each level lists the areas the official may pick directly: their own area at their own level, and the areas one level below it.
+- `"pick_via": "geo"` means the list would be too long: the app lists the official's mandals from the level above and loads each mandal's villages from `GET /geo/villages/?mandal=`.
+- `STATE` appears only for Super Admins when `SUPER_ADMIN_CAN_POST` is on. Officials who cannot post get `{"levels": []}`.
+- Every transition writes a `ReviewAction` and an `AuditLog` entry in the same transaction, per CLAUDE.md.
+
+### Media
+
+| Method and path | Who | Request | Response |
+|---|---|---|---|
+| `POST /posts/{id}/media` | author | multipart: `file`, `kind=image\|video`, `focus_y`? | `201 Media` |
+| `DELETE /posts/{id}/media/{media_id}` | author | — | `204` |
+
+- Allowed while the post is `DRAFT` or `RECHECK`. Because `POST /posts` submits by default, the app creates the post with `submit: false`, uploads media, then calls `/submit`.
+- **A post has up to 3 photos, or one video, never both** (lead's decision of 2026-11-13), for everyone who posts: Panchayat members, admins and the Super Admin here, citizens in section 15. Media is optional: a post may have none.
+- Images: JPEG, PNG or WebP (HEIC is not taken: the app's picker sends iPhone photos as JPEG; corrected on 2026-11-26, finding BE-TEST-209), at most `MAX_IMAGE_UPLOAD_MB` (default 10) each, at most `MAX_PHOTOS_PER_POST` (default 3) per post; a fourth answers `400 validation_error` on `file`. A photo for a post that has a video answers `409 media_conflict`. Stored as WebP at most 1280 px, with a 640 px copy and a 320 px thumbnail. Too large: `413 file_too_large`. Not a photo: `415 unsupported_media`.
+- **Video:** multipart `file` (MP4 or MOV), `kind=video`, optional `duration_s`, optional `poster` image. At most `MAX_VIDEO_UPLOAD_MB` (default 60; larger: `413 file_too_large`), and at most `VIDEO_MAX_SECONDS` (default 60) seconds long, for officials and citizens alike (lead's decision of 2026-11-14; banner videos stay any length). Longer: `400 video_too_long` ("Videos can be at most 60 seconds.", field `file`), half a second of slack. The server's own measure (ffprobe) wins over `duration_s`; without ffprobe `duration_s` is checked. Other files: `415 unsupported_media`. One video per post, on a post with no photos: otherwise `409 media_conflict` ("A post has either photos or one video."). Remove the photos or the video first to switch.
+  - Duration: measured with `ffprobe` when it is installed (the server has it). Without `ffprobe` the client's `duration_s` is required.
+  - Poster: made with `ffmpeg` from the first second when it is installed. Otherwise `poster` (a photo) is required and processed like photos.
+  - The video is stored without its metadata (GPS place, phone, dates): `ffmpeg` copies the video and audio streams without re-encoding, so quality and size stay as uploaded. A file it cannot copy: `415 unsupported_media`. Without `ffmpeg` it is stored as uploaded. The app compresses it before upload. The same applies to citizen videos (section 15) and banner videos (section 17).
+  - **Time limits (audit BE-PERF-003):** the server checks each upload for a limited time. Measuring the length, cutting the poster and copying without metadata stop after `VIDEO_PROBE_TIMEOUT_S` (15), `VIDEO_POSTER_TIMEOUT_S` (20) and `VIDEO_STRIP_TIMEOUT_S` (45) seconds; a video that takes longer answers `415 unsupported_media`, like an unreadable one. All photos and videos of one request share `MEDIA_PROCESSING_BUDGET_S` (90 s); a request over it answers `400 validation_error` on the file field (`file` here, `videos` or `photos` for citizens, `video` for banners) and stores nothing. Normal videos take a few seconds.
+
+### Review
+
+| Method and path | Who | Request | Response |
+|---|---|---|---|
+| `GET /review/queue` | reviewers | Query: `level` + `area_id`, `category`, `escalated=1`, `page` | Page of `PENDING` `Post` inside the actor's areas, oldest first, excluding the actor's own posts |
+| `POST /posts/{id}/review` | reviewers | `{"action": "publish"\|"recheck"\|"discard"\|"unpublish", "comment": "…"}` | `Post` |
+| `POST /posts/{id}/review` (reverse) | a strictly higher level than whoever decided, or a Super Admin (any decision, since 2026-11-21) | `{"action": "reverse", "to_status": "PUBLISHED"\|"PENDING"\|"RECHECK"\|"DISCARDED", "comment"}` | `Post` |
+
+- `comment` is required for `recheck`, `discard`, `unpublish` and `reverse`. It is shown to the author.
+- **Take-down (`unpublish`) rank rules (owner decision of 2026-11-17):**
+  - **Super Admin:** any post platform-wide.
+  - **District / Mandal / Village Admin (in their area):** citizen posts, Panchayat members' posts, and their own posts. They cannot take down posts from other admins at or above their rank.
+  - **Panchayat member (their village):** published citizen posts in their village, and their own posts. They cannot take down other Panchayat members' posts or admin posts.
+  - **Own posts:** any official may take down their own published post anywhere (even if targeting areas outside their assigned area).
+  - When unauthorized, `unpublish` is omitted from `allowed_actions`, and `POST /posts/{id}/review` returns `403 permission_denied`.
+- `reverse` is allowed only when the actor's role is strictly higher than the role that made the current decision (Super Admin highest). **A Super Admin may reverse any decision** (owner's decision of 2026-11-21), another Super Admin's and their own included, and a `BLOCKED` post (to `PENDING`, `PUBLISHED` or `DISCARDED`; never `RECHECK` for a citizen post: `409 invalid_transition`). `allowed_actions` then holds `reverse` for the Super Admin on every decided post. Reversing a published post (to Pending or Discarded) is also gated by the take-down rank rule above. With `REVIEW_FIRST_DECISION_WINS=False`, any reviewer in the area may reverse.
+- With `REVIEW_FIRST_DECISION_WINS=True`, the first decision takes the post out of every queue. A later reviewer gets `409 already_decided`: `{"error": {"code": "already_decided", "message", "decided_by": {"id", "name", "role"}, "action": "PUBLISH", "at": "…", "post": Post}}`. The check is one conditional UPDATE (`WHERE id = … AND status = 'PENDING'`), so it holds on SQLite, MySQL and PostgreSQL alike.
+- `publish` sends the push alert for the post's area (section 7).
+
+### Area stats for the app dashboards
+
+`GET /stats?level=&area_id=` (officials; defaults to the actor's first area):
+```json
+{"pending_review": 5, "published_today": 3, "active_users": 11, "blocked_users": 2, "escalated": 1}
+```
+
+### Runtime settings (Pending Q6)
+
+`GET /admin/settings`, `PATCH /admin/settings` (Super Admin):
+```json
+{
+  "review_escalation_hours": 24,
+  "languages": {"te": true, "en": true},
+  "citizen_posts_per_day": 5,
+  "ads_banner_limit": 0,
+  "wallet_enabled": false, "wallet_pilot_mandals": [], "referral_reward_points": 50, "welcome_bonus_points": 20,
+  "referral_hold_days": 7, "referral_active_days": 2, "referrals_per_month": 30, "welcome_bonuses_per_phone": 3,
+  "admin_posts_auto_publish": true,
+  "review_first_decision_wins": true,
+  "super_admin_can_post": true
+}
+```
+- Values start from Django settings and environment variables, as CLAUDE.md defines. A value saved here overrides the default and is audited as `setting.changed`.
+- Editable: `review_escalation_hours` (6 to 168), `languages.en`, `citizen_posts_per_day` (0 to 1000, 0 is no limit; section 15), and `ads_banner_limit` (0 to 1000): the banners a citizen's Home shows, newest first; **0 is no limit, the default** (owner's decision of 2026-11-24, BVTGC-92; section 17). Phones follow a change within about 5 minutes (`ads/` and `app-config/` are cached 300 s). Telugu cannot be switched off. The other three are read-only here. The citizen wallet's eight settings (BVTGC-129) are in section 21, "Settings".
+
+What the apps read before login:
+
+| Method and path | Who | Response |
+|---|---|---|
+| `GET /app-config` | public, no login (a stale token is ignored) | `{"languages": {"te": true, "en": bool}, "min_version": "1.0.0+22"\|null, "latest_version": "1.0.0+24"\|null, "topic_prefix": "qa_"\|"", "ads_banner_limit": 0, "wallet_enabled": false, "wallet_pilot_mandals": [], "wallet_consent_version": "2026-11-25", "referral_reward_points": 50, "welcome_bonus_points": 20, "referrals_per_month": 30}` (the wallet fields: section 21, BVTGC-129 and BVTGC-160). `Cache-Control: public, max-age=300`, so a switch reaches phones within 5 minutes. Only these: escalation hours and the daily limit stay Super Admin only. The app hides its language switch while `en` is `false`. **App updates (BVTGC-90, 2026-11-24):** `min_version` and `latest_version` come from the server settings `APP_MIN_VERSION` and `APP_LATEST_VERSION` (`null` when not set, the default). The app compares only the **build number** after the `+` with its own: below `min_version` a blocking "Please update the app" screen; below `latest_version` an "Update available" note with Later; the download is the website APK. A missing or `null` field shows nothing. The server refuses to start with a value that has no build number, or a minimum above the latest. Raise `APP_MIN_VERSION` only after the new APK is on the website, and after the dashboard's `app_versions` shows few old installs. **Push topics (BVTGC-69):** `topic_prefix` is this server's `FCM_TOPIC_PREFIX` (`"qa_"` on qa, `""` in production); the app subscribes to its area topics with it (section 7). **Banners (BVTGC-92):** `ads_banner_limit` is the Super Admin's banners-per-Home number (0 = no limit); the app shows at most that many of the banners `ads/` returns. The app also sends its version in the header `X-App-Version: 1.0.0+21` on every call (optional; the server reads the version from `POST /devices/` and `POST /citizen/register/`). |
+
+---
+
+## 6. feed (public, no login)
+
+No login. These views ignore any `Authorization` header, so a stale token on a citizen's phone never breaks the feed.
+
+| Method and path | Request | Response |
+|---|---|---|
+| `GET /feed/?village_id=` | `village_id` (required), `category` (comma list of keys, e.g. `news,updates`), `q` (search, 2+ characters, title and body, any case), `has_video=1`, `cursor` | Cursor page of `FeedItem`, newest first, 20 per page: `{"next": "<url>\|null", "previous": "<url>\|null", "results": [FeedItem]}`. `400` without `village_id` or with a 1-character `q`; `404 not_found` with `"reason": "village_not_found"` for an unknown or inactive village (also `/feed/upcoming/` and `/feed/urgent/`). |
+| `GET /feed/upcoming/?village_id=` | `village_id` | `[FeedItem]`, at most 10 published posts from the same feed whose event starts today or later, soonest first. For "Don't miss". |
+| `GET /feed/urgent/?village_id=` | `village_id` | `[FeedItem]`, at most 5 published urgent posts from the same feed, published in the last 7 days, newest first. For the red alert at the top of Home and News. |
+| `GET /feed/posts/{id}/` | — | `FeedPost`; `404 not_found` unless `PUBLISHED` |
+| `GET /feed/posts/?ids=a,b,c` | 1 to 50 post ids | `[FeedItem]` for the ones still published, in the order asked. Used for posts saved on the phone. |
+| `GET /feed/share/{code}/` | the code from a `/p/{code}/` link | The same `FeedPost` as `GET /feed/posts/{id}/`; `404 not_found` unless `PUBLISHED`. The app calls it when a shared link opens the app (section 20). New on 2026-11-04. |
+
+`FeedItem`, the slim list shape:
+```json
+{
+  "id": "c2d4…",
+  "category": "announce",
+  "language": "te",
+  "title": "గ్రామ సభ సమావేశం – అక్టోబర్ 20",
+  "body": "…",
+  "translation": {"language": "en", "title": "Gram Sabha meeting – 20 October", "body": "…", "machine": true},
+  "area": {"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు"},
+  "targets": [{"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు", "path": "కొలకలూరు · తెనాలి · గుంటూరు"}],
+  "published_at": "2026-10-14T10:32:00+05:30",
+  "thumbnail_url": "https://<site>/media/posts/2026/10/…-320.webp",
+  "image_url": "https://<site>/media/posts/2026/10/…-1280.webp",
+  "medium_url": "https://<site>/media/posts/2026/10/…-640.webp",
+  "media_count": 3,
+  "source_role": "VILLAGE_ADMIN",
+  "source_area": {"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు"},
+  "event": {"kind": "meeting", "start_date": "2026-10-20", "end_date": null},
+  "is_urgent": false,
+  "video": null,
+  "share_url": "https://www.gramaconnect.com/p/Ab3xK9q2/"
+}
+```
+- `share_url`: the post's public link for "Read more" and "Watch the video" in shared messages (section 20), or `null` while the server has no `PUBLIC_BASE_URL`; the app then shares the app link. In every feed shape, `GET /feed/share/{code}/` included. New on 2026-11-04.
+- `source_area`: the poster's own area, for "Source: Kolakaluru Gram Panchayat" or "Shared by a citizen of Kolakaluru". It is the area of the role the post went out under (`posted_as`), or the phone's village for a citizen post, never where the post was sent: a Village Admin's post to a whole district still shows their village. `null` when that area no longer exists. Name in the `Accept-Language` language. New on 2026-10-29, so older clients ignore it.
+- `translation`: `null`, or the post in its other language (section 1, "Language"); new on 2026-10-28, so older clients ignore it.
+- `targets`: every area the post is for (section 3, "Posts"); `area` is the first of them. New on 2026-10-28.
+- `event` and `is_urgent` as on Post. `video`: `null`, or for a video post `{"url", "poster_url", "duration_s"}`, so the reels screen needs no extra call; `thumbnail_url` is then the poster's thumbnail.
+- The list carries the full `body`, not an excerpt. The app's news deck shows the body on the card, and one larger page costs less on 2G than a request per card.
+- `thumbnail_url` is the first photo's 320 px WebP, or `null`. URLs are absolute (section 1).
+- `image_url` is the first photo at full size: its 1280 px WebP (`POST_IMAGE_MAX_PX`). `null` for a post without a photo and for a video post (use `video.poster_url`). (For a few days it pointed at the 640 px copy, which looked soft on big cards; that was reverted on 2026-10-28.) Use it for large cards and `thumbnail_url` for small rows. Clients fall back to `thumbnail_url` when the field is missing.
+- `medium_url` is the same first photo at 640 px (`POST_MEDIUM_PX`), for feed cards on slow networks (CROSS-API-003, BVTGC-95; new on 2026-11-25, so older clients ignore it). About a third of the bytes of `image_url`; keep `image_url` for the full-screen photo. `null` whenever `image_url` is, and also for a photo uploaded before the 640 px copy existed until the server's one-off `backfill_medium_images` has run: clients then use `image_url`. In every feed shape (list, `GET /feed/posts/{id}/`, `?ids=`, upcoming, urgent, `GET /feed/share/{code}/`).
+- `category` is the key only; the app caches `GET /categories`.
+
+`FeedPost` (detail) is `FeedItem` plus `"path": "కొలకలూరు · తెనాలి · గుంటూరు"` and `"media": [{"id", "kind", "url", "thumb_url", "poster_url", "width", "height", "duration_s"}]`.
+
+Caching: every feed response sends `Cache-Control: public, max-age=60` and an `ETag`; a repeat request with `If-None-Match` gets `304` with an empty body.
+
+Feed rule: published posts with **any** area that is the village, its mandal, its district or its state (one row per post, however many areas match). The mobile prototype also shows other districts' district-level posts; that is a prototype bug and is not followed. Ordering is `published_at` then `id`, both descending; the composite index `(status, target_level, target_area_id, published_at)` on posts serves it.
+
+---
+
+## 7. notifications
+
+### Devices
+
+| Method and path | Who | Request | Response |
+|---|---|---|---|
+| `POST /devices/` | public or bearer | `{"fcm_token", "platform": "android"\|"ios"\|"web", "language": "te"\|"en", "village_id"?, "app_version"?}` | `201` when new, `200` when the token was known: `{"id", "fcm_token", "platform", "language", "village_id", "app_version"}`. Upserts by `fcm_token`. With a bearer token the device is linked to that official. Without one, a new token makes an unlinked device, but a token already linked to an official is left as it is (`200`, unchanged): only `DELETE /devices/{id}/` or another official's login on the phone unlinks it, so the app's logout deletes the device before registering again without a login. `400` for an unknown or inactive village. |
+| `PATCH /devices/{id}/` | the app that registered it | `{"village_id"?, "language"?, "fcm_token"?}` | `200`, same shape. A device linked to an official answers `404` to anyone else. A new `fcm_token` replaces the row that held it, unless that row is an official's device and the caller is not that official logged in: then `409 duplicate` on `fcm_token`, and nothing changes (as for `POST /devices/`). |
+| `DELETE /devices/{id}/` | same | — | `204` (logout or opt-out) |
+### Inbox (officials)
+
+| Method and path | Response |
+|---|---|
+| `GET /notifications/?unread=1&cursor=` | Cursor page of `Notification`, 20 per page, newest first, plus `"unread_count"` |
+| `POST /notifications/{id}/read/` | `204`; `404` for someone else's |
+| `POST /notifications/read-all/` | `204` |
+
+`Notification`: `{"id", "kind", "title", "body", "post_id", "area": {"level", "id"}|null, "created_at", "read_at"}`. `title` is the rendered text in the official's preferred language; `body` is the post title.
+
+What creates inbox items (each also queues a push to the official's devices):
+
+| Event | Recipients | `kind` | Template |
+|---|---|---|---|
+| A post enters `PENDING` | Active Village, Mandal and District Admins whose area contains the target, except the author. Super Admins are not pinged per post; they watch the queue. | `REVIEW_PENDING` | `review_pending` |
+| A reviewer publishes, sends back, discards or takes down a post | The author, unless the author acted | `POST_PUBLISHED`, `POST_RECHECK`, `POST_DISCARDED`, `POST_UNPUBLISHED` | `post_approved`, `post_recheck`, `post_discarded`, `post_unpublished` |
+| Escalation | Admins at the level the post escalated to whose area contains it; Super Admins when it reaches state level | `ESCALATION` | `escalation` |
+
+Citizens have no account. Their alert list is built on the device from the feed, and read state stays on the device, as in the prototype.
+
+### Push (Firebase Cloud Messaging)
+- **Topics, without a language suffix:** `village_{id}`, `mandal_{id}`, `district_{id}`, `state_{id}`. A citizen's app subscribes to all four for its village and moves the subscriptions when the village changes.
+- **Topic prefix:** the server puts `FCM_TOPIC_PREFIX` in front of every topic: `qa_` on the qa server (`qa_village_12`), empty in production (`village_12`). qa and production share one Firebase project and the same area ids, so this keeps qa test posts off real phones. The app learns the prefix from the server it talks to: `GET /app-config/` returns `"topic_prefix"` (this server's `FCM_TOPIC_PREFIX`), and the app subscribes to that prefix + `village_12`, `mandal_3` and so on (BVTGC-69, 2026-11-24). So an app talking to qa hears qa's posts and never production's, and the other way round, whatever build it is. When the prefix changes, the app drops the old topics and follows the new ones. Pushes to one phone's token have no prefix.
+- **Publishing** sends one message to the topic of the post's target level. A district post reaches every village in the district with one message.
+- **Language:** a post exists only in the language it was written in, so the topic push is in the post's language: title from template `post_published` (e.g. "కొలకలూరు: కొత్త గ్రామ చాటింపులు"), body = post title. Pushes to officials use each official's preferred language.
+- **Payload:** notification `{"title", "body"}` plus data `{"type": "POST_PUBLISHED"|"REVIEW_PENDING"|…, "post_id", "area_level", "area_id", "urgent": "1"|"0"}`, all strings. Service-request pushes carry `request_id` instead of `post_id`. The app opens the post, the review screen or the request on tap. Keep these keys.
+- **Android:** `notification.channel_id` is `urgent` for an urgent post (`urgent` = `"1"`) and for `ESCALATION`, otherwise `news`; the app creates both channels. `notification.tag` is the `post_id` or `request_id`, so a later push about the same post or request replaces the earlier one on the phone instead of adding a second. `ttl` is `PUSH_TTL_SECONDS` (`86400s`, one day): a phone that was off longer does not get old news late.
+- **iPhone:** `apns.payload.aps.sound` is `default`, so notifications ring.
+- **Priority:** every push goes out at high priority (Android `priority: high`, APNs `apns-priority: 10`), so Android does not hold a post back while the phone sleeps. Approved on 2026-11-04; before, only urgent posts were high (Q19). Urgent posts stand out through the `urgent` channel. `PUSH_ALL_POSTS_HIGH_PRIORITY=False` on a server sends ordinary posts at normal priority again.
+- **Delivery:** django-q2 jobs. Each send retries with backoff: `DELIVERY_RETRY_ATTEMPTS` tries (default 3), waiting `DELIVERY_RETRY_BASE_SECONDS` × 1, × 4 (1 s, 4 s). After the last failure an audit entry `push.failed` is written (`via: system`, target = topic or device id, no personal data). An unregistered token deletes the device without retrying.
+- **No credentials, no push:** without `FCM_CREDENTIALS_FILE` the gateway logs "FCM disabled: no credentials" once and skips sends, so development needs no Firebase project.
+
+Invite and reset emails use the same retries (section 3).
+
+### Notification templates
+
+| Method and path | Who | Request or response |
+|---|---|---|
+| `GET /admin/notification-templates/` | Super Admin | `[{"key", "name", "name_te", "name_en", "channel": "push", "recipient": "author"\|"citizens"\|"reviewers"\|"higher_admin"\|"citizen"\|"assignee"\|"super_admins"\|"wallet", "text_te", "text_en", "variables": ["title", "comment"], "editable": true, "updated_at"}]` |
+| `PATCH /admin/notification-templates/{key}/` | Super Admin | `{"text_te", "text_en"}`, both required; only the listed `variables` may appear, each written as a plain `{name}` (nothing else inside the braces; a brace on its own is `{{` or `}}`). Anything else: `400 validation_error` on that field. Audited as `template.updated`. |
+
+Keys, seeded by a migration: `post_published`, `post_approved`, `post_recheck`, `post_discarded`, `post_unpublished`, `review_pending`, `escalation`, the service-request keys (section 16), `super_admin_added` (recipient `super_admins`, variables `actor` and `name`; section 3), and the citizen wallet's `referral_joined` (variable `name`), `points_confirmed` (`points`) and `points_not_confirmed` (`points`, `reason`), recipient `wallet` (BVTGC-129; section 21), all push and editable. There are no SMS texts.
+
+---
+
+## 8. audit
+
+### Audit log (Super Admin)
+
+Needs `audit.view_audit_log`; the export needs `audit.export_audit_log`.
+
+| Method and path | Request | Response |
+|---|---|---|
+| `GET /audit` | `q` (actor, action, target, area), `type`, `actor`, `action`, `from`, `to` (dates), `page` | Page of `AuditEntry`, plus `"counts_by_type"` and `"window": {"from": "2026-05-24", "to": "2026-11-19"}`, the days actually shown |
+| `GET /audit/export?format=csv&…` | same filters | CSV file. UTF-8 with BOM so Excel shows Telugu. Columns: `time, user, role, action, type, target, area_level, area_id, via, what_happened`; `what_happened` (last, new on 2026-11-25) is `action_label` in the `Accept-Language` language. Writes `report.exported`. More than 50,000 matching entries: `400 validation_error` on `from` and `to` ("Choose a shorter date range"), and nothing is written. |
+
+**Which days are shown** (decision of 2026-11-20: nothing is hidden by age), the same for the list, its counts and the export:
+- Without `from` and `to`: **every entry, however old**, newest first, in pages; `window.from` is the day of the oldest entry. **Changed 2026-11-20:** it was the last 180 days (and 90 before 2026-11-19).
+- With `from` and/or `to`: exactly those days, however old (the audit log is never cleaned). Only `from`: from that day up to now. Only `to`: from the oldest entry up to `to` (`window.from` says which day that is). A month is sent as its first and last day (`from=2025-03-01&to=2025-03-31`). Both days count in full, India time.
+- Search (`q`) matches text anywhere in the actor, action, target and role, in every entry (inside the dates when given).
+- The export's 50,000-entry limit stays: an export without dates over that many entries, or a longer range, answers "Choose a shorter date range".
+
+Audit entries are append-only. No endpoint edits or deletes them.
+
+### Dashboard (Super Admin)
+
+Needs `web_admin.view_dashboard`.
+
+`GET /admin/dashboard`:
+```json
+{
+  "geo": {"districts": 13, "mandals": 679, "villages": 17000},
+  "kpis": {
+    "total_posts": 1520, "pending": 42, "pending_districts": 9, "oldest_pending_hours": 26.0,
+    "escalated": 3, "published_today": 57, "active_admins": 410,
+    "active_users": 980, "blocked_users": 12, "live_villages": 16950, "inactive_villages": 50
+  },
+  "posts_per_day": [{"date": "2026-10-01", "submitted": 6, "published": 5}],
+  "pending_by_district": [{"district": Area, "pending": 12, "oldest_pending_hours": 26.0}],
+  "recent_activity": [AuditEntry],
+  "app_versions": [{"version": "1.0.0+24", "phones": 310}, {"version": "", "phones": 95}]
+}
+```
+Built (web_admin app). Also returns `"escalation_hours"` (the effective setting). `app_versions` (BVTGC-90): phones that registered for push in the last 30 days, by the `app_version` they sent, newest build first; `""` is builds from before the app sent it. Use it before raising `APP_MIN_VERSION`. Drafts are not counted. `posts_per_day` covers the last 14 days, bucketed by Asia/Kolkata date in Python, so no database time-zone functions are needed. Each `pending_by_district` row also has `name_te`; `oldest_pending_hours` is null when nothing is pending. `active_admins` counts active users holding a District, Mandal or Village Admin role. `recent_activity` holds 6 entries; the app shows 5.
+
+### Reports (Super Admin)
+
+Needs `web_admin.view_reports`.
+
+Built (web_admin app). `days` is 1 to 366, default 30, and counts posts created in that window (drafts excluded).
+
+| Method and path | Response |
+|---|---|
+| `GET /admin/reports/summary?days=30` | `{"total", "published", "pending", "rejected", "days"}`. `rejected` counts `DISCARDED`, `UNPUBLISHED` and (since 2026-11-20) `BLOCKED`. |
+| `GET /admin/reports/posts-by-area?days=30` | `[{"district": Area, "total", "published", "pending", "rejected", "mandals": [{"mandal": Area, "total", "published", "pending", "rejected"}]}]`. Mandals with no posts are left out. |
+| `GET /admin/reports/review-time?days=30` | `[{"level": "VILLAGE"\|"MANDAL"\|"DISTRICT"\|"STATE", "avg_hours": 3.4 or null, "reviews": 42, "escalation_hours": 24}]`. Hours from the latest (re)submission to the reviewer's decision. |
+| `GET /admin/reports/admin-activity?days=30&page=` | Page of `{"user": {"id", "name", "role"}, "area": Area, "reviewed", "published", "recheck", "discarded", "avg_review_hours", "last_active_at"}`, most decisions first. `avg_review_hours` is the admin's average, over their publish, recheck and discard decisions in the window, of the hours from the post's latest (re)submission to the decision, the same measure as `review-time`; one decimal, `null` when they made no such decision. |
+| `GET /admin/reports/{report}/export/?format=csv&days=` | `report` is one of the four above. CSV with a UTF-8 BOM so Excel shows Telugu; area names follow `Accept-Language`. The admin-activity CSV has an "Average review hours" column, empty when `avg_review_hours` is `null`. Errors still come back as JSON. `format=pdf` answers 404: exports are CSV only (owner decision Q14). Writes `report.exported`. |
+
+---
+
+## 9. web_public
+
+| Method and path | Auth | Request | Response |
+|---|---|---|---|
+| `GET /public/site-config/` | public | — | `{"play_store_url", "website_url", "invite_url", "helplines": [{"number": "112", "label_te": "అత్యవసరం", "label_en": "Emergency"}, …]}`. `invite_url` is `https://<domain>/app/` for "Invite your neighbours" (section 20), `null` while the server has no `PUBLIC_BASE_URL`; new on 2026-11-04. An empty `play_store_url` keeps the website's "coming soon" toast. Removed on 2026-11-07: `office_address_te`, `office_address_en`, `phone`, `email`, `hours_te`, `hours_en` and `app_store_url`; the website keeps its own contact details and download links. Cacheable for 5 minutes. |
+| `GET /public/showcase/` | public | — | `{"location": Area\|null, "featured": FeedItem\|null, "items": [FeedItem, FeedItem]}` for the home page's phone picture. Cacheable for 60 s. |
+| `GET /admin/contact-messages/` | Super Admin | Query: `status=new\|handled`, `q` (name, mobile, village, message), `page` | Page of `{"id", "name", "mobile", "village_text", "message", "language", "created_at", "handled", "handled_at", "handled_by": {"id", "name"}\|null}`, newest first, plus `"status_counts": {"new": 3, "handled": 2, "all": 5}` (added 2026-11-20, the console's pill numbers): worked out with every filter except `status`, so `q` narrows them and the chosen pill does not. **Which ones (changed 2026-11-20):** every message, however old, handled or not; nothing is hidden by age. Before: a handled message dropped off 90 days after it was handled (since 2026-11-19), and every message 90 days after it arrived before that. **`contact=0` (added 2026-11-13, audit WEB-DP-001):** each row leaves out `mobile` and `message` and carries `"mobile_last4"` (the last 4 digits) instead; `q` still searches both. Without it the rows are unchanged. No client sends it now: the console stopped on 2026-11-17 (owner's decision to show the mobile and message in the table), and the app never did. The masking question is BVTGC-75. **Mobile on screen (owner's decision of 2026-11-17, MOB-DOC-002):** the rows carry the full `mobile` and `message` on purpose; the console and the app show the mobile masked in their lists (`+91 ******3452`), and in full only in the console's View (`GET /admin/contact-messages/{id}/`); the app's Call button dials the full number. |
+| `GET /admin/contact-messages/{id}/` | Super Admin | — | The message in full (the shape above, with `mobile` and `message`); `404 not_found` for an unknown id. Added 2026-11-13: the console's View panel. Not audited, like opening a user or a service request. |
+| `PATCH /admin/contact-messages/{id}/` | Super Admin | `{"handled": true\|false}` | The message. Sets or clears `handled_at` and `handled_by`; audited as `contact.handled` or `contact.reopened`. |
+| `POST /public/contact-messages/` | public | `{"name", "mobile", "village_text", "message", "language", "website"?}` | `201 {"id", "created_at"}`. `village_text` is required (since 2026-11-04): missing or blank answers `400` with `fields.village_text`. |
+
+- Built. Values come from settings, each overridable by env: `PLAY_STORE_URL` (empty by default), `SITE_WEBSITE_URL`, `PUBLIC_BASE_URL`; helplines from the important numbers (`SITE_HELPLINES` while none are loaded).
+- Contact form validation matches the website: name and message required after trimming, mobile 10 digits (`+91` and spaces are accepted and stripped). `website` is a honeypot: when filled, the server answers `201` with `id` 0 and stores nothing. **No limit** on how many messages one address sends (decision of 2026-11-20; before, 5 an hour per IP, then `429 throttled`): the form never answers `429`. The sender's IP address is not stored (BVTGC-103, 2026-11-25; the addresses kept before were deleted).
+- `website_url` (`SITE_WEBSITE_URL`) is the link the app adds to shared posts and invites (owner decision Q17).
+- `helplines` (owner decision Q19): the state's helplines from the important numbers (section 14), in their `sort_order`. While none are loaded it falls back to `SITE_HELPLINES` (a JSON list in the env), by default 112 Emergency, 108 Ambulance, 1930 Cyber fraud, 181 Women helpline, 1098 Child helpline, 1912 Electricity, with the prototype's Telugu labels. `seed_helplines` loads that same list into the table, so the output does not change.
+- **Showcase (owner decision Q16):** `location` is the village in `SITE_SHOWCASE_VILLAGE_ID` and the posts come from its feed: `featured` is the newest post with a photo (or the newest post), `items` the next two. When the setting is empty or that feed has no posts, the newest published posts anywhere are used and `location` is the featured post's area.
+- **Contact messages (owner decision Q16)** are read and marked handled in the console. Others get `403 permission_denied`.
+
+---
+
+## 10. Post state machine
+
+| From | To | Action | Who | Comment |
+|---|---|---|---|---|
+| (new) | `DRAFT` | — | any posting role, `submit: false` | — |
+| (new) or `DRAFT` | `PENDING` | `SUBMIT` | Panchayat member, or an admin when auto-publish is off | — |
+| (new) or `DRAFT` | `PUBLISHED` | `AUTO_PUBLISH` | District, Mandal or Village Admin when `ADMIN_POSTS_AUTO_PUBLISH=True` and every area of the post is inside their own area (BVTGC-26); Super Admin only when also `SUPER_ADMIN_CAN_POST=True` | — |
+| (new) | `PENDING` | `SUBMIT` | a citizen's phone with a posting token (section 15); never `DRAFT` or published at once | — |
+| `PENDING` | `PUBLISHED` | `PUBLISH` | reviewer whose area contains the target, not the author | optional |
+| `PENDING` | `RECHECK` | `RECHECK` | same; never for a citizen post | required |
+| `PENDING` | `DISCARDED` | `DISCARD` | same | required |
+| `PENDING` | `BLOCKED` | `BLOCK` | none since 2026-11-21: a block changes no post (section 15). From 2026-11-20 to 2026-11-21 `POST /posts/{id}/block-citizen/` made it; never `POST /posts/{id}/review` | required (the block comment) |
+| `RECHECK` | `PENDING` | `RESUBMIT` | author | — |
+| `PUBLISHED` | `UNPUBLISHED` | `UNPUBLISH` | reviewer whose area contains the target, including the author's superiors (Pending Q18) | required |
+| `PENDING` | `PENDING` | `ESCALATE` | System, after `REVIEW_ESCALATION_HOURS` with no decision; flags the post and alerts the next level up | — |
+| `PUBLISHED`, `RECHECK`, `DISCARDED`, `UNPUBLISHED`, `BLOCKED` | `PUBLISHED`, `PENDING`, `RECHECK`, `DISCARDED` | `REVERSE` | a reviewer whose role is strictly higher than the one who decided; a Super Admin for any decision (2026-11-21) | required |
+
+Any other move returns `409 invalid_transition`. Each row writes one `ReviewAction` and one `AuditLog` entry in the same database transaction as the status change.
+
+Two one-time data steps of 2026-11-21 wrote `REVERSE` entries with no actor (System), each with its own comment (section 15, Blocking): `posts.0013` moved every `BLOCKED` post back to `PENDING`, and `posts.0014` did the same for the posts a block had discarded before 2026-11-20. Their review time starts again from that day.
+
+Escalation runs as a django-q2 scheduled job every `ESCALATION_CHECK_MINUTES` (15); `manage.py ensure_schedules` registers it. It does not hide the post from lower reviewers. It marks `escalated`, writes `ESCALATE`, and notifies the admins one level above the target area. There is one escalation time for every level, `REVIEW_ESCALATION_HOURS` (24 by default); the console's per-level limits are not used (owner decision Q1).
+
+---
+
+## 11. Permission matrix
+
+Roles are Django groups and actions are Django permissions. The full group × permission table is in `docs/authorization.md`, section 7, and in code in `apps/accounts/role_matrix.py`. "Area" below means the area of one of the actor's active role assignments; "inside" includes the area itself. A Super Admin assignment covers every area.
+
+| Action | Permission | Super Admin | District Admin | Mandal Admin | Village Admin | Panchayat member | Citizen |
+|---|---|---|---|---|---|---|---|
+| Read feed, categories, geography | public | yes | yes | yes | yes | yes | yes |
+| Create and submit a post | `posts.create_post`, `posts.submit_post` | only if `SUPER_ADMIN_CAN_POST`; the only group that may target the state | district, a mandal or a village inside it | mandal, or a village inside it | own village | own village, goes to review | the phone's village, with a posting token, always goes to review (section 15) |
+| Block or unblock a citizen's phone, discard all its pending posts | `posts.block_citizen` | any | no | no | no | no | no |
+| Review queue | `posts.view_review_queue`, `posts.review_post` | any post | posts targeted inside the district | inside the mandal | inside the village | no | no |
+| Publish, recheck, discard | `posts.publish_post`, `posts.recheck_post`, `posts.discard_post` | any | inside the district | inside the mandal | inside the village | no | no |
+| Take down a published post | `posts.takedown_post` | any | inside the district | inside the mandal | inside the village | no | no |
+| Reverse a decision | `posts.reverse_decision` | any decision, also another Super Admin's and their own (2026-11-21) | when the decider ranked lower | same | same | no | no |
+| Mark as urgent | `posts.mark_urgent` | any | inside the district | inside the mandal | inside the village | no | no |
+| Area stats | `posts.view_stats` | any area | inside the district | inside the mandal | the village | the village | no |
+| Create users, add roles | `accounts.manage_<group>` | other Super Admins (`accounts.manage_super_admin`, with their own password), District, Mandal, Village Admins, Panchayat members | Mandal, Village Admins, Panchayat members inside the district | Village Admins, Panchayat members inside the mandal | Panchayat members in the village | no | no |
+| Block, reset password, reassign, unlock | `accounts.block_user`, `accounts.reset_password`, `accounts.reassign_user`, `accounts.unlock_user` | anyone ranked below, and other Super Admins | lower groups inside the district | lower groups inside the mandal | Panchayat members in the village | no | no |
+| Geography writes | `geography.manage_master_data` | yes | no (owner decision Q13) | no | no | no | no |
+| Audit log, export | `audit.view_audit_log`, `audit.export_audit_log` | yes | no | no | no | no | no |
+| Dashboard, reports | `web_admin.view_dashboard`, `web_admin.view_reports` | yes | no | no | no | no | no |
+| Settings, categories | `posts.manage_settings`, `posts.manage_categories` | yes | no | no | no | no | no |
+| Notification templates | `notifications.manage_templates` | yes | no | no | no | no | no |
+| Contact messages | `web_public.manage_contact_messages` | yes | no | no | no | no | no |
+| Important numbers (section 14) | `contacts.manage_contact` | any area, and the statewide helplines | inside the district | inside the mandal | the village | the village (decision C1) | read only, public |
+| Contact types | `contacts.manage_contact_types` | yes | no | no | no | no | no |
+| Home banner ads (section 17) | `ads.manage_ad` | yes | no | no | no | no | sees the ads for their village, public |
+| Services list (section 16) | `service_requests.manage_services` | yes | no | no | no | no | sees the shown services, public |
+| Bills & Recharges list (section 18) | `bills.manage_bills` | yes | no | no | no | no | sees the shown bills, public |
+| See service requests (section 16) | `service_requests.view_service_requests` | all | inside the district | inside the mandal | the village | only those assigned to them, in the village | their own phone's, with the posting token |
+| Change status, assign on, write a note | being the request's **assignee** (only an official of the village itself can be one, since 2026-11-27) | when it was assigned to them before 2026-11-27 | when it was assigned to them before 2026-11-27 | when it was assigned to them before 2026-11-27 | when assigned to them | when assigned to them | no |
+| Assign a request nobody holds (to an official of the village itself) | `service_requests.manage_service_requests` | any | inside the district | inside the mandal | the village | no | no |
+| Web console login | `web_admin.access_web_console` | yes | no | no | no | no | no |
+| Groups and role assignments in Django admin | `accounts.manage_groups` | yes | no | no | no | no | no |
+
+Every row has tests against SQLite, per CLAUDE.md: each group × each permission × the same area, the parent, a sibling and another district.
+
+---
+
+## 12. Screen to endpoint map
+
+### Mobile app
+
+| Screen | Endpoints |
+|---|---|
+| Splash, language, welcome | none; `GET /categories` and geography warm the cache |
+| Location step | `GET /geo/nearest?lat=&lng=` (section 4), then the picker if needed |
+| Change village | `GET /geo/states`, `/geo/districts`, `/geo/mandals`, `/geo/villages`; `PATCH /citizen/me/` (registered phones); push topics follow the new village; `POST /devices/` registers the push token, `DELETE /devices/{id}/` unlinks it at logout |
+| Citizen home | the first page of `GET /feed`, with `GET /feed/urgent` and `GET /feed/upcoming` |
+| News deck, videos | `GET /feed` with `category` or `has_video=1` |
+| Post detail | `GET /feed/posts/{id}` |
+| Saved posts | `GET /feed/posts?ids=` |
+| Citizen alerts | built on the device from `GET /feed` |
+| Login | `POST /auth/login/` |
+| Change password (first login, profile) | `POST /auth/password/change` |
+| Profile | `GET /me`, `PATCH /me`, `POST /auth/logout` |
+| Panchayat "My posts" | `GET /posts?mine=1` |
+| Compose, edit and resubmit | `POST /posts`, `POST /posts/{id}/media`, `DELETE …/media/{id}`, `PATCH /posts/{id}`, `POST /posts/{id}/submit` |
+| Admin dashboard | `GET /stats`, `GET /posts/?status=PENDING` |
+| Review queue | `GET /posts/?status=PENDING` (`GET /review/queue/` exists but the app does not call it) |
+| Review | `GET /posts/{id}`, `GET /posts/{id}/history`, `POST /posts/{id}/review` |
+| Published posts | `GET /posts?status=PUBLISHED` |
+| Manage users, add user | `GET /users`, `POST /users`, `POST /users/{id}/block`, `POST /users/{id}/unblock` |
+| Official notifications | `GET /notifications`, `POST /notifications/{id}/read`, `POST /notifications/read-all` |
+| Super Admin: home | `GET /admin/dashboard` |
+| Super Admin: all posts | `GET /posts` with `status_counts`; `POST /posts` only if allowed |
+| Super Admin: areas | `GET /geo/*?include_inactive=1&with_counts=1`, geography writes |
+| Super Admin: reports, audit, settings | `GET /admin/reports/*`, `GET /audit`, `/admin/settings`, `/admin/categories`, `/admin/notification-templates` |
+| App start | `POST /devices` (with `app_version`); `GET /app-config` (the languages switched on, and `min_version` / `latest_version` for the update screen) |
+| Contacts tab (citizens) | `GET /contacts?village_id=`; `GET /contact-types` for chips and icons |
+| Citizen: first post (once per install) | `POST /citizen/challenge/`, Play Integrity on the phone, `POST /citizen/register/` |
+| Citizen: write a post, my posts | `POST /citizen/posts/`, `GET /citizen/posts/`, `GET /citizen/me/`; `PATCH /citizen/me/` after a village change |
+| Review a citizen post | as Review; tabs from `GET /posts/?status=PENDING&source=official\|citizen`. Super Admin also: `POST /posts/{id}/block-citizen/`, `/unblock-citizen/`, `/discard-citizen-posts/`; the Blocked tab from `GET /admin/citizens/blocked/`, a citizen's posts from `GET /posts/?citizen={id}` |
+| Important numbers (every official) | `GET /admin/contacts` (`section=AREA\|HELPLINE`), `POST /admin/contacts`, `PATCH /admin/contacts/{id}`, `DELETE /admin/contacts/{id}`, `POST /admin/contacts/import/` (Super Admin) |
+| Telugu name suggestions (every official's forms) | `GET /admin/transliterate/` |
+| Citizen Home: banner ads | `GET /ads?village_id=` |
+| Super Admin: More → Ads | `GET /admin/ads`, `POST /admin/ads` (multipart), `PATCH /admin/ads/{id}` (multipart with a new image or video, else JSON), `DELETE /admin/ads/{id}`; areas from `/geo/*` |
+| Citizen: Home → Services, Profile → My service requests (with Cancel request) | `GET /services/`, `POST /citizen/service-requests/`, `GET /citizen/service-requests/`, `POST /citizen/service-requests/{id}/cancel/` |
+| Service requests (officials) | `GET /service-requests/` (status tabs from `status_counts`), `GET /service-requests/{id}/`, `PATCH /service-requests/{id}/`; assignees from `GET /users/` |
+| Super Admin: More → Services | `GET /admin/services/`, `POST /admin/services/`, `PATCH /admin/services/{key}/` (edit only while hidden, 2026-11-26), `DELETE /admin/services/{key}/`, `POST /admin/services/order/` |
+| Citizen: Home → Bills & Recharges | `GET /bills/` |
+| Super Admin: More → Bills & Recharges | `GET /admin/bills/`, `POST /admin/bills/`, `PATCH /admin/bills/{key}/` (edit only while hidden, 2026-11-26), `DELETE /admin/bills/{key}/`, `POST /admin/bills/order/` |
+| Citizen wallet account (section 21): Create account, Check your email, Log in, Forgot password | `POST /citizen/auth/signup/`, `/signup/resend/`, `/signup/verify/`; `POST /citizen/auth/login/`; `POST /citizen/auth/password/forgot/`, `/password/reset/` |
+| Citizen: Wallet, Invite friends, account entries in Profile (section 21) | `GET /citizen/account/`, `PATCH /citizen/account/`, `GET /wallet/`, `POST /citizen/account/password/`, `/email/`, `/email/verify/`, `/mobile/`, `/delete/`; `POST /devices/` with the citizen JWT |
+
+### Super Admin console
+
+| Page | Endpoints |
+|---|---|
+| Login | `GET /auth/csrf/`, `POST /auth/session/login/`; then `POST /auth/password/change/` when `must_change_password` |
+| Shell (header, profile, change password, logout) | `GET /me/`, `POST /auth/password/change/`, `POST /auth/session/logout/`; menus follow `permissions`; Posts badge from `GET /posts?status=PENDING&page_size=1` |
+| Dashboard | `GET /admin/dashboard` |
+| Geography | `GET /geo/tree`, geography writes |
+| Users | `GET /users`, `GET /users/{id}`, `GET /posts?author={id}&page_size=5`, `POST /users`, block, unblock, reset password, unlock, role assignments |
+| Posts and moderation | `GET /posts` with `status_counts`, `GET /posts/{id}`, `GET /posts/{id}/history`, `POST /posts/{id}/review`, `GET /categories` for the filter |
+| Reports | `GET /admin/reports/*` and their exports |
+| Audit log | `GET /audit`, `GET /audit/export` |
+| Settings | `/admin/settings`, `/admin/categories` (list, the on/off switch, `POST` for "Add category", web build of 2026-11-23; `PATCH` for Edit and `DELETE` for Delete, 2026-11-26), `/admin/notification-templates` |
+| Contact messages | `GET /admin/contact-messages` (full rows: the owner's decision of 2026-11-17 to show the mobile and message in the table; `contact=0` from WEB-DP-001 is no longer sent), `GET /admin/contact-messages/{id}` (View), `PATCH /admin/contact-messages/{id}` |
+| Important numbers | `GET /admin/contacts` (area and helpline tabs), `POST /admin/contacts`, `PATCH /admin/contacts/{id}`, `DELETE /admin/contacts/{id}`, `POST /admin/contacts/import`; types: `/admin/contact-types` |
+| Service requests | `GET /service-requests/`, `GET /service-requests/{id}/`, `PATCH /service-requests/{id}/`; assignees from `GET /users/` (shown to holders of `service_requests.view_service_requests`) |
+| Services | `GET /admin/services/`, `POST /admin/services/`, `PATCH /admin/services/{key}/`, `DELETE /admin/services/{key}/` (Edit and Delete only while hidden, 2026-11-26), `POST /admin/services/order/` |
+| Bills & Recharges | `GET /admin/bills/`, `POST /admin/bills/`, `PATCH /admin/bills/{key}/`, `DELETE /admin/bills/{key}/` (Edit and Delete only while hidden, 2026-11-26), `POST /admin/bills/order/` |
+| Notifications (bell) | `GET /notifications/`, `POST /notifications/{id}/read/`, `POST /notifications/read-all/`; opens the post or service request |
+| Ads | `GET /admin/ads/`, `POST /admin/ads/` (multipart), `PATCH /admin/ads/{id}/`, `DELETE /admin/ads/{id}/` |
+| Blocked citizens (Posts → Blocked) | `GET /admin/citizens/blocked/`, `GET /admin/citizens/{id}/blocks/`, `POST /admin/citizens/{id}/unblock/`; from a post: `POST /posts/{id}/block-citizen/`, `/unblock-citizen/`, `/discard-citizen-posts/` |
+| Telugu name suggestions (forms) | `GET /admin/transliterate/` |
+| Citizens & wallet (section 21) | `GET /admin/citizen-accounts/`, `POST /admin/citizen-accounts/find/`, `…/{id}/email/`, `/release-mobile/`, `/block/`, `/unblock/`, `/delete/`; `GET /admin/referrals/`, `…/{id}/confirm/`, `/reject/`; `GET /admin/wallets/{id}/`, `POST /admin/wallets/{id}/adjust/`; `GET /admin/wallet/entries/`, `GET /admin/wallet/export/`; the wallet settings in `/admin/settings/` |
+
+### Public website
+
+| Page | Endpoints |
+|---|---|
+| All pages | `GET /app-config/` (the languages switched on). `GET /public/site-config/` is no longer called (since 2026-11-07); the app still uses it |
+| Home phone mockup | `GET /public/showcase` |
+| Contact | `POST /public/contact-messages` |
+| Download section with a friend's referral code (section 21) | none: the page reads `ref` from its address |
+| Delete my wallet account (section 21) | `POST /citizen/auth/delete/code/`, `POST /citizen/auth/delete/` |
+
+### Endpoints no client calls (BVTGC-77, 2026-11-23)
+
+Kept on purpose (backend team's decision on audit CROSS-API-108): each checks its permission and has tests, and an older app build installed from the website may still call one. Do not remove one without the app-version check of BVTGC-25 showing no old build uses it.
+
+| Endpoint | Instead the clients use |
+|---|---|
+| `GET /review/queue/` | `GET /posts/?status=PENDING` (with `source=official\|citizen` tabs) |
+| `GET /admin/contacts/targets/` | the `/geo/*` lists to pick areas |
+| `PATCH /devices/{id}/` | `PATCH /citizen/me/` for the village and language; `POST /devices/` again for a new push token |
+| `GET /admin/contacts/{id}/` | the rows of `GET /admin/contacts/` |
+| `GET /admin/ads/{id}/` | the rows of `GET /admin/ads/` |
+| `GET /health/` | uptime checks and the deploy scripts only |
+
+---
+
+## 13. Limits and throttles
+
+| Item | Limit |
+|---|---|
+| Failed logins | 5 per username and IP address, then locked for 15 minutes (django-axes; a success resets the count). 20 an hour per username from any addresses, then locked for 15 minutes (BVTGC-110). A cap per IP address for any usernames, off by default (`LOGIN_IP_MAX_FAILURES=0`); when a server switches it on, an address that reaches it is blocked until the oldest failure is an hour old (BVTGC-105). Nginx: 10 login or password-change requests a minute per address |
+| Contact form | No per-IP limit (lead's final decision); the hidden honeypot field stays |
+| Post title | 150 characters |
+| Post body | 5,000 characters |
+| Review comment | 500 characters |
+| Photos and videos per post | Up to 3 photos (`MAX_PHOTOS_PER_POST`), or one video, never both; optional. Everyone who posts, citizens included (lead's decision of 2026-11-13). |
+| Image upload | `MAX_IMAGE_UPLOAD_MB`, default 10 |
+| Video | one per post, never with photos; `MAX_VIDEO_UPLOAD_MB` default 60, at most `VIDEO_MAX_SECONDS` 60 s (lead's decision of 2026-11-14) |
+| Checking uploads | per step `VIDEO_PROBE_TIMEOUT_S` 15, `VIDEO_POSTER_TIMEOUT_S` 20, `VIDEO_STRIP_TIMEOUT_S` 45 (over: `415`); per request `MEDIA_PROCESSING_BUDGET_S` 90 (over: `400 validation_error`, nothing stored) |
+| Page size | feed 20, admin lists 100 |
+| Important numbers | 200 active per area (`CONTACTS_MAX_PER_AREA`); name 150, custom type 40 characters; CSV import 2 MB and 5,000 rows |
+| Home banner ads | Image at most 5 MB and at least 800 px wide, stored at most 1600 px; title 80, link 500 characters; at most 10 per village's Home |
+| Service requests | 10 per phone in 24 hours (`SERVICE_REQUESTS_PER_DAY`, 0 is no limit); name 100, address 5–300, details 500 characters |
+| Services | name 2–60 characters (unique, any case); `icon` and `color` from the lists in section 16; logo JPEG, PNG or WebP, at most 2 MB, at least 64 px a side, stored at most 256 px |
+| Citizen posts | 5 posts per phone in 24 hours (the Super Admin changes it in Settings; 0 is no limit); up to 3 photos (`MAX_PHOTOS_PER_POST`) or one video per post, never both; each photo at most `MAX_IMAGE_UPLOAD_MB` (10), the video at most `MAX_VIDEO_UPLOAD_MB` (60) and `VIDEO_MAX_SECONDS` (60 s); no limit on new phones (switchable: `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY`) |
+| Citizen wallet accounts (section 21) | Codes: valid 10 minutes, 5 tries, one a minute, 5 a day per account or email and 10 a day per phone; 5 wrong passwords per account and IP address lock it for 15 minutes; an unfinished sign-up is kept 24 hours |
+
+---
+
+## 14. contacts: important numbers
+
+Built (`apps.contacts`). The app's Contacts tab: phone numbers officials publish for their area (VRO, Mee Seva, Sachivalayam, Tahsildar office …) and the statewide government helplines (108, 1098 …). Each number has one area, stored like a post's target. A citizen sees the numbers of their village, its mandal, its district and its state. Open decisions C1 to C5 and their defaults are in `prototype-inventory.md`, section 8.
+
+**Sections.** A type is either `AREA` (numbers at district, mandal or village level, shown under "For you") or `HELPLINE` (numbers at state level, shown under "Government helplines"). A number's level must agree with its type's section: otherwise `400 validation_error` on `area`.
+
+### Public (no login)
+
+| Method and path | Request | Response |
+|---|---|---|
+| `GET /contacts/?village_id=` | `village_id` (required) | `CitizenContacts` (below). `400` without `village_id`; `404 not_found` with `"reason": "village_not_found"` for an unknown or inactive village. `ETag` and `Cache-Control: public, max-age=300` (`CONTACTS_PUBLIC_MAX_AGE`); `If-None-Match` gets `304`. Ignores any `Authorization` header, like the feed. Rate-limited by Nginx like the rest of the API. |
+| `GET /contact-types/` | — | `[{"key", "section", "name", "is_other", "sort_order"}]`, active types only (never deleted ones). `Cache-Control: public, max-age=300` (`CONTACTS_PUBLIC_MAX_AGE`), so a new, renamed, switched-off or deleted type shows within 5 minutes. |
+
+```jsonc
+// CitizenContacts: one call fills the whole Contacts tab
+{
+  "village": {"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు", "path": "కొలకలూరు · తెనాలి · గుంటూరు"},
+  "for_you": [
+    {
+      "type": "vro",
+      "label": "వీఆర్వో",            // the typed custom_type for "Other" numbers
+      "contacts": [
+        {"id": "6f1c…", "name": "కె. శ్రీనివాసరావు", "phone": "9000010001", "phone_kind": "MOBILE",
+         "email": null, "area": {"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు"}}
+      ]
+    }
+  ],
+  "helplines": [
+    {"type": "health", "label": "ఆరోగ్యం", "contacts": [
+      {"id": "…", "name": "అంబులెన్స్", "phone": "108", "phone_kind": "SHORT_CODE", "email": null,
+       "area": {"level": "STATE", "id": 1, "name": "ఆంధ్రప్రదేశ్"}}
+    ]}
+  ],
+  "updated_at": "2026-10-26T15:00:00+05:30"   // newest change among the rows; null when there are none
+}
+```
+- Order: groups in the types' `sort_order`; one group per type, and one per typed name for "Other" numbers (ignoring case). Inside a group the most local number first (village, mandal, district), then its `sort_order`, then its name. Empty groups are left out.
+- `label`, `name` and the area's name follow `Accept-Language` (Telugu by default). A number without a Telugu name shows its English one.
+- Not paged: at most `CONTACTS_MAX_PER_AREA` numbers per area and four areas. Phone formatting ("90000 10001") is the app's job; the server sends digits.
+
+### Officials
+
+All need `contacts.manage_contact`, which every official holds in their own area: District, Mandal and Village Admins, Panchayat members (decision C1) and the Super Admin. Only a platform-wide assignment covers the STATE, so only the Super Admin changes helplines.
+
+| Method and path | Who | Request | Response |
+|---|---|---|---|
+| `GET /admin/contacts/` | `manage_contact` anywhere | `section=AREA\|HELPLINE` (default `AREA`), `level` + `area_id` (that area and below), `type` (key), `q` (name, or the phone's digits), `page` | Page of `AdminContact`. `AREA`: only numbers inside the actor's areas. `HELPLINE`: every active statewide number; `allowed_actions` is empty unless the actor may edit it. Most local first, then type, `sort_order`, name. |
+| `POST /admin/contacts/` | `manage_contact` over `area` | `{"type", "custom_type"?, "name", "name_te"?, "phone", "email"?, "area": {"level", "id"}, "sort_order"?, "consent_recorded"?}` | `201 AdminContact`. `400 validation_error`; `403 out_of_area`; `409 duplicate` (`fields.phone`). |
+| `GET /admin/contacts/{id}/` | `manage_contact` over its area; any official for a helpline | — | `AdminContact`, otherwise `404` |
+| `PATCH /admin/contacts/{id}/` | over the old **and** the new area | any POST field, plus `"verified": true` to stamp `verified_at` | `AdminContact`. `404` if the number is outside reach; `403 out_of_area` if the new area is. |
+| `DELETE /admin/contacts/{id}/` | over its area | — | `204`. Soft delete: hidden from citizens, kept for the audit trail. A second delete answers `404`. |
+| `GET /admin/contacts/targets/` | `manage_contact` anywhere | — | "Who sees it" choices, in the shape of `GET /posts/targets/` (`levels`, `areas`, `pick_via: "geo"`), never `STATE`. No client calls it yet (both pick areas through `/geo/*`); kept until BVTGC-77 decides. |
+| `POST /admin/contacts/import/` | Super Admin (`manage_contact` over the platform) | multipart `file` (UTF-8 CSV, BOM allowed, at most `CONTACTS_IMPORT_MAX_BYTES` 2 MB and `CONTACTS_IMPORT_MAX_ROWS` 5,000 rows); `?dry_run=1` checks only | `200 {"dry_run", "created", "updated", "skipped", "errors": []}`. Any bad row: `400 validation_error` with `report` holding the same object and `errors: [{"row", "field", "message"}]`, and nothing is written. Too large: `413 file_too_large`. |
+| `GET /admin/contact-types/` | Super Admin (`contacts.manage_contact_types`) | — | `[{"id", "key", "section", "name_en", "name_te", "is_other", "sort_order", "is_active", "contact_count"}]`; `contact_count` counts active numbers. Deleted types are left out. |
+| `POST /admin/contact-types/` | same | `{"key", "section", "name_en", "name_te", "is_other"?, "sort_order"?, "is_active"?}` | `201`; a used key: `409 duplicate`. The key of a deleted type stays taken: `409 duplicate`, "This key was used by a deleted type". |
+| `PATCH /admin/contact-types/{id}/` | same | `name_en`, `name_te`, `is_other`, `sort_order`, `is_active` | The type. `key` and `section` never change. A deleted type: `404`. |
+| `DELETE /admin/contact-types/{id}/` | same | — | `204`. A type nobody uses can be deleted; one in use is switched off. Active numbers use it: `409 type_in_use` with `count` ("N numbers use this type. Change their type or remove them first, or switch the type off."). The "Other" type (`is_other`): `409 protected`. Unknown or already deleted: `404 not_found`. |
+
+**Deleting a type** is a soft delete (`deleted_at`, `deleted_by`): removed numbers still point to it and keep loading in the audit trail. A deleted type is hidden everywhere: `GET /contact-types/`, `GET /admin/contact-types/`, the CSV import and `POST`/`PATCH /admin/contacts/` ("Unknown contact type.", `400` on `type`). Its key stays taken, so old audit entries never point to a different type. A number added at the same moment as the delete never ends up on the deleted type: one of the two fails cleanly.
+
+`AdminContact`:
+```jsonc
+{
+  "id": "6f1c…",
+  "type": {"key": "other", "section": "AREA", "name": "ఇతర"},
+  "custom_type": "Anganwadi",
+  "name": "Anganwadi Centre, Tenali", "name_te": "",
+  "phone": "9848012345", "phone_kind": "MOBILE", "email": "",
+  "area": {"level": "MANDAL", "id": 12, "name": "తెనాలి", "path": "తెనాలి · గుంటూరు"},
+  "sort_order": 100,
+  "consent_recorded": true,
+  "verified_at": "2026-10-26T15:00:00+05:30",
+  "needs_recheck": false,            // never verified, or not for CONTACTS_VERIFY_DAYS (180)
+  "created_by": {"id": "…", "name": "Lakshmi Devi"},
+  "created_at": "…", "updated_at": "…",
+  "allowed_actions": ["edit", "remove", "verify"]
+}
+```
+
+### Rules
+
+| Field | Rule |
+|---|---|
+| `type` | An active type's key. Seeded `AREA` keys: `vro`, `meeseva`, `sachivalayam`, `revenue`, `official`, `other`. `HELPLINE` keys: `emergency`, `farmers`, `senior`, `student`, `women`, `health`, `police`, `railways`, `power`, `grievance`, `more`. They are the app's icon keys. |
+| `custom_type` | Required, 1 to 40 characters, for "Other" types (`is_other`); must be empty otherwise. Changing to another type clears it. |
+| `name`, `name_te` | `name` required, 1 to 150 characters after collapsing spaces. `name_te` optional, the Telugu name. |
+| `phone` | Spaces, dashes and brackets are removed; a leading `+91`, or `91` when 12 digits remain, is dropped. Then one kind must match: `MOBILE` `[6-9]` + 9 digits, `LANDLINE` `0` + 9-10 digits, `TOLL_FREE` `1800` + 6-7 digits, `SHORT_CODE` 3-6 digits for helplines only. Anything else, such as `*#06#`, is refused. |
+| `email` | Optional, a valid address, stored in lower case. |
+| `area` | Must exist and be active, and agree with the type's section. |
+| `consent_recorded` | Must be `true` for a `MOBILE` number while `CONTACTS_REQUIRE_MOBILE_CONSENT` is on (decision C2). The form says "This person agreed to have this number shown to the public". |
+| `sort_order` | 0 to 1000, default 100. |
+| Duplicates | No two active numbers with the same type, phone and area: `409 duplicate`. Checked in the transaction; a removed number may be added again. |
+| Capacity | At most `CONTACTS_MAX_PER_AREA` (200) active numbers per area: `400 validation_error` on `area`. |
+
+- Audited, with the phone masked (`******0001`): `contact.created`, `contact.updated` (changed field names, and the masked old and new phone when it changed), `contact.removed`, `contact_type.created`, `contact_type.updated`, `contact_type.deleted` (`key`, `section`, `name_en`), `contacts.imported` (counts only).
+- CSV columns: `type`, `name`, `phone` (required), `custom_type`, `name_te`, `email`, `sort_order`, `consent` (`yes`/`1`/`true`), and the area as `district_lgd`, `mandal_lgd`, `village_lgd` or the names `district`, `mandal`, `village` (LGD code first, else the name within the parent; the deepest one given sets the level). Helpline rows leave the area columns empty and go to the state. A row matching an active number's type, phone and area updates it instead of adding one; there a blank or missing `name_te`, `email`, `sort_order` or `custom_type` cell keeps the number's value (`name` and `phone` are always required). `python manage.py import_contacts file.csv [--dry-run]` does the same.
+- `python manage.py seed_helplines` loads `apps/contacts/sample_data/helplines.csv`, the six numbers of `SITE_HELPLINES`, until the owner signs off a longer list (decision C3).
+- `GET /public/site-config/` reads `helplines` from the statewide numbers (`label_en` = `name`, `label_te` = `name_te` or the type's Telugu name, in `sort_order`), and falls back to `SITE_HELPLINES` while none are loaded.
+
+---
+
+## 15. citizens: citizen posts
+
+Built (`apps.citizens`). A citizen posts news or an issue for the village chosen in the app. Citizens never sign in (decision of 2026-10-27): each app install gets its own **posting token** from the server, issued only after Google Play Integrity confirms our genuine app on a real phone. Every citizen post goes to review; nothing a citizen writes is public before an official of that area publishes it. Open decisions and their defaults are at the end of this section.
+
+### How a phone gets its token (once)
+
+1. `POST /citizen/challenge/` returns a one-time `nonce`.
+2. The app asks Play Integrity for a token with that nonce (classic request).
+3. `POST /citizen/register/` with the nonce and the integrity token. The server checks Google's verdict: our package name, `PLAY_RECOGNIZED` app, `MEETS_DEVICE_INTEGRITY`, the same nonce, issued in the last few minutes. On success it returns the posting `token`, **shown once**. The server keeps only its SHA-256 hash.
+4. The app stores the token in encrypted storage (Android Keystore) and sends it as `X-Citizen-Token: <token>` on every citizen call. It is not a login: `Authorization` stays free and officials' tokens are never accepted here.
+
+| Method and path | Request | Response |
+|---|---|---|
+| `POST /citizen/challenge/` | — | `{"nonce": "…", "expires_in": 300}`. The nonce is signed by the server, valid for `CITIZEN_CHALLENGE_SECONDS` (300) and usable once. |
+| `POST /citizen/register/` | `{"nonce", "integrity_token", "platform": "android", "village_id", "app_version"?, "android_id"?, "fcm_token"?, "language"?}`. `android_id` is Android's `Settings.Secure.ANDROID_ID` (stored only as a keyed hash; it links reinstalls of the same phone, so a block and the daily limit survive them). `fcm_token` lets the server push the decision on each post (CP4). `language` `te` (default) or `en`, for those pushes. | `201 {"token": "…", "device": CitizenDevice}`. `400 validation_error` (expired or reused nonce: `fields.nonce`; unknown or inactive village: `fields.village_id`); `403 integrity_failed` (Google's verdict is not genuine); `503 integrity_unavailable` with `retry_after_s` (Google could not be reached: show "try again in a few minutes"; the same nonce may be retried while it is fresh, decision of 2026-11-11). No limit on registrations by default; only if `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY` is set: `429 throttled` with `retry_after_s` after that many from one IP address in 24 hours. |
+| `GET /citizen/me/` | token | `CitizenDevice` |
+| `PATCH /citizen/me/` | token; any of `{"village_id", "fcm_token", "language"}` | `CitizenDevice`. The village posts go to; a new FCM token when Firebase rotates it; the language of pushes. |
+| `POST /citizen/posts/` | token; multipart `category` (not an officials-only category, `CITIZEN_EXCLUDED_CATEGORIES`, by default `announce`: `400 validation_error` on `category`, BVTGC-101), `language`, `title`, `body`, `photos` (up to 3) or one `videos` file, never both, or neither (lead's decision of 2026-11-13; repeat the field per photo). The post is always for the phone's village (owner's decision of 2026-11-19): there is no `targets` field any more, and one sent by an older app is ignored, so its post still goes through, to the phone's village. Optional `client_ref`: a UUID, the same when the citizen taps Send again on this post (section 1, "Sending again after a lost answer"). | `201 CitizenPost`, already `PENDING`, in the queue of the admins over the phone's village (its Village, Mandal and District Admins) and the Super Admin. `200 CitizenPost` for a repeat of this install's earlier `client_ref`: the first post as it is now, checked before the block, the daily limit and the files, so it costs no daily post. `400 validation_error` (a fourth photo: `fields.photos`; a second video: `fields.videos`); `409 media_conflict` (photos and a video together); `403 citizen_blocked` with `reason` and `blocked_until` (show both to the citizen); `403 permission_denied` for videos while `VIDEO_POSTS_ENABLED` is off; `413 file_too_large` (a photo over `MAX_IMAGE_UPLOAD_MB`, a video over `MAX_VIDEO_UPLOAD_MB`); `415 unsupported_media` (also a video the server cannot check within its time limit); `400 validation_error` on `videos` (or `photos`) when the files take longer than `MEDIA_PROCESSING_BUDGET_S` (90 s) to check; `429 throttled` with `retry_after_s` after the daily limit (5 posts per phone in 24 hours by default, all installs of the phone together; the Super Admin changes it in Settings). One bad file refuses the whole post and stores nothing. |
+| `GET /citizen/posts/` | token | `[CitizenPost]`, this phone's posts, newest first, at most 50 |
+
+Every citizen endpoint answers `401 citizen_token_invalid` without a valid token. A blocked phone can still read `GET /citizen/me/` and its posts, but cannot post.
+
+```jsonc
+// 403 on POST /citizen/posts/ from a blocked phone
+{"error": {"code": "citizen_blocked",
+           "message": "This phone is blocked from posting. Reason: తప్పుడు సమాచారం",
+           "reason": "తప్పుడు సమాచారం", "blocked_until": "2026-11-03T16:40:00+05:30"}}
+
+// CitizenDevice
+{"id": "3b7e…", "village": {"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు"}, "language": "te",
+ "blocked": false, "block_reason": null, "blocked_until": null,   // filled while a block runs
+ "posts_today": 1,
+ "posts_per_day": 5,      // null: no daily limit (the Super Admin set 0)
+ "created_at": "2026-10-27T10:00:00+05:30"}
+
+// CitizenPost
+{"id": "c2d4…", "status": "PENDING", "category": "news", "language": "te",
+ "title": "…", "body": "…",
+ "translation": null,     // once published: the post in its other language (section 1, "Language")
+ "area": {"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు"},   // the phone's village it was sent from
+ "targets": [{"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు", "path": "కొలకలూరు · తెనాలి · గుంటూరు"}],   // who will see it
+ "photos": [{"url": "https://<site>/media/…-1280.webp", "thumb_url": "https://<site>/media/…-320.webp"}],
+ "videos": [{"url": "https://<site>/media/….mp4", "poster_url": "https://<site>/media/…-poster-1280.webp",
+             "thumb_url": "https://<site>/media/…-poster-320.webp", "duration_s": 42}],   // duration_s null when unknown
+ "created_at": "…", "decided_at": null,
+ "reason": null}        // the reviewer's comment when DISCARDED or UNPUBLISHED (the block comment for a blocked post), else null
+```
+
+### Rules
+
+- **Target:** always the phone's village (`village_id` of the device), never another village, a mandal, a district or the state (owner's decision of 2026-11-19, which replaces the citizens' choice of areas of 2026-10-28). The app shows no "Who will see it" choice to citizens; a `targets` field is ignored. Citizen posts sent to several areas before this keep those areas. `event` and `is_urgent` are not available to citizens.
+- **Fields:** `category` an active category key; `language` `te` or `en`; `title` 1 to 150 characters; `body` 1 to 5,000; photos as officials' photos (JPEG, PNG or WebP, at most `MAX_IMAGE_UPLOAD_MB`, re-encoded to WebP with EXIF and GPS removed).
+- **Video:** one MP4 or MOV per post, never with photos, at most `MAX_VIDEO_UPLOAD_MB` (60) and `VIDEO_MAX_SECONDS` (60 s) long, the same as officials' (lead's decisions of 2026-11-13 and 2026-11-14). Longer: `400 video_too_long`, and nothing of the post is stored. The app checks the 60 s before sending. The app never sends a length or a poster: with ffmpeg the server measures the video and cuts a poster frame; without it the length stays `null`, the length is not checked on the server, and a plain placeholder poster is used. (Officials upload one file per request to `POST /posts/{id}/media/`, and without ffmpeg the phone sends `duration_s` and a `poster` for the video.)
+- **Feed:** a published citizen post shows like any post: `media_count` counts photos and videos, `video` is its first video, `image_url` its first photo, and `GET /feed/posts/{id}/` lists every photo and video in `media`.
+- **Review:** the post goes straight to `PENDING` and into the review queue of every official whose area contains the village: the Village Admin, the Mandal Admin, the District Admin and the Super Admin, at the same time (CP1). The Village, Mandal and District Admins are notified. The first decision wins; after `REVIEW_ESCALATION_HOURS` without a decision the next level up is alerted, exactly as for Panchayat members' posts (owner decision Q1).
+- **Separate queue:** `GET /review/queue/` and `GET /posts/` take `source=citizen` or `source=official`; without it they list both. The review queue also returns `"source_counts": {"official": 3, "citizen": 7}` (every other filter applied, `source` ignored) for the two tabs.
+- **The citizen hears the decision (CP4):** when a citizen post is published, discarded or taken down, the phone gets a push (the `post_approved`, `post_discarded` or `post_unpublished` text in the phone's `language`, with the reviewer's comment), with `data.type` `POST_PUBLISHED`, `POST_DISCARDED` or `POST_UNPUBLISHED` and `data.post_id`. Only if the phone sent an `fcm_token`. "My posts" shows the same result. A post closed by a block (`BLOCKED`, 2026-11-20 to 2026-11-21 only) shows as `DISCARDED` in "My posts" with the block comment as `reason`. Since 2026-11-21 a block sends no push about posts: it changes none.
+- **Decisions:** `publish` or `discard` (reason required). `recheck` is not offered, because a citizen cannot edit a post. Take-down and reversal work as for any post, except that a reversal cannot move a citizen post to `RECHECK`.
+- **Public view:** a published citizen post shows `source_role: "CITIZEN"` in the feed. No name, phone or device is ever shown.
+- **Officials' view (`Post`):** `author` is `{"id": null, "name": "", "role": "CITIZEN"}` and `posted_as.role` is `CITIZEN`; a new field `citizen` holds `{"device_id", "blocked", "blocked_until", "posts_total", "posts_discarded"}` (null on officials' posts; the counts cover every install of the phone). For the Super Admin, `allowed_actions` also holds `block_citizen` or `unblock_citizen`, and `discard_citizen_posts`.
+- **Blocking (Super Admin only, `posts.block_citizen`):** `POST /posts/{id}/block-citizen/` `{"comment", "days"}`, both required, `days` 1 to 365. Blocks the phone that wrote the post, every install of it (same `android_id`), until now + `days`; the block then ends by itself. **A block only stops new posts and service requests; it changes no post** (owner's request of 2026-11-21): the phone's `PENDING` posts stay in review for the reviewers to publish or discard as usual, and published ones stay published. (From 2026-11-20 to 2026-11-21 a block moved them to `BLOCKED`; migration `posts.0013` moved those back to `PENDING`, with a `REVERSE` by the system, comment "Reopened: a block no longer closes posts (2026-11-21)." Before 2026-11-20 a block discarded them; migration `posts.0014` moved those back to `PENDING` too, comment "Reopened: closed by a block before 2026-11-20; a block no longer closes posts (2026-11-21)." It finds them by the block's `citizen.blocked` audit entry: same Super Admin, same comment, same phone, within 60 seconds after it, and still the post's latest action. Posts discarded by "Discard all" or by a reviewer stay `DISCARDED`.) The citizen sees the comment and the end in `403 citizen_blocked` and in `GET /citizen/me/`. Blocking again while a block runs replaces it (the earlier one ends, by that Super Admin). `POST /posts/{id}/unblock-citizen/` lifts it at once; it takes no body (a `comment` sent is ignored and not saved). Other officials get `403 permission_denied`. Audited as `citizen.blocked` (with `days` and `until`), `citizen.unblocked`, and `citizen.block_ended` (actor System) when the time is up.
+- **Blocked citizens (Super Admin only, `posts.block_citizen`; added 2026-11-21):** every block is kept with how it ended. Anyone else gets `403 permission_denied`; an unknown id `404 not_found`. No phone number, IP address or Android ID in any answer.
+
+  | Method and path | Answer |
+  |---|---|
+  | `GET /admin/citizens/blocked/` | Query `active=1` (blocked now, the default) or `active=0` (block ended), `district` (id), `page`, `page_size` (at most 100). A page of one row per **phone** (every install), from its latest block, newest first: `{"id", "village": {"level", "id", "name"}, "blocked", "blocked_at", "blocked_until", "blocked_by": {"id", "name", "role"}, "reason", "ended_at", "ended_by", "posts_total", "posts_discarded", "posts_blocked", "latest_post_id"}`, plus `"counts": {"active": 4, "ended": 9}` over the same filters except `active`. `id` is the phone's first install: use it below and in `GET /posts/?citizen=`. `ended_at` null: still running. `ended_by` null with `ended_at` set: the time was up; else the Super Admin who unblocked or blocked again. An ended block keeps its reason. |
+  | `GET /admin/citizens/{id}/blocks/` | Every block of that phone, newest first: `[{"blocked", "blocked_at", "blocked_until", "blocked_by", "reason", "ended_at", "ended_by"}]`. |
+  | `POST /admin/citizens/{id}/unblock/` | Lifts the phone's block at once, without a post, like `/posts/{id}/unblock-citizen/`; no body (a `comment` sent is ignored); answers the `CitizenDevice`. Audited as `citizen.unblocked`. |
+
+  Blocks lifted early before 2026-11-21 left no record on the phone, so they are not in these lists (the audit log has them). A scheduled job (`ensure_schedules`, every `ESCALATION_CHECK_MINUTES`) marks a block ended once its time is up.
+- **Discard all (Super Admin only):** `POST /posts/{id}/discard-citizen-posts/` `{"comment"}` (required) discards every `PENDING` post of that phone (every install) in one action and answers `{"discarded": 3}`. It does not block the phone. Audited as `citizen.posts_discarded`.
+- **Audit:** `citizen.registered` (platform, whether Play Integrity was checked, whether it is a reinstall; no IP address, Android ID or token), `post.created` and `post.submitted` with the device id in `data` and no actor.
+- **Privacy:** the server stores no IP address or Android ID in the clear, only keyed hashes. The posting token is stored only as a SHA-256 hash.
+
+### Settings
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `CITIZEN_POSTS_ENABLED` | on | `off` answers `403 permission_denied` on `POST /citizen/posts/` |
+| `CITIZEN_INTEGRITY_REQUIRED` | off everywhere until the app is on Google Play (owner's decision of 2026-11-04; the production default changed 2026-11-18) | Off: registration skips the Google check (debug builds, the qa server, the website's APK). On: only the genuine Play app registers; a website install gets `403 integrity_failed`. Turned on by writing `CITIZEN_INTEGRITY_REQUIRED=True` in the server's `.env`. |
+| `PLAY_INTEGRITY_PACKAGE` | — | The app's package name, e.g. `com.bvt.app` |
+| `PLAY_INTEGRITY_CREDENTIALS_FILE` | `FCM_CREDENTIALS_FILE` | Service account allowed to call the Play Integrity API |
+| `CITIZEN_POSTS_PER_DAY` | 5 | Posts per phone in 24 hours; 0 is no limit. The Super Admin changes it at runtime: `PATCH /admin/settings/` `{"citizen_posts_per_day"}` (0 to 1000), stored over this default. |
+| `MAX_PHOTOS_PER_POST` | 3 | Photos per post, citizens' and officials' alike; a post has these or one video (2026-11-13). `CITIZEN_MAX_PHOTOS` is gone |
+| `CITIZEN_REGISTRATIONS_PER_IP_PER_DAY` | 0 (no limit) | New phones per IP address in 24 hours, when set. Mobile networks put many phones behind one IP, so keep it high if used. |
+
+### Open decisions and defaults
+
+| # | Question | Default until decided |
+|---|---|---|
+| CP1 | Do all levels see a citizen post at once, or one level at a time? | **Decided 2026-10-27:** all at once, all notified, escalation after 24 h (owner decision Q1) |
+| CP2 | Photos only, or video too? | **Decided 2026-10-27:** photos and videos, any number of each, together in one post. **Changed 2026-11-13 (lead):** up to 3 photos, or one video, never both, the same as officials |
+| CP3 | iPhones: Play Integrity is Android only. Apple App Attest is needed for iOS. | iOS registration works only while `CITIZEN_INTEGRITY_REQUIRED` is off |
+| CP4 | Is the citizen told when the post is published or discarded? | **Decided 2026-10-27:** yes, a push to the phone (see Rules), and "My posts" |
+| CP5 | Limits and blocking | **Decided 2026-10-27:** 5 posts per phone a day (Super Admin changes it); blocks are temporary, set and lifted only by the Super Admin, shown to the citizen with the reason, and survive a reinstall; the Super Admin may discard all of a phone's pending posts |
+
+---
+
+## 16. service_requests: services and citizens' service requests
+
+Built (`apps.service_requests`), from the mobile and web team's plan of 2026-10-28 (it replaces the first version of 2026-10-27, removed the same day).
+
+- The Super Admin manages the **services** (**More → Services** in the app, **Services** in the console): add, edit, hide and reorder.
+- A citizen's **Home → Services** row shows the shown services in order. Tapping one opens a form: name, phone, optional email, and address.
+- The request belongs to the phone's village. It is **assigned to that village's Village Admin automatically**, and the Mandal and District Admins of the area and the Super Admin see it too.
+- **Only the official it is assigned to changes it**: approve, reject (with a reason), start work, complete it (with a note for the citizen), or pass it on to another official of the same village (the Village Admin or a Panchayat member there). Every other official who sees it only reads it. **Requests are handled in the village**: Mandal and District Admins and the Super Admin oversee them but are never assignees (2026-11-27).
+- The citizen sees the status and the latest note under **Profile → My service requests**.
+- The citizen side uses the phone's posting token from section 15 (no login).
+
+### Service
+
+```jsonc
+{"key": "aadhaar", "name_en": "Aadhaar Services", "name_te": "ఆధార్ సేవలు",
+ "hint_en": "e.g. update the address on my Aadhaar", "hint_te": "ఉదా: నా ఆధార్‌లో చిరునామా మార్చాలి",   // or ""
+ "icon": "aadhaar",
+ "logo": "https://…/media/services/aadhaar-3fa9c2d1-256.webp",   // or null
+ "color": "orange", "is_active": true}
+```
+
+| Field | Rule |
+|---|---|
+| `key` | Made by the server from `name_en` on create ("Ration Card" → `ration_card`; `_2`, `_3`… when taken). **Never changes**; requests refer to it. |
+| `name_en` | Required, 2–60 characters, spaces collapsed, unique in any case |
+| `name_te` | Optional, at most 60; the app shows `name_en` when empty |
+| `hint_en` | Optional, at most 100 characters, spaces collapsed. The grey example in the citizen's request box ("Your request for …"); `""` = the app shows its own. New on 2026-10-30; the 8 seeded services have `""`. |
+| `hint_te` | The same in Telugu; the app shows `hint_en` when empty. |
+| `icon` | One of `aadhaar`, `eci`, `id_badge`, `card`, `certificate`, `document`, `scheme`, `loan`, `land`, `farmer`, `house`, `ration`, `health`, `education`, `pension`, `women`, `job`, `water`, `power`, `police`, `help`, `services` (the app draws them). Optional; `services` when not given. |
+| `logo` | The logo the Super Admin uploaded, an absolute URL, or `null`. **The app shows the logo when there is one, else draws `icon`.** Uploaded as JPEG, PNG or WebP, at most 2 MB (`SERVICE_LOGO_MAX_UPLOAD_MB`) and at least 64 px on each side; the server re-encodes it as WebP with the longest side at most 256 px (shape and transparency kept, EXIF removed). The file name changes on every replacement, so a cached old logo is never shown. |
+| `color` | One of `orange`, `blue`, `green`, `purple`, `teal` |
+| `is_active` | `false` hides it from citizens; its old requests stay readable |
+
+Services are edited and deleted only while hidden (`is_active` false; owner's request of 2026-11-26): shown on Home, a change to anything but `is_active` and a delete answer `409 switch_off_first`. A service is deleted only when no request uses it, such as one added by mistake; requests are kept permanently, so one in use stays hidden. The 8 services the app ships with are seeded with the same keys: `aadhaar`, `pan`, `voter_id`, `certificates`, `loans_insurance`, `govt_schemes`, `land_records`, `farmer`.
+
+### Public and citizens
+
+| Method and path | Request | Response |
+|---|---|---|
+| `GET /services/` | public, no login | The **shown** services in Home order, a plain list of `Service`. `Cache-Control: max-age=300` (`SERVICES_PUBLIC_MAX_AGE`). |
+| `POST /citizen/service-requests/` | header `X-Citizen-Token`; JSON `{"service", "name", "phone", "email"?, "address", "details"?, "client_ref"?}` (`client_ref`: section 1, "Sending again after a lost answer") | `201 CitizenServiceRequest`, status `NEW`, for the phone's village. `200 CitizenServiceRequest` for a repeat of this install's earlier `client_ref`: the first request as it is now, not counted against the daily limit. `400 validation_error` with `fields`: `service` ("This service is not available.": unknown or hidden), `name`, `phone`, `email`, `address` ("Enter your address."), `details`. `401 citizen_token_invalid`; `403 citizen_blocked` with `reason` and `blocked_until` (as for posts); `429 throttled` with `retry_after_s` after `SERVICE_REQUESTS_PER_DAY` (10) requests from one phone, all its installs, in 24 hours. |
+| `POST /citizen/service-requests/{id}/cancel/` | header `X-Citizen-Token`; JSON `{"reason"?}`, at most 300 characters (spaces collapsed) | **The citizen cancels their own request** (owner's decision of 2026-11-18) while it is `NEW`, `APPROVED` or `IN_PROGRESS`: `200 CitizenServiceRequest` with `status` `CANCELLED` and `can_cancel` `false`. Only the install that sent it (as the list): another install's request or an unknown id answers `404 not_found`. Already `COMPLETED`, `REJECTED` or `CANCELLED`: `409 invalid_transition` with a message to show. `400 validation_error` on `reason` when too long; `401 citizen_token_invalid`. Cancelled is final: nobody changes it after, and a new request is the way back. The request is kept, never deleted; it still counts towards `SERVICE_REQUESTS_PER_DAY`. The app shows **Cancel request** while `can_cancel` is true and may ask for the reason in a short text box. |
+| `GET /citizen/service-requests/` | header `X-Citizen-Token` | `[CitizenServiceRequest]`, the requests made from **this install** (this token), newest first, at most 50. **Changed 2026-11-09** (decision on audit BE_01, BE-SEC-002): it used to include every install with the same `android_id`; a request holds the citizen's name, phone and address, and `android_id` is not verified. After a reinstall the app starts with an empty list; the officials still have every request. The daily limit and blocks still count all installs of the phone. |
+
+```jsonc
+// CitizenServiceRequest
+{
+  "id": 104512,                                   // an integer; the app shows the last 6 digits
+  "service": "aadhaar", "service_name": "ఆధార్ సేవలు",   // the name follows Accept-Language
+  "name": "Lakshmi Devi", "phone": "9876543210", "email": "", "address": "4-12, Temple Street",
+  "details": "",
+  "village":  {"id": 1042, "name": "కొలకలూరు"},
+  "mandal":   {"id": 88,   "name": "తెనాలి"},
+  "district": {"id": 7,    "name": "గుంటూరు"},
+  "status": "IN_PROGRESS",
+  "note": "Come to the Sachivalayam on Monday",  // the latest note; "" until one is written
+  "can_cancel": true,                             // NEW, APPROVED or IN_PROGRESS: the citizen may cancel it (2026-11-18)
+  "created_at": "2026-10-28T10:00:00+05:30",
+  "updated_at": "2026-10-28T12:30:00+05:30"
+}
+```
+
+| Field | Rule |
+|---|---|
+| `service` | The key of a shown service |
+| `name` | Required, at most 100 characters; spaces are collapsed; at least 2 characters remain |
+| `phone` | Required, an Indian mobile: spaces are removed, then `^[6-9][0-9]{9}$`. `+91` is not accepted. |
+| `email` | Optional, a valid address, stored in lower case |
+| `address` | **Required**, 5–300 characters after trimming |
+| `details` | Optional, at most 500 characters (the app no longer asks for it) |
+
+A request belongs to the phone's village at the time it is sent; changing village later does not move it.
+
+### Officials (JWT or console session)
+
+| Method and path | Who | Request | Response |
+|---|---|---|---|
+| `GET /service-requests/` | `service_requests.view_service_requests` | `status` (one of the six, or empty), `q` (the citizen's name, or digits of the phone), `assigned=me` (optional), `contact=0` (optional), `page`, `page_size` (at most 100) | Page of `ServiceRequest`, latest change first, plus `status_counts` for all six statuses with every filter applied except `status`. **Which requests are listed (changed 2026-11-20):** every request of the official's areas, open or finished, however old; nothing is hidden by age. `closed_visible_days` is gone from the answer (no client read it). Before: a `COMPLETED`, `REJECTED` or `CANCELLED` request dropped off 180 days after its last change. The citizen's own list (`GET /citizen/service-requests/`) is not affected. **`contact=0` (added 2026-11-13, audit WEB-DP-001):** each row leaves out `phone`, `email` and `address` (the keys are absent); everything else is the same, and `q` still searches the phone. The console's table sends it and reads them from `GET /service-requests/{id}/` when a request is opened. Without it (the app) the rows are unchanged. |
+| `GET /service-requests/{id}/` | same | — | `ServiceRequest`, always with `phone`, `email` and `address` (`contact=0` works on the list only and is ignored here); `404` when it is outside reach |
+| `PATCH /service-requests/{id}/` | the assignee; the rules below | any of `{"status", "assigned_to", "note"}`; `assigned_to` is a user id as in `GET /users/` (a UUID string), or `null` to unassign | The updated `ServiceRequest`. One history event per call that changes something; a call that changes nothing writes nothing. After passing it on, the answer still comes back (with `allowed_actions: []`), even when the caller no longer sees the request. |
+
+```jsonc
+// ServiceRequest (officials): CitizenServiceRequest plus
+{
+  …,
+  "assigned_to": {"id": "5b1e…", "name": "Suresh Babu", "role": "VILLAGE_ADMIN"},   // or null
+  "allowed_actions": ["set_status", "assign"],
+  "history": [                                    // oldest first
+    {"at": "…", "by": null, "assigned_to": {"id": "5b1e…", "name": "Suresh Babu"},
+     "note": "Assigned to the Village Admin automatically"},
+    {"at": "…", "by": {"id": "5b1e…", "name": "Suresh Babu", "role": "VILLAGE_ADMIN"}, "status": "APPROVED", "note": ""}
+  ]
+}
+```
+- User ids are UUID strings, as in `GET /users/`.
+- In `history`, `by` is `null` for the system (the automatic assignment) and for the citizen's cancel, which also has `"by_citizen": true`, `status` `CANCELLED` and the citizen's reason as `note` ("Cancelled by the citizen" without one). `status` appears only when the status changed, and `assigned_to` only when the assignment changed (`null`: unassigned). `note` is always there (`""` when none).
+
+### Super Admin: the services list
+
+Permission `service_requests.manage_services` (Super Admin only); everyone else gets `403 permission_denied`.
+
+| Method and path | Request | Response |
+|---|---|---|
+| `GET /admin/services/` | — | **Every** service, hidden ones too, in Home order: a plain list of `Service` plus `order`, `created_at`, `updated_at` |
+| `POST /admin/services/` | JSON `{"name_en", "name_te"?, "icon"?, "color", "is_active"?}`, or the same fields as multipart with a `logo` image file | `201` with the service; the server makes `key` and puts it last. `400` with `fields` for a taken or bad name, an unknown `icon` or `color`, or a bad `logo` ("Upload a JPEG, PNG or WebP image.", too large, too small). |
+| `PATCH /admin/services/{key}/` | any of the same fields, as JSON or multipart (the list switch sends only `{"is_active": false}`). Multipart with `logo` replaces the logo; JSON `{"logo": null}` (or an empty `logo` form field) removes it. | The service; `404` for an unknown key. `key` cannot be changed. Since 2026-11-26 only `is_active` may change while the service is shown: any other change (a value different from the stored one, or a logo) answers `409 switch_off_first`. Values sent unchanged are fine. |
+| `DELETE /admin/services/{key}/` | — | `204` (2026-11-26). Only for a hidden service no request uses (cancelled ones count). Shown: `409 switch_off_first`. Used: `409 service_in_use` with `count`, and it stays. Audited as `service.deleted` with the key and names; an uploaded logo file is removed after the delete is saved; `404` for an unknown key. |
+| `POST /admin/services/order/` | `{"keys": [every key, in the new order]}` | `200` with the full list in the new order; `400` with `fields.keys` unless the keys are exactly the existing ones, each once |
+
+### Rules
+
+**Automatic assignment** (on create, in the same transaction):
+- The request goes to the active official who manages service requests through an **active assignment on exactly this village**: the Village Admin. When there are several, the earliest assignment wins.
+- It writes a history event with `by: null`, the note "Assigned to the Village Admin automatically", and an audit entry `service_request.assigned` with `auto: true`.
+- With no such official (none, blocked, or an inactive assignment), the request stays unassigned; the Mandal and District Admins still see it.
+
+**Who sees and does what:**
+
+| Role | Sees |
+|---|---|
+| Super Admin | every request |
+| District, Mandal, Village Admin | requests whose village is inside their area |
+| Panchayat member | only requests **assigned to them**, inside their village |
+| Others | nothing: `403` on the list, `404` on a request |
+
+**Only the assignee changes a request.** Everyone else who sees it reads it.
+
+| Who | `allowed_actions` |
+|---|---|
+| The assignee (the Village Admin at first, then the village's official it is passed to) | `set_status`, `assign` |
+| An admin of the area, or the Super Admin, when **nobody holds** the request | `assign` only, to an official of the village, so it moves on as soon as the village has one |
+| Everyone else who sees it (including the Village Admin after passing it on) | `[]` |
+
+- **Nobody holds it** when it was never assigned (the village has no Village Admin), or its assignee was later blocked or lost their role over the village. A new official who has not yet changed their temporary password still holds it, and may be chosen as the assignee; they act on it after their first login.
+- **A village with no official at all** (no Village Admin and no Panchayat member): its requests stay `NEW` and unassigned, and nobody can change them, since a Mandal, District or Super Admin is never an assignee (2026-11-27). They see the request and assign it once an official of that village exists; creating a Village Admin there is the way to move them on. New requests are still accepted from such a village (decision of 2026-11-27, option a).
+- Without the action: `403 permission_denied`. A `status` or a `note` needs `set_status`; `assigned_to` needs `assign`.
+- Permissions: `service_requests.view_service_requests` (the four admin groups and Panchayat members) and `service_requests.manage_service_requests` (the four admin groups), each over the request's village. `manage_service_requests` now only means "may assign a request nobody holds".
+- **Statuses:** `NEW` (default), `APPROVED`, `IN_PROGRESS`, `COMPLETED`, `REJECTED`, and `CANCELLED` (2026-11-18). The assignee may set any of the first five; the app suggests NEW → APPROVED → IN_PROGRESS → COMPLETED. **Only the citizen cancels** (section above): an official sending `status` `CANCELLED` gets `400`, `fields.status`.
+- **A cancelled request is final:** `allowed_actions` is `[]` for everyone, and any `PATCH` (status, note or assignee) answers `409 invalid_transition` ("The citizen cancelled this request; it cannot be changed."), also when the cancel lands while the change is on its way.
+- **`REJECTED` and `COMPLETED` need a `note`**: the reason, or what the citizen should do next. Otherwise `400`, `fields.note`. A note sent with another status is saved too; the app does not ask for one.
+- **Assign to:** an active official of **the request's village itself**: someone holding the view permission through a role assignment on exactly that village (the Village Admin or a Panchayat member there), the caller included when that is them. A Mandal, District or Super Admin is never an assignee (2026-11-27; until then the server also took a higher admin, which neither client offered). Otherwise `400`, `fields.assigned_to` ("Assign the request to an active official of this village."), which is also the answer to an id that is not a user id. The app and the console pick from `GET /users/` (the village's officials). Whoever passes it on can no longer change it; the new assignee can hand it back. A request a higher admin already held before 2026-11-27 stays theirs: they may still change it and hand it back to the village.
+- **Notes:** `note` becomes the request's latest note, which the citizen sees, and is kept in the history.
+
+### Notifications and audit
+
+- **New request:** the Village, Mandal and District Admins of the village get an inbox item (`kind` `SERVICE_REQUEST`, with `service_request_id`) and a push (`data.type` `SERVICE_REQUEST`, `data.request_id`, `area_level`, `area_id`).
+  - The admin it was assigned to gets the template `service_request_assigned_you` ("New Aadhaar Services request from Lakshmi Devi, assigned to you").
+  - The others get `service_request_new` ("కొలకలూరు: Lakshmi Devi నుండి కొత్త ఆధార్ సేవలు అభ్యర్థన").
+  - The Super Admin is not pinged for each request (as for posts).
+- **Re-assignment:** the new assignee gets the same `service_request_assigned_you` inbox item and push, unless they assigned it to themselves.
+- **Cancelled by the citizen:** the official holding it (active) gets an inbox item and a push with the template `service_request_cancelled` ("Lakshmi Devi cancelled their Aadhaar Services request"), the same `kind`, `data` and privacy as above. An unassigned request tells nobody. The citizen gets no push: they did it.
+- **Status change:** the citizen's phone gets a push if it sent an `fcm_token` (section 15). It uses the template `service_request_updated` ("Your Aadhaar Services request: Rejected") with the note as the body, and `data` `{"type": "SERVICE_REQUEST_UPDATED", "request_id", "status"}`. A note or an assignment alone sends no push.
+- **Privacy:** the phone number, email and address never appear in a notification or the audit log. Notifications name the service and the citizen's name.
+- **Audit:**
+  - `service.created`, `service.updated` (changed fields), `service.shown`, `service.hidden`, `service.reordered`.
+  - `service_request.created` (service and device id only), `service_request.status_changed` (from, to, note), `service_request.assigned` (the new assignee's id and name, and `auto`), `service_request.cancelled` (`from` status, the device id and `reason_given`; never the reason itself, which is the citizen's own words).
+
+### Settings
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `SERVICE_REQUESTS_PER_DAY` | 10 | Requests per phone, all its installs, in 24 hours; 0 is no limit |
+| `SERVICES_PUBLIC_MAX_AGE` | 300 | Seconds phones may reuse `GET /services/` |
+| `SERVICE_LOGO_MAX_UPLOAD_MB` | 2 | Largest logo upload |
+| `SERVICE_LOGO_MIN_PX` | 64 | Smallest logo side |
+| `SERVICE_LOGO_PX` | 256 | Longest side of the stored logo |
+
+---
+
+## 17. ads: Home banner ads
+
+Built (`apps.ads`). The Super Admin makes banner ads in the app (**More → Ads**); a citizen's **Home** shows, at the top, a swipeable row of the ads meant for their village. Tapping one opens its link in the browser.
+
+### Citizens (public, no login)
+
+| Method and path | Request | Response |
+|---|---|---|
+| `GET /ads/?village_id=` | `village_id` (required) | `[PublicAd]`, newest first: at most `ads_banner_limit` of them (the Super Admin's setting, `PATCH /admin/settings/`), or all of them when it is 0, the default (BVTGC-92). `ADS_PUBLIC_LIMIT` in `.env` is only the starting value. `400 validation_error` without a numeric `village_id`; `404 not_found` with `"reason": "village_not_found"` for an unknown or inactive village (as `/contacts/`). `Cache-Control: public, max-age=300` (`ADS_PUBLIC_MAX_AGE`). Ignores any `Authorization` header. |
+
+```jsonc
+// PublicAd: only what the banner needs
+{"id": 7, "title": "Free eye camp at Tenali",
+ "image": "https://<site>/media/ads/7-3fa9c2d1-1600.webp",   // absolute; a video ad's poster frame
+ "video": "https://<site>/media/ads/7-a81f03be.mp4",          // absolute; "" for a picture ad
+ "duration_s": 18,                                            // whole seconds; null for a picture ad or when unknown
+ "link": "https://example.org/eye-camp"}                     // "" when there is none
+```
+An ad is a video ad when `video` is not empty. Apps that read only `image` show its poster as a picture banner.
+
+An ad is shown when it is switched on (`is_active`), today (India time) is inside its dates (`starts_on` null or not after today, `ends_on` null or not before today: both days included), and its area is the village, its mandal, its district or the state.
+
+### Super Admin (`ads.manage_ad`; everyone else gets `403 permission_denied`)
+
+| Method and path | Request | Response |
+|---|---|---|
+| `GET /admin/ads/` | `page`, `page_size` (at most 100) | Page of `AdminAd`, newest first |
+| `POST /admin/ads/` | multipart: `image` or `video` (exactly one), `duration_s` (with a video, optional), `title`, `link`, `area_level`, `area_id`, `starts_on`, `ends_on`, `is_active` | `201 AdminAd` |
+| `GET /admin/ads/{id}/` | — | `AdminAd`; `404` if there is no such ad |
+| `PATCH /admin/ads/{id}/` | any field above. Multipart when a new `image` or `video` is sent; otherwise JSON, e.g. `{"is_active": false}` | `AdminAd` |
+| `DELETE /admin/ads/{id}/` | — | `204`; the image and video files are removed too |
+
+```jsonc
+// AdminAd
+{
+  "id": 7,
+  "title": "Free eye camp at Tenali",
+  "image": "https://<site>/media/ads/7-3fa9c2d1-1600.webp",
+  "video": "",                     // or the absolute URL of a video ad's MP4 or MOV
+  "duration_s": null,              // or whole seconds
+  "link": "https://example.org/eye-camp",
+  "area": {"level": "MANDAL", "id": 88, "name": "తెనాలి"},   // STATE: all villages; name follows Accept-Language
+  "starts_on": "2026-10-28",       // or null
+  "ends_on": "2026-11-04",         // or null
+  "is_active": true,
+  "created_at": "2026-10-28T10:00:00+05:30",
+  "updated_at": "2026-10-28T10:00:00+05:30"
+}
+```
+The app works out "Running", "Scheduled", "Paused" and "Ended" itself from the dates and `is_active`.
+
+### Rules
+
+| Field | Rule |
+|---|---|
+| `title` | Required, 1 to 80 characters after trimming. Shown in the admin list and read by screen readers. |
+| `image` | Required on create unless a `video` is sent. JPEG, PNG or WebP, at most `ADS_MAX_UPLOAD_MB` (5) and at least `ADS_MIN_WIDTH_PX` (800) wide. Re-encoded by the server as WebP with the longest side at most `ADS_IMAGE_MAX_PX` (1600), which removes EXIF and GPS. The uploaded file name is never kept: the file is `ads/<id>-<random>-1600.webp`, with a new name on every replacement, because phones cache `/media/` for days. A wide 16:9 picture (e.g. 1600 × 900) suits the banner. A new `image` on a video ad makes it a picture ad again: `video` becomes `""`, `duration_s` null, and the video and its poster are removed. |
+| `video` | MP4 or MOV (checked by extension and by the file's own header), at most `ADS_VIDEO_MAX_MB` (60) and of **any length** (owner decision of 2026-11-02; `ADS_VIDEO_MAX_SECONDS` is 0, meaning no limit). Stored without its metadata, like a post video (section 5), under `ads/<id>-<random>.<mp4\|mov>`, a new name on every replacement. The server measures the length with ffprobe; without it, it uses `duration_s`. A length past 32,767 s (about 9 hours) is kept as 32,767. The server cuts the poster frame with ffmpeg (a plain dark picture without it) and stores it as the ad's `image`, like a picture but without the 800 px minimum, so portrait and 480p videos work. A new `video` replaces the old video and poster, or a picture ad's picture. Sending `image` and `video` together: `400` on `video`. Neither on create: `400` on `image`. Not an MP4 or MOV: `415 unsupported_media`. Too large: `413 file_too_large` (from Nginx too, past 70 MB for the whole request). `400 video_too_long` only if a length limit is set again. |
+| `duration_s` | Optional, a whole number of seconds (1 to 32767), the phone's measure of the video. Ignored without a `video`; the server's own measure wins when it has ffprobe. |
+| `link` | Optional; `https://` only (no `http://`, `javascript:`, `intent:`, `file:` …); at most 500 characters. **Changed 2026-11-13** (audit WEB-SEC-010): `http://` was accepted before; ads saved with one keep it until their link is changed. |
+| `area_level`, `area_id` | `STATE`, `DISTRICT`, `MANDAL` or `VILLAGE`, and an existing active area of that level. "All villages" is the state, with its id from `/geo/states/`. |
+| `starts_on`, `ends_on` | `YYYY-MM-DD`, or null; an empty string in a multipart form or JSON also means none. `ends_on` before `starts_on`: `400` on `ends_on` (checked against the stored values on PATCH). |
+| `is_active` | `true` / `false`; default `true` |
+
+- Errors: `400 validation_error` with `fields` for the rules above (`title`, `image`, `link`, `area_level`, `area_id`, `ends_on`); `403 permission_denied` for anyone but the Super Admin; `404` for an unknown ad.
+- Audit: `ad.created` (`kind`: `image` or `video`), `ad.updated` (the changed field names, `image` when it was replaced, `video` when one was stored or removed), `ad.deleted`, each with the area.
+- Video files are served from `/media/` like photos: Nginx answers Range requests, so playback can start and seek before the whole file arrives. They are not re-encoded yet; the app's compression keeps them small.
+
+### Settings
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `ADS_MAX_UPLOAD_MB` | 5 | Largest banner upload |
+| `ADS_MIN_WIDTH_PX` | 800 | Narrowest banner accepted |
+| `ADS_IMAGE_MAX_PX` | 1600 | Longest side of the stored WebP |
+| `ADS_VIDEO_MAX_MB` | 60 | Largest banner video. The app (`kAdVideoMaxMb`) and the console (`AD_VIDEO_MAX_MB`) have the same number, and Nginx allows 70 MB for `/api/v1/admin/ads/`: change them together |
+| `ADS_VIDEO_MAX_SECONDS` | 0 | Longest banner video in seconds; 0 = any length (owner decision of 2026-11-02, confirmed 2026-11-14: banners have only the 60 MB limit, unlike post videos' 60 s). The apps do not check the length |
+| `ADS_PUBLIC_LIMIT` | 10 | Ads one village's Home shows |
+| `ADS_PUBLIC_MAX_AGE` | 300 | Seconds phones may reuse `/ads/` |
+
+---
+
+## 18. bills: Bills & Recharges on Home
+
+The citizen's Home has a second row next to Services: Electricity, Water, Mobile, DTH, Broadband and so on. It is **a list of its own** (`apps/bills`, table `Bill`), separate from services: its own endpoints, keys, names and order. The Super Admin manages it exactly like services (section 16): add, edit, upload a logo, hide or show, reorder. Tapping a bill in the app shows "coming soon": there is no payment, request, assignment or notification behind a bill yet.
+
+### Bill
+
+```jsonc
+{"key": "electricity", "name_en": "Electricity Bill", "name_te": "కరెంట్ బిల్లు", "icon": "power",
+ "logo": "https://…/media/bills/electricity-3f9a1c2e-256.webp",   // or null: the app draws `icon`
+ "color": "orange", "is_active": true}
+```
+
+| Field | Rule |
+|---|---|
+| `key` | Made by the server from `name_en` on create ("Gas Booking" → `gas_booking`; `_2`, `_3`… when taken). **Never changes.** Unique among bills only. |
+| `name_en` | Required, 2–60 characters, spaces collapsed, unique among bills in any case. A bill may have the same name as a service. |
+| `name_te` | Optional, at most 60 |
+| `icon` | One of `power`, `water`, `gas`, `mobile`, `landline`, `dth`, `broadband`, `fastag`, `credit_card`, `bill` (the app and the console draw them). Optional; `bill` when not given. Bills saved with an icon of the first list (`card`, `house`, `help`, `services`) were moved to `credit_card` or `bill`. |
+| `logo` | As for services (section 16): an uploaded JPEG, PNG or WebP, at most 2 MB (`SERVICE_LOGO_MAX_UPLOAD_MB`) and at least 64 px a side (`SERVICE_LOGO_MIN_PX`), re-encoded as WebP with the longest side at most 256 px. Stored as `media/bills/<key>-<random>-256.webp`; the name changes on every replacement. |
+| `color` | One of `orange`, `blue`, `green`, `purple`, `teal` |
+| `is_active` | `false` hides it from Home |
+
+Bills are edited and deleted only while hidden (`is_active` false; 2026-11-26): shown on Home, a change to anything but `is_active` and a delete answer `409 switch_off_first`. Nothing refers to a bill yet (no payment or request behind it), so any hidden bill may be deleted. The five the app used to ship are seeded with these keys: `electricity`, `water_bill`, `mobile_recharge`, `dth_recharge`, `broadband`.
+
+### Endpoints
+
+| Method and path | Who | Request | Response |
+|---|---|---|---|
+| `GET /bills/` | public, no login | — | The **shown** bills in Home order, a plain list of `Bill`. `Cache-Control: max-age=300` (`SERVICES_PUBLIC_MAX_AGE`). |
+| `GET /admin/bills/` | Super Admin | — | **Every** bill, hidden ones too, plus `order`, `created_at`, `updated_at` |
+| `POST /admin/bills/` | Super Admin | JSON `{"name_en", "name_te"?, "icon"?, "color", "is_active"?}`, or the same fields as multipart with a `logo` file | `201` with the bill, last in the order |
+| `PATCH /admin/bills/{key}/` | Super Admin | any of the same fields, JSON or multipart. Multipart `logo` replaces the logo (the old file is deleted once saved); JSON `{"logo": null}` or an empty `logo` form field removes it; without `logo` it is kept. | The bill; `404` for an unknown key (a service's key too). Since 2026-11-26 only `is_active` may change while the bill is shown: any other change (a value different from the stored one, or a logo) answers `409 switch_off_first`; values sent unchanged are fine. |
+| `DELETE /admin/bills/{key}/` | Super Admin | — | `204` (2026-11-26). Only for a hidden bill; shown: `409 switch_off_first`. Audited as `bill.deleted` with the key and names; an uploaded logo file is removed after the delete is saved; `404` for an unknown key. |
+| `POST /admin/bills/order/` | Super Admin | `{"keys": [every bill key, in the new order]}` | `200` with the full list; `400 fields.keys` unless the keys are exactly the bills' own, each once (a service key is refused). Bills and services keep separate orders. |
+
+- Permission `bills.manage_bills` (Super Admin only). Anyone else gets `403 permission_denied`; no login gets `401` on the admin endpoints.
+- Errors: `400 validation_error` with `fields`: `name_en` (taken or bad), `icon`, `color`, `logo` ("Upload a JPEG, PNG or WebP image.", too large, too small), `keys`.
+- Audit: `bill.created` (key, whether a logo came), `bill.updated` (changed fields, `logo` when it changed), `bill.shown`, `bill.hidden`, `bill.reordered` (the keys).
+- An app talking to a server without this section gets `404` on `GET /bills/` and keeps its built-in five.
+
+---
+
+## 19. Transliteration: Telugu name suggestions
+
+Built (`apps.web_admin`, `transliteration.py`). When an admin types an English name, the app and the console fill the Telugu name box with its Telugu **spelling** ("Ravi Kumar" → "రవి కుమార్"), which the admin can correct. It is used in the forms for services, bills, places, contact types, contacts and users. Only this server talks to the provider, so names never go from the admins' devices to Google, and the console needs no CSP change.
+
+| Method and path | Who | Request | Response |
+|---|---|---|---|
+| `GET /admin/transliterate/?text=` | Any official with at least one active role (app JWT or console session) | `text`: required, trimmed, 1 to 150 characters | `200 {"te": "రవి కుమార్"}` |
+
+- **A suggestion only.** Nothing found, any provider failure or timeout (`TRANSLITERATION_TIMEOUT_S`, 4 s), or the feature switched off (`TRANSLITERATION_PROVIDER=off`): `200 {"te": ""}`, and the client leaves the box empty. A provider problem never gives a 5xx.
+- It is the spelling, not a translation: "Water Bill" gives "వాటర్ బిల్", not "నీటి బిల్లు". Admins type a Telugu word by hand when they want one.
+- Errors: `400 validation_error` on `text` (missing, empty or over 150 characters); `401` without a login; `403 permission_denied` for an account with no role; `429 throttled` over `TRANSLITERATION_RATE` (60 a minute per user), with `retry_after_s` and `Retry-After`.
+- Answers are cached for `TRANSLITERATION_CACHE_S` (30 days) under a SHA-256 hash of the provider and the lower-cased text; failures are not cached. The text and the answer are never logged or audited, and nothing is written to the database. Saving a Telugu name keeps its own validation.
+- Provider: `google_input_tools` (Google Input Tools, no key) by default. `off` switches the feature off after a restart.
+- A client talking to a server without this section gets `404` and leaves the box empty.
+
+## 20. Sharing: post links, the invite link, WhatsApp previews
+
+Built (`apps.share`, `apps.posts.sharing`). Not under `/api/v1/`: these are pages and files at the domain root, served by Django on every server (production Nginx proxies them).
+
+| Path | Who | Answer |
+|---|---|---|
+| `GET /p/{code}/` | anyone | `200` HTML page of a `PUBLISHED` post in an active category: category, area, date, title and text (escaped, line breaks kept), the translation if there is one, every photo (1280 px) or the video player with its poster, "Open in the app" and "Get the app". Open Graph tags for the preview card. Anything else (pending, sent back, discarded, taken down, unknown or malformed code): `404` "This post is no longer available", so taking a post down also ends its shared links. |
+| `GET /app/` | anyone | The invite link. `302` to the website's download panel, `SITE_WEBSITE_URL` + `#get-app`, keeping the query string (`/app/?ref=invite` → `https://<domain>/?ref=invite#get-app`). Since 2026-11-07; before, a page of its own or Google Play. |
+| `GET /.well-known/assetlinks.json` | anyone | Android App Links: `[{"relation": ["delegate_permission/common.handle_all_urls"], "target": {"namespace": "android_app", "package_name": ANDROID_PACKAGE, "sha256_cert_fingerprints": ANDROID_CERT_SHA256}}]` |
+| `GET /api/v1/feed/share/{code}/` | anyone | The post as `FeedPost` (section 6), for the app when a shared link opens it |
+
+- **Share code:** 8 random small letters and digits (`[a-z0-9]`; codes made before 2026-11-11 may also have capitals, and keep working; clients treat the code as opaque), made the first time a post is published and never changed, also after a take-down and a reverse. Not a counter or the id, so links cannot be guessed in turn. Posts published before 2026-11-04 got one from migration `posts.0009`.
+- **Links:** `share_url` (`Post`, `FeedItem`, `FeedPost`) is `PUBLIC_BASE_URL + "p/" + code + "/"`, and `invite_url` (site-config) is `PUBLIC_BASE_URL + "app/"`. Both are `null` while `PUBLIC_BASE_URL` is empty.
+- **Preview card:** `og:title` (the title), `og:description` (the first 200 characters), `og:url` and `<link rel="canonical">` (the `share_url`), `og:type` `article`, `og:locale` `te_IN` or `en_IN`, and `og:image`: a 1200 × 630 JPEG under 300 KB made once from the first photo, or a video's poster frame, kept as `/media/og/{code}.jpg`. A post without a photo uses `static/share/og-{category}.jpg` or `og-default.jpg` when those pictures exist, else has no `og:image` (`twitter:card` `summary`).
+- **No personal data:** a citizen post shows "Citizen" (పౌరుడు), an official's post their role and area, never a name, phone, device or email.
+- **Headers:** `Cache-Control: public, max-age=SHARE_PAGE_MAX_AGE` (300 s; the "no longer available" page 60 s), a Content-Security-Policy with no scripts at all and pictures and videos only from the site (`default-src 'none'`), no cookies. `assetlinks.json`: `application/json`, cached an hour.
+- **Robots:** shared post pages may be indexed (posts are public news); the "no longer available" page is `noindex`. Ask the owner if posts should be `noindex` too.
+- **Settings:** `PUBLIC_BASE_URL` (https, with the final slash; `setup.sh` writes `https://<DOMAIN>/`), `SITE_WEBSITE_URL` (where `/app/` goes), `ANDROID_PACKAGE` (`com.bvt.app`), `ANDROID_CERT_SHA256` (comma separated; today the upload key; add Play's app signing key once the app is on Play), `SHARE_PAGE_MAX_AGE`.
+- **Mobile, later:** an `intent-filter` with `autoVerify` for `https://<domain>/p/…`, which then opens the post through `GET /feed/share/{code}/`. Needs the final domain.
+
+---
+
+## 21. Citizen accounts and the wallet (live on `dev` since BVTGC-119 to BVTGC-130, behind `wallet_enabled`)
+
+**Live.** Agreed on 2026-11-25 so the app and the website could be built in parallel with the backend (lead's decision); every endpoint below is built and marked **live** (BVTGC-123 to BVTGC-130 and BVTGC-151). While the Super Admin's switch `wallet_enabled` is off, each of them answers `404`. Requirements and design: `docs/features/citizen-wallet/` (decisions D1 to D17).
+
+An optional account for citizens, used **only for the wallet of points and referrals** (D2). Reading, posting and service requests keep working without it. The account and the posting token (`X-Citizen-Token`, section 15) are separate things: a phone may have both, and neither needs the other.
+
+### Authentication
+
+- A citizen signs up with a form (name, mobile number, email, password) and confirms the email with a 6-digit code, then logs in with `POST /citizen/auth/login/` using the email **or** the mobile number, plus the password.
+- The answer is the same JWT pair as for officials (`Authorization: Bearer`), with the same `POST /auth/refresh/`, `POST /auth/logout/`, the 90-day limit (`JWT_ABSOLUTE_DAYS`) and `401 session_revoked`.
+- The officials' `POST /auth/login/` and `POST /auth/session/login/` answer a citizen account `400 invalid_credentials`, like a wrong password. Every officials' endpoint answers a citizen JWT `403 permission_denied`; `POST /auth/password/change/` too (citizens use `POST /citizen/account/password/`). `GET /me/` is for officials; citizens use `GET /citizen/account/`.
+- An app holds one account at a time: an official's or a citizen's.
+- **Which calls carry the citizen's token** (contract review, BVTGC-119): the app sends `Authorization: Bearer` with a citizen JWT only to the endpoints of this section, `POST /devices/` and `DELETE /devices/{id}/` (so pushes reach the account), `POST /auth/refresh/` and `POST /auth/logout/`. The citizen endpoints of section 15 keep using `X-Citizen-Token` and ignore `Authorization`. The officials' notification inbox (`GET /notifications/` and its actions) answers a citizen JWT `403 permission_denied`.
+- **Feature switch:** while `wallet_enabled` is `false` (`GET /app-config/`), every endpoint of this section answers `404 not_found`.
+- **Pilot:** while `wallet_pilot_mandals` is not empty, sign-up is open only for villages in those mandals (`403 wallet_not_in_area`). Existing accounts keep working wherever their village moves.
+
+### Objects
+
+```jsonc
+// Account (GET /citizen/account/)
+{"name": "రవి కుమార్", "language": "te",
+ "village": {"level": "VILLAGE", "id": 1042, "name": "కొలకలూరు"},
+ "email_hint": "r***@gmail.com", "email_verified": true,
+ "mobile_last4": "4821",
+ "mobile_missing": false,      // true after the Super Admin removed the number: ask for a new one first
+ "mobile_verified": false,     // confirmed by WhatsApp or SMS code; false until the later stage (D17)
+ "referral_code": "K7QX2MPA",
+ "invite_url": "https://<domain>/app/?ref=K7QX2MPA",
+ "wallet": {"confirmed_points": 120, "held_points": 20,
+            "next_release_at": "2026-12-02T10:00:00+05:30"},   // null when nothing is held
+ "referral": {"status": "PENDING", "confirm_after": "2026-12-02T10:00:00+05:30"},  // own referral by a friend, or null
+ "created_at": "2026-11-25T10:00:00+05:30"}
+
+// WalletEntry (GET /wallet/ entries)
+{"id": "5d1c…", "points": 50,
+ "kind": "REFERRAL_REWARD",     // REFERRAL_REWARD, WELCOME_BONUS, ADJUSTMENT
+ "status": "HELD",              // HELD, CONFIRMED, CANCELLED
+ "reason_key": null,            // see "Reasons" below; null when there is nothing to explain
+ "reason": null,                // text in the request's language; an adjustment's text as the Super Admin wrote it
+ "created_at": "…", "decided_at": null,
+ "release_at": "2026-12-02T10:00:00+05:30"}   // HELD only: when this entry is decided (its referral's end of hold;
+                                              // the hourly job decides within the hour after); null otherwise.
+                                              // Each row its own date (BVTGC-157); the summary's next_release_at is
+                                              // only the earliest. Also in the Super Admin's entry rows.
+
+// CodeSent: the answer to every request that sends a code
+{"expires_in": 600, "resend_after": 60, "email_hint": "r***@gmail.com"}   // email_hint only where noted
+```
+
+**Reasons** (`reason_key`): `same_phone` (no referrer reward: both accounts signed up on one phone), `welcome_limit` (no welcome bonus: the phone or a deleted account already had one), `no_device` (no welcome bonus: the sign-up sent no `android_id`), `not_active`, `monthly_limit`, `blocked`, `deleted`, `rejected` (by the Super Admin, with the comment as `reason`), `adjustment`.
+
+### Fields and their rules
+
+| Field | Rule |
+|---|---|
+| `name` | 1 to 100 characters, Telugu or English |
+| `mobile` | 10 digits starting with 6, 7, 8 or 9, without `+91` (`mobile_validator`) |
+| `email` | A valid address, at most 254 characters, stored in lower case. Gmail addresses that differ only by dots or a `+` part before the @ count as the same email |
+| `password` | At least 8 characters of any kind (numbers only is fine); very common passwords, and passwords too close to the name, email or mobile number, are refused with `400 validation_error` on `password`. The app checks "confirm password" itself; the server gets one password |
+| `village_id` | An active village; in the pilot mandals while the pilot runs |
+| `age_confirmed` | Must be `true` (`400 age_required`) |
+| `consent_version` | The current `wallet_consent_version` from `GET /app-config/` (`400 validation_error` otherwise: the app reloads the notice) |
+| `language` | `te` (default) or `en`: the language of emails and pushes |
+| `referral_code` | Optional, 8 letters and digits; only at sign-up |
+| `android_id` | Optional, Android's `Settings.Secure.ANDROID_ID`, as in section 15 (kept only as a keyed hash). Without it no welcome bonus is given |
+| `login` | An email (contains `@`) or a 10-digit mobile number |
+| `code` | The 6 digits from the email |
+
+### Sign-up, login and a forgotten password (public, no login)
+
+| Method and path | Request | Response |
+|---|---|---|
+| `POST /citizen/auth/signup/` **live** (BVTGC-123) | `{name, mobile, email, password, village_id, age_confirmed, consent_version, language, referral_code?, android_id?}` | `200 {signup_token, expires_in, resend_after, email_hint}`: a code went to the email. `409 mobile_in_use` or `409 email_in_use` (offer **Log in** and **Forgot password?**); `400 validation_error`, `400 age_required`; `403 wallet_not_in_area`; `400 referral_code_invalid`, `referral_code_own`, `referral_not_open`; `503 email_unavailable` |
+| `POST /citizen/auth/signup/resend/` **live** (BVTGC-123) | `{signup_token}` | `200 CodeSent`; `429 code_cooldown` with `retry_after_s`, `429 code_limit`; `401 signup_token_invalid` |
+| `POST /citizen/auth/signup/verify/` **live** (BVTGC-123) | `{signup_token, code}` | `201 {access, refresh, account: Account}`: the account exists now. `400 code_wrong` with `attempts_left`, `400 code_expired` (send a new one); `401 signup_token_invalid` (expired after 24 hours, or already used); `409 mobile_in_use` / `email_in_use` (someone finished first); the referral errors above |
+| `POST /citizen/auth/login/` **live** (BVTGC-124) | `{login, password}` | `200 {access, refresh, account: Account}`. `400 invalid_credentials` (wrong password, unknown login or deleted account: the same answer); `403 account_blocked`; `429 locked_out` with `retry_after_s` |
+| `POST /citizen/auth/password/forgot/` **live** (BVTGC-124) | `{login}` | `200 {expires_in, resend_after}`, **the same for every login**, registered or not: show "If this is registered, we sent a code to its email". `429 code_cooldown`, `code_limit`; `503 email_unavailable` |
+| `POST /citizen/auth/password/reset/` **live** (BVTGC-124) | `{login, code, new_password}` | `200 {access, refresh, account: Account}`: every other login of the account ends, a lock ends, and a notice is emailed. `400 code_wrong` with `attempts_left`; `400 code_expired` (also for an unknown login); `400 validation_error` on `new_password` |
+
+### The citizen's own account (citizen JWT)
+
+| Method and path | Request | Response |
+|---|---|---|
+| `GET /citizen/account/` **live** (BVTGC-125) | — | `Account`. The app calls it when it opens; it records the day for the active rule. Finishing the sign-up, a login and a password reset record the day too (BVTGC-154), so the sign-up day counts. |
+| `PATCH /citizen/account/` **live** (BVTGC-125) | any of `{village_id, language}` | `Account`. A new village moves the Citizen role with it. |
+| `POST /citizen/account/password/` **live** (BVTGC-125) | `{current_password, new_password}` | `200 {access, refresh}`: other logins end, this phone gets new tokens, a notice is emailed. `400 invalid_credentials` (wrong current password; the 5th wrong try within 15 minutes ends every session: `401 session_revoked`); `400 validation_error` on `new_password` |
+| `POST /citizen/account/email/` **live** (BVTGC-125) | `{email, password}` (the new email) | `200 CodeSent` with `email_hint`: a code went to the new email. `409 email_in_use`; `400 invalid_credentials`; `503 email_unavailable` |
+| `POST /citizen/account/email/verify/` **live** (BVTGC-125) | `{code}` | `200 Account`: the email changed and the old address got a notice. `400 code_wrong`, `code_expired`; `409 email_in_use` |
+| `POST /citizen/account/mobile/` **live** (BVTGC-125) | `{mobile, password}` (the new number) | `200 Account` (`mobile_verified` becomes `false`). `409 mobile_in_use` (point the citizen to the help line); `400 invalid_credentials` |
+| `POST /citizen/account/delete/` **live** (BVTGC-127) | `{password}` | `204`. The account is closed at once (see "Deletion"). `400 invalid_credentials` |
+| `GET /wallet/` **live** (BVTGC-126) | `?cursor=` | The cursor list of section 1 with the summary as sibling keys: `{confirmed_points, held_points, next_release_at, next, previous, results: [WalletEntry]}`, newest first, 20 a page. Every page repeats the summary. |
+
+### Deleting the account from the website (public, no login)
+
+The website's **Delete my wallet account** page (its address is the deletion link for Google Play).
+
+| Method and path | Request | Response |
+|---|---|---|
+| `POST /citizen/auth/delete/code/` **live** (BVTGC-127) | `{login}` | `200 {expires_in, resend_after}`, the same for every login: a code goes to the account's email. `429 code_cooldown`, `code_limit`; `503 email_unavailable` |
+| `POST /citizen/auth/delete/` **live** (BVTGC-127) | `{login, code}` | `200 {deleted: true}`. `400 code_wrong` with `attempts_left`, `400 code_expired` (also for an unknown login). A password reset code does not work here. |
+
+### Super Admin (console)
+
+| Method and path | Permission | Request | Response |
+|---|---|---|---|
+| `GET /admin/citizen-accounts/` **live** (BVTGC-128) | `accounts.manage_citizen_accounts` | `q` (a name in English or Telugu, the last 4 digits, or a referral code), `village_id`, `status` (`active`, `blocked`, `deleted`; all when left out), `page`, `page_size` | Page numbers (section 1): `{count, next, previous, results}`, newest first. Rows (**AccountRow**): `id`, `name` ("Deleted citizen" once deleted), `village` `{level, id, name}`, `mobile_last4`, `mobile_missing`, `email_hint`, `email_verified`, `mobile_verified`, `referral_code`, `confirmed_points`, `held_points`, `status`, `created_at`, `last_active_at`, `deleted_at`, `allowed_actions`: `set_email`, `release_mobile` (while it has a number), `block` or `unblock`, `delete`, and `adjust` for holders of `wallet.adjust_points`; none for a deleted account |
+| `POST /admin/citizen-accounts/find/` **live** (BVTGC-128) | same | `{mobile}` or `{email}`, one of them (a POST, so no personal data goes in a URL) | `{results: [AccountRow]}`, empty when none; audited `citizen.account_found` with the last 4 digits or the masked email. `400 validation_error` with both or neither, or a malformed number |
+| `POST /admin/citizen-accounts/{id}/email/` **live** (BVTGC-128) | same | `{email, reason, called_back: true}` | AccountRow. Sets a new email, not yet confirmed; codes already sent stop working, and the old address gets the "email changed" notice. The citizen then uses **Forgot password**, whose code confirms the new email. `409 email_in_use`; `400 validation_error` unless `called_back` is `true`, or when it is already the account's email |
+| `POST /admin/citizen-accounts/{id}/release-mobile/` **live** (BVTGC-128) | same | `{reason, called_back: true}` | AccountRow. Removes the number from this account (its next `GET /citizen/account/` says `mobile_missing: true`); the number is free for a sign-up or another account. `409 invalid_transition` when the account has no number |
+| `POST /admin/citizen-accounts/{id}/block/`, `POST /admin/citizen-accounts/{id}/unblock/`, `POST /admin/citizen-accounts/{id}/delete/` **live** (BVTGC-128) | same | `{reason}` | AccountRow. Block ends every session at once and unlinks the phones from push. Blocking a blocked account, or unblocking an active one, changes nothing. Delete is the deletion described under Rules, audited with `via` admin and the reason. Every action on a deleted account, here and above: `409 invalid_transition`. An unknown `id`: `404` |
+| `GET /admin/referrals/` **live** (BVTGC-128) | `wallet.review_referrals` | `status` (`PENDING`, `CONFIRMED`, `REJECTED`), `q` (either side's name, last 4 digits or referral code), `page`, `page_size` | Page numbers, newest first, with `status_counts` (`{PENDING, CONFIRMED, REJECTED}`, for the `q` given) next to `results`. Rows (**ReferralRow**): `id`, `referrer` and `referee` (`{id, name, mobile_last4, referral_code}`), `status`, `reason_key`, `comment`, `pending_at`, `confirm_after`, `decided_at`, `decided_by` (`{id, name}`, null for the hourly job), `allowed_actions` (`confirm`, `reject` while PENDING) |
+| `POST /admin/referrals/{id}/confirm/`, `POST /admin/referrals/{id}/reject/` **live** (BVTGC-128) | `wallet.review_referrals` | `{comment}` (required, at most 500 characters) | ReferralRow. Confirm moves both held entries to confirmed at once, before the hold ends; reject cancels them with `reason_key` `rejected`, and the comment is the entry's `reason` in **both citizens' histories**. `409 already_decided` (with `referral`, the row as it is now) when the hourly job or another Super Admin decided first |
+| `GET /admin/wallets/{account_id}/` **live** (BVTGC-128) | `wallet.view_wallets` | `page`, `page_size` | `{confirmed_points, held_points, next_release_at, count, next, previous, results}`: one citizen's history, newest first, in page numbers. Entries are WalletEntry plus `created_by` (`{id, name}` of the Super Admin who made an adjustment, else null) and `referral_id`. Added in BVTGC-128 so the console can answer questions about points (FR-33) |
+| `GET /admin/wallet/entries/` **live** (BVTGC-151) | `wallet.view_wallets` | `account_id`, `kind` (`REFERRAL_REWARD`, `WELCOME_BONUS`, `ADJUSTMENT`), `status` (`HELD`, `CONFIRMED`, `CANCELLED`), `from` and `to` (India dates, `YYYY-MM-DD`, both included), `page`, `page_size` | Page numbers, newest first: every wallet entry, for the console's Wallet entries tab (FR-33, the Admin's decision of 2026-11-25). Rows: WalletEntry plus `created_by`, `referral_id` and `citizen` (`{id, name, mobile_last4}`); never a full email or number. The same filters as the entries export; `400 validation_error` on a bad one |
+| `POST /admin/wallets/{account_id}/adjust/` **live** (BVTGC-128) | `wallet.adjust_points` | `{points, reason}`: whole points from -100,000 to 100,000, not 0; reason required (at most 500 characters), shown in the citizen's history | `{confirmed_points, held_points, next_release_at}`. A CONFIRMED `ADJUSTMENT` entry. `409 not_enough_points` (with `confirmed_points`) when it would take the confirmed balance below zero; `409 invalid_transition` for a deleted account |
+| `GET /admin/wallet/export/?type=referrals\|entries&format=csv` **live** (BVTGC-128) | `wallet.view_wallets` | `referrals`: `status`, `q` as the list. `entries`: `account_id`, `kind`, `status`, `from` and `to` (India dates, `YYYY-MM-DD`, both included) | CSV with a UTF-8 BOM, like the other exports; names, last 4 digits and masked emails only, times in India time. At most 50,000 rows: more is `400 validation_error` ("Narrow the filters"), never a cut file. Errors come back as JSON. Writes `report.exported` (a search text only as "(given)"). |
+| `GET`, `PATCH /admin/settings/` | `posts.manage_settings` (existing) | adds the wallet settings below | Settings |
+
+The console's menu shows **Citizens & wallet** to holders of any of these permissions; today only the Super Admin. These endpoints answer while `wallet_enabled` is off too, so the Super Admin can still help, export and delete.
+
+### Settings
+
+`GET`/`PATCH /admin/settings/` adds (audited as `setting.changed`) **live** (BVTGC-129):
+
+| Key | Default | Range |
+|---|---|---|
+| `wallet_enabled` | `false` | |
+| `wallet_pilot_mandals` | `[]` (everywhere) | a list of active mandal ids |
+| `referral_reward_points` | 50 | 0 to 10,000 |
+| `welcome_bonus_points` | 20 | 0 to 10,000 |
+| `referral_hold_days` | 7 | 1 to 90 |
+| `referral_active_days` | 2 | 0 to `referral_hold_days` |
+| `referrals_per_month` | 30 | 0 to 1,000 (0 is no limit) |
+| `welcome_bonuses_per_phone` | 3 | 0 to 10 |
+
+A mandal id that is not an active mandal, or `referral_active_days` above `referral_hold_days` (the saved one when the PATCH leaves it out), answers `400 validation_error` on that field; nothing is saved. `wallet_pilot_mandals` comes back sorted, without repeats. A change applies to the next sign-up or decision: referrals already started keep their hold date and the points they hold. The `.env` values are only the starting values until the Super Admin saves one.
+
+`GET /app-config/` **live** (BVTGC-129) adds `wallet_enabled`, `wallet_pilot_mandals` (mandal ids, sorted) and `wallet_consent_version` (the consent notice the sign-up must name). **Live since BVTGC-160:** also `referral_reward_points`, `welcome_bonus_points` and `referrals_per_month`, the Super Admin's saved values (the same as in `/admin/settings/`), so the app's texts ("50 Grama points for you and 20 for your friend", "Up to 30 a month") show the amounts the console has set. `referrals_per_month` 0 means no monthly limit: the app leaves the limit out of its text. The fields are additive; an app that does not read them keeps its own words. Phones follow a change within about 5 minutes, as for the other fields.
+
+### Rules
+
+- **Codes:** 6 digits, valid 10 minutes, 5 wrong tries. A new code after 60 seconds (`429 code_cooldown` with `retry_after_s`); at most 5 a day per account or email address, and 10 a day per phone (`android_id`) (`429 code_limit`). Codes arrive by email, with the code in the subject, in the citizen's language. Until BVTGC-105 brings back real visitor addresses there is no limit per IP address (section 13).
+- **Lockout:** 5 wrong passwords for one account from one IP address lock it there for 15 minutes (`429 locked_out`), as for officials; the email and the mobile number count as one account. The ceiling per username (20 failures within an hour from any addresses, BVTGC-110) applies too, and so does the cap per address (failed logins an hour from one IP, any accounts, BVTGC-105) when a server switches it on; it is off by default. A wrong password reads "Wrong email, mobile number or password." A password reset ends a lock.
+- **Unfinished sign-ups** are forgotten after 24 hours; the number and email stay free until the code is entered. A sign-up whose code email could not be sent (`503 email_unavailable`) or was refused by the limits keeps nothing: the citizen taps **Create account** again.
+- **The same answers for every login** (FR-14, BVTGC-152): the forgotten password and the website's deletion answer an unknown, blocked or deleted login exactly as a registered one at every step, though nothing is emailed: the same `200`, the same `429 code_cooldown` for a new code within 60 seconds and `429 code_limit` after 5 in a day, and for a typed code `400 code_wrong` with `attempts_left` (5 tries), then `400 code_expired`. Only sign-up says that a number or email is registered (`409 mobile_in_use` / `email_in_use`, FR-11).
+- **Mobile number:** spaces, dashes and a leading `+91` are dropped before the check, and so is a leading `0` when 11 digits remain (BVTGC-153): `09876543210`, `+91 98765 43210` and `98765-43210` are the same number at sign-up, login, the forgotten password, the website's deletion and the Super Admin's Find.
+- **One account per mobile number and per email.** Until the later stage the mobile number is not confirmed by a code (`mobile_verified` false).
+- **Referral code:** only at sign-up. Refused with `referral_code_invalid` (no such code), `referral_code_own` (the same mobile number or email), `referral_not_open` (the referrer is blocked or deleted). A referral starts `PENDING` when the account is created; the hourly job confirms or rejects it after `referral_hold_days`.
+- **Points** are whole numbers and never cash; they cannot be transferred. Entries are never edited or deleted, only reversed by a new entry.
+- **Deletion** (app, website or Super Admin): the account closes at once, every session ends and its phones are unlinked from push, the name, email and number are removed, points on hold are cancelled. Its referrals still on hold end as not confirmed with the reason `deleted`, on both sides: the friend's welcome bonus on hold, or the referrer's reward on hold, is cancelled too (FR-24). Confirmed entries and referrals stay without personal details (owner's decision of 2026-11-25, Q8). The "account deleted" email goes to the old address. The same number or email may sign up again, without a second welcome bonus for a year (`CITIZEN_DELETED_KEEP_DAYS`, requirements Q9). A blocked account gets no code on the website (the same answer as an unknown login); the Super Admin deletes it.
+- **Privacy:** full emails and mobile numbers never appear in a URL, a log, an audit entry or a CSV export; the console shows `email_hint` and `mobile_last4`.
+
+### Errors (new)
+
+| HTTP | `code` | When |
+|---|---|---|
+| 400 | `age_required` | Sign-up without `age_confirmed: true` |
+| 400 | `code_wrong` | Wrong code; `attempts_left` gives the tries left |
+| 400 | `code_expired` | The code is older than 10 minutes, used, out of tries, or there is no live code for that login |
+| 400 | `referral_code_invalid`, `referral_code_own`, `referral_not_open` | The referral code at sign-up (see Rules) |
+| 401 | `signup_token_invalid` | The sign-up is older than 24 hours or already finished |
+| 403 | `wallet_not_in_area` | Sign-up for a village outside the pilot mandals |
+| 409 | `mobile_in_use`, `email_in_use` | The number or email belongs to another citizen account. Not `duplicate` (section 1): the app answers these two with **Log in** and **Forgot password?** |
+| 409 | `not_enough_points` | An adjustment would take the balance below zero |
+| 429 | `code_cooldown` | A new code was asked for within 60 seconds; `retry_after_s` |
+| 429 | `code_limit` | Too many codes today for this account, address or phone |
+| 503 | `email_unavailable` | The email service could not be reached; try again later. Nothing else is affected |
+
+### Pushes and audit
+
+- Pushes to the account's phone (registered with `POST /devices/` and the citizen JWT), push only, with no inbox entry (the wallet history is the record) **live** (BVTGC-129). Data `{"type": "WALLET", "event": "referral_joined" | "points_confirmed" | "points_not_confirmed", "referral_id"}`, like the other pushes' `type`; the app opens the wallet. (Changed in BVTGC-129 before any app used it: the event was in `type`.) When:
+  - `referral_joined` to the referrer, when a friend's sign-up with their code is done (template variable `name`, the friend's name);
+  - `points_confirmed` to each citizen whose held points the hourly job or the Super Admin confirmed (`points`);
+  - `points_not_confirmed` to each citizen whose held points were not confirmed (`points`, and `reason`: the reason's words in their language, or the Super Admin's comment). Not sent to a blocked or deleted account.
+
+  Texts are the notification templates of the same keys (section 7), in the citizen's language, editable in the console.
+- Audit actions: `citizen.account_created`, `citizen.code_sent`, `citizen.password_reset`, `citizen.password_changed`, `citizen.email_changed`, `citizen.mobile_changed`, `citizen.village_changed`, `citizen.account_blocked`, `citizen.account_unblocked`, `citizen.account_deleted` (with `via`: `app`, `website`, `admin`), `citizen.account_found`, `citizen.email_set_by_admin`, `citizen.mobile_released`, `referral.created`, `referral.confirmed`, `referral.rejected`, `wallet.adjusted`, `wallet.mismatch`. Logins use `auth.login` with `via` `citizen`. Audit data holds a masked email and the last 4 digits of a number at most.
+
+### Later stage (WhatsApp and SMS, before Bills & Recharges)
+
+Not planned in detail yet: endpoints to confirm the mobile number by a WhatsApp or SMS code (`mobile_verified`), and a password reset by those codes, will be added here when the stage is planned. Bills & Recharges will answer `403 mobile_not_verified` to an account whose number is not confirmed.

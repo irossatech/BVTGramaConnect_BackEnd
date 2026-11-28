@@ -1,0 +1,447 @@
+"""Post shapes from docs/api-contract.md, section 2 ("Post", "Media", "ReviewAction")."""
+
+from django.conf import settings
+from django.utils.translation import gettext_lazy as _
+from drf_spectacular.utils import extend_schema_field
+from rest_framework import serializers
+
+from apps.accounts.serializers import AreaInputSerializer, AreaOutputSerializer, describer_from
+from grama.params import DbIdField
+
+from .models import Category, EventKind, MediaKind, Post, PostMedia, PostStatus, ReviewAction
+from .services import REVERSE_TARGETS, allowed_actions
+from . import hidden_media
+from .sharing import share_url
+
+DECISION_ACTIONS = {
+    ReviewAction.Action.PUBLISH,
+    ReviewAction.Action.AUTO_PUBLISH,
+    ReviewAction.Action.RECHECK,
+    ReviewAction.Action.DISCARD,
+    ReviewAction.Action.UNPUBLISH,
+    ReviewAction.Action.REVERSE,
+    # A post a block closed (2026-11-20 to 2026-11-21): last_review carries the block's reason.
+    ReviewAction.Action.BLOCK,
+}
+
+
+class CategorySerializer(serializers.ModelSerializer):
+    name = serializers.SerializerMethodField()
+    short_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Category
+        fields = ["key", "name", "short_name", "order"]
+
+    def get_name(self, obj) -> str:
+        return obj.display_name()
+
+    def get_short_name(self, obj) -> str:
+        return obj.display_name(short=True)
+
+
+def category_icon_url(serializer, obj) -> str | None:
+    """Absolute URL of the category's uploaded icon, or null (BVTGC-91)."""
+    if not obj.icon:
+        return None
+    request = serializer.context.get("request")
+    return request.build_absolute_uri(obj.icon.url) if request is not None else obj.icon.url
+
+
+class CategoryListSerializer(CategorySerializer):
+    """GET /categories/: the Category shape plus `icon_url`. A post's nested category stays without it,
+    so every post in a list does not carry the same link again."""
+
+    icon_url = serializers.SerializerMethodField()
+
+    class Meta(CategorySerializer.Meta):
+        fields = [*CategorySerializer.Meta.fields, "icon_url"]
+
+    def get_icon_url(self, obj) -> str | None:
+        return category_icon_url(self, obj)
+
+
+class AdminCategorySerializer(serializers.ModelSerializer):
+    """The admin fields. `icon` (an image) comes as a file in multipart and is handled by the view."""
+
+    post_count = serializers.IntegerField(read_only=True, default=0)
+    icon_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Category
+        fields = [
+            "id", "key", "name_te", "name_en", "short_name_te", "short_name_en",
+            "is_active", "order", "post_count", "icon_url",
+        ]
+        read_only_fields = ["id"]
+
+    def get_icon_url(self, obj) -> str | None:
+        return category_icon_url(self, obj)
+
+    def validate_key(self, value):
+        # The key never changes once added: the apps pick icons by it and cache it with their feeds.
+        if self.instance is not None and value != self.instance.key:
+            raise serializers.ValidationError(_("The key of a category cannot be changed."))
+        return value
+
+    def to_internal_value(self, data):
+        # Multipart: plain values, without the icon file (the view reads it). As a plain dict, a field
+        # left out stays left out; DRF would otherwise read a missing is_active in a form as false.
+        if hasattr(data, "dict"):
+            data = {key: value for key, value in data.dict().items() if key != "icon"}
+        return super().to_internal_value(data)
+
+
+class PersonSerializer(serializers.Serializer):
+    id = serializers.UUIDField(allow_null=True)
+    name = serializers.CharField()
+    role = serializers.CharField()
+
+
+def person(user, role: str) -> dict:
+    if user is None and not role:
+        return {"id": None, "name": "System", "role": "SYSTEM"}
+    return {"id": str(user.id) if user else None, "name": user.name if user else "", "role": role}
+
+
+class MediaSerializer(serializers.ModelSerializer):
+    """A photo, or a video with its poster (owner decision Q8)."""
+
+    url = serializers.SerializerMethodField()
+    poster_url = serializers.SerializerMethodField()
+    thumb_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PostMedia
+        fields = ["id", "kind", "url", "poster_url", "thumb_url", "width", "height", "duration_s", "bytes"]
+
+    def _absolute(self, field) -> str:
+        """Public /media/ link while the post is shown; a signed link that expires while it is taken down
+        or discarded (BVTGC-192). The post's status comes from the context when the post serializer
+        passes it, else from the row."""
+        status = self.context.get("post_status") or field.instance.post.status
+        return hidden_media.file_url(self.context, status, field.name)
+
+    def get_url(self, obj) -> str:
+        return self._absolute(obj.video if obj.kind == MediaKind.VIDEO else obj.image)
+
+    def get_poster_url(self, obj) -> str | None:
+        return self._absolute(obj.image) if obj.kind == MediaKind.VIDEO else None
+
+    def get_thumb_url(self, obj) -> str:
+        return self._absolute(obj.thumbnail)
+
+
+class ReviewActionSerializer(serializers.ModelSerializer):
+    actor = serializers.SerializerMethodField()
+    at = serializers.DateTimeField(source="created_at")
+
+    class Meta:
+        model = ReviewAction
+        fields = ["id", "action", "from_status", "to_status", "comment", "actor", "at"]
+
+    @extend_schema_field(PersonSerializer)
+    def get_actor(self, obj):
+        return person(obj.actor, obj.actor_role)
+
+
+class LastReviewSerializer(serializers.Serializer):
+    action = serializers.CharField()
+    comment = serializers.CharField()
+    actor = PersonSerializer()
+    at = serializers.DateTimeField()
+
+
+class PostedAsSerializer(serializers.Serializer):
+    role = serializers.CharField()
+    area = AreaOutputSerializer()
+
+
+class EventSerializer(serializers.Serializer):
+    """Optional event date on a post (owner decision Q7)."""
+
+    kind = serializers.ChoiceField(choices=EventKind.choices)
+    start_date = serializers.DateField()
+    end_date = serializers.DateField(required=False, allow_null=True, default=None)
+
+    def validate(self, attrs):
+        if attrs.get("end_date") and attrs["end_date"] < attrs["start_date"]:
+            raise serializers.ValidationError({"end_date": [_("The end date cannot be before the start date.")]})
+        return attrs
+
+
+class CitizenSummarySerializer(serializers.Serializer):
+    device_id = serializers.UUIDField()
+    blocked = serializers.BooleanField()
+    blocked_until = serializers.DateTimeField(allow_null=True)
+    posts_total = serializers.IntegerField()
+    posts_discarded = serializers.IntegerField()
+
+
+class CitizenBlockSerializer(serializers.Serializer):
+    """The reason is required (contract section 15); it is also the discard reason of the phone's pending posts."""
+
+    comment = serializers.CharField(max_length=500)
+    #: A block is temporary; the Super Admin picks its length each time (lead's decision of 2026-10-27).
+    days = serializers.IntegerField(min_value=1, max_value=365)
+
+
+class CitizenDiscardAllSerializer(serializers.Serializer):
+    comment = serializers.CharField(max_length=500)
+
+
+class TranslationSerializer(serializers.Serializer):
+    language = serializers.CharField(help_text="Always the language the post is not written in")
+    title = serializers.CharField()
+    body = serializers.CharField()
+    machine = serializers.BooleanField(help_text="false once an official corrected it")
+
+
+def translation_of(post) -> dict | None:
+    """The post in its other language, or None: none yet, the provider is off, or the post changed since.
+
+    Reads post.translations.all(), so lists prefetch "translations".
+    """
+    for row in post.translations.all():
+        if (row.language == post.other_language and row.source_hash == post.source_hash
+                and row.title.strip() and row.body.strip()):
+            return {"language": row.language, "title": row.title, "body": row.body, "machine": row.provider != "manual"}
+    return None
+
+
+class PostSerializer(serializers.ModelSerializer):
+    category = CategorySerializer()
+    translation = serializers.SerializerMethodField()
+    target_area = serializers.SerializerMethodField()
+    targets = serializers.SerializerMethodField()
+    event = serializers.SerializerMethodField()
+    media = serializers.SerializerMethodField()
+    author = serializers.SerializerMethodField()
+    posted_as = serializers.SerializerMethodField()
+    escalated = serializers.SerializerMethodField()
+    decided_by = serializers.SerializerMethodField()
+    last_review = serializers.SerializerMethodField()
+    citizen = serializers.SerializerMethodField()
+    allowed_actions = serializers.SerializerMethodField()
+    share_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Post
+        fields = [
+            "id", "status", "category", "language", "title", "body", "translation",
+            "target_level", "target_area", "targets", "event", "is_urgent", "media", "author", "posted_as",
+            "created_at", "updated_at", "submitted_at", "published_at",
+            "escalated", "escalated_at", "escalation_level",
+            "decided_by", "decided_at", "last_review", "citizen", "allowed_actions", "share_url",
+        ]
+
+    def get_share_url(self, obj) -> str | None:
+        """The public link while the post is published; null otherwise or while PUBLIC_BASE_URL is not set."""
+        return share_url(obj)
+
+    @extend_schema_field(TranslationSerializer(allow_null=True))
+    def get_translation(self, obj):
+        return translation_of(obj)
+
+    @extend_schema_field(EventSerializer(allow_null=True))
+    def get_event(self, obj):
+        return obj.event
+
+    @extend_schema_field(AreaOutputSerializer)
+    def get_target_area(self, obj):
+        return describer_from(self.context).describe(obj.target)
+
+    @extend_schema_field(AreaOutputSerializer(many=True))
+    def get_targets(self, obj):
+        return describe_targets(describer_from(self.context), obj)
+
+    @extend_schema_field(MediaSerializer(many=True))
+    def get_media(self, obj):
+        return MediaSerializer(obj.media.all(), many=True, context={**self.context, "post_status": obj.status}).data
+
+    @extend_schema_field(PersonSerializer)
+    def get_author(self, obj):
+        return person(obj.author, obj.posted_as_role)
+
+    @extend_schema_field(PostedAsSerializer)
+    def get_posted_as(self, obj):
+        return {"role": obj.posted_as_role, "area": describer_from(self.context).describe(obj.posted_as)}
+
+    def get_escalated(self, obj) -> bool:
+        return obj.status == PostStatus.PENDING and obj.escalated_at is not None
+
+    @extend_schema_field(PersonSerializer(allow_null=True))
+    def get_decided_by(self, obj):
+        if obj.decided_by_id is None:
+            return None
+        return person(obj.decided_by, obj.decided_by_role)
+
+    @extend_schema_field(LastReviewSerializer(allow_null=True))
+    def get_last_review(self, obj):
+        actions = [a for a in obj.review_actions.all() if a.action in DECISION_ACTIONS]
+        if not actions:
+            return None
+        latest = max(actions, key=lambda a: a.created_at)
+        return {
+            "action": latest.action,
+            "comment": latest.comment,
+            "actor": person(latest.actor, latest.actor_role),
+            "at": serializers.DateTimeField().to_representation(latest.created_at),
+        }
+
+    @extend_schema_field(CitizenSummarySerializer(allow_null=True))
+    def get_citizen(self, obj):
+        """The phone behind a citizen post (contract section 15); null on officials' posts."""
+        if not obj.citizen_id:
+            return None
+        summaries = self.context.setdefault("citizen_summaries", {})
+        if obj.citizen_id not in summaries:  # not prepared by prime_posts: this post's phone alone
+            prime_citizens(self.context, [obj])
+        return summaries[obj.citizen_id]
+
+    def get_allowed_actions(self, obj) -> list[str]:
+        request = self.context.get("request")
+        if request is None or not request.user.is_authenticated:
+            return []
+        blocked = self.get_citizen(obj)["blocked"] if obj.citizen_id else None
+        return allowed_actions(request.user, obj, citizen_blocked=blocked)
+
+
+def prime_citizens(context, posts) -> None:
+    """The phone summaries of every citizen post in `posts`, with two queries in all (audit BE-DB-005)."""
+    from apps.citizens.services import phone_records  # citizens builds on posts
+
+    summaries = context.setdefault("citizen_summaries", {})
+    devices = [post.citizen for post in posts if post.citizen_id and post.citizen_id not in summaries]
+    for device_id, phone in phone_records(devices).items():
+        until = phone.block.blocked_until if phone.block else None
+        summaries[device_id] = {
+            "device_id": str(device_id),
+            "blocked": phone.block is not None,
+            "blocked_until": serializers.DateTimeField().to_representation(until) if until else None,
+            "posts_total": phone.posts_total,
+            "posts_discarded": phone.posts_discarded,
+        }
+
+
+def prime_posts(context, posts) -> None:
+    describer_from(context).prime(
+        [ref for post in posts for ref in (*post.target_refs, post.target, post.posted_as)]
+    )
+    prime_citizens(context, posts)
+
+
+def describe_targets(describer, post) -> list[dict]:
+    """Every area of the post, each like target_area: level, id, name and path."""
+    return [area for area in (describer.describe(ref) for ref in post.target_refs) if area is not None]
+
+
+class PostWriteSerializer(serializers.Serializer):
+    category = serializers.SlugRelatedField(slug_field="key", queryset=Category.objects.filter(is_active=True))
+    language = serializers.ChoiceField(choices=["te", "en"], default="te")
+    title = serializers.CharField(max_length=150)
+    body = serializers.CharField(max_length=5000)
+    #: One area, from clients older than `targets`; `targets` wins when both come.
+    target = AreaInputSerializer(required=False)
+    #: Every area: [{"level": "STATE", "id": …}] alone is Everyone (owner decision of 2026-10-28).
+    #: The count limit (POST_MAX_TARGETS) is checked in posts.services; this only caps the payload.
+    targets = serializers.ListField(child=AreaInputSerializer(), required=False, allow_empty=False, max_length=1000)
+    event = EventSerializer(required=False, allow_null=True, default=None)
+    is_urgent = serializers.BooleanField(default=False)
+    submit = serializers.BooleanField(default=True)
+    #: The app's random UUID for this post, the same on a repeat after a lost answer (MOB-ERR-004).
+    client_ref = serializers.UUIDField(required=False)
+
+    def validate(self, attrs):
+        if not self.partial and not attrs.get("targets") and not attrs.get("target"):
+            message = _("Choose who will see the post.")
+            raise serializers.ValidationError({"targets": [message]})
+        return attrs
+
+    def validate_title(self, value):
+        value = " ".join(value.split())
+        if not value:
+            raise serializers.ValidationError(_("Enter a title."))
+        return value
+
+    def validate_body(self, value):
+        if not value.strip():
+            raise serializers.ValidationError(_("Enter the post text."))
+        return value.strip()
+
+
+class PostUpdateSerializer(PostWriteSerializer):
+    submit = None
+    client_ref = None  # set once, on create
+    event = EventSerializer(required=False, allow_null=True)
+    is_urgent = serializers.BooleanField(required=False)
+
+    def __init__(self, *args, **kwargs):
+        kwargs["partial"] = True
+        super().__init__(*args, **kwargs)
+
+
+class ReviewSerializer(serializers.Serializer):
+    action = serializers.ChoiceField(choices=["publish", "recheck", "discard", "unpublish", "reverse"])
+    comment = serializers.CharField(max_length=500, required=False, allow_blank=True, default="")
+    to_status = serializers.ChoiceField(choices=list(REVERSE_TARGETS), required=False)
+
+
+class MediaUploadSerializer(serializers.Serializer):
+    file = serializers.FileField()
+    kind = serializers.ChoiceField(choices=MediaKind.choices, default=MediaKind.IMAGE)
+    #: Video only: the length when the server cannot measure it, and a poster photo
+    #: when it cannot cut one (no ffprobe or ffmpeg on the machine).
+    duration_s = serializers.FloatField(required=False, min_value=0.1)
+    poster = serializers.FileField(required=False)
+
+
+class UrgentSerializer(serializers.Serializer):
+    is_urgent = serializers.BooleanField()
+
+
+class TargetLevelSerializer(serializers.Serializer):
+    level = serializers.CharField()
+    areas = AreaOutputSerializer(many=True)
+    pick_via = serializers.CharField(required=False)
+
+
+class TargetsSerializer(serializers.Serializer):
+    levels = TargetLevelSerializer(many=True)
+
+
+class TargetsCheckSerializer(serializers.Serializer):
+    """POST /posts/targets/check/: the areas the official is about to send a post for (BVTGC-26)."""
+
+    targets = serializers.ListField(child=AreaInputSerializer(), allow_empty=False, max_length=1000)
+
+
+class TargetsCheckResultSerializer(serializers.Serializer):
+    #: True: the post goes live when sent. False: it goes to review (an area outside the author's own,
+    #: or Everyone), so the app says so before sending.
+    publishes_at_once = serializers.BooleanField()
+
+
+class SettingsSerializer(serializers.Serializer):
+    review_escalation_hours = serializers.IntegerField(min_value=6, max_value=168)
+    languages = serializers.DictField(child=serializers.BooleanField())
+    #: Posts one citizen phone may send in 24 hours; 0 is no limit (contract section 15).
+    citizen_posts_per_day = serializers.IntegerField(min_value=0, max_value=1000)
+    #: Banners a citizen's Home shows, newest first; 0 is no limit (BVTGC-92).
+    ads_banner_limit = serializers.IntegerField(min_value=0, max_value=1000)
+    # The citizen wallet (BVTGC-129; contract section 21, "Settings").
+    wallet_enabled = serializers.BooleanField()
+    wallet_pilot_mandals = serializers.ListField(
+        child=DbIdField(), allow_empty=True, max_length=1000,
+        help_text="Mandal ids where sign-up is open; empty: everywhere",
+    )
+    referral_reward_points = serializers.IntegerField(min_value=0, max_value=10_000)
+    welcome_bonus_points = serializers.IntegerField(min_value=0, max_value=10_000)
+    referral_hold_days = serializers.IntegerField(min_value=1, max_value=90)
+    referral_active_days = serializers.IntegerField(min_value=0, max_value=90, help_text="At most referral_hold_days")
+    referrals_per_month = serializers.IntegerField(min_value=0, max_value=1000, help_text="0 is no limit")
+    welcome_bonuses_per_phone = serializers.IntegerField(min_value=0, max_value=10)
+    admin_posts_auto_publish = serializers.BooleanField(read_only=True)
+    review_first_decision_wins = serializers.BooleanField(read_only=True)
+    super_admin_can_post = serializers.BooleanField(read_only=True)
+    max_photos_per_post = serializers.IntegerField(read_only=True, default=settings.MAX_PHOTOS_PER_POST)

@@ -1,0 +1,213 @@
+"""Devices, the officials' inbox and notification texts. docs/api-contract.md, section 7."""
+
+from django.db import IntegrityError, transaction
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from django.utils.translation import gettext as _
+from django.utils.translation import gettext_lazy
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
+from rest_framework import generics, status
+from rest_framework.pagination import CursorPagination
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from apps.accounts.authentication import client_via
+from apps.accounts.permissions import PLATFORM, HasPerm, IsOfficialAccount
+from apps.audit.services import record
+from grama.exceptions import ApiError, permission_denied
+
+from .models import Device, Notification, NotificationTemplate
+from .serializers import (
+    DeviceSerializer,
+    DeviceUpdateSerializer,
+    NotificationSerializer,
+    NotificationTemplateSerializer,
+    NotificationTemplateUpdateSerializer,
+)
+
+
+# --- Devices -------------------------------------------------------------------------
+
+
+def _user_or_none(request):
+    return request.user if request.user and request.user.is_authenticated else None
+
+
+class DeviceRegisterView(APIView):
+    """Citizens register without login; a bearer token links the device to the official."""
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(summary="Register or refresh this device for push", request=DeviceSerializer, responses=DeviceSerializer)
+    def post(self, request):
+        data = DeviceSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        values = dict(data.validated_data)
+        token = values.pop("fcm_token")
+        values["user"] = _user_or_none(request)
+        if values["user"] is None:
+            # Without a login, a known token never unlinks an official (G8): the
+            # app's logout deletes the device first. The row is left as it is.
+            linked = Device.objects.filter(fcm_token=token, user__isnull=False).first()
+            if linked:
+                return Response(DeviceSerializer(linked).data, status=status.HTTP_200_OK)
+        device, created = _save_device(token, values)
+        return Response(DeviceSerializer(device).data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+
+def _save_device(token: str, values: dict) -> tuple[Device, bool]:
+    """Update the token's row, or create it; the same token sent by several requests at once ends as one row.
+
+    No update_or_create: its SELECT ... FOR UPDATE on a token that is not there yet takes a gap lock on
+    MySQL and MariaDB, and two such requests then deadlock on their INSERTs (error 1213, a 500). A plain
+    UPDATE, then an INSERT whose duplicate-key error means another request just made the row, never
+    waits on a gap lock held by another transaction (audit BE-DB-014; CI test_concurrency_threads)."""
+    values = {**values, "last_seen": timezone.now()}  # .update() skips auto_now
+
+    def update_existing():
+        if Device.objects.filter(fcm_token=token).update(**values):
+            return Device.objects.get(fcm_token=token)
+        return None
+
+    device = update_existing()
+    if device is not None:
+        return device, False
+    try:
+        with transaction.atomic():
+            return Device.objects.create(fcm_token=token, **values), True
+    except IntegrityError:
+        # The same token registered by another request at the same moment: it exists now, so update it
+        # as this request would have.
+        return update_existing(), False
+
+
+class DeviceDetailView(APIView):
+    """The device id is known only to the app that registered it."""
+
+    permission_classes = [AllowAny]
+
+    def get_device(self, request, pk) -> Device:
+        device = get_object_or_404(Device, pk=pk)
+        user = _user_or_none(request)
+        if device.user_id and (user is None or user.pk != device.user_id):
+            raise ApiError("not_found", _("No such device."), status=404)
+        return device
+
+    @extend_schema(summary="Change village, language or token", request=DeviceUpdateSerializer, responses=DeviceSerializer)
+    def patch(self, request, pk):
+        device = self.get_device(request, pk)
+        data = DeviceUpdateSerializer(device, data=request.data, partial=True)
+        data.is_valid(raise_exception=True)
+        token = data.validated_data.get("fcm_token")
+        if token and token != device.fcm_token:
+            others = Device.objects.filter(fcm_token=token).exclude(pk=device.pk)
+            # As on register (G8): an official's device is never removed by someone else. Only the
+            # official, logged in, may move their phone's token to this row.
+            if others.filter(user__isnull=False).exclude(user=_user_or_none(request)).exists():
+                message = _("This push token belongs to another device.")
+                raise ApiError("duplicate", message, status=status.HTTP_409_CONFLICT, fields={"fcm_token": [message]})
+            others.delete()
+        data.save()
+        return Response(DeviceSerializer(device).data)
+
+    @extend_schema(summary="Forget this device (logout or opt-out)", responses={204: None})
+    def delete(self, request, pk):
+        self.get_device(request, pk).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# --- Inbox -------------------------------------------------------------------------------
+
+
+class InboxPagination(CursorPagination):
+    ordering = ("-created_at", "-id")
+    page_size = 20
+
+
+class NotificationListView(generics.ListAPIView):
+    permission_classes = [IsOfficialAccount]  # officials only (BVTGC-121)
+    serializer_class = NotificationSerializer
+    pagination_class = InboxPagination
+
+    def get_queryset(self):
+        queryset = Notification.objects.filter(user=self.request.user)
+        if self.request.query_params.get("unread") in ("1", "true"):
+            queryset = queryset.filter(read_at__isnull=True)
+        return queryset
+
+    @extend_schema(
+        summary="Your notifications",
+        parameters=[OpenApiParameter("unread", OpenApiTypes.BOOL), OpenApiParameter("cursor", OpenApiTypes.STR)],
+    )
+    def get(self, request, *args, **kwargs):
+        response = self.list(request, *args, **kwargs)
+        response.data["unread_count"] = Notification.objects.filter(user=request.user, read_at__isnull=True).count()
+        return response
+
+
+class NotificationReadView(APIView):
+    permission_classes = [IsOfficialAccount]  # officials only (BVTGC-121)
+
+    @extend_schema(summary="Mark one notification read", request=None, responses={204: None})
+    def post(self, request, pk):
+        notification = get_object_or_404(Notification, pk=pk, user=request.user)
+        if notification.read_at is None:
+            notification.read_at = timezone.now()
+            notification.save(update_fields=["read_at"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class NotificationReadAllView(APIView):
+    permission_classes = [IsOfficialAccount]  # officials only (BVTGC-121)
+
+    @extend_schema(summary="Mark every notification read", request=None, responses={204: None})
+    def post(self, request):
+        Notification.objects.filter(user=request.user, read_at__isnull=True).update(read_at=timezone.now())
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# --- Notification texts (console Settings page) ----------------------------------------------
+
+
+CAN_EDIT_TEMPLATES = HasPerm("notifications.manage_templates", PLATFORM, gettext_lazy("Only Super Admins can change notification texts."))
+
+
+class NotificationTemplateListView(generics.ListAPIView):
+    permission_classes = [IsAuthenticated, CAN_EDIT_TEMPLATES]
+    serializer_class = NotificationTemplateSerializer
+    pagination_class = None
+    queryset = NotificationTemplate.objects.all()
+
+
+class NotificationTemplateDetailView(APIView):
+    permission_classes = [IsAuthenticated, CAN_EDIT_TEMPLATES]
+
+    @extend_schema(
+        summary="Change a push text",
+        request=NotificationTemplateUpdateSerializer,
+        responses=NotificationTemplateSerializer,
+    )
+    def patch(self, request, key):
+        template = get_object_or_404(NotificationTemplate, key=key)
+        if not template.editable:
+            raise permission_denied(_("This text cannot be changed."))
+        data = NotificationTemplateUpdateSerializer(data=request.data, context={"template": template})
+        data.is_valid(raise_exception=True)
+        before = {"text_te": template.text_te, "text_en": template.text_en}
+        template.text_te = data.validated_data["text_te"]
+        template.text_en = data.validated_data["text_en"]
+        template.updated_by = request.user
+        # The new text and its audit entry are saved together or not at all.
+        with transaction.atomic():
+            template.save()
+            record(
+                "template.updated",
+                actor=request.user,
+                target=template,
+                target_label=template.name_en,
+                via=client_via(request),
+                data={"before": before},
+            )
+        return Response(NotificationTemplateSerializer(template).data)

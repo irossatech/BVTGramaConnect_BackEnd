@@ -1,0 +1,35 @@
+# The API and who uses it
+
+`docs/api-contract.md` in this repo is the single source of truth for every endpoint, object, error code and permission rule. Read the section you need; do not copy it elsewhere.
+
+The live schema is at `/api/schema/` and Swagger UI at `/api/docs/`: open on laptops and the qa server, console users only in production (`API_DOCS_PUBLIC`).
+
+## Changing the API
+
+1. Update `docs/api-contract.md` first: path, request, response, errors, permissions.
+2. Change the code and add tests in the same pull request.
+3. Tell the teams that use the endpoint (table below) before merging into `dev`. Additive changes (a new optional field) are safe; renaming or removing a field needs a date agreed with each client team.
+4. Keep `/api/v1/` stable. A breaking change that clients cannot follow together goes under `/api/v2/`. What counts as breaking, how long the old way stays, and when to raise `APP_MIN_VERSION`: `docs/api-contract.md`, section 1, "Versions and changes" (BVTGC-96).
+
+## The contract test (BVTGC-97)
+
+`docs/client-calls.json` lists every call the web repo and the mobile repo make (method, address, the client file). `grama/tests/test_client_calls.py` checks each against this server's URLs and methods, so removing or renaming a route a client still calls, or dropping its method, fails CI and names the client file.
+- After the clients change (and before a release), refresh the list from their current `dev` and commit it: `python manage.py client_calls` (reads `../BVTGramaConnect/src` and `../BVTGramaConnect_Mobile/lib`; `--web` and `--app` take other folders). It also prints any client call this server does not answer.
+- A call whose address is built in a variable cannot be read; it is listed under `unchecked` with its file. `--check` only says whether the committed file is up to date.
+- When a route really goes away, the client calls must go first: change the clients, refresh the list, then remove the route.
+
+## Who calls what
+
+| Client | Endpoints |
+|---|---|
+| Public website (BVTGramaConnect, `src/`) | `public/site-config/`, `public/showcase/` (live posts in the phone picture), `public/contact-messages/` |
+| Super Admin console (BVTGramaConnect, `console/`) | `auth/csrf/`, `auth/session/login/`, `auth/session/logout/`, `auth/password/change/`, `me/`, `admin/dashboard/`, `admin/reports/*`, `geo/*` including writes, `geo/tree/` (without villages at sign-in; `?villages=1` only for search, export and lists of every village), `geo/admin/villages/` (one mandal's villages when it is opened or picked, since 2026-11-19) and `geo/villages/import/`, `users/*` including reset-password, unlock and role-assignments, `posts/*` and review, `categories/`, `admin/categories/`, `admin/settings/`, `admin/notification-templates/`, `admin/contact-messages/` (list and mark handled), `admin/contacts/*` (important numbers, import), `admin/contact-types/`, `service-requests/*`, `admin/services/*`, `admin/bills/*`, `admin/transliterate/` (Telugu name suggestions), `audit/`, `audit/export/` |
+| Mobile app (BVTGramaConnect_Mobile) | `auth/login/`, `auth/refresh/`, `auth/logout/`, `auth/password/change/`, `me/`, `geo/states/`, `geo/districts/`, `geo/mandals/`, `geo/villages/`, `geo/nearest/`, `feed/` (with `q` and `has_video`), `feed/posts/*`, `feed/share/<code>/` (a shared link opened in the app), `share_url` on posts and `invite_url` in site-config for sharing, `feed/upcoming/`, `feed/urgent/`, `public/site-config/` (help lines and the website link for sharing), `categories/`, `app-config/` (languages switched on), `posts/*` and media (up to 3 photos, or one video), `posts/targets/`, `posts/{id}/urgent/`, `review/queue/`, `posts/{id}/review/`, `stats/`, `users/*`, `devices/`, `notifications/*`, `contacts/` and `contact-types/` (the citizen Contacts tab), `services/`, `citizen/*` (citizen posts and service requests, with `X-Citizen-Token`), `service-requests/*` (officials), `admin/contacts/*` (every official's important numbers, and `targets/`), `ads/` (Home banners), `bills/` (Bills & Recharges), `admin/transliterate/` (Telugu name suggestions in every official's forms); the Super Admin's `admin/ads/*`, `admin/services/*` and `admin/bills/*`; Super Admin screens also use `admin/dashboard/` and `audit/` |
+
+Not called by any client: `health/` (uptime checks), `review/queue/`, `admin/contacts/targets/`, `PATCH devices/{id}/`, and the single-item `GET` of `admin/contacts/{id}/` and `admin/ads/{id}/`. They are kept on purpose (BVTGC-77): see `docs/api-contract.md`, section 12.
+
+All paths are under `/api/v1/`. The console is served from the same origin, so it needs no CORS; the mobile app calls the absolute URL.
+
+## Authentication in one paragraph
+
+Officials log in with a username and a password; there is no OTP, SMS or email. The app calls `POST auth/login/` and gets an access token (15 minutes) and a refresh token (30 days, rotated and blacklisted); a login lasts at most 90 days however often it is renewed (`JWT_ABSOLUTE_DAYS`), then `auth/refresh/` answers 401 `session_revoked`. The console calls `GET auth/csrf/`, then `POST auth/session/login/`, and from then on sends the session cookie plus `X-CSRFToken`; only users with `web_admin.access_web_console` get a session, which ends after 30 idle minutes. Five failed logins for one username from one IP address lock it for 15 minutes, and twenty within an hour from any addresses lock the username everywhere for 15 minutes (429 `locked_out`). While `must_change_password` is true, every endpoint except `me/`, `auth/password/change/`, the logouts and `auth/refresh/` answers 403 `password_change_required`. Blocking, a reset or a password change bumps the user's token version, so old tokens and sessions fail at once with 401 `session_revoked`. Permissions are Django permissions such as `posts.publish_post`: `GET me/` lists the user's codenames, and `allowed_actions` on objects drives the buttons. Details: `docs/authorization.md`.

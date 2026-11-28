@@ -1,0 +1,18 @@
+# Backend backlog
+
+Open work for the Backend team, most important first. Update this file as items close.
+
+1. ~~**Office IPs for Django admin.**~~ Done differently (lead's decision of 2026-11-11): Django admin is off on every server (`DJANGO_ADMIN_ENABLED`), so no office IP list is needed.
+2. **Console login over HTTPS.** Set `CSRF_TRUSTED_ORIGINS` on staging, then log in to `/console/` over HTTPS: the session and CSRF cookies are Secure, so this is the first real check of the session login, the 30-minute idle logout and the lockout behind Nginx.
+3. **Real push.** `apps.notifications.push.FcmGateway` has never sent to Firebase. Put a service-account file on staging (FCM_CREDENTIALS_FILE, FCM_PROJECT_ID) and confirm a topic push and a device push reach a phone.
+4. **Staging deploy.** Run `deploy/setup.sh` once on an Ubuntu VM with MySQL and once with PostgreSQL (the server database is not chosen yet; everyone develops on SQLite). Fix whatever the dry run finds. Then run the backup and restore drill in `deploy/RUNBOOK.md`.
+5. **Load test at the real size.** `python -m grama.perftest load|stress|spike|soak` against staging with Gunicorn once the staging server exists (BVTGC-38) and the owner gives the expected users (BVTGC-37); set the user numbers in `deploy/loadtest/profiles.json`.
+6. **Video on a real server.** Upload a real phone video of about 60 seconds (and one of 61 seconds, which must be refused with `video_too_long`) and a banner video of several minutes close to 60 MB on staging with ffmpeg installed. Check the poster, seeking over 3G (Nginx range requests on `/media/`), the 60 MB limit and the 70 MB Nginx limit on the upload addresses end to end. Without ffmpeg the phone must send `duration_s` and a poster.
+7. **Citizen posts on a real phone.** Set `PLAY_INTEGRITY_PACKAGE` and a service account with the Play Integrity API enabled (the Firebase one works once the API is switched on in its Google Cloud project), install the app from a Play testing track, and check that registration passes with `CITIZEN_INTEGRITY_REQUIRED=True`. Before that, add Play's app-signing key to `ANDROID_CERT_SHA256`: the verdict must show an app signed with one of those keys (the check comes with `fix/integrity-signing-key`). iPhones need Apple App Attest before integrity can be required for them (contract section 15, CP3).
+8. **Audit follow-ups** (`audit-reports/BE_0*_RESPONSE_*.md`, each ends with "What is still needed"): the
+   items left open there, chiefly the decisions for the lead and owner (citizen identity, registration
+   limits, files per citizen post) and the production team's checks of the hosting panel (nginx, backups).
+9. **The login throttle per IP** (gap G1: 30 logins an hour per address; `docs/security-review.md`, open
+   item 8). Not decided whether it comes back: many officials can share one office network. The rest
+   of this item was done by BVTGC-105 (the BE-SEC-101 fix, the cap per address, the Nginx limits); the
+   contact form stays without a per-IP limit by the lead's final decision.
