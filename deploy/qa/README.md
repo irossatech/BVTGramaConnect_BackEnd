@@ -316,6 +316,10 @@ Its own panel site and Unix user, its own MySQL database, its own port: nothing 
    ```
    It must show your own public address (search "what is my IP"). `127.0.0.1` or a Cloudflare
    address means the panel does not pass the real one: stop and fix that before launch.
+   Another server or private address (10.x, 172.16–31.x, 192.168.x) means the panel's nginx reaches
+   Django from that address, which is not trusted by default (BE-SEC-212): add it to `.env` as
+   `TRUSTED_PROXIES=127.0.0.1,::1,<that address>`, restart with `bash BVT-stop.sh && bash BVT-start.sh`, and check again.
+   Do this check again after every change to the panel's proxy or the server layout.
 8. `bash BVT-backup.sh --install`.
 
 9. **Citizen posting from the website's APK.** Owner's decision of 2026-11-04: citizens may post
